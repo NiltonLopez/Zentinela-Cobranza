@@ -78,4 +78,11 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// Seed inicial: roles + usuario admin (solo en desarrollo)
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    await DbSeeder.SeedAsync(scope.ServiceProvider);
+}
+
 app.Run();
