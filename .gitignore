@@ -1,0 +1,22 @@
+notepad .gitignore
+```
+
+Pega esto dentro y guarda:
+```
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.log
+
+# Secretos
+appsettings.Development.json
+appsettings.Local.json
+
+# Node
+node_modules/
+
+# OS
+Thumbs.db
