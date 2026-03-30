@@ -10,6 +10,7 @@ public class ZentinelaDbContext : IdentityDbContext<ApplicationUser, IdentityRol
     public ZentinelaDbContext(DbContextOptions<ZentinelaDbContext> options) : base(options) { }
 
     public DbSet<Lider> Lideres { get; set; }
+    public DbSet<Cartera> Carteras { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -33,6 +34,20 @@ public class ZentinelaDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             e.HasKey(l => l.ID);
             e.Property(l => l.Nombre).HasMaxLength(100).IsRequired();
             e.ToTable("Lider", t => t.ExcludeFromMigrations());
+        });
+
+        // Mapear tabla Cartera existente en BD — excluir de migraciones (ya existe en producción)
+        builder.Entity<Cartera>(e =>
+        {
+            e.ToTable("Cartera");
+            e.HasKey(c => c.ID);
+            e.Property(c => c.NombreCartera).HasMaxLength(50).IsRequired();
+            e.HasOne(c => c.Lider)
+             .WithMany()
+             .HasForeignKey(c => c.LiderID)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+            e.ToTable("Cartera", t => t.ExcludeFromMigrations());
         });
     }
 }

@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using Zentinela.API.Application.Interfaces;
 using Zentinela.API.Domain.Entities;
 using Zentinela.API.Infrastructure.Data;
+using Zentinela.API.Infrastructure.Repositories;
 using Zentinela.API.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -60,6 +61,7 @@ builder.Services.AddCors(options =>
 
 // --- Servicios de aplicación ---
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ICarteraRepository, CarteraRepository>();
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
