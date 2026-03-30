@@ -12,7 +12,7 @@ using Zentinela.API.Infrastructure.Data;
 namespace Zentinela.API.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ZentinelaDbContext))]
-    [Migration("20260330224409_InitAuth")]
+    [Migration("20260330225028_InitAuth")]
     partial class InitAuth
     {
         /// <inheritdoc />
@@ -252,7 +252,10 @@ namespace Zentinela.API.Infrastructure.Data.Migrations
 
                     b.HasKey("ID");
 
-                    b.ToTable("Lider", (string)null);
+                    b.ToTable("Lider", null, t =>
+                        {
+                            t.ExcludeFromMigrations();
+                        });
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>

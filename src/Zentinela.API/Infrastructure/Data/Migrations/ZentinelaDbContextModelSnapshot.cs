@@ -249,7 +249,10 @@ namespace Zentinela.API.Infrastructure.Data.Migrations
 
                     b.HasKey("ID");
 
-                    b.ToTable("Lider", (string)null);
+                    b.ToTable("Lider", null, t =>
+                        {
+                            t.ExcludeFromMigrations();
+                        });
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>

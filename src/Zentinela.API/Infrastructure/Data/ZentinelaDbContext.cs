@@ -26,12 +26,13 @@ public class ZentinelaDbContext : IdentityDbContext<ApplicationUser, IdentityRol
              .OnDelete(DeleteBehavior.SetNull);
         });
 
-        // Mapear tabla Lider existente en BD
+        // Mapear tabla Lider existente en BD — excluir de migraciones (ya existe en producción)
         builder.Entity<Lider>(e =>
         {
             e.ToTable("Lider");
             e.HasKey(l => l.ID);
             e.Property(l => l.Nombre).HasMaxLength(100).IsRequired();
+            e.ToTable("Lider", t => t.ExcludeFromMigrations());
         });
     }
 }
