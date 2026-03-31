@@ -2,6 +2,15 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
+import { ZButton } from '../components/ZButton';
+
+function ShieldIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -18,23 +27,62 @@ export function LoginPage() {
     try {
       const respuesta = await login({ email, password });
       iniciarSesion(respuesta);
-      navigate('/dashboard');
+      navigate('/bases');
     } catch {
-      setError('Correo o contraseña incorrectos. Intenta de nuevo.');
+      setError('Correo o contraseña incorrectos.');
     } finally {
       setCargando(false);
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-2xl shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-semibold text-gray-800 mb-2 text-center">Zentinela</h1>
-        <p className="text-sm text-gray-500 text-center mb-6">Sistema de gestión de cobranza</p>
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '9px 12px',
+    fontSize: '13px',
+    border: '1px solid var(--z-border)',
+    borderRadius: '6px',
+    background: 'var(--z-bg-surface)',
+    color: 'var(--z-text-primary)',
+    outline: 'none',
+    transition: 'border-color 0.15s',
+  };
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--z-bg-page)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '40px',
+        width: '100%',
+        maxWidth: '360px',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+      }}>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
+          <div style={{
+            width: '40px', height: '40px',
+            background: 'var(--z-brand)',
+            borderRadius: '10px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ShieldIcon />
+          </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1.2 }}>Zentinela</p>
+            <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Gestión de cobranza</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--z-text-muted)' }}>
               Correo electrónico
             </label>
             <input
@@ -42,13 +90,15 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="usuario@empresa.com"
+              style={inputStyle}
+              onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
+              onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--z-text-muted)' }}>
               Contraseña
             </label>
             <input
@@ -56,23 +106,33 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={inputStyle}
+              onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
+              onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p style={{
+              fontSize: '12px',
+              color: '#dc2626',
+              background: '#fff5f5',
+              border: '0.5px solid #fecaca',
+              borderRadius: '6px',
+              padding: '10px 12px',
+            }}>
               {error}
             </p>
           )}
 
-          <button
+          <ZButton
             type="submit"
+            variant="primary"
             disabled={cargando}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 rounded-lg text-sm transition-colors"
+            style={{ width: '100%', justifyContent: 'center', padding: '10px', marginTop: '4px' }}
           >
             {cargando ? 'Ingresando...' : 'Ingresar'}
-          </button>
+          </ZButton>
         </form>
       </div>
     </div>

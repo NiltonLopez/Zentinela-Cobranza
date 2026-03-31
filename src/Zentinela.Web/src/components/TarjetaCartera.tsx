@@ -9,16 +9,35 @@ export function TarjetaCartera({ cartera, onClick }: Props) {
   return (
     <button
       onClick={() => onClick(cartera)}
-      className="w-full text-left bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-400 hover:shadow-md transition-all duration-200 group"
+      style={{
+        width: '100%',
+        textAlign: 'left',
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '8px',
+        padding: '16px 20px',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+      }}
+      onMouseOver={(e) => {
+        const el = e.currentTarget as HTMLElement;
+        el.style.borderColor = 'var(--z-brand)';
+        el.style.boxShadow = '0 2px 8px rgba(245,73,39,0.08)';
+      }}
+      onMouseOut={(e) => {
+        const el = e.currentTarget as HTMLElement;
+        el.style.borderColor = 'var(--z-border)';
+        el.style.boxShadow = 'none';
+      }}
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Cartera</p>
-          <h3 className="text-base font-semibold text-gray-800 group-hover:text-blue-600 transition-colors">
-            {cartera.nombreCartera}
-          </h3>
-        </div>
-        <span className="text-gray-300 group-hover:text-blue-400 transition-colors text-xl">→</span>
+      <p style={{ fontSize: '11px', fontWeight: 500, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+        Cartera
+      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--z-text-primary)' }}>
+          {cartera.nombreCartera}
+        </span>
+        <span style={{ color: 'var(--z-border)', fontSize: '16px' }}>→</span>
       </div>
     </button>
   );
