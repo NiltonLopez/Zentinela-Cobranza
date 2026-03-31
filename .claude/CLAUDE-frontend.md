@@ -56,6 +56,47 @@ src/
 - El botón de descarga debe ser evidente y grande
 - Mensajes de error en español colombiano
 
+## Sistema de diseño — Zentinela
+
+### Filosofía
+El naranja F54927 hace UNA sola cosa: llamar la atención donde importa.
+Logo, botón primario, ítem activo. Todo lo demás es gris cálido limpio.
+
+### Tokens de color
+```css
+--z-brand: #F54927;        /* naranja fuego — SOLO logo, botón primario, activo */
+--z-bg-page: #F2F2F0;      /* fondo general de la app */
+--z-bg-card: #FFFFFF;      /* tarjetas, paneles, nav */
+--z-bg-surface: #FAFAF9;   /* encabezados de tabla, sidebar */
+--z-border: #E2E2DF;       /* todos los bordes — 0.5px siempre */
+--z-text-primary: #1C1C1A; /* texto principal */
+--z-text-muted: #888780;   /* etiquetas, texto secundario */
+```
+
+### Estados semánticos
+```css
+/* Éxito */     bg: #EAF3DE   text: #3B6D11
+/* Advertencia */ bg: #FAEEDA text: #854F0B
+/* Error */     bg: #FCEBEB   text: #A32D2D
+/* Info */      bg: #E6F1FB   text: #185FA5
+```
+
+### Reglas de uso del naranja
+- Logo: siempre con fondo #F54927
+- Botón primario: bg #F54927, texto blanco
+- Ítem activo sidebar: texto #F54927, bg #FEF0EC
+- Link activo nav: color #F54927
+- NUNCA usar como fondo de página, card, o tabla
+- NUNCA usar en más de un elemento por vista
+
+### Componentes base
+- Bordes: 0.5px solid #E2E2DF — siempre
+- Border radius cards: 12px
+- Border radius botones/badges: 6px
+- Tipografía: Inter o sistema sans-serif
+- Peso de fuente: 400 regular, 500 medio — nunca 600 ni 700
+- Espaciado interno cards: 16px 20px
+
 ## Entregables esperados
 - Componentes funcionales y tipados
 - Sin errores de TypeScript
