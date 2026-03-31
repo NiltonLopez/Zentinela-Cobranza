@@ -9,7 +9,7 @@ interface AuthContextType {
   estaAutenticado: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 const TOKEN_KEY = 'zentinela_token';
 const USUARIO_KEY = 'zentinela_usuario';
