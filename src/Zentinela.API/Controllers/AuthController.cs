@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Zentinela.API.Application.DTOs.Auth;
-using Zentinela.API.Application.Interfaces;
+using Zentinela.Application.DTOs.Auth;
+using Zentinela.Application.Interfaces;
 
 namespace Zentinela.API.Controllers;
 

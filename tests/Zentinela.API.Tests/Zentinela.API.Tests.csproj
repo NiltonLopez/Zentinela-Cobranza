@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -21,6 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Zentinela.Core\Zentinela.Core.csproj" />
+    <ProjectReference Include="..\..\src\Zentinela.Application\Zentinela.Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Zentinela.Infrastructure.SQLServer\Zentinela.Infrastructure.SQLServer.csproj" />
     <ProjectReference Include="..\..\src\Zentinela.API\Zentinela.API.csproj" />
   </ItemGroup>
 

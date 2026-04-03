@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Zentinela.API.Application.DTOs.Carteras;
-using Zentinela.API.Application.Interfaces;
+using Zentinela.Application.DTOs.Carteras;
+using Zentinela.Core.Interfaces;
 
 namespace Zentinela.API.Controllers;
 
@@ -27,7 +27,7 @@ public class CarterasController : ControllerBase
         var rol = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
         var liderIDClaim = User.FindFirst("liderID")?.Value;
 
-        IEnumerable<Zentinela.API.Domain.Entities.Cartera> carteras;
+        IEnumerable<Zentinela.Core.Entities.Cartera> carteras;
 
         // Admin ve todas las carteras
         if (rol == "Admin")

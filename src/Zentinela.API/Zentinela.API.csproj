@@ -7,16 +7,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ClosedXML" Version="0.104.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.4" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.4">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Scalar.AspNetCore" Version="2.13.17" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zentinela.Application\Zentinela.Application.csproj" />
+    <ProjectReference Include="..\Infrastructure\Zentinela.Infrastructure.SQLServer\Zentinela.Infrastructure.SQLServer.csproj" />
+    <ProjectReference Include="..\Infrastructure\Zentinela.Infrastructure.FileExporter\Zentinela.Infrastructure.FileExporter.csproj" />
   </ItemGroup>
 
 </Project>
