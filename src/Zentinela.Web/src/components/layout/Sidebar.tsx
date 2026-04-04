@@ -8,6 +8,9 @@ interface SidebarNavItem {
 }
 
 const ITEMS_POR_TAB: Record<NavTab, SidebarNavItem[]> = {
+  dashboard: [
+    { key: 'inicio', label: 'Inicio', path: '/dashboard' },
+  ],
   bases: [
     { key: 'generar-base', label: 'Generar base', path: '/bases' },
     { key: 'historial', label: 'Historial', path: '/historial' },

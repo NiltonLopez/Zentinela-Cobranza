@@ -4,10 +4,12 @@ import type { LoginResponse } from '../../types/auth';
 
 const MOCK_RESPONSE: LoginResponse = {
   token: 'eyJ.mock.token',
+  email: 'nilton@zentinela.com',
   nombreCompleto: 'Nilton Ramírez',
   rol: 'Admin',
   liderID: null,
   expiracion: new Date(Date.now() + 3600000).toISOString(),
+  requiereCambioPassword: false,
 };
 
 function ComponenteDeTest() {
@@ -59,6 +61,7 @@ describe('AuthContext', () => {
       nombreCompleto: 'Usuario Guardado',
       rol: 'Líder',
       liderID: 3,
+      requiereCambioPassword: false,
     }));
     render(<AuthProvider><ComponenteDeTest /></AuthProvider>);
     expect(screen.getByTestId('autenticado').textContent).toBe('sí');

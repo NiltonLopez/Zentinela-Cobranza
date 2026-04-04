@@ -6,13 +6,14 @@
 |---|---|
 | Backend API | C# / .NET 9 — ASP.NET Core Web API |
 | Autenticación | ASP.NET Core Identity + JWT (HMAC-SHA256) |
-| ORM | Entity Framework Core (SQL Server provider) |
-| Base de datos | SQL Server — 10.0.0.129,1433 / DBCallCenter |
-| Documentación API | OpenAPI + Scalar (solo en desarrollo) |
+| ORM | Entity Framework Core 9 (SQL Server provider) |
+| Bases de datos | SQL Server — 10.0.0.89,1433 (3 BDs) |
+| Documentación API | OpenAPI + Scalar (solo desarrollo) |
 | Frontend | React 18 + TypeScript (Vite) |
 | Enrutamiento frontend | React Router v6 |
 | Estado servidor | TanStack Query (React Query) |
-| Testing backend | xUnit + Moq + EF Core InMemory |
+| Testing backend | xUnit |
+| Testing frontend | Vitest + Testing Library |
 
 ---
 
@@ -25,271 +26,112 @@ Zentinela/
 │   └── commands/                  — slash commands personalizados
 ├── docs/
 │   ├── arquitectura-sistema.md    — este archivo
-│   ├── api-referencia.md
-│   ├── design-system.md
-│   ├── guia-tests.md
-│   ├── arquitectura-auth.md
-│   ├── schema.md
-│   └── migrations/
+│   ├── api-referencia.md          — endpoints documentados
+│   ├── design-system.md           — variables CSS y componentes UI
+│   ├── guia-tests.md              — guía de pruebas
+│   └── schema.md                  — schema de BDs
 ├── src/
-│   ├── Zentinela.API/             — proyecto backend ASP.NET Core
-│   │   ├── Application/
-│   │   │   ├── DTOs/
-│   │   │   │   ├── Auth/          — LoginRequest, LoginResponse
-│   │   │   │   └── Carteras/      — CarteraDto
-│   │   │   └── Interfaces/        — IAuthService, ICarteraRepository
-│   │   ├── Controllers/           — AuthController, CarterasController
-│   │   ├── Domain/
-│   │   │   └── Entities/          — ApplicationUser, Cartera, Lider
-│   │   ├── Infrastructure/
-│   │   │   ├── Data/              — ZentinelaDbContext, DbSeeder
-│   │   │   ├── Repositories/      — CarteraRepository
-│   │   │   └── Services/          — AuthService
-│   │   └── Program.cs
-│   └── Zentinela.Web/             — proyecto frontend React
-│       └── src/
-│           ├── components/
-│           │   ├── layout/        — AppLayout, Navbar, Sidebar
-│           │   ├── ZButton.tsx
-│           │   ├── MetricCard.tsx
-│           │   └── RutaProtegida.tsx
-│           ├── context/           — AuthContext
-│           ├── pages/             — LoginPage, GeneradorPage, CarterasPage, HistorialPage, KPIsPage, SinPermisoPage
-│           └── types/             — auth.ts, ui.ts, carteras.ts
+│   ├── Zentinela.Core/            — entidades de dominio, interfaces de repositorio
+│   ├── Zentinela.Application/     — servicios, DTOs, interfaces de servicios, constantes
+│   ├── Infrastructure/
+│   │   ├── Zentinela.Infrastructure.SQLServer/   — EF Core, Identity, JWT, servicios
+│   │   └── Zentinela.Infrastructure.FileExporter/ — exportación Excel (pendiente)
+│   ├── Zentinela.API/             — controllers, Program.cs
+│   └── Zentinela.Web/             — React + TypeScript (Vite)
 └── tests/
-    └── Zentinela.API.Tests/       — AuthServiceTests, CarterasControllerTests, CarteraRepositoryTests
 ```
 
 ---
 
-## Capas de la arquitectura
-
-Zentinela sigue Clean Architecture. Las dependencias apuntan siempre hacia el centro (Domain), nunca hacia afuera.
+## Clean Architecture — capas y dependencias
 
 ```
-┌────────────────────────────────────────────┐
-│              Controllers                   │  ← Capa de presentación
-│   AuthController / CarterasController      │    Recibe HTTP, devuelve IActionResult
-└──────────────────┬─────────────────────────┘
-                   │ usa interfaces de
-┌──────────────────▼─────────────────────────┐
-│              Application                   │  ← Capa de aplicación
-│   Interfaces: IAuthService                 │    Contratos — no contiene lógica concreta
-│               ICarteraRepository           │
-│   DTOs: LoginRequest, LoginResponse        │
-│          CarteraDto                        │
-└──────────────────┬─────────────────────────┘
-                   │ implementadas por
-┌──────────────────▼─────────────────────────┐
-│            Infrastructure                  │  ← Capa de infraestructura
-│   Services:      AuthService               │    Acceso a Identity, JWT, BD
-│   Repositories:  CarteraRepository         │
-│   Data:          ZentinelaDbContext         │
-│                  DbSeeder                  │
-└──────────────────┬─────────────────────────┘
-                   │ persiste y lee
-┌──────────────────▼─────────────────────────┐
-│               Domain                       │  ← Núcleo — sin dependencias externas
-│   Entities: ApplicationUser, Cartera, Lider│
-└────────────────────────────────────────────┘
+API  →  Application  →  Core
+ ↘         ↗
+  Infrastructure
 ```
 
-### Registro de dependencias (Program.cs)
-
-| Interfaz | Implementación | Lifetime |
+| Capa | Responsabilidad | Puede referenciar |
 |---|---|---|
-| `IAuthService` | `AuthService` | Scoped |
-| `ICarteraRepository` | `CarteraRepository` | Scoped |
-| `ZentinelaDbContext` | EF Core + SQL Server | Scoped |
-| `UserManager<ApplicationUser>` | ASP.NET Identity | Scoped |
+| `Core` | Entidades de dominio, interfaces de repositorio | Nadie |
+| `Application` | DTOs, interfaces de servicios, servicios de app, constantes | Core |
+| `Infrastructure` | EF Core, Identity, JWT, implementaciones de servicios | Application + Core |
+| `API` | Controllers, middleware, DI bootstrap | Application + Infrastructure |
+
+**Reglas estrictas:**
+- Controllers nunca inyectan repositorios directamente — siempre a través de un servicio de Application
+- La lógica de negocio (quién ve qué, qué reglas aplican) vive en Application, no en controllers
+- `ClaimsPrincipal` se lee en el controller y se convierte a un DTO de contexto (`ContextoUsuario`) antes de pasar a Application
 
 ---
 
-## Diagrama de flujo de una petición
+## Tres DbContexts
 
-El siguiente diagrama muestra el ciclo completo de una solicitud HTTP autenticada, usando `GET /api/carteras` como ejemplo:
+| Contexto | Base de datos | Propietario | Migraciones |
+|---|---|---|---|
+| `ZentinelaDbContext` | `DBZentinela` | Zentinela | ✅ Activas — EF Core gestiona el schema |
+| `CallCenterDbContext` | `DBCallCenter` | Sistema de cobranza | ❌ `ExcludeFromMigrations` — solo lectura/escritura puntual |
+| `RecursosHumanosDbContext` | `DBRecursosHumanos` | RRHH | ❌ `ExcludeFromMigrations` — solo lectura |
 
-```
-Cliente (React)
-    │
-    │  GET /api/carteras
-    │  Authorization: Bearer <JWT>
-    ▼
-[Middleware CORS]
-    │  Verifica origen permitido (http://localhost:5173)
-    ▼
-[Middleware Authentication]
-    │  Valida firma JWT, issuer, audience, expiración
-    │  Extrae claims → ClaimsPrincipal (User)
-    ▼
-[Middleware Authorization]
-    │  Verifica [Authorize] en CarterasController
-    ▼
-CarterasController.ObtenerCarteras()
-    │  Lee claim "rol" y "liderID" desde User.Claims
-    │  Si Admin → llama ICarteraRepository.ObtenerTodasAsync()
-    │  Si Líder → llama ICarteraRepository.ObtenerPorLiderAsync(liderID)
-    │  Si otro  → retorna 403 Forbid
-    ▼
-CarteraRepository
-    │  Consulta ZentinelaDbContext.Carteras
-    │  Filtra por LiderID (o devuelve todas)
-    │  OrderBy(NombreCartera).AsNoTracking()
-    ▼
-ZentinelaDbContext
-    │  EF Core genera SQL y ejecuta contra SQL Server
-    │  Servidor: 10.0.0.129,1433 / DBCallCenter
-    ▼
-Base de datos SQL Server (tabla Cartera)
-    │
-    │  Retorna filas
-    ▼
-CarteraRepository → IEnumerable<Cartera>
-    ▼
-CarterasController
-    │  Proyecta entidades a CarteraDto (ID, NombreCartera)
-    ▼
-HTTP 200 OK — JSON: [{ "id": 1, "nombreCartera": "..." }, ...]
-    ▼
-Cliente (React)
-```
+Misma instancia SQL Server → cross-DB queries con performance nativo.
 
 ---
 
-## Modelo de datos
+## Autenticación y autorización
 
-### Entidades del dominio
-
-#### ApplicationUser
-Extiende `IdentityUser<int>`. Se mapea a la tabla `AspNetUsers`.
-
-| Propiedad | Tipo | Descripción |
-|---|---|---|
-| `Id` | `int` | PK (heredado de Identity) |
-| `Email` | `string` | Email único, usado como username de login |
-| `NombreCompleto` | `string` | Nombre para mostrar en la UI |
-| `LiderID` | `int?` | FK nullable hacia `Lider.ID`. Null para usuarios Admin |
-
-#### Lider
-Se mapea a la tabla existente `Lider` en SQL Server (excluida de migraciones).
-
-| Propiedad | Tipo | Descripción |
-|---|---|---|
-| `ID` | `int` | PK |
-| `Nombre` | `string` | Nombre del líder (max 100 chars) |
-| `Usuario` | `ApplicationUser?` | Navegación inversa hacia el usuario del sistema |
-
-#### Cartera
-Se mapea a la tabla existente `Cartera` en SQL Server (excluida de migraciones).
-
-| Propiedad | Tipo | Descripción |
-|---|---|---|
-| `ID` | `int` | PK |
-| `NombreCartera` | `string` | Nombre de la cartera (max 50 chars) |
-| `LiderID` | `int?` | FK nullable hacia `Lider.ID` |
-| `Lider` | `Lider?` | Propiedad de navegación |
-
-### Relaciones
-
-```
-ApplicationUser (AspNetUsers)
-    │ LiderID (FK, nullable, SetNull on delete)
-    │
-    ▼
-Lider (tabla existente en producción)
-    │ ID
-    │
-    ▼  (uno a muchos)
-Cartera (tabla existente en producción)
-    LiderID (FK, nullable, SetNull on delete)
-```
-
-### Roles del sistema
-
-Los roles se crean automáticamente por `DbSeeder` al iniciar en modo desarrollo:
-
-| Rol | Descripción |
-|---|---|
-| `Admin` | Acceso total, ve todas las carteras |
-| `Supervisor` | Visibilidad total de líderes y KPIs |
-| `Líder` | Ve solo sus carteras asignadas |
-| `Analista` | Reportes y KPIs |
-| `Asesor` | Módulo futuro — sin lógica implementada actualmente |
+- **Esquema:** JWT Bearer (HMAC-SHA256)
+- **Claims en el token:** `sub` (UsuarioID), `email`, `role`, `liderID`, `nombreCompleto`, `numeroDocumento`, `jti`
+- **Roles:** `Admin`, `Líder`, `Director`, `Asesor` — definidos en `Application.Roles`
+- **Mapeo de roles:** `CargoID` de RRHH → Rol Zentinela (ver `Application.CargoRoles`)
+- **Primer login:** `RequiereCambioPassword = true` → frontend intercepta y redirige a `/cambiar-password`
+- **Configuración:** `IOptions<JwtSettings>` (fuente: `appsettings.json` sección `JwtSettings`)
 
 ---
 
-## Configuración por entorno
+## Registro de usuario
 
-La cadena de conexión y los secretos JWT se leen desde `appsettings.json` / `appsettings.Development.json` mediante `IConfiguration`. **Nunca** se hardcodean en el código fuente.
+Flujo sin autenticación previa (auto-registro):
 
-### Claves esperadas en appsettings.json
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=...;Database=DBCallCenter;..."
-  },
-  "JwtSettings": {
-    "SecretKey": "<mínimo 32 caracteres>",
-    "Issuer": "zentinela",
-    "Audience": "zentinela-api",
-    "ExpirationHours": 8
-  }
-}
-```
-
-### Comportamientos por entorno
-
-| Comportamiento | Development | Production |
-|---|---|---|
-| OpenAPI / Scalar UI | Habilitado (`/openapi`, `/scalar/v1`) | Deshabilitado |
-| DbSeeder (roles + admin) | Ejecutado al arrancar | No ejecutado |
-| Mensajes de error detallados | Sí | No |
-
-### CORS
-
-En `Program.cs` se define la política `FrontendPolicy` que permite solicitudes únicamente desde `http://localhost:5173` (servidor de desarrollo de Vite).
+1. Empleado ingresa `Cédula` + `UsuarioControlNext`
+2. Sistema valida cédula en `DBRecursosHumanos.Empleado`
+3. Deriva rol desde `Empleado.CargoID` (mapa en `CargoRoles`)
+4. Crea `Agente` en `DBCallCenter.Agente` (AgenteID = cédula)
+5. Crea `ApplicationUser` en `DBZentinela` con `RequiereCambioPassword = true`
+6. Contraseña inicial = cédula (el usuario la cambia en el primer login)
 
 ---
 
-## Cómo arrancar el proyecto localmente
+## Módulos implementados
 
-### Requisitos previos
+| Módulo | Estado | Roles |
+|---|---|---|
+| Autenticación (login / cambio de contraseña) | ✅ Completo | Todos |
+| Registro de usuario | ✅ Completo | Público |
+| Dashboard Asesor | ✅ Completo | Asesor |
+| Generador de Bases Excel | 🚧 Esqueleto UI | Admin, Líder, Director |
+| Carteras | 🚧 Listado básico | Admin, Líder, Director |
+| KPIs / Reportes | 🚧 Placeholder | Admin, Director |
+| Dashboard Líder | ⏳ Pendiente | Líder |
+| Dashboard Director | ⏳ Pendiente | Director |
 
-- .NET 9 SDK
-- Node.js 20+ y npm
-- Acceso a SQL Server en 10.0.0.129,1433
+---
 
-### Backend
+## Navegación
 
-```bash
-# 1. Ir al directorio del API
-cd src/Zentinela.API
+| Tab navbar | Ruta default | Roles que lo ven |
+|---|---|---|
+| Dashboard | `/dashboard` | Asesor |
+| Bases | `/bases` | Admin, Director, Líder |
+| Carteras | `/carteras` | Admin, Director, Líder |
+| Reportes | `/kpis` | Admin, Director |
 
-# 2. Configurar appsettings.Development.json con cadena de conexión y JwtSettings
+Redirect por defecto: Asesor → `/dashboard`, otros → `/bases`
 
-# 3. Aplicar migraciones de Identity (tablas AspNet*)
-dotnet ef database update
+---
 
-# 4. Arrancar el servidor (puerto 5000 por defecto en HTTP)
-dotnet run
-```
+## CORS
 
-Al iniciar en modo Development, `DbSeeder` crea automáticamente los roles y el usuario administrador inicial:
-- Email: `admin@zentinela.com`
-- Password: `Admin1234!`
+Política `FrontendPolicy`: origen `http://localhost:5173`, cualquier header y método, con credenciales.
+En producción: actualizar `WithOrigins` con la URL del servidor dedicado.
 
-### Frontend
-
-```bash
-# 1. Ir al directorio del frontend
-cd src/Zentinela.Web
-
-# 2. Instalar dependencias
-npm install
-
-# 3. Arrancar el servidor de desarrollo (Vite — puerto 5173)
-npm run dev
-```
-
-El frontend queda disponible en `http://localhost:5173` y apunta al API en `http://localhost:5000`.
+> **Nota:** No llamar `app.UseRouting()` explícitamente en ASP.NET Core 9 — rompe CORS con endpoint routing. El routing es implícito.

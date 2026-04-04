@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Zentinela.Application.DTOs.Auth;
 using Zentinela.Application.Interfaces;
@@ -16,7 +18,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Autenticar usuario y obtener token JWT
+    /// Autenticar usuario y obtener token JWT.
     /// </summary>
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -29,19 +31,38 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Obtener datos del usuario autenticado desde el token
+    /// Retorna los datos del usuario autenticado extraídos del token.
     /// </summary>
     [HttpGet("me")]
-    [Microsoft.AspNetCore.Authorization.Authorize]
+    [Authorize]
     public IActionResult Me()
     {
-        var claims = User.Claims.ToDictionary(c => c.Type, c => c.Value);
-        return Ok(new
+        var response = new MeResponse
         {
-            email = User.Identity?.Name,
-            rol = claims.GetValueOrDefault(System.Security.Claims.ClaimTypes.Role),
-            liderID = claims.GetValueOrDefault("liderID"),
-            nombreCompleto = claims.GetValueOrDefault("nombreCompleto")
-        });
+            Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
+            NombreCompleto = User.FindFirstValue("nombreCompleto") ?? string.Empty,
+            Rol = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
+            LiderID = int.TryParse(User.FindFirstValue("liderID"), out var id) ? id : null,
+        };
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Cambia la contraseña del usuario autenticado y desactiva el flag de cambio obligatorio.
+    /// </summary>
+    [HttpPost("cambiar-password")]
+    [Authorize]
+    public async Task<IActionResult> CambiarPassword([FromBody] CambiarPasswordRequest request)
+    {
+        var usuarioIDClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(usuarioIDClaim, out var usuarioID))
+            return Unauthorized();
+
+        var errores = await _authService.CambiarPasswordAsync(usuarioID, request);
+        if (errores.Any())
+            return BadRequest(new { errores });
+
+        return Ok(new { mensaje = "Contraseña actualizada correctamente." });
     }
 }

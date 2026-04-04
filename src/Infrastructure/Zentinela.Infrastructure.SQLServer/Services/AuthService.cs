@@ -1,73 +1,79 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
 using Zentinela.Application.DTOs.Auth;
 using Zentinela.Application.Interfaces;
 using Zentinela.Infrastructure.SQLServer.Models;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
+/// <summary>
+/// Servicio de autenticación: valida credenciales contra Identity y delega
+/// la generación del token a IJwtTokenGenerator (SRP).
+/// Vive en Infrastructure porque depende de UserManager (ASP.NET Identity).
+/// </summary>
 public class AuthService : IAuthService
 {
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly IConfiguration _configuration;
+    private readonly IJwtTokenGenerator _tokenGenerator;
 
-    public AuthService(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+    public AuthService(
+        UserManager<ApplicationUser> userManager,
+        IJwtTokenGenerator tokenGenerator)
     {
         _userManager = userManager;
-        _configuration = configuration;
+        _tokenGenerator = tokenGenerator;
     }
 
     public async Task<LoginResponse?> LoginAsync(LoginRequest request)
     {
-        var usuario = await _userManager.FindByEmailAsync(request.Email);
+        // Permite login por email o por UsuarioControlNext (username)
+        var usuario = await _userManager.FindByEmailAsync(request.Email)
+                   ?? await _userManager.FindByNameAsync(request.Email);
+
         if (usuario is null || !await _userManager.CheckPasswordAsync(usuario, request.Password))
             return null;
 
         var roles = await _userManager.GetRolesAsync(usuario);
-        var rol = roles.FirstOrDefault() ?? "Sin rol";
+        var rol = roles.FirstOrDefault() ?? string.Empty;
 
-        var token = GenerarToken(usuario, rol);
+        var payload = new TokenPayload(
+            UsuarioID: usuario.Id,
+            Email: usuario.Email!,
+            NombreCompleto: usuario.NombreCompleto,
+            Rol: rol,
+            LiderID: usuario.LiderID,
+            NumeroDocumento: usuario.NumeroDocumento
+        );
+
+        var tokenResult = _tokenGenerator.GenerarToken(payload);
 
         return new LoginResponse
         {
-            Token = token,
+            Token = tokenResult.Token,
+            Email = usuario.Email!,
             NombreCompleto = usuario.NombreCompleto,
             Rol = rol,
             LiderID = usuario.LiderID,
-            Expiracion = DateTime.UtcNow.AddHours(
-                _configuration.GetValue<int>("JwtSettings:ExpirationHours"))
+            Expiracion = tokenResult.Expiracion,
+            RequiereCambioPassword = usuario.RequiereCambioPassword,
         };
     }
 
-    private string GenerarToken(ApplicationUser usuario, string rol)
+    public async Task<IEnumerable<string>> CambiarPasswordAsync(int usuarioID, CambiarPasswordRequest request)
     {
-        var jwtSettings = _configuration.GetSection("JwtSettings");
-        var clave = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]!));
+        var usuario = await _userManager.FindByIdAsync(usuarioID.ToString());
+        if (usuario is null)
+            return ["Usuario no encontrado."];
 
-        var claims = new[]
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, usuario.Email!),
-            new Claim(ClaimTypes.Role, rol),
-            new Claim("liderID", usuario.LiderID?.ToString() ?? ""),
-            new Claim("nombreCompleto", usuario.NombreCompleto),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
+        var resultado = await _userManager.ChangePasswordAsync(
+            usuario, request.PasswordActual, request.NuevoPassword);
 
-        var token = new JwtSecurityToken(
-            issuer: jwtSettings["Issuer"],
-            audience: jwtSettings["Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(
-                _configuration.GetValue<int>("JwtSettings:ExpirationHours")),
-            signingCredentials: new SigningCredentials(clave, SecurityAlgorithms.HmacSha256)
-        );
+        if (!resultado.Succeeded)
+            return resultado.Errors.Select(e => e.Description);
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        // Desactiva el flag de cambio obligatorio
+        usuario.RequiereCambioPassword = false;
+        await _userManager.UpdateAsync(usuario);
+
+        return [];
     }
 }

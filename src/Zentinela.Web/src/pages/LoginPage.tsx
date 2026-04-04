@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { login } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 import { ZButton } from '../components/ZButton';
@@ -134,6 +134,16 @@ export function LoginPage() {
             {cargando ? 'Ingresando...' : 'Ingresar'}
           </ZButton>
         </form>
+
+        <p style={{ fontSize: '12px', color: 'var(--z-text-muted)', textAlign: 'center', marginTop: '20px' }}>
+          ¿Primera vez?{' '}
+          <Link
+            to="/registro"
+            style={{ color: 'var(--z-brand)', textDecoration: 'none', fontWeight: 500 }}
+          >
+            Crear cuenta
+          </Link>
+        </p>
       </div>
     </div>
   );

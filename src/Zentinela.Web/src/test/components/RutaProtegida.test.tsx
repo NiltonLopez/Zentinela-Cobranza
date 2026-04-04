@@ -10,7 +10,6 @@ interface MockAuthProps {
   children: React.ReactNode;
 }
 
-// Proveedor de contexto de autenticación controlado para tests
 function MockAuthProvider({ autenticado, usuario = null, children }: MockAuthProps) {
   return (
     <AuthContext.Provider value={{
@@ -18,12 +17,21 @@ function MockAuthProvider({ autenticado, usuario = null, children }: MockAuthPro
       token: autenticado ? 'mock-token' : null,
       iniciarSesion: () => {},
       cerrarSesion: () => {},
+      actualizarUsuario: () => {},
       estaAutenticado: autenticado,
     }}>
       {children}
     </AuthContext.Provider>
   );
 }
+
+const usuarioBase: Usuario = {
+  email: 'a@b.com',
+  nombreCompleto: 'Test',
+  rol: 'Admin',
+  liderID: null,
+  requiereCambioPassword: false,
+};
 
 describe('RutaProtegida', () => {
   it('redirige a /login cuando no está autenticado', () => {
@@ -42,14 +50,8 @@ describe('RutaProtegida', () => {
   });
 
   it('muestra el contenido cuando está autenticado', () => {
-    const usuario: Usuario = {
-      email: 'a@b.com',
-      nombreCompleto: 'Test',
-      rol: 'Admin',
-      liderID: null,
-    };
     render(
-      <MockAuthProvider autenticado={true} usuario={usuario}>
+      <MockAuthProvider autenticado={true} usuario={usuarioBase}>
         <MemoryRouter initialEntries={['/bases']}>
           <Routes>
             <Route path="/bases" element={<RutaProtegida><p>Contenido protegido</p></RutaProtegida>} />
@@ -61,12 +63,7 @@ describe('RutaProtegida', () => {
   });
 
   it('redirige a /sin-permiso con rol no permitido', () => {
-    const usuario: Usuario = {
-      email: 'a@b.com',
-      nombreCompleto: 'Test',
-      rol: 'Asesor',
-      liderID: null,
-    };
+    const usuario: Usuario = { ...usuarioBase, rol: 'Asesor' };
     render(
       <MockAuthProvider autenticado={true} usuario={usuario}>
         <MemoryRouter initialEntries={['/bases']}>
@@ -82,5 +79,21 @@ describe('RutaProtegida', () => {
       </MockAuthProvider>
     );
     expect(screen.getByText('Sin permiso')).toBeInTheDocument();
+  });
+
+  it('redirige a /cambiar-password cuando requiereCambioPassword es true', () => {
+    const usuario: Usuario = { ...usuarioBase, requiereCambioPassword: true };
+    render(
+      <MockAuthProvider autenticado={true} usuario={usuario}>
+        <MemoryRouter initialEntries={['/bases']}>
+          <Routes>
+            <Route path="/bases" element={<RutaProtegida><p>Contenido</p></RutaProtegida>} />
+            <Route path="/cambiar-password" element={<p>Cambiar password</p>} />
+          </Routes>
+        </MemoryRouter>
+      </MockAuthProvider>
+    );
+    expect(screen.getByText('Cambiar password')).toBeInTheDocument();
+    expect(screen.queryByText('Contenido')).not.toBeInTheDocument();
   });
 });

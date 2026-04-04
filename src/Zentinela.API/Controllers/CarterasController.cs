@@ -1,7 +1,8 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Zentinela.Application.DTOs.Carteras;
-using Zentinela.Core.Interfaces;
+using Zentinela.Application.Interfaces;
 
 namespace Zentinela.API.Controllers;
 
@@ -10,45 +11,26 @@ namespace Zentinela.API.Controllers;
 [Authorize]
 public class CarterasController : ControllerBase
 {
-    private readonly ICarteraRepository _carteraRepository;
+    private readonly ICarteraService _carteraService;
 
-    public CarterasController(ICarteraRepository carteraRepository)
+    public CarterasController(ICarteraService carteraService)
     {
-        _carteraRepository = carteraRepository;
+        _carteraService = carteraService;
     }
 
     /// <summary>
-    /// Obtiene las carteras del líder autenticado.
-    /// Admin ve todas; Líder solo ve las suyas.
+    /// Obtiene las carteras accesibles para el usuario autenticado.
+    /// La regla de negocio (quién ve qué) vive en CarteraService, no aquí.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> ObtenerCarteras()
     {
-        var rol = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-        var liderIDClaim = User.FindFirst("liderID")?.Value;
+        var contexto = new ContextoUsuario(
+            Rol: User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
+            LiderID: int.TryParse(User.FindFirstValue("liderID"), out var id) ? id : null
+        );
 
-        IEnumerable<Zentinela.Core.Entities.Cartera> carteras;
-
-        // Admin ve todas las carteras
-        if (rol == "Admin")
-        {
-            carteras = await _carteraRepository.ObtenerTodasAsync();
-        }
-        else if (int.TryParse(liderIDClaim, out var liderID))
-        {
-            carteras = await _carteraRepository.ObtenerPorLiderAsync(liderID);
-        }
-        else
-        {
-            return Forbid();
-        }
-
-        var resultado = carteras.Select(c => new CarteraDto
-        {
-            ID = c.ID,
-            NombreCartera = c.NombreCartera
-        });
-
-        return Ok(resultado);
+        var carteras = await _carteraService.ObtenerCarterasAsync(contexto);
+        return Ok(carteras);
     }
 }

@@ -1,23 +1,22 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import type { Usuario, LoginResponse } from '../types/auth';
+import { STORAGE_KEYS } from '../constants/storage';
 
 interface AuthContextType {
   usuario: Usuario | null;
   token: string | null;
   iniciarSesion: (respuesta: LoginResponse) => void;
   cerrarSesion: () => void;
+  actualizarUsuario: (cambios: Partial<Usuario>) => void;
   estaAutenticado: boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
-const TOKEN_KEY = 'zentinela_token';
-const USUARIO_KEY = 'zentinela_usuario';
-
 function cargarUsuarioGuardado(): { usuario: Usuario | null; token: string | null } {
   try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const raw = localStorage.getItem(USUARIO_KEY);
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const raw = localStorage.getItem(STORAGE_KEYS.USUARIO);
     if (!token || !raw) return { usuario: null, token: null };
     return { usuario: JSON.parse(raw) as Usuario, token };
   } catch {
@@ -32,26 +31,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const iniciarSesion = useCallback((respuesta: LoginResponse) => {
     const u: Usuario = {
-      email: '',
+      email: respuesta.email,
       nombreCompleto: respuesta.nombreCompleto,
       rol: respuesta.rol,
       liderID: respuesta.liderID,
+      requiereCambioPassword: respuesta.requiereCambioPassword,
     };
-    localStorage.setItem(TOKEN_KEY, respuesta.token);
-    localStorage.setItem(USUARIO_KEY, JSON.stringify(u));
+    localStorage.setItem(STORAGE_KEYS.TOKEN, respuesta.token);
+    localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(u));
     setToken(respuesta.token);
     setUsuario(u);
   }, []);
 
   const cerrarSesion = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USUARIO_KEY);
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USUARIO);
     setToken(null);
     setUsuario(null);
   }, []);
 
+  // Permite actualizar campos del usuario sin cerrar sesión.
+  // Usado por CambiarPasswordPage para desactivar requiereCambioPassword.
+  const actualizarUsuario = useCallback((cambios: Partial<Usuario>) => {
+    setUsuario(prev => {
+      if (!prev) return prev;
+      const actualizado = { ...prev, ...cambios };
+      localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ usuario, token, iniciarSesion, cerrarSesion, estaAutenticado: !!token }}>
+    <AuthContext.Provider value={{
+      usuario, token,
+      iniciarSesion, cerrarSesion, actualizarUsuario,
+      estaAutenticado: !!token,
+    }}>
       {children}
     </AuthContext.Provider>
   );

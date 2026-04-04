@@ -25,17 +25,18 @@ function getInitials(name: string): string {
 }
 
 const TABS: { key: NavTab; label: string }[] = [
+  { key: 'dashboard', label: 'Dashboard' },
   { key: 'bases', label: 'Bases' },
   { key: 'carteras', label: 'Carteras' },
   { key: 'reportes', label: 'Reportes' },
 ];
 
-// Tabs visibles por rol
+// Tabs visibles por rol — alineado con spec funcional
 const TABS_POR_ROL: Record<string, NavTab[]> = {
-  Admin: ['bases', 'carteras', 'reportes'],
-  Supervisor: ['bases', 'carteras', 'reportes'],
-  Líder: ['bases', 'carteras'],
-  Analista: ['bases', 'reportes'],
+  Admin:    ['bases', 'carteras', 'reportes'],
+  Director: ['bases', 'carteras', 'reportes'],
+  Líder:    ['bases', 'carteras'],
+  Asesor:   ['dashboard'],
 };
 
 export function Navbar({ activeTab, onTabChange }: Props) {
@@ -48,7 +49,8 @@ export function Navbar({ activeTab, onTabChange }: Props) {
 
   const handleTabChange = (tab: NavTab) => {
     onTabChange(tab);
-    if (tab === 'bases') navigate('/bases');
+    if (tab === 'dashboard') navigate('/dashboard');
+    else if (tab === 'bases') navigate('/bases');
     else if (tab === 'carteras') navigate('/carteras');
     else if (tab === 'reportes') navigate('/kpis');
   };

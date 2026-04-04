@@ -1,2 +1,2 @@
-export type NavTab = 'bases' | 'carteras' | 'reportes';
-export type SidebarItem = 'generar-base' | 'historial' | 'mis-carteras' | 'kpis';
+export type NavTab = 'dashboard' | 'bases' | 'carteras' | 'reportes';
+export type SidebarItem = 'inicio' | 'acuerdos' | 'generar-base' | 'historial' | 'mis-carteras' | 'kpis';

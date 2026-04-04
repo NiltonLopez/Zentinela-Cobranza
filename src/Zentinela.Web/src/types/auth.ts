@@ -5,10 +5,12 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
+  email: string;
   nombreCompleto: string;
   rol: string;
   liderID: number | null;
   expiracion: string;
+  requiereCambioPassword: boolean;
 }
 
 export interface Usuario {
@@ -16,6 +18,8 @@ export interface Usuario {
   nombreCompleto: string;
   rol: string;
   liderID: number | null;
+  requiereCambioPassword: boolean;
 }
 
-export type Rol = 'Admin' | 'Supervisor' | 'Líder' | 'Analista' | 'Asesor';
+// Roles alineados con Application.Roles (backend)
+export type Rol = 'Admin' | 'Líder' | 'Director' | 'Asesor';

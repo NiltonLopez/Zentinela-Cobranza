@@ -1,0 +1,26 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Zentinela.Core.Entities;
+
+namespace Zentinela.Infrastructure.SQLServer.Mappings;
+
+public class UltimoEstadoTitularMapping : IEntityTypeConfiguration<UltimoEstadoTitular>
+{
+    public void Configure(EntityTypeBuilder<UltimoEstadoTitular> builder)
+    {
+        builder.ToTable("UltimoEstadoTitular", t => t.ExcludeFromMigrations());
+        builder.HasKey(u => new { u.TitularID, u.CarteraID, u.AgenteID });
+        builder.Property(u => u.UltimoPerfil).HasMaxLength(50);
+        builder.Property(u => u.MejorPerfil).HasMaxLength(50);
+        builder.Property(u => u.NumeroMarcado).HasMaxLength(10);
+        builder.Property(u => u.MotivoNoPago).HasMaxLength(100);
+        builder.Property(u => u.SaldoTotal).HasColumnType("money");
+        builder.Property(u => u.ValorPromesa).HasColumnType("money");
+        builder.Property(u => u.FechaActualizacion).IsRequired();
+
+        builder.HasOne(u => u.Titular)
+               .WithMany()
+               .HasForeignKey(u => u.TitularID)
+               .HasPrincipalKey(t => t.NumeroDocumento);
+    }
+}

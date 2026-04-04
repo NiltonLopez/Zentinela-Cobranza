@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import type { NavTab } from '../../types/ui';
 
 function pathToTab(pathname: string): NavTab {
+  if (pathname.startsWith('/dashboard')) return 'dashboard';
   if (pathname.startsWith('/carteras')) return 'carteras';
   if (pathname.startsWith('/kpis')) return 'reportes';
   return 'bases';

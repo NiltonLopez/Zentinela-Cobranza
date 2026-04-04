@@ -1,6 +1,6 @@
 # Referencia de API — Zentinela
 
-**Base URL:** `http://localhost:5000/api`
+**Base URL:** `http://localhost:5153/api`
 **Formato:** JSON
 **Autenticación:** Bearer Token (JWT)
 
@@ -11,9 +11,64 @@ Authorization: Bearer <token>
 
 ---
 
+## POST /api/registro
+
+Registra un nuevo usuario a partir de su cédula y usuario ControlNext. No requiere autenticación previa.
+
+**Autenticación requerida:** No
+
+### Flujo interno
+
+1. Valida la cédula en `DBRecursosHumanos.Empleado`
+2. Deriva el rol desde `Empleado.CargoID` (mapa `CargoRoles`)
+3. Crea `Agente` en `DBCallCenter.Agente` (AgenteID = cédula)
+4. Crea `ApplicationUser` en `DBZentinela` con `RequiereCambioPassword = true`
+5. Contraseña inicial = cédula (el usuario la cambia en el primer login)
+
+### Request body
+
+```json
+{
+  "cedula": 1234567890,
+  "usuarioControlNext": "string"
+}
+```
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `cedula` | `long` | Sí | Número de documento del empleado |
+| `usuarioControlNext` | `string` | Sí | Usuario en el sistema ControlNext |
+
+### Response body — 200 OK
+
+```json
+{
+  "nombreCompleto": "string",
+  "rol": "string",
+  "mensaje": "string"
+}
+```
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Usuario registrado exitosamente |
+| `400 Bad Request` | Cédula no encontrada en RRHH, usuario ya registrado, o error de validación. Body: `{ "mensaje": "..." }` |
+
+### Ejemplo curl
+
+```bash
+curl -X POST http://localhost:5153/api/registro \
+  -H "Content-Type: application/json" \
+  -d '{"cedula": 1234567890, "usuarioControlNext": "jperez"}'
+```
+
+---
+
 ## POST /api/auth/login
 
-Autentica un usuario con email y contraseña. Devuelve un token JWT y los datos del usuario.
+Autentica un usuario con email/username y contraseña. Devuelve un token JWT y los datos del usuario.
 
 **Autenticación requerida:** No
 
@@ -21,45 +76,50 @@ Autentica un usuario con email y contraseña. Devuelve un token JWT y los datos 
 
 ```json
 {
-  "email": "string (email válido, requerido)",
-  "password": "string (requerido)"
+  "email": "string",
+  "password": "string"
 }
 ```
 
-| Campo | Tipo | Requerido | Validación |
+| Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
-| `email` | `string` | Sí | Formato email válido (`[EmailAddress]`) |
-| `password` | `string` | Sí | Sin restricciones de formato en el request |
+| `email` | `string` | Sí | Email o username del usuario |
+| `password` | `string` | Sí | Contraseña |
 
 ### Response body — 200 OK
 
 ```json
 {
   "token": "string",
+  "email": "string",
   "nombreCompleto": "string",
   "rol": "string",
   "liderID": "int | null",
-  "expiracion": "datetime (UTC, ISO 8601)"
+  "expiracion": "datetime (UTC, ISO 8601)",
+  "requiereCambioPassword": "bool"
 }
 ```
 
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `token` | `string` | JWT firmado con HMAC-SHA256 |
+| `email` | `string` | Email del usuario |
 | `nombreCompleto` | `string` | Nombre para mostrar en la UI |
-| `rol` | `string` | Rol principal del usuario: `Admin`, `Supervisor`, `Líder`, `Analista` o `Asesor` |
-| `liderID` | `int \| null` | ID del líder vinculado. `null` para usuarios Admin |
+| `rol` | `string` | `Admin`, `Líder`, `Director` o `Asesor` |
+| `liderID` | `int \| null` | ID del líder vinculado; `null` para Admin/Director |
 | `expiracion` | `datetime` | Fecha/hora UTC de expiración del token |
+| `requiereCambioPassword` | `bool` | `true` en el primer login — frontend redirige a `/cambiar-password` |
 
 ### Claims incluidos en el JWT
 
 | Claim | Valor |
 |---|---|
-| `sub` | ID numérico del usuario |
+| `sub` | UsuarioID (string numérico) |
 | `email` | Email del usuario |
-| `http://schemas.microsoft.com/ws/2008/06/identity/claims/role` | Rol del usuario |
+| `role` | Rol del usuario |
 | `liderID` | ID del líder (string vacío si no aplica) |
-| `nombreCompleto` | Nombre completo del usuario |
+| `nombreCompleto` | Nombre completo |
+| `numeroDocumento` | Número de cédula |
 | `jti` | UUID único del token |
 
 ### Códigos HTTP
@@ -67,43 +127,73 @@ Autentica un usuario con email y contraseña. Devuelve un token JWT y los datos 
 | Código | Condición |
 |---|---|
 | `200 OK` | Credenciales correctas |
-| `401 Unauthorized` | Email no encontrado o contraseña incorrecta. Body: `{ "mensaje": "Credenciales incorrectas" }` |
-| `400 Bad Request` | Validación de modelo fallida (email inválido o campos vacíos) |
+| `401 Unauthorized` | Credenciales incorrectas. Body: `{ "mensaje": "Credenciales incorrectas" }` |
+| `400 Bad Request` | Campos vacíos o modelo inválido |
 
 ### Ejemplo curl
 
 ```bash
-curl -X POST http://localhost:5000/api/auth/login \
+curl -X POST http://localhost:5153/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@zentinela.com",
-    "password": "Admin1234!"
-  }'
+  -d '{"email": "admin@zentinela.com", "password": "Admin1234!"}'
 ```
 
-### Respuesta de ejemplo
+---
+
+## POST /api/auth/cambiar-password
+
+Cambia la contraseña del usuario autenticado. En el primer login (`requiereCambioPassword = true`) la contraseña actual es la cédula del usuario. Al completar, desactiva el flag `RequiereCambioPassword`.
+
+**Autenticación requerida:** Sí (cualquier rol)
+
+### Request body
 
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "nombreCompleto": "Administrador",
-  "rol": "Admin",
-  "liderID": null,
-  "expiracion": "2026-03-31T08:00:00Z"
+  "passwordActual": "string",
+  "nuevoPassword": "string"
 }
+```
+
+### Response body — 200 OK
+
+```json
+{ "mensaje": "Contraseña cambiada exitosamente" }
+```
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Contraseña cambiada |
+| `400 Bad Request` | Contraseña actual incorrecta o no cumple política. Body: `{ "mensaje": "..." }` |
+| `401 Unauthorized` | Token ausente o inválido |
+
+### Política de contraseñas
+
+| Regla | Valor |
+|---|---|
+| Longitud mínima | 8 caracteres |
+| Requiere dígito | Sí |
+| Requiere mayúscula | No |
+| Requiere carácter especial | No |
+
+### Ejemplo curl
+
+```bash
+curl -X POST http://localhost:5153/api/auth/cambiar-password \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"passwordActual": "1234567890", "nuevoPassword": "MiPassword1"}'
 ```
 
 ---
 
 ## GET /api/auth/me
 
-Devuelve los datos del usuario autenticado extraídos directamente de los claims del JWT. No realiza consulta a la base de datos.
+Devuelve los datos del usuario autenticado desde los claims del JWT. No consulta la base de datos.
 
 **Autenticación requerida:** Sí (cualquier rol)
-
-### Request body
-
-Ninguno.
 
 ### Response body — 200 OK
 
@@ -116,98 +206,100 @@ Ninguno.
 }
 ```
 
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `email` | `string \| null` | Email del usuario (de `User.Identity.Name`) |
-| `rol` | `string \| null` | Rol del claim `ClaimTypes.Role` |
-| `liderID` | `string \| null` | Valor del claim `liderID` (string numérico o vacío) |
-| `nombreCompleto` | `string \| null` | Nombre completo del claim `nombreCompleto` |
-
 ### Códigos HTTP
 
 | Código | Condición |
 |---|---|
 | `200 OK` | Token válido |
-| `401 Unauthorized` | Token ausente, expirado o con firma inválida |
+| `401 Unauthorized` | Token ausente, expirado o firma inválida |
+
+---
+
+## GET /api/dashboard/asesor
+
+Devuelve el dashboard del asesor autenticado: acuerdos vigentes y métricas de rendimiento del último ciclo de actualización.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Asesor`
+
+### Response body — 200 OK
+
+```json
+{
+  "nombreSupervisor": "string | null",
+  "acuerdosVigentes": [
+    {
+      "titularID": "int",
+      "nombreTitular": "string",
+      "ultimoPerfil": "string",
+      "fechaPromesa": "date (ISO 8601)",
+      "valorPromesa": "decimal | null",
+      "saldoTotal": "decimal | null",
+      "semaforo": "rojo | amarillo | verde"
+    }
+  ],
+  "rendimiento": {
+    "fechaActualizacion": "datetime | null",
+    "totalGestiones": "int",
+    "tasaContactabilidad": "decimal",
+    "tasaEfectividad": "decimal"
+  }
+}
+```
+
+#### Lógica del semáforo (acuerdos)
+
+| Semáforo | Condición |
+|---|---|
+| `rojo` | `fechaPromesa <= hoy` — vencido |
+| `amarillo` | `fechaPromesa <= hoy + 3 días` — próximo a vencer |
+| `verde` | `fechaPromesa > hoy + 3 días` — vigente |
+
+#### Fuentes de datos
+
+| Campo | Fuente |
+|---|---|
+| `nombreSupervisor` | `DBRecursosHumanos.Empleado` (relación supervisor) |
+| `acuerdosVigentes` | `DBCallCenter.UltimoEstadoTitular` (tipificaciones en `Tipificaciones.AcuerdosVigentes`) |
+| `rendimiento` | `DBCallCenter.HistoricoEstadoTitular` (día del último ciclo) |
+
+#### Métricas de rendimiento
+
+| Métrica | Cálculo |
+|---|---|
+| `fechaActualizacion` | `MAX(FechaActualizacion)` en `UltimoEstadoTitular` para el asesor |
+| `totalGestiones` | Registros en `HistoricoEstadoTitular` del día de actualización |
+| `tasaContactabilidad` | `contactosPositivos / totalGestiones` |
+| `tasaEfectividad` | `acuerdosAbonos / contactosPositivos` |
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Dashboard devuelto (puede tener listas vacías si no hay datos) |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | El usuario no tiene rol `Asesor` |
 
 ### Ejemplo curl
 
 ```bash
-curl -X GET http://localhost:5000/api/auth/me \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-```
-
-### Respuesta de ejemplo
-
-```json
-{
-  "email": "lider1@zentinela.com",
-  "rol": "Líder",
-  "liderID": "42",
-  "nombreCompleto": "Juan Pérez"
-}
+curl -X GET http://localhost:5153/api/dashboard/asesor \
+  -H "Authorization: Bearer <token-asesor>"
 ```
 
 ---
 
 ## GET /api/carteras
 
-Devuelve las carteras del usuario autenticado. El comportamiento varía según el rol:
+Devuelve las carteras del usuario autenticado filtradas por rol.
 
-- **Admin**: devuelve todas las carteras de la base de datos.
-- **Líder** (u otro rol con `liderID` válido en el token): devuelve solo las carteras asignadas a ese líder.
-- **Rol sin `liderID`**: retorna `403 Forbidden`.
-
-Los resultados se devuelven ordenados alfabéticamente por `NombreCartera`.
+- **Admin**: todas las carteras
+- **Líder / Director**: solo las carteras asignadas al líder
+- **Sin liderID válido**: `403 Forbidden`
 
 **Autenticación requerida:** Sí
-**Rol mínimo:** Cualquiera con token válido; el filtrado es automático por rol.
-
-### Request body
-
-Ninguno.
 
 ### Response body — 200 OK
-
-Array de objetos `CarteraDto`:
-
-```json
-[
-  {
-    "id": "int",
-    "nombreCartera": "string"
-  }
-]
-```
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | `int` | Identificador de la cartera |
-| `nombreCartera` | `string` | Nombre de la cartera |
-
-### Códigos HTTP
-
-| Código | Condición |
-|---|---|
-| `200 OK` | Carteras devueltas (puede ser array vacío `[]`) |
-| `401 Unauthorized` | Token ausente o inválido |
-| `403 Forbidden` | El token no contiene un `liderID` parseable y el rol no es `Admin` |
-
-### Ejemplo curl — como Admin
-
-```bash
-curl -X GET http://localhost:5000/api/carteras \
-  -H "Authorization: Bearer <token-admin>"
-```
-
-### Ejemplo curl — como Líder
-
-```bash
-curl -X GET http://localhost:5000/api/carteras \
-  -H "Authorization: Bearer <token-lider>"
-```
-
-### Respuesta de ejemplo
 
 ```json
 [
@@ -216,23 +308,17 @@ curl -X GET http://localhost:5000/api/carteras \
 ]
 ```
 
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Lista de carteras (puede ser `[]`) |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin `liderID` parseable y no es Admin |
+
 ---
 
-## Notas generales
+## Exploración interactiva (solo Development)
 
-### Política de contraseñas (configurada en Program.cs)
-
-| Regla | Valor |
-|---|---|
-| Requiere dígito | Sí |
-| Longitud mínima | 8 caracteres |
-| Requiere mayúscula | No |
-| Requiere carácter especial | No |
-| Email único | Sí |
-
-### Exploración interactiva (solo Development)
-
-En entorno de desarrollo, la documentación OpenAPI y la UI de Scalar están disponibles:
-
-- OpenAPI JSON: `http://localhost:5000/openapi/v1.json`
-- Scalar UI: `http://localhost:5000/scalar/v1`
+- OpenAPI JSON: `http://localhost:5153/openapi/v1.json`
+- Scalar UI: `http://localhost:5153/scalar/v1`
