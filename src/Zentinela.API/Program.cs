@@ -1,5 +1,6 @@
 using Scalar.AspNetCore;
 using Zentinela.Application;
+using Zentinela.Infrastructure.FileExporter;
 using Zentinela.Infrastructure.SQLServer;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
@@ -7,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApplication();
 builder.Services.AddSQLServerInfrastructure(builder.Configuration);
+builder.Services.AddFileExporterInfrastructure();
 
 builder.Services.AddAuthorization();
 

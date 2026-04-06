@@ -20,6 +20,7 @@ public class CallCenterDbContext : DbContext
     public DbSet<TitularCartera> TitularCarteras { get; set; }
     public DbSet<UltimoEstadoTitular> UltimosEstadosTitular { get; set; }
     public DbSet<HistoricoEstadoTitular> HistoricoEstadosTitular { get; set; }
+    public DbSet<BaseMadreRow> BaseMadreRows { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -32,5 +33,6 @@ public class CallCenterDbContext : DbContext
         builder.ApplyConfiguration(new TitularCarteraMapping());
         builder.ApplyConfiguration(new UltimoEstadoTitularMapping());
         builder.ApplyConfiguration(new HistoricoEstadoTitularMapping());
+        builder.ApplyConfiguration(new BaseMadreRowMapping());
     }
 }

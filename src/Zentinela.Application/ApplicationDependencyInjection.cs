@@ -9,6 +9,7 @@ public static class ApplicationDependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<ICarteraService, CarteraService>();
+        services.AddScoped<ICreadorZentinelaService, CreadorZentinelaService>();
         return services;
     }
 }

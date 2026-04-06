@@ -80,6 +80,7 @@ public static class DependencyInjection
         services.AddScoped<IRegistroService, RegistroService>();
         services.AddScoped<IDashboardAsesorService, DashboardAsesorService>();
         services.AddScoped<IAdminService, AdminService>();
+        services.AddScoped<IBaseMadreRepository, BaseMadreRepository>();
 
         return services;
     }
