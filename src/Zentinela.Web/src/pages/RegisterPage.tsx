@@ -5,7 +5,6 @@ import { ZButton } from '../components/ZButton';
 
 export function RegisterPage() {
   const [cedula, setCedula] = useState('');
-  const [usuarioControlNext, setUsuarioControlNext] = useState('');
   const [error, setError] = useState('');
   const [exito, setExito] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -32,14 +31,12 @@ export function RegisterPage() {
     try {
       const resultado = await registrarUsuario({
         cedula: Number(cedula),
-        usuarioControlNext,
       });
       setExito(
         `${resultado.nombreCompleto} registrado correctamente como ${resultado.rol}. ` +
         `Puedes iniciar sesión con tu cédula como contraseña.`
       );
       setCedula('');
-      setUsuarioControlNext('');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { mensaje?: string } } })
         ?.response?.data?.mensaje;
@@ -87,22 +84,6 @@ export function RegisterPage() {
               onChange={(e) => setCedula(e.target.value)}
               required
               placeholder="1234567890"
-              style={inputStyle}
-              onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
-              onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--z-text-muted)' }}>
-              Usuario ControlNext
-            </label>
-            <input
-              type="text"
-              value={usuarioControlNext}
-              onChange={(e) => setUsuarioControlNext(e.target.value)}
-              required
-              placeholder="usuario.apellido"
               style={inputStyle}
               onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
               onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}

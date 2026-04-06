@@ -61,11 +61,16 @@ public class RegistroService : IRegistroService
         if (usuarioExistente)
             throw new InvalidOperationException("Esta cédula ya tiene una cuenta registrada.");
 
-        // 4. Verificar que el UsuarioControlNext no esté ya en uso
-        var usernameTomado = await _userManager.FindByNameAsync(request.UsuarioControlNext);
+        // 4. Calcular UsuarioControlNext: primerNombre.primerApellido + últimos 3 dígitos del documento
+        var primerNombre  = empleado.Nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? empleado.Nombre;
+        var primerApellido = empleado.Apellidos.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? empleado.Apellidos;
+        var ultimos3 = request.Cedula.ToString()[^Math.Min(3, request.Cedula.ToString().Length)..];
+        var usuarioControlNext = $"{primerNombre}.{primerApellido}{ultimos3}".ToLowerInvariant();
+
+        var usernameTomado = await _userManager.FindByNameAsync(usuarioControlNext);
         if (usernameTomado is not null)
             throw new InvalidOperationException(
-                $"El usuario '{request.UsuarioControlNext}' ya está registrado.");
+                $"El usuario '{usuarioControlNext}' ya está registrado. Comuníquese con el administrador.");
 
         // 5. Crear Agente en DBCallCenter
         var agenteExiste = await _callCenter.Agentes
@@ -76,7 +81,7 @@ public class RegistroService : IRegistroService
             _callCenter.Agentes.Add(new Agente
             {
                 AgenteID = request.Cedula,
-                UsuarioControlNext = request.UsuarioControlNext,
+                UsuarioControlNext = usuarioControlNext,
                 Activo = true,
             });
             await _callCenter.SaveChangesAsync();
@@ -86,8 +91,8 @@ public class RegistroService : IRegistroService
         var nombreCompleto = $"{empleado.Nombre} {empleado.Apellidos}".Trim();
         var nuevoUsuario = new ApplicationUser
         {
-            UserName = request.UsuarioControlNext,
-            Email = empleado.Email ?? $"{request.UsuarioControlNext}@zentinela.local",
+            UserName = usuarioControlNext,
+            Email = empleado.Email ?? $"{usuarioControlNext}@zentinela.local",
             EmailConfirmed = true,
             NombreCompleto = nombreCompleto,
             NumeroDocumento = request.Cedula,

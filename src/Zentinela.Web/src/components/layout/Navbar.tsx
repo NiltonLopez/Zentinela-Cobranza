@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import type { NavTab } from '../../types/ui';
+import { MODULOS, type ModuloKey } from '../../config/navigation';
+import type { Rol } from '../../types/auth';
 
 interface Props {
-  activeTab: NavTab;
-  onTabChange: (tab: NavTab) => void;
+  moduloActivo: ModuloKey;
+  onModuloChange: (modulo: ModuloKey) => void;
 }
 
 function ShieldIcon() {
@@ -24,35 +25,18 @@ function getInitials(name: string): string {
     .join('');
 }
 
-const TABS: { key: NavTab; label: string }[] = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'bases', label: 'Bases' },
-  { key: 'carteras', label: 'Carteras' },
-  { key: 'reportes', label: 'Reportes' },
-];
-
-// Tabs visibles por rol — alineado con spec funcional
-const TABS_POR_ROL: Record<string, NavTab[]> = {
-  Admin:    ['bases', 'carteras', 'reportes'],
-  Director: ['bases', 'carteras', 'reportes'],
-  Líder:    ['bases', 'carteras'],
-  Asesor:   ['dashboard'],
-};
-
-export function Navbar({ activeTab, onTabChange }: Props) {
+export function Navbar({ moduloActivo, onModuloChange }: Props) {
   const { usuario, cerrarSesion } = useAuth();
   const navigate = useNavigate();
 
-  const tabsVisibles = TABS.filter((t) =>
-    TABS_POR_ROL[usuario?.rol ?? '']?.includes(t.key) ?? true
+  // Filtrar módulos visibles según el rol del usuario
+  const modulosVisibles = MODULOS.filter((m) =>
+    m.rolesPermitidos.includes(usuario?.rol as Rol)
   );
 
-  const handleTabChange = (tab: NavTab) => {
-    onTabChange(tab);
-    if (tab === 'dashboard') navigate('/dashboard');
-    else if (tab === 'bases') navigate('/bases');
-    else if (tab === 'carteras') navigate('/carteras');
-    else if (tab === 'reportes') navigate('/kpis');
+  const handleModuloClick = (key: ModuloKey, defaultPath: string) => {
+    onModuloChange(key);
+    navigate(defaultPath);
   };
 
   const initials = usuario ? getInitials(usuario.nombreCompleto) : '?';
@@ -65,7 +49,6 @@ export function Navbar({ activeTab, onTabChange }: Props) {
       display: 'flex',
       alignItems: 'center',
       padding: '0 20px',
-      gap: '0',
       flexShrink: 0,
       position: 'relative',
       zIndex: 10,
@@ -86,7 +69,7 @@ export function Navbar({ activeTab, onTabChange }: Props) {
         </span>
       </div>
 
-      {/* Tabs centradas */}
+      {/* Módulos centrados */}
       <nav style={{
         position: 'absolute',
         left: '50%',
@@ -96,12 +79,12 @@ export function Navbar({ activeTab, onTabChange }: Props) {
         gap: '4px',
         height: '100%',
       }}>
-        {tabsVisibles.map((tab) => {
-          const isActive = activeTab === tab.key;
+        {modulosVisibles.map((modulo) => {
+          const isActive = moduloActivo === modulo.key;
           return (
             <button
-              key={tab.key}
-              onClick={() => handleTabChange(tab.key)}
+              key={modulo.key}
+              onClick={() => handleModuloClick(modulo.key, modulo.defaultPath)}
               style={{
                 height: '100%',
                 padding: '0 14px',
@@ -113,6 +96,7 @@ export function Navbar({ activeTab, onTabChange }: Props) {
                 fontWeight: isActive ? 600 : 400,
                 cursor: 'pointer',
                 transition: 'color 0.15s',
+                whiteSpace: 'nowrap',
               }}
               onMouseOver={(e) => {
                 if (!isActive) (e.currentTarget as HTMLElement).style.color = 'var(--z-text-primary)';
@@ -121,7 +105,7 @@ export function Navbar({ activeTab, onTabChange }: Props) {
                 if (!isActive) (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
               }}
             >
-              {tab.label}
+              {modulo.label}
             </button>
           );
         })}

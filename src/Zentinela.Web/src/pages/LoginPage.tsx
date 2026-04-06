@@ -13,7 +13,7 @@ function ShieldIcon() {
 }
 
 export function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -25,11 +25,11 @@ export function LoginPage() {
     setError('');
     setCargando(true);
     try {
-      const respuesta = await login({ email, password });
+      const respuesta = await login({ usuario, password });
       iniciarSesion(respuesta);
-      navigate('/bases');
+      navigate('/home');
     } catch {
-      setError('Correo o contraseña incorrectos.');
+      setError('Usuario o contraseña incorrectos.');
     } finally {
       setCargando(false);
     }
@@ -83,14 +83,14 @@ export function LoginPage() {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--z-text-muted)' }}>
-              Correo electrónico
+              Usuario
             </label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={usuario}
+              onChange={(e) => setUsuario(e.target.value)}
               required
-              placeholder="usuario@empresa.com"
+              placeholder="nombre.apellido123"
               style={inputStyle}
               onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
               onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}

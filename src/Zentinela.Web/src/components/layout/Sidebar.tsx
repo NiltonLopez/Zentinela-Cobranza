@@ -1,36 +1,17 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { NavTab, SidebarItem } from '../../types/ui';
-
-interface SidebarNavItem {
-  key: SidebarItem;
-  label: string;
-  path: string;
-}
-
-const ITEMS_POR_TAB: Record<NavTab, SidebarNavItem[]> = {
-  dashboard: [
-    { key: 'inicio', label: 'Inicio', path: '/dashboard' },
-  ],
-  bases: [
-    { key: 'generar-base', label: 'Generar base', path: '/bases' },
-    { key: 'historial', label: 'Historial', path: '/historial' },
-  ],
-  carteras: [
-    { key: 'mis-carteras', label: 'Mis carteras', path: '/carteras' },
-  ],
-  reportes: [
-    { key: 'kpis', label: 'KPIs', path: '/kpis' },
-  ],
-};
+import { MODULOS, type ModuloKey } from '../../config/navigation';
 
 interface Props {
-  activeTab: NavTab;
+  moduloActivo: ModuloKey;
 }
 
-export function Sidebar({ activeTab }: Props) {
+export function Sidebar({ moduloActivo }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const items = ITEMS_POR_TAB[activeTab] ?? [];
+
+  // Encontrar el módulo activo y obtener sus sub-módulos
+  const modulo = MODULOS.find((m) => m.key === moduloActivo);
+  const subModulos = modulo?.subModulos ?? [];
 
   return (
     <aside style={{
@@ -44,12 +25,12 @@ export function Sidebar({ activeTab }: Props) {
       gap: '2px',
       overflowY: 'auto',
     }}>
-      {items.map((item) => {
-        const isActive = location.pathname === item.path;
+      {subModulos.map((sub) => {
+        const isActive = location.pathname === sub.path;
         return (
           <button
-            key={item.key}
-            onClick={() => navigate(item.path)}
+            key={sub.key}
+            onClick={() => navigate(sub.path)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -82,7 +63,7 @@ export function Sidebar({ activeTab }: Props) {
               fontWeight: isActive ? 500 : 400,
               color: isActive ? 'var(--z-brand)' : 'var(--z-text-muted)',
             }}>
-              {item.label}
+              {sub.label}
             </span>
           </button>
         );

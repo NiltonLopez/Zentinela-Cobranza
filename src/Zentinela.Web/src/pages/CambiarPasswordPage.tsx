@@ -37,8 +37,8 @@ export function CambiarPasswordPage() {
       return;
     }
 
-    if (nuevoPassword.length < 8) {
-      setError('La nueva contraseña debe tener al menos 8 caracteres.');
+    if (nuevoPassword.length < 6) {
+      setError('La nueva contraseña debe tener al menos 6 caracteres.');
       return;
     }
 
@@ -47,7 +47,7 @@ export function CambiarPasswordPage() {
       await cambiarPassword({ passwordActual, nuevoPassword });
       // Desactiva el flag localmente sin forzar un nuevo login
       actualizarUsuario({ requiereCambioPassword: false });
-      navigate('/bases');
+      navigate('/home');
     } catch (err: unknown) {
       const errores = (err as { response?: { data?: { errores?: string[] } } })
         ?.response?.data?.errores;

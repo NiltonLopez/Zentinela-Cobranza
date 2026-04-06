@@ -1,2 +1,3 @@
-export type NavTab = 'dashboard' | 'bases' | 'carteras' | 'reportes';
-export type SidebarItem = 'inicio' | 'acuerdos' | 'generar-base' | 'historial' | 'mis-carteras' | 'kpis';
+// ModuloKey es la unidad de navegación principal del sistema
+// NavTab y SidebarItem fueron eliminados — reemplazados por ModuloKey de config/navigation.ts
+export type ModuloKey = 'home' | 'cartera' | 'localizacion' | 'asignaciones' | 'consulta';

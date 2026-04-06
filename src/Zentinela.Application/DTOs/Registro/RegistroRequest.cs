@@ -6,8 +6,4 @@ public class RegistroRequest
 {
     [Required]
     public long Cedula { get; set; }
-
-    [Required]
-    [MaxLength(100)]
-    public string UsuarioControlNext { get; set; } = string.Empty;
 }

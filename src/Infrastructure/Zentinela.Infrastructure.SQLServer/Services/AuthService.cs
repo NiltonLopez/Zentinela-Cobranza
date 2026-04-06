@@ -25,9 +25,7 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse?> LoginAsync(LoginRequest request)
     {
-        // Permite login por email o por UsuarioControlNext (username)
-        var usuario = await _userManager.FindByEmailAsync(request.Email)
-                   ?? await _userManager.FindByNameAsync(request.Email);
+        var usuario = await _userManager.FindByNameAsync(request.Usuario);
 
         if (usuario is null || !await _userManager.CheckPasswordAsync(usuario, request.Password))
             return null;

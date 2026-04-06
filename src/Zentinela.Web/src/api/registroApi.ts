@@ -2,7 +2,6 @@ import api from './authApi';
 
 export interface RegistroRequest {
   cedula: number;
-  usuarioControlNext: string;
 }
 
 export interface RegistroResponse {

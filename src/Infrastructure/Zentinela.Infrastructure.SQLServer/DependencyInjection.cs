@@ -36,9 +36,10 @@ public static class DependencyInjection
         // ── Identity ─────────────────────────────────────────────────────────
         services.AddIdentity<ApplicationUser, IdentityRole<int>>(options =>
         {
-            options.Password.RequireDigit = true;
-            options.Password.RequiredLength = 8;
+            options.Password.RequireDigit = false;
+            options.Password.RequiredLength = 6;
             options.Password.RequireUppercase = false;
+            options.Password.RequireLowercase = false;
             options.Password.RequireNonAlphanumeric = false;
             options.User.RequireUniqueEmail = true;
         })
@@ -78,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IRegistroService, RegistroService>();
         services.AddScoped<IDashboardAsesorService, DashboardAsesorService>();
+        services.AddScoped<IAdminService, AdminService>();
 
         return services;
     }
