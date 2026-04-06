@@ -12,5 +12,6 @@ public class LiderMapping : IEntityTypeConfiguration<Lider>
         builder.HasKey(l => l.ID);
         builder.Property(l => l.Nombre).HasMaxLength(100).IsRequired();
         builder.Property(l => l.Email).HasMaxLength(150);
+        builder.Property(l => l.NumeroDocumento);
     }
 }

@@ -87,7 +87,16 @@ public class RegistroService : IRegistroService
             await _callCenter.SaveChangesAsync();
         }
 
-        // 6. Crear usuario Identity en DBZentinela
+        // 6. Resolver LiderID si el rol es Líder
+        int? liderID = null;
+        if (rol == Roles.Lider)
+        {
+            var lider = await _callCenter.Lideres
+                .FirstOrDefaultAsync(l => l.NumeroDocumento == request.Cedula && l.Activo);
+            liderID = lider?.ID;
+        }
+
+        // 7. Crear usuario Identity en DBZentinela
         var nombreCompleto = $"{empleado.Nombre} {empleado.Apellidos}".Trim();
         var nuevoUsuario = new ApplicationUser
         {
@@ -97,10 +106,10 @@ public class RegistroService : IRegistroService
             NombreCompleto = nombreCompleto,
             NumeroDocumento = request.Cedula,
             RequiereCambioPassword = true,
-            LiderID = null, // Se asigna desde Gestión de Personal si aplica
+            LiderID = liderID,
         };
 
-        // Contraseña inicial = cédula como string (el usuario la cambia en el primer login)
+        // 8. Crear usuario con contraseña inicial = cédula (se cambia en el primer login)
         var resultado = await _userManager.CreateAsync(nuevoUsuario, request.Cedula.ToString());
         if (!resultado.Succeeded)
         {
