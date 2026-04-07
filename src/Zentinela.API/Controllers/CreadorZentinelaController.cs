@@ -9,7 +9,7 @@ using Zentinela.Application.Interfaces;
 namespace Zentinela.API.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/creador")]
 [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director}")]
 public class CreadorZentinelaController : ControllerBase
 {
