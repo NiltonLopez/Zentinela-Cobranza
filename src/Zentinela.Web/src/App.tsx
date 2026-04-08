@@ -17,13 +17,9 @@ import { HomeDashboardPage } from './pages/home/HomeDashboardPage';
 import { CreadorZentinelaPage } from './pages/cartera/CreadorZentinelaPage';
 import { CalificadorCarteraPage } from './pages/cartera/CalificadorCarteraPage';
 
-// Localización
-import { ArlSuraPage } from './pages/localizacion/ArlSuraPage';
-import { CajacopiPage } from './pages/localizacion/CajacopiPage';
-import { CamaraPage } from './pages/localizacion/CamaraPage';
-import { FosygaPage } from './pages/localizacion/FosygaPage';
-import { RuntPage } from './pages/localizacion/RuntPage';
-import { SimitPage } from './pages/localizacion/SimitPage';
+// Informes
+import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPage';
+import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
 
 // Asignaciones
 import { GestionAsignacionesPage } from './pages/asignaciones/GestionAsignacionesPage';
@@ -87,52 +83,20 @@ function App() {
                 }
               />
 
-              {/* Localización */}
+              {/* Informes */}
               <Route
-                path="/localizacion/arlsura"
+                path="/informes/virtualidad"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
-                    <ArlSuraPage />
+                    <InformesVirtualidadPage />
                   </RutaProtegida>
                 }
               />
               <Route
-                path="/localizacion/cajacopi"
+                path="/informes/recaudo"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
-                    <CajacopiPage />
-                  </RutaProtegida>
-                }
-              />
-              <Route
-                path="/localizacion/camara"
-                element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
-                    <CamaraPage />
-                  </RutaProtegida>
-                }
-              />
-              <Route
-                path="/localizacion/fosyga"
-                element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
-                    <FosygaPage />
-                  </RutaProtegida>
-                }
-              />
-              <Route
-                path="/localizacion/runt"
-                element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
-                    <RuntPage />
-                  </RutaProtegida>
-                }
-              />
-              <Route
-                path="/localizacion/simit"
-                element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
-                    <SimitPage />
+                    <InformesRecaudoPage />
                   </RutaProtegida>
                 }
               />

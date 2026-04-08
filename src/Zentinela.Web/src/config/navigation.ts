@@ -1,6 +1,6 @@
 import type { Rol } from '../types/auth';
 
-export type ModuloKey = 'home' | 'cartera' | 'localizacion' | 'asignaciones' | 'consulta';
+export type ModuloKey = 'home' | 'cartera' | 'informes' | 'asignaciones' | 'consulta';
 
 export interface SubModulo {
   key: string;
@@ -37,17 +37,13 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
-    key: 'localizacion',
-    label: 'Localización',
+    key: 'informes',
+    label: 'Informes',
     rolesPermitidos: ['Admin', 'Líder', 'Director'],
-    defaultPath: '/localizacion/arlsura',
+    defaultPath: '/informes/virtualidad',
     subModulos: [
-      { key: 'arlsura', label: 'ARL Sura', path: '/localizacion/arlsura' },
-      { key: 'cajacopi', label: 'Cajacopi', path: '/localizacion/cajacopi' },
-      { key: 'camara', label: 'Cámara de Comercio', path: '/localizacion/camara' },
-      { key: 'fosyga', label: 'Fosyga', path: '/localizacion/fosyga' },
-      { key: 'runt', label: 'RUNT', path: '/localizacion/runt' },
-      { key: 'simit', label: 'SIMIT', path: '/localizacion/simit' },
+      { key: 'virtualidad', label: 'Informes de Virtualidad', path: '/informes/virtualidad' },
+      { key: 'recaudo',     label: 'Informes de Recaudo',    path: '/informes/recaudo'     },
     ],
   },
   {
@@ -75,7 +71,7 @@ export const MODULOS: Modulo[] = [
 // Dado un pathname, devuelve el módulo activo
 export function pathToModulo(pathname: string): ModuloKey {
   if (pathname.startsWith('/cartera')) return 'cartera';
-  if (pathname.startsWith('/localizacion')) return 'localizacion';
+  if (pathname.startsWith('/informes')) return 'informes';
   if (pathname.startsWith('/asignaciones')) return 'asignaciones';
   if (pathname.startsWith('/consulta')) return 'consulta';
   return 'home';

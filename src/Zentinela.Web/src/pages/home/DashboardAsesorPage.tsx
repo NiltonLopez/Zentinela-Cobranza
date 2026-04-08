@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { obtenerDashboardAsesor } from '../../api/dashboardApi';
+import { CargandoSpiral } from '../../components/CargandoSpiral';
 import type { AcuerdoVigenteDto } from '../../types/dashboard';
 
 // ── Helpers de formato ────────────────────────────────────────────────────────
@@ -149,9 +150,7 @@ export function DashboardAsesorPage() {
           overflow: 'hidden',
         }}>
           {isLoading ? (
-            <div style={{ padding: '40px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-              Cargando acuerdos...
-            </div>
+            <CargandoSpiral mensaje="Cargando acuerdos..." />
           ) : !data || data.acuerdosVigentes.length === 0 ? (
             <div style={{ padding: '40px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
               No tienes acuerdos de pago vigentes.
