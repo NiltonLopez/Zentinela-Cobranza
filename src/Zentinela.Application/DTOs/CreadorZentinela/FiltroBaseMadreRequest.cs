@@ -10,8 +10,16 @@ public class FiltroBaseMadreRequest
     /// <summary>Tipificación exacta del mejor perfil histórico.</summary>
     public string? MejorPerfil { get; set; }
 
-    /// <summary>true → solo titulares con FechaPromesa no nula ni vacía.</summary>
-    public bool? TieneFechaPromesa { get; set; }
+    /// <summary>
+    /// Filtro de promesas de pago:
+    /// true  → solo titulares con FechaPromesa >= hoy (promesa vigente).
+    /// false → solo titulares SIN promesa vigente (sin fecha o fecha vencida).
+    /// null  → sin filtro.
+    /// </summary>
+    public bool? PromesasVigentes { get; set; }
+
+    /// <summary>Rotación máxima permitida. Filtra sobre la columna Rotacion (string) en memoria.</summary>
+    public int? RotacionMaxima { get; set; }
 
     /// <summary>Saldo mínimo en pesos. Filtra sobre la columna Saldo (string) en memoria.</summary>
     public decimal? SaldoMinimo { get; set; }

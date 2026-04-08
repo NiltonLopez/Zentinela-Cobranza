@@ -51,7 +51,8 @@ export function CreadorZentinelaPage() {
   const [carteraID,        setCarteraID]        = useState<number | null>(null);
   const [ultimoPerfil,     setUltimoPerfil]     = useState('');
   const [mejorPerfil,      setMejorPerfil]      = useState('');
-  const [conPromesa,       setConPromesa]       = useState(false);
+  const [promesasVigentes, setPromesasVigentes] = useState<'all' | 'vigentes' | 'sin'>('all');
+  const [rotacionMaxima,   setRotacionMaxima]   = useState('');
   const [saldoMinimo,      setSaldoMinimo]      = useState('');
   const [tipoAfiliado,     setTipoAfiliado]     = useState('');
   const [estadoFosyga,     setEstadoFosyga]     = useState('');
@@ -104,7 +105,8 @@ export function CreadorZentinelaPage() {
     carteraID:          carteraID!,
     ultimoPerfil:       ultimoPerfil || undefined,
     mejorPerfil:        mejorPerfil  || undefined,
-    tieneFechaPromesa:  conPromesa   || undefined,
+    promesasVigentes:   promesasVigentes === 'vigentes' ? true : promesasVigentes === 'sin' ? false : undefined,
+    rotacionMaxima:     rotacionMaxima ? Number(rotacionMaxima) : undefined,
     saldoMinimo:        saldoMinimo  ? Number(saldoMinimo) : undefined,
     tipoAfiliado:       tipoAfiliado || undefined,
     estadoFosyga:       estadoFosyga || undefined,
@@ -227,8 +229,8 @@ export function CreadorZentinelaPage() {
               </div>
             </div>
 
-            {/* Fila 2: Fosyga + checkboxes */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px 16px', alignItems: 'end' }}>
+            {/* Fila 2: Fosyga + promesas + rotación */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px 16px', alignItems: 'end' }}>
               <div>
                 <label style={labelStyle}>Tipo Afiliado (Fosyga)</label>
                 <select value={tipoAfiliado} onChange={e => setTipoAfiliado(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
@@ -248,11 +250,22 @@ export function CreadorZentinelaPage() {
                   <option value="Retirado">Retirado</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: '2px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', color: 'var(--z-text-primary)' }}>
-                  <input type="checkbox" checked={conPromesa} onChange={e => setConPromesa(e.target.checked)} />
-                  Solo con fecha promesa
-                </label>
+              <div>
+                <label style={labelStyle}>Promesas de pago</label>
+                <select value={promesasVigentes} onChange={e => setPromesasVigentes(e.target.value as 'all' | 'vigentes' | 'sin')} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="all">Todos</option>
+                  <option value="vigentes">Con promesa vigente (≥ hoy)</option>
+                  <option value="sin">Sin promesa vigente</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Rotación máxima</label>
+                <input
+                  type="number" min="0" value={rotacionMaxima}
+                  onChange={e => setRotacionMaxima(e.target.value)}
+                  placeholder="Ej: 5"
+                  style={inputStyle}
+                />
               </div>
             </div>
 

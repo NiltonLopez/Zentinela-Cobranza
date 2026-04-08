@@ -33,7 +33,7 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         var (filas, total) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
             filtro.UltimoPerfil, filtro.MejorPerfil,
-            filtro.TieneFechaPromesa,
+            filtro.PromesasVigentes, filtro.RotacionMaxima,
             filtro.SaldoMinimo, filtro.TipoAfiliado, filtro.EstadoFosyga,
             filtro.FuentesCelular,
             filtro.CoincidenciasCelular,
@@ -56,7 +56,7 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         var (filas, _) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
             filtro.UltimoPerfil, filtro.MejorPerfil,
-            filtro.TieneFechaPromesa,
+            filtro.PromesasVigentes, filtro.RotacionMaxima,
             filtro.SaldoMinimo, filtro.TipoAfiliado, filtro.EstadoFosyga,
             filtro.FuentesCelular,
             filtro.CoincidenciasCelular,

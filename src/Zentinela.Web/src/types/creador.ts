@@ -8,7 +8,8 @@ export interface FiltroBaseMadreRequest {
   carteraID: number;
   ultimoPerfil?: string;
   mejorPerfil?: string;
-  tieneFechaPromesa?: boolean;
+  promesasVigentes?: boolean;
+  rotacionMaxima?: number;
   saldoMinimo?: number;
   tipoAfiliado?: string;
   estadoFosyga?: string;

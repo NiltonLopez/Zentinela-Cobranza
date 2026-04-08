@@ -48,7 +48,8 @@ public class BaseMadreRepository : IBaseMadreRepository
         int?         liderID,
         string?      ultimoPerfil,
         string?      mejorPerfil,
-        bool?        tieneFechaPromesa,
+        bool?        promesasVigentes,
+        int?         rotacionMaxima,
         decimal?     saldoMinimo,
         string?      tipoAfiliado,
         string?      estadoFosyga,
@@ -73,9 +74,6 @@ public class BaseMadreRepository : IBaseMadreRepository
 
         if (!string.IsNullOrWhiteSpace(mejorPerfil))
             query = query.Where(b => b.MejorPerfil == mejorPerfil);
-
-        if (tieneFechaPromesa == true)
-            query = query.Where(b => b.FechaPromesa != null && b.FechaPromesa != "" && b.FechaPromesa != "0");
 
         if (!string.IsNullOrWhiteSpace(tipoAfiliado))
             query = query.Where(b => b.TipoAfiliado == tipoAfiliado);
@@ -137,7 +135,8 @@ public class BaseMadreRepository : IBaseMadreRepository
             query = query.Where(b => idsEmail.Contains(b.NumeroDocumento));
         }
 
-        // ── Filtro en memoria: SaldoMinimo (Saldo es string en la vista) ──────
+        // ── Filtros en memoria ────────────────────────────────────────────────
+        // FechaPromesa y Rotacion vienen como strings desde la vista.
         var todasLasFilas = await query.AsNoTracking().ToListAsync();
 
         if (saldoMinimo.HasValue)
@@ -148,6 +147,28 @@ public class BaseMadreRepository : IBaseMadreRepository
                     CultureInfo.InvariantCulture,
                     out var s) && s >= saldoMinimo.Value)
                 .ToList();
+
+        if (rotacionMaxima.HasValue)
+            todasLasFilas = todasLasFilas
+                .Where(b => int.TryParse(b.Rotacion, out var r) && r <= rotacionMaxima.Value)
+                .ToList();
+
+        if (promesasVigentes.HasValue)
+        {
+            var hoy = DateOnly.FromDateTime(DateTime.Today);
+            todasLasFilas = todasLasFilas
+                .Where(b =>
+                {
+                    // FechaPromesa viene en formato dd/MM/yyyy desde la vista
+                    var tieneVigente = DateOnly.TryParseExact(
+                        b.FechaPromesa, "dd/MM/yyyy",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None,
+                        out var fp) && fp >= hoy;
+                    return promesasVigentes.Value ? tieneVigente : !tieneVigente;
+                })
+                .ToList();
+        }
 
         var total = todasLasFilas.Count;
         var filas = limite.HasValue ? todasLasFilas.Take(limite.Value) : todasLasFilas;
