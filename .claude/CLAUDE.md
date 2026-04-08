@@ -8,7 +8,7 @@ corporativo. Desplegado en servidor dedicado de la oficina.
 ## Stack técnico
 - Lenguaje: C# / .NET
 - Framework: ASP.NET Core MVC + Razor Pages
-- Base de datos: SQL Server (10.0.0.129,1433 / DBCallCenter)
+- Base de datos: SQL Server (10.0.0.89,1433 / DBCallCenter)
 - ORM: Entity Framework Core
 - Generación Excel: ClosedXML
 - Autenticación: ASP.NET Identity
@@ -42,7 +42,7 @@ Zentinela/
 ```
 
 ## Base de datos
-- Servidor: 10.0.0.129,1433
+- Servidor: 10.0.0.89,1433
 - Base de datos: DBCallCenter
 - Schema completo: ver docs/schema.md (autogenerado por Claude Code)
 - Tablas clave: Titular, Cartera, Titular_Cartera, Líder
