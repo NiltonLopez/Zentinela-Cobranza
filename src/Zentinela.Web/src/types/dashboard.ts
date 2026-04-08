@@ -1,3 +1,46 @@
+// ── Director ──────────────────────────────────────────────────────────────────
+
+export interface LiderDropdownDto {
+  id: number;
+  nombre: string;
+}
+
+export interface CarteraDropdownDto {
+  id: number;
+  nombreCartera: string;
+}
+
+export interface MetricasDirectorDto {
+  fechaActualizacion: string | null;
+  totalGestiones: number;
+  tasaContactabilidad: number;
+  tasaEfectividad: number;
+}
+
+export interface FilaLiderDto {
+  liderID: number;
+  nombreLider: string;
+  totalGestiones: number;
+  tasaContactabilidad: number;
+  tasaEfectividad: number;
+}
+
+export interface FilaAsesorDto {
+  agenteID: number;
+  nombreAsesor: string;
+  totalGestiones: number;
+  tasaContactabilidad: number;
+  tasaEfectividad: number;
+}
+
+export interface DashboardDirectorDto {
+  metricas: MetricasDirectorDto;
+  filasLider: FilaLiderDto[];
+  filasAsesor: FilaAsesorDto[];
+}
+
+// ── Asesor ────────────────────────────────────────────────────────────────────
+
 export interface AcuerdoVigenteDto {
   titularID: number;
   nombreTitular: string;

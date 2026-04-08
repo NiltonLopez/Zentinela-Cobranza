@@ -1,10 +1,397 @@
-import { PaginaEnConstruccion } from '../../components/PaginaEnConstruccion';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  obtenerDashboardDirector,
+  obtenerLideresDropdown,
+  obtenerCarterasLider,
+} from '../../api/dashboardApi';
+import type { FilaLiderDto, FilaAsesorDto } from '../../types/dashboard';
+import { CargandoSpiral } from '../../components/CargandoSpiral';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function pct(valor: number): string {
+  return `${(valor * 100).toFixed(1)}%`;
+}
+
+function formatearFecha(iso: string | null): string {
+  if (!iso) return 'Sin datos';
+  const fecha = new Date(iso);
+  return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Sub-componentes ───────────────────────────────────────────────────────────
+
+function TarjetaMetrica({ label, valor, sub }: { label: string; valor: string; sub?: string }) {
+  return (
+    <div style={{
+      background: 'var(--z-bg-card)',
+      border: '0.5px solid var(--z-border)',
+      borderRadius: '8px',
+      padding: '20px',
+      flex: 1,
+      minWidth: 0,
+    }}>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+        {label}
+      </p>
+      <p style={{ fontSize: '28px', fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1 }}>
+        {valor}
+      </p>
+      {sub && (
+        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>{sub}</p>
+      )}
+    </div>
+  );
+}
+
+function TablaLideres({ filas, onSeleccionar }: {
+  filas: FilaLiderDto[];
+  onSeleccionar: (liderID: number, nombre: string) => void;
+}) {
+  if (filas.length === 0) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+        Sin datos de líderes para este período.
+      </div>
+    );
+  }
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ background: 'var(--z-bg-page)' }}>
+          {['Líder', 'Gestiones', 'Contactabilidad', 'Efectividad', ''].map((col, i) => (
+            <th key={i} style={{
+              padding: '10px 14px',
+              textAlign: i === 0 ? 'left' : i === 4 ? 'center' : 'right',
+              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
+              borderBottom: '0.5px solid var(--z-border)',
+              letterSpacing: '0.04em', textTransform: 'uppercase',
+            }}>
+              {col}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map(f => (
+          <tr key={f.liderID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+              {f.nombreLider}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {f.totalGestiones.toLocaleString('es-CO')}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaContactabilidad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaEfectividad)}
+            </td>
+            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+              <button
+                onClick={() => onSeleccionar(f.liderID, f.nombreLider)}
+                style={{
+                  padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
+                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Ver detalle
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
+  if (filas.length === 0) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+        Sin datos de asesores para este período.
+      </div>
+    );
+  }
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ background: 'var(--z-bg-page)' }}>
+          {['Asesor', 'Gestiones', 'Contactabilidad', 'Efectividad'].map((col, i) => (
+            <th key={i} style={{
+              padding: '10px 14px',
+              textAlign: i === 0 ? 'left' : 'right',
+              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
+              borderBottom: '0.5px solid var(--z-border)',
+              letterSpacing: '0.04em', textTransform: 'uppercase',
+            }}>
+              {col}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map(f => (
+          <tr key={f.agenteID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+              {f.nombreAsesor}
+              <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px', fontWeight: 400 }}>
+                #{f.agenteID}
+              </span>
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {f.totalGestiones.toLocaleString('es-CO')}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaContactabilidad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaEfectividad)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
 
 export function DashboardDirectorPage() {
+  const [liderID,       setLiderID]       = useState<number | null>(null);
+  const [liderNombre,   setLiderNombre]   = useState<string>('');
+  const [carteraID,     setCarteraID]     = useState<number | null>(null);
+  const [carteraNombre, setCarteraNombre] = useState<string>('');
+
+  // Dropdowns
+  const { data: lideres = [] } = useQuery({
+    queryKey: ['director-lideres'],
+    queryFn: obtenerLideresDropdown,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const { data: carteras = [] } = useQuery({
+    queryKey: ['director-carteras', liderID],
+    queryFn: () => obtenerCarterasLider(liderID!),
+    enabled: liderID !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Dashboard
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['dashboard-director', liderID, carteraID],
+    queryFn: () => obtenerDashboardDirector(liderID, carteraID),
+    staleTime: 3 * 60 * 1000,
+  });
+
+  // Título del breadcrumb según filtro activo
+  const tituloFiltro = carteraNombre
+    ? carteraNombre
+    : liderNombre
+      ? liderNombre
+      : 'Todos los líderes';
+
+  const handleSeleccionarLider = (id: number, nombre: string) => {
+    setLiderID(id);
+    setLiderNombre(nombre);
+    setCarteraID(null);
+    setCarteraNombre('');
+  };
+
+  const handleCambiarLider = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = Number(e.target.value);
+    if (!val) {
+      setLiderID(null);
+      setLiderNombre('');
+      setCarteraID(null);
+      setCarteraNombre('');
+    } else {
+      const lider = lideres.find(l => l.id === val);
+      setLiderID(val);
+      setLiderNombre(lider?.nombre ?? '');
+      setCarteraID(null);
+      setCarteraNombre('');
+    }
+  };
+
+  const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = Number(e.target.value);
+    if (!val) {
+      setCarteraID(null);
+      setCarteraNombre('');
+    } else {
+      const cartera = carteras.find(c => c.id === val);
+      setCarteraID(val);
+      setCarteraNombre(cartera?.nombreCartera ?? '');
+    }
+  };
+
+  const mostrarDesgloseLider = !liderID && (data?.filasLider?.length ?? 0) > 0;
+  const mostrarDesgloseAsesor = liderID !== null;
+
   return (
-    <PaginaEnConstruccion
-      titulo="Dashboard Director"
-      descripcion="Vista global del rendimiento operativo de la empresa."
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
+
+      {/* Encabezado */}
+      <div>
+        <h1 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '4px' }}>
+          Dashboard Director
+        </h1>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
+          Rendimiento operativo &mdash; <span style={{ fontWeight: 500, color: 'var(--z-text-primary)' }}>{tituloFiltro}</span>
+        </p>
+      </div>
+
+      {/* Filtros */}
+      <div style={{
+        background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+        borderRadius: '8px', padding: '16px 20px',
+        display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
+          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Líder
+          </label>
+          <select
+            value={liderID ?? ''}
+            onChange={handleCambiarLider}
+            style={{
+              padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
+              border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+              color: 'var(--z-text-primary)', outline: 'none',
+            }}
+          >
+            <option value="">Todos los líderes</option>
+            {lideres.map(l => (
+              <option key={l.id} value={l.id}>{l.nombre}</option>
+            ))}
+          </select>
+        </div>
+
+        {liderID !== null && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Cartera
+            </label>
+            <select
+              value={carteraID ?? ''}
+              onChange={handleCambiarCartera}
+              style={{
+                padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
+                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                color: 'var(--z-text-primary)', outline: 'none',
+              }}
+            >
+              <option value="">Todas las carteras del líder</option>
+              {carteras.map(c => (
+                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {(liderID !== null || carteraID !== null) && (
+          <button
+            onClick={() => { setLiderID(null); setLiderNombre(''); setCarteraID(null); setCarteraNombre(''); }}
+            style={{
+              padding: '7px 14px', borderRadius: '6px',
+              border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+              color: 'var(--z-text-muted)', fontSize: '12px', cursor: 'pointer',
+            }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
+      {/* Error */}
+      {isError && (
+        <div style={{
+          background: '#fff5f5', border: '0.5px solid #fecaca',
+          borderRadius: '8px', padding: '14px 16px',
+          fontSize: '13px', color: '#dc2626',
+        }}>
+          No se pudo cargar el dashboard. Intenta de nuevo.
+        </div>
+      )}
+
+      {/* Métricas */}
+      <section>
+        <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)' }}>
+            Métricas del ciclo
+          </h2>
+          {data && (
+            <span style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
+              Actualizado: {formatearFecha(data.metricas.fechaActualizacion)}
+            </span>
+          )}
+        </div>
+
+        {isLoading ? (
+          <CargandoSpiral mensaje="Cargando métricas..." />
+        ) : data ? (
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <TarjetaMetrica
+              label="Gestiones"
+              valor={data.metricas.totalGestiones.toLocaleString('es-CO')}
+              sub="Total de gestiones en el ciclo"
+            />
+            <TarjetaMetrica
+              label="Contactabilidad"
+              valor={pct(data.metricas.tasaContactabilidad)}
+              sub="Contactos positivos / Total gestiones"
+            />
+            <TarjetaMetrica
+              label="Efectividad"
+              valor={pct(data.metricas.tasaEfectividad)}
+              sub="Acuerdos y abonos / Contactos positivos"
+            />
+          </div>
+        ) : null}
+      </section>
+
+      {/* Desglose por líder (vista global) */}
+      {mostrarDesgloseLider && (
+        <section>
+          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px' }}>
+            Desglose por líder
+          </h2>
+          <div style={{
+            background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+            borderRadius: '8px', overflow: 'hidden',
+          }}>
+            <TablaLideres
+              filas={data!.filasLider}
+              onSeleccionar={handleSeleccionarLider}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Desglose por asesor (vista filtrada por líder o cartera) */}
+      {mostrarDesgloseAsesor && (
+        <section>
+          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px' }}>
+            Desglose por asesor
+          </h2>
+          <div style={{
+            background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+            borderRadius: '8px', overflow: 'hidden',
+          }}>
+            {isLoading ? (
+              <CargandoSpiral mensaje="Cargando asesores..." />
+            ) : (
+              <TablaAsesores filas={data?.filasAsesor ?? []} />
+            )}
+          </div>
+        </section>
+      )}
+
+    </div>
   );
 }

@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IRegistroService, RegistroService>();
         services.AddScoped<IDashboardAsesorService, DashboardAsesorService>();
+        services.AddScoped<IDashboardDirectorService, DashboardDirectorService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IBaseMadreRepository, BaseMadreRepository>();
 
