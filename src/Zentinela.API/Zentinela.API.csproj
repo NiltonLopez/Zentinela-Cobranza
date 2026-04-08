@@ -19,6 +19,11 @@
     <ProjectReference Include="..\Zentinela.Application\Zentinela.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Zentinela.Infrastructure.SQLServer\Zentinela.Infrastructure.SQLServer.csproj" />
     <ProjectReference Include="..\Infrastructure\Zentinela.Infrastructure.FileExporter\Zentinela.Infrastructure.FileExporter.csproj" />
+    <!-- Consulta Integrada — referenciado como librería, sin duplicar código -->
+    <ProjectReference Include="..\..\..\..\source\ConsultaIntegrada\ConsultaIntegrada.Core\ConsultaIntegrada.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\source\ConsultaIntegrada\ConsultaIntegrada.Application\ConsultaIntegrada.Application.csproj" />
+    <ProjectReference Include="..\..\..\..\source\ConsultaIntegrada\ConsultaIntegrada.Infrastructure\ConsultaIntegrada.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\source\ConsultaIntegrada\ConsultaIntegrada.Initialization\ConsultaIntegrada.Initialization.csproj" />
   </ItemGroup>
 
 </Project>

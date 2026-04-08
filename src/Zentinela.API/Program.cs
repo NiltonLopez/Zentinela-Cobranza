@@ -1,3 +1,6 @@
+using ConsultaIntegrada.Infrastructure.Entities;
+using ConsultaIntegrada.Initialization;
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Zentinela.Application;
 using Zentinela.Infrastructure.FileExporter;
@@ -9,6 +12,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddSQLServerInfrastructure(builder.Configuration);
 builder.Services.AddFileExporterInfrastructure();
+
+// Consulta Integrada — usa la misma cadena de conexión de DBCallCenter
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("CallCenterConnection")));
+builder.Services.AddApplicationServices();
 
 builder.Services.AddAuthorization();
 
