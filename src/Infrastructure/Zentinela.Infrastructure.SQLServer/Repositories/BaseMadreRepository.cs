@@ -58,19 +58,13 @@ public class BaseMadreRepository : IBaseMadreRepository
         List<string> coincidenciasEmail,
         int?         limite)
     {
-        // JOIN vw_BaseMadreBaseGeneral ⋈ Titular_Cartera para acotar por CarteraID
-        var joined = _context.BaseMadreRows
-            .Join(_context.TitularCarteras,
-                  bm => bm.NumeroDocumento,
-                  tc => tc.TitularID.ToString(),
-                  (bm, tc) => new { bm, tc })
-            .Where(x => x.tc.CarteraID == carteraID);
+        // vw_BaseMadre ya expone CarteraID y LiderID directamente
+        var query = _context.BaseMadreRows
+            .Where(bm => bm.CarteraID == carteraID);
 
         // Líder: solo sus titulares. Admin/Director: liderID null → sin restricción
         if (liderID.HasValue)
-            joined = joined.Where(x => x.tc.LiderID == liderID.Value);
-
-        var query = joined.Select(x => x.bm).Distinct();
+            query = query.Where(bm => bm.LiderID == liderID.Value);
 
         // ── Filtros traducibles a SQL ─────────────────────────────────────────
 

@@ -5,7 +5,7 @@ using Zentinela.Core.Entities;
 namespace Zentinela.Infrastructure.SQLServer.Mappings;
 
 /// <summary>
-/// Mapea BaseMadreRow a la vista vw_BaseMadreBaseGeneral.
+/// Mapea BaseMadreRow a la vista vw_BaseMadre.
 /// Los nombres de columna en BD tienen espacios → se definen explícitamente con HasColumnName.
 /// ExcludeFromMigrations: la vista pertenece a DBCallCenter, no a Zentinela.
 /// </summary>
@@ -13,8 +13,11 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
 {
     public void Configure(EntityTypeBuilder<BaseMadreRow> builder)
     {
-        // Las vistas no generan migraciones por defecto — ExcludeFromMigrations no aplica a ViewBuilder
-        builder.HasNoKey().ToView("vw_BaseMadreTitularAuxiliar");
+        builder.HasNoKey().ToView("vw_BaseMadre");
+
+        // CarteraID y LiderID coinciden con el nombre en BD
+        builder.Property(b => b.CarteraID).HasColumnName("CarteraID");
+        builder.Property(b => b.LiderID).HasColumnName("LiderID");
 
         // Columnas cuyo nombre en BD difiere del nombre de la propiedad C#
         builder.Property(b => b.NumeroDocumento)         .HasColumnName("Numero Documento");

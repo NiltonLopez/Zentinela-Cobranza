@@ -1,12 +1,14 @@
 namespace Zentinela.Core.Entities;
 
 /// <summary>
-/// Fila de la vista vw_BaseMadreBaseGeneral.
-/// Agrega datos de múltiples fuentes externas (Fosyga, Cajacopi, Positiva, etc.).
+/// Fila de la vista vw_BaseMadre.
+/// Fuente: Titular_Cartera + datos de múltiples fuentes externas.
 /// Sin PK — entidad keyless mapeada a la vista.
 /// </summary>
 public class BaseMadreRow
 {
+    public int     CarteraID                 { get; set; }
+    public int     LiderID                   { get; set; }
     public string  NumeroDocumento           { get; set; } = "";
     public string? Nombre                   { get; set; }
     public string? Saldo                    { get; set; }
