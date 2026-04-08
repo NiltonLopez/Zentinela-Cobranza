@@ -1,4 +1,3 @@
-using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Core.Entities;
@@ -16,31 +15,31 @@ public class BaseMadreRepository : IBaseMadreRepository
         _context = context;
     }
 
-    // ── Mapeo fuente → tabla + columna de teléfono celular ───────────────────
-    // La vista almacena solo UNA fila por titular, pero las tablas fuente
-    // pueden tener MÚLTIPLES filas (un registro por número). El filtro de
-    // coincidencias debe consultar las tablas crudas para no perder titulares
-    // que tienen el número coincidente en un registro distinto al expuesto
-    // por la vista.
-    private static readonly Dictionary<string, (string Tabla, string Columna)> _fuenteCelularTabla = new()
+    // ── Selectores de celular/email por fuente ────────────────────────────────
+    // Acceden a los valores que la vista ya expone (TOP 1 más reciente).
+    // Usar estos valores garantiza que la comparación sea idéntica a hacer
+    // b.[Celular Camara] = b.[Celular Positiva] directamente en SQL.
+    private static string? CelularDeFuente(BaseMadreRow b, string fuente) => fuente switch
     {
-        ["Cajacopi"]      = ("Cajacopi",      "NumeroTelefonoCelular"),
-        ["Camara"]        = ("Camara",        "NumeroTelefono"),
-        ["SaludTotal"]    = ("SaludTotal",    "NumeroTelefono"),
-        ["DatosExternos"] = ("DatosExternos", "NumeroTelefono"),
-        ["Positiva"]      = ("Positiva",      "NumeroTelefonoCelular"),
-        ["Tigo"]          = ("Tigo",          "NumeroTelefono"),
-        ["SOS"]           = ("SOS",           "Telefono"),
+        "Cajacopi"      => b.CelularCajacopi,
+        "Camara"        => b.CelularCamara,
+        "SaludTotal"    => b.CelularSaludTotal,
+        "DatosExternos" => b.CelularDatosExternos,
+        "Positiva"      => b.CelularPositiva,
+        "Tigo"          => b.CelularTigo,
+        "SOS"           => b.CelularSOS,
+        _               => null,
     };
 
-    private static readonly Dictionary<string, (string Tabla, string Columna)> _fuenteEmailTabla = new()
+    private static string? EmailDeFuente(BaseMadreRow b, string fuente) => fuente switch
     {
-        ["Cajacopi"]      = ("Cajacopi",      "Email"),
-        ["Camara"]        = ("Camara",        "Email"),
-        ["SaludTotal"]    = ("SaludTotal",    "Email"),
-        ["DatosExternos"] = ("DatosExternos", "Email"),
-        ["Positiva"]      = ("Positiva",      "Email"),
-        ["Tigo"]          = ("Tigo",          "Email"),
+        "Cajacopi"      => b.EmailCajacopi,
+        "Camara"        => b.EmailCamara,
+        "SaludTotal"    => b.EmailSaludTotal,
+        "DatosExternos" => b.EmailDatosExternos,
+        "Positiva"      => b.EmailPositiva,
+        "Tigo"          => b.EmailTigo,
+        _               => null,
     };
 
     public async Task<(IEnumerable<BaseMadreRow> Filas, int Total)> ObtenerAsync(
@@ -112,29 +111,6 @@ public class BaseMadreRepository : IBaseMadreRepository
             };
         }
 
-        // ── Coincidencias: consulta contra tablas crudas (no la vista) ────────
-        // La vista expone un solo número por fuente, pero las tablas reales
-        // tienen múltiples filas por titular. Usar la vista para comparar
-        // coincidencias pierde titulares que tienen número coincidente en un
-        // registro distinto al que la vista selecciona.
-        // Se obtiene el conjunto de TitularIDs que cumplen la condición vía
-        // INTERSECT en las tablas fuente, y se aplica como filtro IN en la
-        // consulta principal antes de cargar datos.
-
-        if (coincidenciasCelular.Count >= 2)
-        {
-            var ids = await ObtenerIDsConCoincidenciaAsync(
-                carteraID, coincidenciasCelular, _fuenteCelularTabla);
-            query = query.Where(b => ids.Contains(b.NumeroDocumento));
-        }
-
-        if (coincidenciasEmail.Count >= 2)
-        {
-            var idsEmail = await ObtenerIDsConCoincidenciaAsync(
-                carteraID, coincidenciasEmail, _fuenteEmailTabla);
-            query = query.Where(b => idsEmail.Contains(b.NumeroDocumento));
-        }
-
         // ── Filtros en memoria ────────────────────────────────────────────────
         // FechaPromesa y Rotacion vienen como strings desde la vista.
         var todasLasFilas = await query.AsNoTracking().ToListAsync();
@@ -162,13 +138,41 @@ public class BaseMadreRepository : IBaseMadreRepository
                     // FechaPromesa viene en formato dd/MM/yyyy desde la vista
                     var tieneVigente = DateOnly.TryParseExact(
                         b.FechaPromesa, "dd/MM/yyyy",
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
                         out var fp) && fp >= hoy;
                     return promesasVigentes.Value ? tieneVigente : !tieneVigente;
                 })
                 .ToList();
         }
+
+        // Coincidencias: compara los valores que la vista expone (TOP 1 por fuente),
+        // equivalente a b.[Celular X] = b.[Celular Y] AND b.[Celular X] != '0'.
+        if (coincidenciasCelular.Count >= 2)
+            todasLasFilas = todasLasFilas
+                .Where(b =>
+                {
+                    var valores = coincidenciasCelular
+                        .Select(f => CelularDeFuente(b, f))
+                        .Where(v => !string.IsNullOrEmpty(v) && v != "0")
+                        .ToList();
+                    return valores.Count == coincidenciasCelular.Count
+                        && valores.Distinct().Count() == 1;
+                })
+                .ToList();
+
+        if (coincidenciasEmail.Count >= 2)
+            todasLasFilas = todasLasFilas
+                .Where(b =>
+                {
+                    var valores = coincidenciasEmail
+                        .Select(f => EmailDeFuente(b, f))
+                        .Where(v => !string.IsNullOrEmpty(v) && v != "0")
+                        .ToList();
+                    return valores.Count == coincidenciasEmail.Count
+                        && valores.Distinct().Count() == 1;
+                })
+                .ToList();
 
         var total = todasLasFilas.Count;
         var filas = limite.HasValue ? todasLasFilas.Take(limite.Value) : todasLasFilas;
@@ -176,72 +180,4 @@ public class BaseMadreRepository : IBaseMadreRepository
         return (filas, total);
     }
 
-    /// <summary>
-    /// Retorna los TitularIDs de la cartera que tienen al menos un valor
-    /// en común en TODAS las fuentes indicadas.
-    /// Usa INTERSECT sobre las tablas crudas para capturar cualquier
-    /// combinación de registros, no solo el que la vista agrega.
-    /// </summary>
-    private async Task<HashSet<string>> ObtenerIDsConCoincidenciaAsync(
-        int carteraID,
-        List<string> fuentes,
-        Dictionary<string, (string Tabla, string Columna)> mapa)
-    {
-        var fuentesValidas = fuentes
-            .Where(mapa.ContainsKey)
-            .ToList();
-
-        if (fuentesValidas.Count < 2)
-            return new HashSet<string>();
-
-        // Cada subquery del INTERSECT busca valores no nulos/vacíos de esa fuente
-        // para el titular en evaluación (correlacionado por tc.TitularID).
-        var subqueries = fuentesValidas.Select(f =>
-        {
-            var (tabla, col) = mapa[f];
-            return $"SELECT [{col}] FROM [{tabla}]"
-                 + $" WHERE TitularID = tc.TitularID"
-                 + $" AND [{col}] IS NOT NULL"
-                 + $" AND LTRIM(RTRIM([{col}])) NOT IN ('', '0')";
-        });
-
-        var intersectSql = string.Join("\n          INTERSECT\n          ", subqueries);
-
-        // El EXISTS con INTERSECT devuelve verdadero si hay al menos un valor
-        // que aparece en todas las fuentes simultáneamente para ese titular.
-        var sql = $@"
-SELECT DISTINCT tc.TitularID
-FROM Titular_Cartera tc
-WHERE tc.CarteraID = @carteraID
-  AND EXISTS (
-          {intersectSql}
-      )";
-
-        var connection = _context.Database.GetDbConnection();
-        var wasOpen = connection.State == ConnectionState.Open;
-        if (!wasOpen) await connection.OpenAsync();
-
-        try
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-
-            var param = cmd.CreateParameter();
-            param.ParameterName = "@carteraID";
-            param.DbType        = DbType.Int32;
-            param.Value         = carteraID;
-            cmd.Parameters.Add(param);
-
-            var ids = new HashSet<string>();
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                ids.Add(reader.GetInt64(0).ToString());
-
-            return ids;
-        }
-        finally
-        {
-            if (!wasOpen) await connection.CloseAsync();
-        }
-    }
 }
