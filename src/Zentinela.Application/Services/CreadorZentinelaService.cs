@@ -8,7 +8,7 @@ namespace Zentinela.Application.Services;
 
 public class CreadorZentinelaService : ICreadorZentinelaService
 {
-    private const int LimitePreview = 100;
+    private const int LimitePreview = 10;
 
     private readonly IBaseMadreRepository _baseMadreRepo;
     private readonly ICarteraRepository   _carteraRepo;
@@ -32,9 +32,13 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         var liderID = ResolverLiderID(contexto);
         var (filas, total) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
-            filtro.Nombre, filtro.UltimoPerfil, filtro.MejorPerfil,
-            filtro.Departamento, filtro.Municipio,
-            filtro.TieneFechaPromesa, filtro.TieneSaldo,
+            filtro.UltimoPerfil, filtro.MejorPerfil,
+            filtro.TieneFechaPromesa,
+            filtro.SaldoMinimo, filtro.TipoAfiliado, filtro.EstadoFosyga,
+            filtro.FuentesCelular,
+            filtro.CoincidenciasCelular,
+            filtro.FuentesEmail,
+            filtro.CoincidenciasEmail,
             limite: LimitePreview);
 
         var columnas = ResolverColumnas(filtro.ColumnasSeleccionadas);
@@ -51,9 +55,13 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         var liderID = ResolverLiderID(contexto);
         var (filas, _) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
-            filtro.Nombre, filtro.UltimoPerfil, filtro.MejorPerfil,
-            filtro.Departamento, filtro.Municipio,
-            filtro.TieneFechaPromesa, filtro.TieneSaldo,
+            filtro.UltimoPerfil, filtro.MejorPerfil,
+            filtro.TieneFechaPromesa,
+            filtro.SaldoMinimo, filtro.TipoAfiliado, filtro.EstadoFosyga,
+            filtro.FuentesCelular,
+            filtro.CoincidenciasCelular,
+            filtro.FuentesEmail,
+            filtro.CoincidenciasEmail,
             limite: null);
 
         // Nombre de la cartera para el Excel y el nombre de archivo

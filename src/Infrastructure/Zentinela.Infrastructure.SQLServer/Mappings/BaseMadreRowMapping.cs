@@ -14,7 +14,7 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
     public void Configure(EntityTypeBuilder<BaseMadreRow> builder)
     {
         // Las vistas no generan migraciones por defecto — ExcludeFromMigrations no aplica a ViewBuilder
-        builder.HasNoKey().ToView("vw_BaseMadreBaseGeneral");
+        builder.HasNoKey().ToView("vw_BaseMadreTitularAuxiliar");
 
         // Columnas cuyo nombre en BD difiere del nombre de la propiedad C#
         builder.Property(b => b.NumeroDocumento)         .HasColumnName("Numero Documento");

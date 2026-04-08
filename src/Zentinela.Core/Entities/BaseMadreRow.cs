@@ -7,7 +7,7 @@ namespace Zentinela.Core.Entities;
 /// </summary>
 public class BaseMadreRow
 {
-    public long    NumeroDocumento           { get; set; }
+    public string  NumeroDocumento           { get; set; } = "";
     public string? Nombre                   { get; set; }
     public string? Saldo                    { get; set; }
     public string? UltimaFechaGestion       { get; set; }

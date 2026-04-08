@@ -6,13 +6,16 @@ export interface ColumnaBaseMadre {
 
 export interface FiltroBaseMadreRequest {
   carteraID: number;
-  nombre?: string;
   ultimoPerfil?: string;
   mejorPerfil?: string;
-  departamento?: string;
-  municipio?: string;
   tieneFechaPromesa?: boolean;
-  tieneSaldo?: boolean;
+  saldoMinimo?: number;
+  tipoAfiliado?: string;
+  estadoFosyga?: string;
+  fuentesCelular: string[];
+  coincidenciasCelular: string[];
+  fuentesEmail: string[];
+  coincidenciasEmail: string[];
   columnasSeleccionadas: string[];
 }
 

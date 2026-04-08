@@ -4,23 +4,51 @@ public class FiltroBaseMadreRequest
 {
     public int CarteraID { get; set; }
 
-    /// <summary>Búsqueda parcial sobre el campo Nombre (LIKE %valor%).</summary>
-    public string? Nombre { get; set; }
-
     /// <summary>Tipificación exacta del último perfil de gestión.</summary>
     public string? UltimoPerfil { get; set; }
 
     /// <summary>Tipificación exacta del mejor perfil histórico.</summary>
     public string? MejorPerfil { get; set; }
 
-    public string? Departamento { get; set; }
-    public string? Municipio    { get; set; }
-
     /// <summary>true → solo titulares con FechaPromesa no nula ni vacía.</summary>
     public bool? TieneFechaPromesa { get; set; }
 
-    /// <summary>true → solo titulares con Saldo no nulo, no vacío y distinto de "0".</summary>
-    public bool? TieneSaldo { get; set; }
+    /// <summary>Saldo mínimo en pesos. Filtra sobre la columna Saldo (string) en memoria.</summary>
+    public decimal? SaldoMinimo { get; set; }
+
+    /// <summary>Tipo de afiliado en Fosyga (ej: Cotizante, Beneficiario, Pensionado).</summary>
+    public string? TipoAfiliado { get; set; }
+
+    /// <summary>Estado de afiliación en Fosyga (ej: Activo, Inactivo, Retirado).</summary>
+    public string? EstadoFosyga { get; set; }
+
+    /// <summary>
+    /// Fuentes de datos de celular que deben tener número registrado.
+    /// Claves válidas: Cajacopi, Camara, SaludTotal, DatosExternos, Positiva, Tigo, SOS.
+    /// Solo se retornan titulares con número en TODAS las fuentes seleccionadas.
+    /// </summary>
+    public List<string> FuentesCelular { get; set; } = [];
+
+    /// <summary>
+    /// Fuentes entre las que se exige coincidencia exacta de número (mínimo 2).
+    /// Solo se retornan titulares donde el número de celular sea idéntico
+    /// en todas las fuentes seleccionadas y ninguna esté vacía.
+    /// Filtro aplicado en memoria.
+    /// </summary>
+    public List<string> CoincidenciasCelular { get; set; } = [];
+
+    /// <summary>
+    /// Fuentes de email que deben tener dirección registrada.
+    /// Claves válidas: Cajacopi, Camara, SaludTotal, DatosExternos, Positiva, Tigo.
+    /// Solo se retornan titulares con email en TODAS las fuentes seleccionadas.
+    /// </summary>
+    public List<string> FuentesEmail { get; set; } = [];
+
+    /// <summary>
+    /// Fuentes entre las que se exige coincidencia exacta de email (mínimo 2).
+    /// Filtro aplicado en memoria.
+    /// </summary>
+    public List<string> CoincidenciasEmail { get; set; } = [];
 
     /// <summary>
     /// Nombres de columna (propiedad C#) que se incluirán en la respuesta/Excel.

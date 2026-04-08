@@ -8,7 +8,7 @@ public static class ColumnasMadre
 {
     public static readonly IReadOnlyList<ColumnaBaseMadre> Todas =
     [
-        new("NumeroDocumento",            "N° Documento",                  TipoColumna.Numero),
+        new("NumeroDocumento",            "Número Documento",              TipoColumna.Numero),
         new("Nombre",                     "Nombre",                        TipoColumna.Texto),
         new("Saldo",                      "Saldo",                         TipoColumna.Texto),
         new("UltimaFechaGestion",         "Última Fecha Gestión",          TipoColumna.Texto),

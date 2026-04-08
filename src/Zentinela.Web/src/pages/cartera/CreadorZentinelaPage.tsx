@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { obtenerCarteras } from '../../api/carterasApi';
 import { obtenerColumnas, obtenerPreview, exportarExcel } from '../../api/creadorApi';
 import type { FiltroBaseMadreRequest, ColumnaBaseMadre } from '../../types/creador';
@@ -12,6 +13,25 @@ const TIPIFICACIONES = [
   'Mensaje con tercero', 'Mensaje en buzón', 'Fallecido', 'No contacto',
   'Mensaje contestadora/buzon', 'Numero equivocado', 'Ilocalizado',
   'Datos de localización', 'Sin gestion', 'Volver a llamar',
+];
+
+const FUENTES_EMAIL = [
+  { key: 'Cajacopi',      label: 'Cajacopi'       },
+  { key: 'Camara',        label: 'Cámara'         },
+  { key: 'SaludTotal',    label: 'Salud Total'    },
+  { key: 'DatosExternos', label: 'Datos Externos' },
+  { key: 'Positiva',      label: 'Positiva'       },
+  { key: 'Tigo',          label: 'Tigo'           },
+];
+
+const FUENTES_CELULAR = [
+  { key: 'Cajacopi',      label: 'Cajacopi'       },
+  { key: 'Camara',        label: 'Cámara'         },
+  { key: 'SaludTotal',    label: 'Salud Total'    },
+  { key: 'DatosExternos', label: 'Datos Externos' },
+  { key: 'Positiva',      label: 'Positiva'       },
+  { key: 'Tigo',          label: 'Tigo'           },
+  { key: 'SOS',           label: 'SOS'            },
 ];
 
 const inputStyle: React.CSSProperties = {
@@ -29,13 +49,16 @@ const labelStyle: React.CSSProperties = {
 // ── Página ────────────────────────────────────────────────────────────────────
 export function CreadorZentinelaPage() {
   const [carteraID,        setCarteraID]        = useState<number | null>(null);
-  const [nombre,           setNombre]           = useState('');
   const [ultimoPerfil,     setUltimoPerfil]     = useState('');
   const [mejorPerfil,      setMejorPerfil]      = useState('');
-  const [departamento,     setDepartamento]     = useState('');
-  const [municipio,        setMunicipio]        = useState('');
   const [conPromesa,       setConPromesa]       = useState(false);
-  const [conSaldo,         setConSaldo]         = useState(false);
+  const [saldoMinimo,      setSaldoMinimo]      = useState('');
+  const [tipoAfiliado,     setTipoAfiliado]     = useState('');
+  const [estadoFosyga,     setEstadoFosyga]     = useState('');
+  const [fuentesCelular,      setFuentesCelular]      = useState<string[]>([]);
+  const [coincidenciasCelular, setCoincidenciasCelular] = useState<string[]>([]);
+  const [fuentesEmail,         setFuentesEmail]         = useState<string[]>([]);
+  const [coincidenciasEmail,   setCoincidenciasEmail]   = useState<string[]>([]);
   const [filtrosAbiertos,  setFiltrosAbiertos]  = useState(false);
   const [columnasSeleccionadas, setColumnasSeleccionadas] = useState<string[]>([]);
   const [filtroActivo,     setFiltroActivo]     = useState<FiltroBaseMadreRequest | null>(null);
@@ -78,16 +101,39 @@ export function CreadorZentinelaPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const construirFiltro = (): FiltroBaseMadreRequest => ({
-    carteraID:           carteraID!,
-    nombre:              nombre        || undefined,
-    ultimoPerfil:        ultimoPerfil  || undefined,
-    mejorPerfil:         mejorPerfil   || undefined,
-    departamento:        departamento  || undefined,
-    municipio:           municipio     || undefined,
-    tieneFechaPromesa:   conPromesa    || undefined,
-    tieneSaldo:          conSaldo      || undefined,
+    carteraID:          carteraID!,
+    ultimoPerfil:       ultimoPerfil || undefined,
+    mejorPerfil:        mejorPerfil  || undefined,
+    tieneFechaPromesa:  conPromesa   || undefined,
+    saldoMinimo:        saldoMinimo  ? Number(saldoMinimo) : undefined,
+    tipoAfiliado:       tipoAfiliado || undefined,
+    estadoFosyga:       estadoFosyga || undefined,
+    fuentesCelular,
+    coincidenciasCelular,
+    fuentesEmail,
+    coincidenciasEmail,
     columnasSeleccionadas,
   });
+
+  const toggleFuente = (fuente: string) =>
+    setFuentesCelular(prev =>
+      prev.includes(fuente) ? prev.filter(f => f !== fuente) : [...prev, fuente],
+    );
+
+  const toggleCoincidencia = (fuente: string) =>
+    setCoincidenciasCelular(prev =>
+      prev.includes(fuente) ? prev.filter(f => f !== fuente) : [...prev, fuente],
+    );
+
+  const toggleFuenteEmail = (fuente: string) =>
+    setFuentesEmail(prev =>
+      prev.includes(fuente) ? prev.filter(f => f !== fuente) : [...prev, fuente],
+    );
+
+  const toggleCoincidenciaEmail = (fuente: string) =>
+    setCoincidenciasEmail(prev =>
+      prev.includes(fuente) ? prev.filter(f => f !== fuente) : [...prev, fuente],
+    );
 
   const handleVerPreview  = () => { if (carteraID) setFiltroActivo(construirFiltro()); };
   const handleExportar    = () => { if (carteraID) exportMutation.mutate(construirFiltro()); };
@@ -152,46 +198,212 @@ export function CreadorZentinelaPage() {
         </button>
 
         {filtrosAbiertos && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px 16px' }}>
-            <div>
-              <label style={labelStyle}>Nombre (contiene)</label>
-              <input type="text" value={nombre} onChange={e => setNombre(e.target.value)}
-                placeholder="Buscar por nombre..." style={inputStyle} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Fila 1: perfiles + saldo mínimo */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px 16px' }}>
+              <div>
+                <label style={labelStyle}>Último Perfil</label>
+                <select value={ultimoPerfil} onChange={e => setUltimoPerfil(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">Todos</option>
+                  {TIPIFICACIONES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Mejor Perfil</label>
+                <select value={mejorPerfil} onChange={e => setMejorPerfil(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">Todos</option>
+                  {TIPIFICACIONES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Saldo mínimo ($)</label>
+                <input
+                  type="number" min="0" value={saldoMinimo}
+                  onChange={e => setSaldoMinimo(e.target.value)}
+                  placeholder="Ej: 500000"
+                  style={inputStyle}
+                />
+              </div>
             </div>
-            <div>
-              <label style={labelStyle}>Último Perfil</label>
-              <select value={ultimoPerfil} onChange={e => setUltimoPerfil(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                <option value="">Todos</option>
-                {TIPIFICACIONES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+
+            {/* Fila 2: Fosyga + checkboxes */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px 16px', alignItems: 'end' }}>
+              <div>
+                <label style={labelStyle}>Tipo Afiliado (Fosyga)</label>
+                <select value={tipoAfiliado} onChange={e => setTipoAfiliado(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">Todos</option>
+                  <option value="Cotizante">Cotizante</option>
+                  <option value="Beneficiario">Beneficiario</option>
+                  <option value="Pensionado">Pensionado</option>
+                  <option value="Subsidiado">Subsidiado</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Estado en Fosyga</label>
+                <select value={estadoFosyga} onChange={e => setEstadoFosyga(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">Todos</option>
+                  <option value="Activo">Activo</option>
+                  <option value="Inactivo">Inactivo</option>
+                  <option value="Retirado">Retirado</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: '2px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', color: 'var(--z-text-primary)' }}>
+                  <input type="checkbox" checked={conPromesa} onChange={e => setConPromesa(e.target.checked)} />
+                  Solo con fecha promesa
+                </label>
+              </div>
             </div>
+
+            {/* Fila 3: Fuentes de celular */}
             <div>
-              <label style={labelStyle}>Mejor Perfil</label>
-              <select value={mejorPerfil} onChange={e => setMejorPerfil(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                <option value="">Todos</option>
-                {TIPIFICACIONES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Departamento</label>
-              <input type="text" value={departamento} onChange={e => setDepartamento(e.target.value)}
-                placeholder="Ej: Atlántico" style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Municipio</label>
-              <input type="text" value={municipio} onChange={e => setMunicipio(e.target.value)}
-                placeholder="Ej: Barranquilla" style={inputStyle} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', color: 'var(--z-text-primary)' }}>
-                <input type="checkbox" checked={conPromesa} onChange={e => setConPromesa(e.target.checked)} />
-                Solo con fecha promesa
+              <label style={{ ...labelStyle, marginBottom: '8px' }}>
+                Fuentes con celular requerido
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: '6px', color: 'var(--z-text-muted)' }}>
+                  — solo titulares con número en todas las fuentes seleccionadas
+                </span>
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', color: 'var(--z-text-primary)' }}>
-                <input type="checkbox" checked={conSaldo} onChange={e => setConSaldo(e.target.checked)} />
-                Solo con saldo
-              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {FUENTES_CELULAR.map(f => {
+                  const activa = fuentesCelular.includes(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => toggleFuente(f.key)}
+                      style={{
+                        padding: '5px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 500,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        border: activa ? '1px solid var(--z-brand)' : '1px solid var(--z-border)',
+                        background: activa ? 'var(--z-brand-light)' : 'transparent',
+                        color: activa ? 'var(--z-brand)' : 'var(--z-text-muted)',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {fuentesCelular.length > 0 && (
+                <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>
+                  Filtrando titulares con celular en: {fuentesCelular.map(k => FUENTES_CELULAR.find(f => f.key === k)?.label).join(' + ')}
+                </p>
+              )}
             </div>
+
+            {/* Fila 4: Coincidencias exactas de celular */}
+            <div>
+              <label style={{ ...labelStyle, marginBottom: '8px' }}>
+                Coincidencias de celular entre:
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: '6px', color: 'var(--z-text-muted)' }}>
+                  — solo titulares donde el número sea exactamente igual en todas las fuentes elegidas
+                </span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {FUENTES_CELULAR.map(f => {
+                  const activa = coincidenciasCelular.includes(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => toggleCoincidencia(f.key)}
+                      style={{
+                        padding: '5px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 500,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        border: activa ? '1px solid #16a34a' : '1px solid var(--z-border)',
+                        background: activa ? '#dcfce7' : 'transparent',
+                        color: activa ? '#16a34a' : 'var(--z-text-muted)',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: '11px', color: coincidenciasCelular.length === 1 ? '#d97706' : 'var(--z-text-muted)', marginTop: '6px' }}>
+                {coincidenciasCelular.length === 0 && 'Selecciona al menos 2 fuentes para activar este filtro.'}
+                {coincidenciasCelular.length === 1 && 'Selecciona al menos 1 fuente más para activar la comparación.'}
+                {coincidenciasCelular.length >= 2 && (
+                  <>Comparando: {coincidenciasCelular.map(k => FUENTES_CELULAR.find(f => f.key === k)?.label).join(' = ')}</>
+                )}
+              </p>
+            </div>
+
+            {/* Fila 5: Fuentes de email requerido */}
+            <div>
+              <label style={{ ...labelStyle, marginBottom: '8px' }}>
+                Fuentes con email requerido
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: '6px', color: 'var(--z-text-muted)' }}>
+                  — solo titulares con email en todas las fuentes seleccionadas
+                </span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {FUENTES_EMAIL.map(f => {
+                  const activa = fuentesEmail.includes(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => toggleFuenteEmail(f.key)}
+                      style={{
+                        padding: '5px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 500,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        border: activa ? '1px solid var(--z-brand)' : '1px solid var(--z-border)',
+                        background: activa ? 'var(--z-brand-light)' : 'transparent',
+                        color: activa ? 'var(--z-brand)' : 'var(--z-text-muted)',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {fuentesEmail.length > 0 && (
+                <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>
+                  Filtrando titulares con email en: {fuentesEmail.map(k => FUENTES_EMAIL.find(f => f.key === k)?.label).join(' + ')}
+                </p>
+              )}
+            </div>
+
+            {/* Fila 6: Coincidencias exactas de email */}
+            <div>
+              <label style={{ ...labelStyle, marginBottom: '8px' }}>
+                Coincidencias de email entre:
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: '6px', color: 'var(--z-text-muted)' }}>
+                  — solo titulares donde el email sea exactamente igual en todas las fuentes elegidas
+                </span>
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {FUENTES_EMAIL.map(f => {
+                  const activa = coincidenciasEmail.includes(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => toggleCoincidenciaEmail(f.key)}
+                      style={{
+                        padding: '5px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 500,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        border: activa ? '1px solid #16a34a' : '1px solid var(--z-border)',
+                        background: activa ? '#dcfce7' : 'transparent',
+                        color: activa ? '#16a34a' : 'var(--z-text-muted)',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: '11px', color: coincidenciasEmail.length === 1 ? '#d97706' : 'var(--z-text-muted)', marginTop: '6px' }}>
+                {coincidenciasEmail.length === 0 && 'Selecciona al menos 2 fuentes para activar este filtro.'}
+                {coincidenciasEmail.length === 1 && 'Selecciona al menos 1 fuente más para activar la comparación.'}
+                {coincidenciasEmail.length >= 2 && (
+                  <>Comparando: {coincidenciasEmail.map(k => FUENTES_EMAIL.find(f => f.key === k)?.label).join(' = ')}</>
+                )}
+              </p>
+            </div>
+
           </div>
         )}
 
@@ -229,10 +441,16 @@ export function CreadorZentinelaPage() {
               Todas
             </button>
             <button
-              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => n === 'NumeroDocumento' || n === 'Nombre'))}
+              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => n === 'NumeroDocumento' || n === 'Nombre' || n.startsWith('Celular')))}
               style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
             >
-              Solo básicas
+              Solo celulares
+            </button>
+            <button
+              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => n === 'NumeroDocumento' || n === 'Nombre' || n.startsWith('Email')))}
+              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
+            >
+              Solo emails
             </button>
           </div>
         </div>
@@ -277,8 +495,8 @@ export function CreadorZentinelaPage() {
               {preview
                 ? `${preview.total.toLocaleString('es-CO')} titular${preview.total !== 1 ? 'es' : ''} encontrado${preview.total !== 1 ? 's' : ''}`
                 : 'Consultando...'}
-              {preview && preview.total > 100 && (
-                <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}> — mostrando primeros 100</span>
+              {preview && preview.total > 10 && (
+                <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}> — mostrando primeros 10</span>
               )}
             </p>
 
@@ -305,9 +523,7 @@ export function CreadorZentinelaPage() {
           )}
 
           {cargandoPreview ? (
-            <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-              Consultando datos...
-            </div>
+            <CargandoSpiral mensaje="Generando previsualización..." />
           ) : preview && preview.filas.length > 0 ? (
             <div style={{ overflowX: 'auto', borderRadius: '6px', border: '0.5px solid var(--z-border)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '600px' }}>
