@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardDirectorService, DashboardDirectorService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IBaseMadreRepository, BaseMadreRepository>();
+        services.AddScoped<ICalificadorCarteraService, CalificadorCarteraService>();
 
         return services;
     }
