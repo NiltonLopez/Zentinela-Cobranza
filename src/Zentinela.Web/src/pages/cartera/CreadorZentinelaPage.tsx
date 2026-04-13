@@ -19,7 +19,6 @@ const FUENTES_EMAIL = [
   { key: 'Cajacopi',      label: 'Cajacopi'       },
   { key: 'Camara',        label: 'Cámara'         },
   { key: 'SaludTotal',    label: 'Salud Total'    },
-  { key: 'DatosExternos', label: 'Datos Externos' },
   { key: 'Positiva',      label: 'Positiva'       },
   { key: 'Tigo',          label: 'Tigo'           },
 ];
@@ -28,7 +27,6 @@ const FUENTES_CELULAR = [
   { key: 'Cajacopi',      label: 'Cajacopi'       },
   { key: 'Camara',        label: 'Cámara'         },
   { key: 'SaludTotal',    label: 'Salud Total'    },
-  { key: 'DatosExternos', label: 'Datos Externos' },
   { key: 'Positiva',      label: 'Positiva'       },
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'SOS',           label: 'SOS'            },

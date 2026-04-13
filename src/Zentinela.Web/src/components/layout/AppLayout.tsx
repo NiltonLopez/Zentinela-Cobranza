@@ -20,10 +20,15 @@ export function AppLayout() {
         <main style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '28px 32px',
           background: 'var(--z-bg-page)',
         }}>
-          <Outlet />
+          <div className="z-page-content" style={{
+            maxWidth: '1440px',
+            margin: '0 auto',
+            padding: '28px 32px',
+          }}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

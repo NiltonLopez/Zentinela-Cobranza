@@ -318,6 +318,228 @@ Devuelve las carteras del usuario autenticado filtradas por rol.
 
 ---
 
+---
+
+## GET /api/calificador/opciones
+
+Lista las combinaciones Cartera+Líder disponibles para el usuario autenticado.
+
+- **Líder**: solo sus asignaciones expuestas en `vw_BaseMadre`.
+- **Admin / Director**: todas las asignaciones activas de `Lider_Cartera`.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+### Response body — 200 OK
+
+```json
+[
+  {
+    "carteraID": 25,
+    "liderID": 1,
+    "etiqueta": "Cartera Bogotá — Juan Pérez"
+  }
+]
+```
+
+---
+
+## GET /api/calificador/{carteraID}/{liderID}
+
+Calcula todas las métricas del Calificador de Cartera para la asignación indicada.
+El timeout de BD se amplía a 5 minutos para carteras grandes.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+### Parámetros de ruta
+
+| Parámetro | Tipo | Descripción |
+|---|---|---|
+| `carteraID` | `int` | ID de la cartera |
+| `liderID` | `int` | ID del líder |
+
+### Response body — 200 OK
+
+```json
+{
+  "totalTitulares": 1500,
+
+  "gestionDisponible": true,
+  "titularesGestionados": 820,
+  "saldoTotal": 1250000000.00,
+  "saldoPromedio": 833333.33,
+  "titularesConAcuerdoVigente": 45,
+  "valorTotalPromesas": 12500000.00,
+
+  "rotacionPromedio": 3.2,
+  "desgloseRotacion": [
+    { "etiqueta": "1", "cantidad": 200, "porcentaje": 13.3 }
+  ],
+
+  "desglosePerfil": [
+    { "etiqueta": "No Contesta", "cantidad": 410, "porcentaje": 27.3 }
+  ],
+
+  "titularesConFosyga": 1100,
+  "desgloseTipoAfiliado": [
+    { "etiqueta": "Cotizante", "cantidad": 800, "porcentaje": 53.3 }
+  ],
+
+  "desgloseRegimen": [
+    { "etiqueta": "Contributivo", "cantidad": 1050, "porcentaje": 70.0 }
+  ],
+
+  "desgloseEPS": [
+    { "etiqueta": "Sanitas", "cantidad": 300, "porcentaje": 20.0 }
+  ],
+
+  "desgloseDepartamento": [
+    { "etiqueta": "Atlántico", "cantidad": 700, "porcentaje": 46.7 }
+  ],
+
+  "conCelular": 980,
+  "conEmail": 430,
+  "conCelularYEmail": 380,
+  "sinContacto": 120,
+  "desgloseFuentesCelular": [
+    { "etiqueta": "Cajacopi", "cantidad": 750, "porcentaje": 50.0 }
+  ],
+
+  "conEdadRegistraduria": 620,
+  "sinEdadRegistraduria": 880,
+  "edadPromedioRegistraduria": 47.3,
+
+  "localizacion": [
+    {
+      "fuente": "Cajacopi",
+      "encontrados": 750,
+      "noEncontrados": 120,
+      "faltanPorBuscar": 630
+    }
+  ]
+}
+```
+
+#### Lógica de localización por fuente
+
+Distingue 3 estados por fuente de datos:
+
+| Estado | Condición |
+|---|---|
+| `encontrados` | Titular tiene datos reales en `vw_BaseMadre` para esa fuente |
+| `noEncontrados` | Sin datos en la vista, pero existe fila en la tabla fuente (fue buscado) |
+| `faltanPorBuscar` | `total - encontrados - noEncontrados` — aún no se ha consultado esa fuente |
+
+Fuentes analizadas: Cajacopi, Cámara, Salud Total, Fosyga, Compensados, Positiva, Tigo, SOS, Sura (ARL), Positiva Emp., RUES, SIMIT, RGM.
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Métricas calculadas (puede tener `totalTitulares: 0`) |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin acceso |
+
+---
+
+## GET /api/creador/columnas
+
+Retorna el catálogo de columnas disponibles en la Base Madre para construir el selector de columnas en el frontend.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+### Response body — 200 OK
+
+```json
+[
+  { "nombre": "NumeroDocumento", "etiqueta": "Número Documento", "tipo": "Numero" },
+  { "nombre": "Nombre",          "etiqueta": "Nombre",           "tipo": "Texto"  },
+  { "nombre": "CelularCajacopi", "etiqueta": "Celular CajaCopi", "tipo": "Texto"  }
+]
+```
+
+---
+
+## POST /api/creador/preview
+
+Retorna hasta 100 filas que cumplen los filtros aplicados, más el total real de la consulta.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+### Request body — `FiltroBaseMadreRequest`
+
+```json
+{
+  "carteraID": 25,
+  "ultimoPerfil": "No Contesta",
+  "mejorPerfil": null,
+  "promesasVigentes": null,
+  "rotacionMaxima": 5,
+  "saldoMinimo": 500000,
+  "tipoAfiliado": "Cotizante",
+  "estadoFosyga": "Activo",
+  "fuentesCelular": ["Cajacopi", "Tigo"],
+  "coincidenciasCelular": ["Cajacopi", "Tigo"],
+  "fuentesEmail": [],
+  "coincidenciasEmail": [],
+  "columnasSeleccionadas": ["NumeroDocumento", "Nombre", "CelularCajacopi"]
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `carteraID` | `int` | Cartera a filtrar |
+| `ultimoPerfil` | `string?` | Tipificación exacta del último perfil de gestión |
+| `mejorPerfil` | `string?` | Tipificación exacta del mejor perfil histórico |
+| `promesasVigentes` | `bool?` | `true` = solo con promesa vigente; `false` = sin promesa; `null` = sin filtro |
+| `rotacionMaxima` | `int?` | Rotación máxima permitida (filtro en memoria) |
+| `saldoMinimo` | `decimal?` | Saldo mínimo en pesos (filtro en memoria) |
+| `tipoAfiliado` | `string?` | Tipo de afiliado Fosyga (Cotizante, Beneficiario, Pensionado) |
+| `estadoFosyga` | `string?` | Estado Fosyga (Activo, Inactivo, Retirado) |
+| `fuentesCelular` | `string[]` | El titular debe tener celular en TODAS las fuentes listadas. Claves: `Cajacopi`, `Camara`, `SaludTotal`, `Positiva`, `Tigo`, `SOS` |
+| `coincidenciasCelular` | `string[]` | El número debe ser idéntico en todas las fuentes seleccionadas (mínimo 2) |
+| `fuentesEmail` | `string[]` | El titular debe tener email en TODAS las fuentes listadas. Claves: `Cajacopi`, `Camara`, `SaludTotal`, `Positiva`, `Tigo` |
+| `coincidenciasEmail` | `string[]` | El email debe ser idéntico en todas las fuentes seleccionadas (mínimo 2) |
+| `columnasSeleccionadas` | `string[]` | Nombres de propiedad C# a incluir. Lista vacía = todas las columnas |
+
+### Response body — 200 OK
+
+```json
+{
+  "total": 380,
+  "filas": [
+    {
+      "numeroDocumento": 1234567890,
+      "nombre": "María López",
+      "celularCajacopi": "3001234567"
+    }
+  ]
+}
+```
+
+---
+
+## POST /api/creador/exportar
+
+Genera y descarga el Excel completo con todas las filas que cumplen los filtros y las columnas seleccionadas.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+### Request body
+
+Misma estructura que `POST /api/creador/preview`.
+
+### Response — 200 OK
+
+Archivo `.xlsx` con Content-Type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.  
+Nombre del archivo: `BaseMadre_<CarteraID>_<timestamp>.xlsx`.
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`

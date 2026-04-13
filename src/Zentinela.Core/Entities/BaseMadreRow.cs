@@ -39,8 +39,6 @@ public class BaseMadreRow
     public string? EmailCamara              { get; set; }
     public string? CelularSaludTotal        { get; set; }
     public string? EmailSaludTotal          { get; set; }
-    public string? CelularDatosExternos     { get; set; }
-    public string? EmailDatosExternos       { get; set; }
     public string? CelularPositiva          { get; set; }
     public string? EmailPositiva            { get; set; }
     public string? CelularTigo              { get; set; }

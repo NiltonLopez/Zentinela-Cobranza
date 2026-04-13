@@ -42,7 +42,7 @@ public class DashboardDirectorService : IDashboardDirectorService
             .Where(lc => lc.LiderID == liderID)
             .Select(lc => new CarteraDropdownDto
             {
-                ID = lc.CartID,
+                ID = lc.CarteraID,
                 NombreCartera = lc.Cartera.NombreCartera,
             })
             .OrderBy(c => c.NombreCartera)
@@ -73,7 +73,7 @@ public class DashboardDirectorService : IDashboardDirectorService
         {
             var carteraIDs = await _callCenter.LiderCarteras
                 .Where(lc => lc.LiderID == liderID.Value)
-                .Select(lc => lc.CartID)
+                .Select(lc => lc.CarteraID)
                 .ToListAsync();
 
             query = query.Where(h => carteraIDs.Contains(h.CarteraID));
@@ -139,7 +139,7 @@ public class DashboardDirectorService : IDashboardDirectorService
         {
             var carteraIDs = await _callCenter.LiderCarteras
                 .Where(lc => lc.LiderID == liderID.Value)
-                .Select(lc => lc.CartID)
+                .Select(lc => lc.CarteraID)
                 .ToListAsync();
 
             query = query.Where(u => carteraIDs.Contains(u.CarteraID));
@@ -159,7 +159,7 @@ public class DashboardDirectorService : IDashboardDirectorService
 
         // Si una cartera pertenece a varios líderes tomamos el primero registrado
         var carteraALider = liderCarteras
-            .GroupBy(lc => lc.CartID)
+            .GroupBy(lc => lc.CarteraID)
             .ToDictionary(g => g.Key, g => g.First());
 
         var porLider = registros

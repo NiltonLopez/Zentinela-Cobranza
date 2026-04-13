@@ -38,8 +38,6 @@ public static class ColumnasMadre
         new("EmailCamara",                "Email Cámara",                  TipoColumna.Texto),
         new("CelularSaludTotal",          "Celular Salud Total",           TipoColumna.Texto),
         new("EmailSaludTotal",            "Email Salud Total",             TipoColumna.Texto),
-        new("CelularDatosExternos",       "Celular Datos Externos",        TipoColumna.Texto),
-        new("EmailDatosExternos",         "Email Datos Externos",          TipoColumna.Texto),
         new("CelularPositiva",            "Celular Positiva",              TipoColumna.Texto),
         new("EmailPositiva",              "Email Positiva",                TipoColumna.Texto),
         new("CelularTigo",                "Celular Tigo",                  TipoColumna.Texto),

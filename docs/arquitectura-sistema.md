@@ -108,7 +108,8 @@ Flujo sin autenticación previa (auto-registro):
 | Autenticación (login / cambio de contraseña) | ✅ Completo | Todos |
 | Registro de usuario | ✅ Completo | Público |
 | Dashboard Asesor | ✅ Completo | Asesor |
-| Generador de Bases Excel | 🚧 Esqueleto UI | Admin, Líder, Director |
+| Creador Zentinela (Generador de Bases Excel) | ✅ Completo | Admin, Líder, Director |
+| Calificador de Cartera | ✅ Completo | Admin, Líder, Director |
 | Carteras | 🚧 Listado básico | Admin, Líder, Director |
 | KPIs / Reportes | 🚧 Placeholder | Admin, Director |
 | Dashboard Líder | ⏳ Pendiente | Líder |

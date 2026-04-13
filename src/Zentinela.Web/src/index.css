@@ -30,6 +30,12 @@ button {
   font-family: inherit;
 }
 
+/* Centra horizontalmente el contenido de cada página dentro del layout */
+.z-page-content > * {
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @keyframes z-spiral-cw {
   to { transform: rotate(360deg); }
 }

@@ -43,8 +43,6 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.EmailCamara)             .HasColumnName("Email Camara");
         builder.Property(b => b.CelularSaludTotal)       .HasColumnName("Celular Salud Total");
         builder.Property(b => b.EmailSaludTotal)         .HasColumnName("Email Salud Total");
-        builder.Property(b => b.CelularDatosExternos)    .HasColumnName("Celular Datos Externos");
-        builder.Property(b => b.EmailDatosExternos)      .HasColumnName("Email Datos Externos");
         builder.Property(b => b.CelularPositiva)         .HasColumnName("Celular Positiva");
         builder.Property(b => b.EmailPositiva)           .HasColumnName("Email Positiva");
         builder.Property(b => b.CelularTigo)             .HasColumnName("Celular Tigo");
@@ -62,5 +60,6 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.PlacaSIMIT)              .HasColumnName("PLACA SIMIT");
         // Nombre, Saldo, Rotacion, EPS, Regimen, Departamento, Municipio,
         // Marca, Modelo, Placa → coinciden con el nombre de la columna en BD
+
     }
 }

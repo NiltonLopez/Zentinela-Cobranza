@@ -45,7 +45,7 @@ Relación muchos-a-muchos entre Lider y Cartera.
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
 | LiderID | int | NO | SI | Lider |
-| CartID | int | NO | SI | Cartera |
+| CarteraID | int | NO | SI | Cartera |
 
 ### Titular_Cartera
 Asignación de titulares a carteras y líderes. Tabla pivote principal del negocio.

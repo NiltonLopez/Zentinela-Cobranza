@@ -28,9 +28,9 @@ public class CarteraRepositoryTests
         ctx.Carteras.AddRange(cA, cB, cC);
 
         ctx.LiderCarteras.AddRange(
-            new LiderCartera { LiderID = LiderUno, CartID = 1 },
-            new LiderCartera { LiderID = LiderUno, CartID = 2 },
-            new LiderCartera { LiderID = LiderDos, CartID = 3 }
+            new LiderCartera { LiderID = LiderUno, CarteraID = 1 },
+            new LiderCartera { LiderID = LiderUno, CarteraID = 2 },
+            new LiderCartera { LiderID = LiderDos, CarteraID = 3 }
         );
         await ctx.SaveChangesAsync();
     }
@@ -84,9 +84,9 @@ public class CarteraRepositoryTests
                 new Cartera { ID = 3, NombreCartera = "Medio", Activa = true }
             );
             ctx.LiderCarteras.AddRange(
-                new LiderCartera { LiderID = LiderUno, CartID = 1 },
-                new LiderCartera { LiderID = LiderUno, CartID = 2 },
-                new LiderCartera { LiderID = LiderUno, CartID = 3 }
+                new LiderCartera { LiderID = LiderUno, CarteraID = 1 },
+                new LiderCartera { LiderID = LiderUno, CarteraID = 2 },
+                new LiderCartera { LiderID = LiderUno, CarteraID = 3 }
             );
             await ctx.SaveChangesAsync();
         }
