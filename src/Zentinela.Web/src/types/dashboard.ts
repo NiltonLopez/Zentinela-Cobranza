@@ -12,6 +12,8 @@ export interface CarteraDropdownDto {
 
 export interface MetricasDirectorDto {
   fechaActualizacion: string | null;
+  fechaDesde: string;  // ISO date "YYYY-MM-DD"
+  fechaHasta: string;  // ISO date "YYYY-MM-DD"
   totalGestiones: number;
   tasaContactabilidad: number;
   tasaEfectividad: number;

@@ -116,6 +116,8 @@ Estado actual de cada titular por cartera (snapshot más reciente de gestión).
 ### HistoricoEstadoTitular
 Historial completo de estados y gestiones por titular.
 
+> **Estado (Abril 2026):** Tabla vacía — el ETL aún no la ha poblado. Todos los servicios de métricas utilizan `UltimoEstadoTitular` como fuente real de gestiones hasta que el ETL comience a escribir en esta tabla.
+
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
 | TitularID | bigint | NO | — | — |
@@ -1130,4 +1132,60 @@ Fuente externa (archivo/API)
   → Tabla*Auxiliar  (staging, sin constraints)
   → sp_Procesar*Auxiliar
   → Tabla produccion (con FK a Titular)
+```
+
+---
+
+## Índices creados (optimizaciones 2026-04-13)
+
+### Dashboard — UltimoEstadoTitular
+
+Creados para soportar las consultas del Dashboard Director y Asesor. Sin ellos, cada consulta hacía un full scan de la tabla.
+
+```sql
+-- Consultas del Dashboard Asesor (filtro por AgenteID)
+CREATE INDEX IX_UltimoEstadoTitular_AgenteID
+    ON UltimoEstadoTitular(AgenteID)
+    INCLUDE (FechaUltimaGestion, UltimoPerfil, FechaActualizacion,
+             FechaPromesa, ValorPromesa, SaldoTotal, TitularID);
+
+-- Consultas del Dashboard Director filtradas por cartera + fecha
+CREATE INDEX IX_UltimoEstadoTitular_CarteraID_Fecha
+    ON UltimoEstadoTitular(CarteraID, FechaUltimaGestion)
+    INCLUDE (AgenteID, UltimoPerfil);
+
+-- Consultas del Dashboard Director sin filtro de cartera (vista global)
+CREATE INDEX IX_UltimoEstadoTitular_Fecha
+    ON UltimoEstadoTitular(FechaUltimaGestion)
+    INCLUDE (CarteraID, AgenteID, UltimoPerfil);
+```
+
+### Calificador de Cartera — tablas fuente de vw_BaseMadre
+
+`vw_BaseMadre` utiliza `ROW_NUMBER() OVER (PARTITION BY TitularID ORDER BY FechaConsulta DESC)` en cada tabla de datos externos. Sin índices, cada ejecución hacía full scans de ~10M+ filas totales en todas las tablas combinadas.
+
+Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID, FechaConsulta DESC)`
+
+| Tabla | Índice creado |
+|-------|---------------|
+| ARLSura | `IX_ARLSura_TitularID_Fecha` |
+| Cajacopi | `IX_Cajacopi_TitularID_Fecha` |
+| Camara | `IX_Camara_TitularID_Fecha` |
+| Compensados | `IX_Compensados_TitularID_Fecha` |
+| Fosyga | `IX_Fosyga_TitularID_Fecha` |
+| Positiva | `IX_Positiva_TitularID_Fecha` |
+| PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
+| RGM | `IX_RGM_TitularID_Fecha` |
+| RUES | `IX_RUES_TitularID_Fecha` |
+| Runt | `IX_Runt_TitularID_Fecha` |
+| SaludTotal | `IX_SaludTotal_TitularID_Fecha` |
+| SIMIT | `IX_SIMIT_TitularID_Fecha` |
+| SOS | `IX_SOS_TitularID_Fecha` |
+| Tigo | `IX_Tigo_TitularID_Fecha` |
+
+Índice adicional en `Titular_Cartera` para filtros del Calificador por líder/cartera:
+
+```sql
+CREATE INDEX IX_TitularCartera_LiderID_CarteraID
+    ON Titular_Cartera(LiderID, CarteraID);
 ```

@@ -66,14 +66,17 @@ public class DashboardController : ControllerBase
     /// - Sin parámetros: vista global con desglose por líder.
     /// - Con liderID: métricas del líder con desglose por asesor.
     /// - Con liderID + carteraID: métricas de la cartera con desglose por asesor.
+    /// - fechaDesde / fechaHasta: rango de análisis (default: primer día del mes actual → hoy).
     /// </summary>
     [HttpGet("director")]
     [Authorize(Roles = $"{Roles.Director},{Roles.Admin}")]
     public async Task<IActionResult> ObtenerDashboardDirector(
-        [FromQuery] int? liderID,
-        [FromQuery] int? carteraID)
+        [FromQuery] int?      liderID,
+        [FromQuery] int?      carteraID,
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta)
     {
-        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID);
+        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta);
         return Ok(resultado);
     }
 }

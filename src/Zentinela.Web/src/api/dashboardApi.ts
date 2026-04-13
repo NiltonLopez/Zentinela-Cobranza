@@ -28,10 +28,14 @@ export const obtenerCarterasLider = async (liderID: number): Promise<CarteraDrop
 export const obtenerDashboardDirector = async (
   liderID?: number | null,
   carteraID?: number | null,
+  fechaDesde?: string,
+  fechaHasta?: string,
 ): Promise<DashboardDirectorDto> => {
   const params: Record<string, string> = {};
-  if (liderID != null)   params.liderID   = String(liderID);
-  if (carteraID != null) params.carteraID = String(carteraID);
+  if (liderID != null)    params.liderID    = String(liderID);
+  if (carteraID != null)  params.carteraID  = String(carteraID);
+  if (fechaDesde)         params.fechaDesde = fechaDesde;
+  if (fechaHasta)         params.fechaHasta = fechaHasta;
   const response = await api.get<DashboardDirectorDto>('/api/dashboard/director', { params });
   return response.data;
 };

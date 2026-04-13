@@ -52,35 +52,36 @@ public class DashboardDirectorService : IDashboardDirectorService
 
     // ── Dashboard principal ───────────────────────────────────────────────────
 
-    public async Task<DashboardDirectorDto> ObtenerDashboardAsync(int? liderID, int? carteraID)
+    public async Task<DashboardDirectorDto> ObtenerDashboardAsync(
+        int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
+        // FechaActualizacion es informativa (cuándo corrió el ETL)
         var fechaActualizacion = await ObtenerFechaActualizacionAsync(liderID, carteraID);
-        if (fechaActualizacion is null)
-            return new DashboardDirectorDto { Metricas = new() };
 
-        var fechaReporte = DateOnly.FromDateTime(fechaActualizacion.Value);
-
-        // Construir query base filtrando por fecha del ciclo
-        IQueryable<Zentinela.Core.Entities.HistoricoEstadoTitular> query =
-            _callCenter.HistoricoEstadosTitular
-                .Where(h => h.FechaUltimaGestion == fechaReporte);
-
-        if (carteraID.HasValue)
+        // Sin fechas explícitas → usar el último día con gestiones registradas
+        DateOnly desde, hasta;
+        if (fechaDesde is null || fechaHasta is null)
         {
-            query = query.Where(h => h.CarteraID == carteraID.Value);
-        }
-        else if (liderID.HasValue)
-        {
-            var carteraIDs = await _callCenter.LiderCarteras
-                .Where(lc => lc.LiderID == liderID.Value)
-                .Select(lc => lc.CarteraID)
-                .ToListAsync();
+            var ultimaGestion = await ObtenerMaxFechaGestionAsync(liderID, carteraID);
+            if (ultimaGestion is null)
+                return new DashboardDirectorDto { Metricas = new() };
 
-            query = query.Where(h => carteraIDs.Contains(h.CarteraID));
+            desde = ultimaGestion.Value;
+            hasta = ultimaGestion.Value;
         }
+        else
+        {
+            desde = fechaDesde.Value;
+            hasta = fechaHasta.Value;
+        }
+
+        // Fuente: UltimoEstadoTitular (HistoricoEstadoTitular aún no está poblada)
+        var carteraIDsFiltro = await ResolverCarteraIDsAsync(liderID, carteraID);
+        var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDsFiltro)
+            .Where(u => u.FechaUltimaGestion >= desde && u.FechaUltimaGestion <= hasta);
 
         var registros = await query
-            .Select(h => new { h.CarteraID, h.AgenteID, h.UltimoPerfil })
+            .Select(u => new { u.CarteraID, u.AgenteID, u.UltimoPerfil })
             .AsNoTracking()
             .ToListAsync();
 
@@ -92,6 +93,8 @@ public class DashboardDirectorService : IDashboardDirectorService
         var metricas = new MetricasDirectorDto
         {
             FechaActualizacion  = fechaActualizacion,
+            FechaDesde          = desde,
+            FechaHasta          = hasta,
             TotalGestiones      = totalGestiones,
             TasaContactabilidad = totalGestiones > 0
                 ? Math.Round((decimal)contactosPositivos / totalGestiones, 4) : 0,
@@ -126,26 +129,39 @@ public class DashboardDirectorService : IDashboardDirectorService
 
     // ── Helpers privados ──────────────────────────────────────────────────────
 
+    /// <summary>Cuándo corrió el ETL por última vez (informativo en el encabezado).</summary>
     private async Task<DateTime?> ObtenerFechaActualizacionAsync(int? liderID, int? carteraID)
     {
-        IQueryable<Zentinela.Core.Entities.UltimoEstadoTitular> query =
-            _callCenter.UltimosEstadosTitular;
-
-        if (carteraID.HasValue)
-        {
-            query = query.Where(u => u.CarteraID == carteraID.Value);
-        }
-        else if (liderID.HasValue)
-        {
-            var carteraIDs = await _callCenter.LiderCarteras
-                .Where(lc => lc.LiderID == liderID.Value)
-                .Select(lc => lc.CarteraID)
-                .ToListAsync();
-
-            query = query.Where(u => carteraIDs.Contains(u.CarteraID));
-        }
-
+        var carteraIDs = await ResolverCarteraIDsAsync(liderID, carteraID);
+        var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDs);
         return await query.MaxAsync(u => (DateTime?)u.FechaActualizacion);
+    }
+
+    /// <summary>Último día con gestiones registradas — determina el "Último ciclo".</summary>
+    private async Task<DateOnly?> ObtenerMaxFechaGestionAsync(int? liderID, int? carteraID)
+    {
+        var carteraIDs = await ResolverCarteraIDsAsync(liderID, carteraID);
+        var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDs);
+        return await query.MaxAsync(u => u.FechaUltimaGestion);
+    }
+
+    private async Task<List<int>?> ResolverCarteraIDsAsync(int? liderID, int? carteraID)
+    {
+        if (carteraID.HasValue || !liderID.HasValue) return null;
+
+        return await _callCenter.LiderCarteras
+            .Where(lc => lc.LiderID == liderID.Value)
+            .Select(lc => lc.CarteraID)
+            .ToListAsync();
+    }
+
+    private static IQueryable<Zentinela.Core.Entities.UltimoEstadoTitular> AplicarFiltroCarteras(
+        IQueryable<Zentinela.Core.Entities.UltimoEstadoTitular> q,
+        int? carteraID, List<int>? carteraIDs)
+    {
+        if (carteraID.HasValue)     return q.Where(u => u.CarteraID == carteraID.Value);
+        if (carteraIDs is not null) return q.Where(u => carteraIDs.Contains(u.CarteraID));
+        return q;
     }
 
     private async Task<List<FilaLiderDto>> ConstruirFilasLiderAsync(

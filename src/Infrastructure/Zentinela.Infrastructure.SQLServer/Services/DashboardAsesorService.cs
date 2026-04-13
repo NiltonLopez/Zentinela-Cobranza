@@ -96,21 +96,24 @@ public class DashboardAsesorService : IDashboardAsesorService
     // ── Rendimiento ───────────────────────────────────────────────────────────
     private async Task<RendimientoAsesorDto> ObtenerRendimientoAsync(int agenteID)
     {
-        // Fecha del reporte = el último ciclo de actualización registrado para este agente
+        // Fecha del reporte = último día con gestión registrada para este agente
+        var ultimaFechaGestion = await _callCenter.UltimosEstadosTitular
+            .Where(u => u.AgenteID == agenteID)
+            .MaxAsync(u => u.FechaUltimaGestion);
+
+        // FechaActualizacion es solo informativa (cuándo corrió el ETL)
         var fechaActualizacion = await _callCenter.UltimosEstadosTitular
             .Where(u => u.AgenteID == agenteID)
             .MaxAsync(u => (DateTime?)u.FechaActualizacion);
 
-        if (fechaActualizacion is null)
-            return new RendimientoAsesorDto { FechaActualizacion = null };
+        if (ultimaFechaGestion is null)
+            return new RendimientoAsesorDto { FechaActualizacion = fechaActualizacion };
 
-        var fechaReporte = DateOnly.FromDateTime(fechaActualizacion.Value);
-
-        // Métricas: fuente HistoricoEstadoTitular filtrado por agente y día del reporte
-        var perfiles = await _callCenter.HistoricoEstadosTitular
+        // Métricas: UltimoEstadoTitular filtrado por agente y último día gestionado
+        var perfiles = await _callCenter.UltimosEstadosTitular
             .AsNoTracking()
-            .Where(h => h.AgenteID == agenteID && h.FechaUltimaGestion == fechaReporte)
-            .Select(h => h.UltimoPerfil)
+            .Where(u => u.AgenteID == agenteID && u.FechaUltimaGestion == ultimaFechaGestion)
+            .Select(u => u.UltimoPerfil)
             .ToListAsync();
 
         var totalGestiones = perfiles.Count;

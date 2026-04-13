@@ -3,6 +3,8 @@ namespace Zentinela.Application.DTOs.Dashboard;
 public class MetricasDirectorDto
 {
     public DateTime? FechaActualizacion  { get; set; }
+    public DateOnly  FechaDesde          { get; set; }
+    public DateOnly  FechaHasta          { get; set; }
     public int       TotalGestiones      { get; set; }
     public decimal   TasaContactabilidad { get; set; }
     public decimal   TasaEfectividad     { get; set; }

@@ -8,17 +8,82 @@ import {
 import type { FilaLiderDto, FilaAsesorDto } from '../../types/dashboard';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
+type Preset = 'ultimo' | 'hoy' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
+
+interface Rango { desde: string; hasta: string; }
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isoHoy(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isoFecha(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+// Cuando preset es 'ultimo', desde y hasta son undefined → backend resuelve el último ciclo
+function calcularRango(preset: Preset, customDesde: string, customHasta: string): Rango | null {
+  if (preset === 'ultimo') return null; // sin fechas → backend usa MAX(FechaActualizacion)
+  const hoy = new Date();
+  switch (preset) {
+    case 'hoy':
+      return { desde: isoHoy(), hasta: isoHoy() };
+    case 'ciclo': {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return { desde: isoFecha(inicio), hasta: isoHoy() };
+    }
+    case 'mes-pasado': {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+      return { desde: isoFecha(inicio), hasta: isoFecha(fin) };
+    }
+    case '7d': {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - 6);
+      return { desde: isoFecha(inicio), hasta: isoHoy() };
+    }
+    case '30d': {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - 29);
+      return { desde: isoFecha(inicio), hasta: isoHoy() };
+    }
+    case 'custom':
+      return { desde: customDesde || isoHoy(), hasta: customHasta || isoHoy() };
+  }
+}
 
 function pct(valor: number): string {
   return `${(valor * 100).toFixed(1)}%`;
 }
 
-function formatearFecha(iso: string | null): string {
+function formatearFechaCorta(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function formatearFechaHora(iso: string | null): string {
   if (!iso) return 'Sin datos';
   const fecha = new Date(iso);
-  return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return fecha.toLocaleDateString('es-CO', {
+    day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
+
+// ── Constantes de presets ─────────────────────────────────────────────────────
+
+const PRESETS: { valor: Preset; label: string }[] = [
+  { valor: 'ultimo',     label: 'Último ciclo' },
+  { valor: 'hoy',        label: 'Hoy' },
+  { valor: 'ciclo',      label: 'Este mes' },
+  { valor: 'mes-pasado', label: 'Mes pasado' },
+  { valor: '7d',         label: 'Últimos 7 días' },
+  { valor: '30d',        label: 'Últimos 30 días' },
+  { valor: 'custom',     label: 'Personalizado' },
+];
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
@@ -167,6 +232,13 @@ export function DashboardDirectorPage() {
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
   const [carteraNombre, setCarteraNombre] = useState<string>('');
 
+  // Selector de fechas
+  const [preset,      setPreset]      = useState<Preset>('ultimo');
+  const [customDesde, setCustomDesde] = useState<string>('');
+  const [customHasta, setCustomHasta] = useState<string>('');
+
+  const rango = calcularRango(preset, customDesde, customHasta);
+
   // Dropdowns
   const { data: lideres = [] } = useQuery({
     queryKey: ['director-lideres'],
@@ -181,14 +253,13 @@ export function DashboardDirectorPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Dashboard
+  // Dashboard — rango null → backend usa último ciclo
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard-director', liderID, carteraID],
-    queryFn: () => obtenerDashboardDirector(liderID, carteraID),
+    queryKey: ['dashboard-director', liderID, carteraID, rango?.desde ?? null, rango?.hasta ?? null],
+    queryFn: () => obtenerDashboardDirector(liderID, carteraID, rango?.desde, rango?.hasta),
     staleTime: 3 * 60 * 1000,
   });
 
-  // Título del breadcrumb según filtro activo
   const tituloFiltro = carteraNombre
     ? carteraNombre
     : liderNombre
@@ -230,8 +301,28 @@ export function DashboardDirectorPage() {
     }
   };
 
-  const mostrarDesgloseLider = !liderID && (data?.filasLider?.length ?? 0) > 0;
+  const limpiarFiltros = () => {
+    setLiderID(null);
+    setLiderNombre('');
+    setCarteraID(null);
+    setCarteraNombre('');
+  };
+
+  const mostrarDesgloseLider  = !liderID && (data?.filasLider?.length ?? 0) > 0;
   const mostrarDesgloseAsesor = liderID !== null;
+
+  // Estilo de botón preset
+  const estiloBtnPreset = (activo: boolean): React.CSSProperties => ({
+    padding: '5px 12px',
+    borderRadius: '20px',
+    border: '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
+    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    fontSize: '12px',
+    fontWeight: activo ? 600 : 400,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
@@ -250,62 +341,122 @@ export function DashboardDirectorPage() {
       <div style={{
         background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
         borderRadius: '8px', padding: '16px 20px',
-        display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap',
+        display: 'flex', flexDirection: 'column', gap: '14px',
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
-          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Líder
-          </label>
-          <select
-            value={liderID ?? ''}
-            onChange={handleCambiarLider}
-            style={{
-              padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-              border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-              color: 'var(--z-text-primary)', outline: 'none',
-            }}
-          >
-            <option value="">Todos los líderes</option>
-            {lideres.map(l => (
-              <option key={l.id} value={l.id}>{l.nombre}</option>
-            ))}
-          </select>
-        </div>
-
-        {liderID !== null && (
+        {/* Fila 1: Líder + Cartera */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Cartera
+              Líder
             </label>
             <select
-              value={carteraID ?? ''}
-              onChange={handleCambiarCartera}
+              value={liderID ?? ''}
+              onChange={handleCambiarLider}
               style={{
                 padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
                 border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
                 color: 'var(--z-text-primary)', outline: 'none',
               }}
             >
-              <option value="">Todas las carteras del líder</option>
-              {carteras.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
+              <option value="">Todos los líderes</option>
+              {lideres.map(l => (
+                <option key={l.id} value={l.id}>{l.nombre}</option>
               ))}
             </select>
           </div>
-        )}
 
-        {(liderID !== null || carteraID !== null) && (
-          <button
-            onClick={() => { setLiderID(null); setLiderNombre(''); setCarteraID(null); setCarteraNombre(''); }}
-            style={{
-              padding: '7px 14px', borderRadius: '6px',
-              border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-              color: 'var(--z-text-muted)', fontSize: '12px', cursor: 'pointer',
-            }}
-          >
-            Limpiar filtros
-          </button>
-        )}
+          {liderID !== null && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Cartera
+              </label>
+              <select
+                value={carteraID ?? ''}
+                onChange={handleCambiarCartera}
+                style={{
+                  padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
+                  border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                  color: 'var(--z-text-primary)', outline: 'none',
+                }}
+              >
+                <option value="">Todas las carteras del líder</option>
+                {carteras.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombreCartera}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {(liderID !== null || carteraID !== null) && (
+            <button
+              onClick={limpiarFiltros}
+              style={{
+                padding: '7px 14px', borderRadius: '6px',
+                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                color: 'var(--z-text-muted)', fontSize: '12px', cursor: 'pointer',
+              }}
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+
+        {/* Fila 2: Selector de período */}
+        <div>
+          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+            Período
+          </p>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {PRESETS.map(p => (
+              <button
+                key={p.valor}
+                onClick={() => setPreset(p.valor)}
+                style={estiloBtnPreset(preset === p.valor)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date pickers para rango personalizado */}
+          {/* Indicador visual del rango activo cuando lo resuelve el backend */}
+          {preset === 'ultimo' && data && (
+            <p style={{ fontSize: '12px', color: 'var(--z-text-muted)', marginTop: '8px' }}>
+              Datos del ciclo: <strong>{formatearFechaCorta(data.metricas.fechaDesde)}</strong>
+            </p>
+          )}
+
+          {preset === 'custom' && (
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Desde</label>
+                <input
+                  type="date"
+                  value={customDesde}
+                  onChange={e => setCustomDesde(e.target.value)}
+                  style={{
+                    padding: '6px 10px', fontSize: '13px', borderRadius: '6px',
+                    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                    color: 'var(--z-text-primary)', outline: 'none',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Hasta</label>
+                <input
+                  type="date"
+                  value={customHasta}
+                  onChange={e => setCustomHasta(e.target.value)}
+                  style={{
+                    padding: '6px 10px', fontSize: '13px', borderRadius: '6px',
+                    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                    color: 'var(--z-text-primary)', outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Error */}
@@ -322,12 +473,19 @@ export function DashboardDirectorPage() {
       {/* Métricas */}
       <section>
         <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)' }}>
-            Métricas del ciclo
-          </h2>
+          <div>
+            <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '2px' }}>
+              Métricas del período
+            </h2>
+            {data && (
+              <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
+                {formatearFechaCorta(data.metricas.fechaDesde)} — {formatearFechaCorta(data.metricas.fechaHasta)}
+              </p>
+            )}
+          </div>
           {data && (
             <span style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Actualizado: {formatearFecha(data.metricas.fechaActualizacion)}
+              Actualizado: {formatearFechaHora(data.metricas.fechaActualizacion)}
             </span>
           )}
         </div>
@@ -339,7 +497,7 @@ export function DashboardDirectorPage() {
             <TarjetaMetrica
               label="Gestiones"
               valor={data.metricas.totalGestiones.toLocaleString('es-CO')}
-              sub="Total de gestiones en el ciclo"
+              sub="Total de gestiones en el período"
             />
             <TarjetaMetrica
               label="Contactabilidad"
