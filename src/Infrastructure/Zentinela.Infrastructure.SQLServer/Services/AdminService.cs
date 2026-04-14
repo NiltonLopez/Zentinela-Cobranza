@@ -117,6 +117,28 @@ public class AdminService : IAdminService
         await _callCenter.SaveChangesAsync();
     }
 
+    public async Task<SupervisorDto?> ObtenerSupervisorActualAsync(int usuarioID)
+    {
+        var usuario = await _userManager.FindByIdAsync(usuarioID.ToString());
+        if (usuario == null) return null;
+
+        var empleado = await _rrhh.Empleados
+            .FirstOrDefaultAsync(e => e.NumeroDocumento == usuario.NumeroDocumento);
+        if (empleado?.IDSupervisor == null) return null;
+
+        return await _rrhh.Empleados
+            .Include(e => e.Cargo)
+            .Where(e => e.ID == empleado.IDSupervisor)
+            .Select(e => new SupervisorDto
+            {
+                Id              = e.ID,
+                NombreCompleto  = e.Nombre + " " + e.Apellidos,
+                Cargo           = e.Cargo.Descripcion,
+                NumeroDocumento = e.NumeroDocumento,
+            })
+            .FirstOrDefaultAsync();
+    }
+
     public async Task InactivarUsuarioAsync(int usuarioID)
     {
         var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())

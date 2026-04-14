@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listarUsuarios, resetPassword, listarSupervisores, reasignarSupervisor, inactivarUsuario } from '../../api/adminApi';
+import { listarUsuarios, resetPassword, listarSupervisores, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
 
 const BADGE_COLORES: Record<string, { bg: string; color: string }> = {
@@ -188,6 +188,7 @@ function ModalInactivar({
 function ModalReasignar({
   usuario,
   supervisores,
+  supervisorActual,
   cargandoSupervisores,
   cargando,
   onConfirmar,
@@ -195,6 +196,7 @@ function ModalReasignar({
 }: {
   usuario: UsuarioAdmin;
   supervisores: Supervisor[];
+  supervisorActual: Supervisor | null | undefined;
   cargandoSupervisores: boolean;
   cargando: boolean;
   onConfirmar: (supervisorId: number) => void;
@@ -234,10 +236,32 @@ function ModalReasignar({
             <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '4px', color: 'var(--z-text-primary)' }}>
               Reasignar Supervisor
             </p>
-            <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '12px', lineHeight: 1.5 }}>
               Selecciona el nuevo supervisor para{' '}
               <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>.
             </p>
+
+            {/* Supervisor actual */}
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              background: 'var(--z-bg-surface)',
+              border: '0.5px solid var(--z-border)',
+              marginBottom: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              <span style={{ color: 'var(--z-text-muted)', flexShrink: 0 }}>Supervisor actual:</span>
+              {supervisorActual
+                ? <span style={{ fontWeight: 600, color: 'var(--z-text-primary)' }}>
+                    {supervisorActual.nombreCompleto}
+                    <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}> · {supervisorActual.cargo}</span>
+                  </span>
+                : <span style={{ color: 'var(--z-text-muted)', fontStyle: 'italic' }}>Sin asignar</span>
+              }
+            </div>
 
             {/* Buscador */}
             <input
@@ -436,6 +460,12 @@ export function GestionPersonalPage() {
   const { data: supervisores = [], isLoading: cargandoSupervisores } = useQuery({
     queryKey: ['admin-supervisores'],
     queryFn: listarSupervisores,
+    enabled: !!usuarioParaReasignar,
+  });
+
+  const { data: supervisorActual, isLoading: cargandoSupervisorActual } = useQuery({
+    queryKey: ['admin-supervisor-actual', usuarioParaReasignar?.id],
+    queryFn: () => obtenerSupervisorActual(usuarioParaReasignar!.id),
     enabled: !!usuarioParaReasignar,
   });
 
@@ -727,6 +757,7 @@ export function GestionPersonalPage() {
         <ModalReasignar
           usuario={usuarioParaReasignar}
           supervisores={supervisores}
+          supervisorActual={cargandoSupervisorActual ? undefined : (supervisorActual ?? null)}
           cargandoSupervisores={cargandoSupervisores}
           cargando={mutationReasignar.isPending}
           onConfirmar={(nuevoSupervisorId) =>

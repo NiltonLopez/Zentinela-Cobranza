@@ -47,6 +47,16 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Retorna el supervisor actual del usuario según Empleado.IDSupervisor en DBRecursosHumanos.
+    /// </summary>
+    [HttpGet("usuarios/{id:int}/supervisor")]
+    public async Task<IActionResult> ObtenerSupervisorActual(int id)
+    {
+        var supervisor = await _adminService.ObtenerSupervisorActualAsync(id);
+        return Ok(supervisor); // null = sin supervisor asignado
+    }
+
+    /// <summary>
     /// Retorna empleados con cargos supervisores (CargoID ∈ {2,7,8,13,18}).
     /// </summary>
     [HttpGet("supervisores")]

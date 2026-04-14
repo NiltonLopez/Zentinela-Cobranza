@@ -28,6 +28,12 @@ public interface IAdminService
     Task ReasignarSupervisorAsync(int usuarioID, int nuevoSupervisorEmpleadoId);
 
     /// <summary>
+    /// Retorna el supervisor actual del usuario (Empleado.IDSupervisor → Empleado).
+    /// Devuelve null si no tiene supervisor asignado o si el empleado no existe en RRHH.
+    /// </summary>
+    Task<SupervisorDto?> ObtenerSupervisorActualAsync(int usuarioID);
+
+    /// <summary>
     /// Inactiva un usuario: pone EstadoEmpleado = false en DBRecursosHumanos
     /// y elimina el ApplicationUser de Zentinela.
     /// </summary>

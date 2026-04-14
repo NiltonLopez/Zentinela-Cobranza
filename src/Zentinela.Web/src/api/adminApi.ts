@@ -15,6 +15,11 @@ export const listarSupervisores = async (): Promise<Supervisor[]> => {
   return response.data;
 };
 
+export const obtenerSupervisorActual = async (usuarioId: number): Promise<Supervisor | null> => {
+  const response = await api.get<Supervisor | null>(`/api/admin/usuarios/${usuarioId}/supervisor`);
+  return response.data;
+};
+
 export const reasignarSupervisor = async (usuarioId: number, nuevoSupervisorId: number): Promise<void> => {
   await api.post(`/api/admin/usuarios/${usuarioId}/reasignar-supervisor`, { nuevoSupervisorId });
 };
