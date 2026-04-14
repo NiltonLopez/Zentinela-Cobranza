@@ -54,7 +54,7 @@ export const MODULOS: Modulo[] = [
     subModulos: [
       { key: 'gestion',  label: 'Gestión de Asignaciones', path: '/asignaciones/gestion' },
       { key: 'reportes', label: 'Cargue de Reportes',      path: '/asignaciones/reportes' },
-      { key: 'carteras', label: 'Gestión de Carteras',     path: '/asignaciones/carteras' },
+      { key: 'carteras', label: 'Gestión de Líderes y Carteras', path: '/asignaciones/carteras' },
       { key: 'personal', label: 'Gestión de Personal',     path: '/asignaciones/personal' },
     ],
   },

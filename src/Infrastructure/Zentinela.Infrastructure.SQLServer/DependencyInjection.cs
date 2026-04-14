@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddScoped<ICalificadorCarteraService, CalificadorCarteraService>();
         services.AddScoped<IAsignacionMasivaService, AsignacionMasivaService>();
         services.AddScoped<ICargueReporteService, CargueReporteService>();
+        services.AddScoped<IGestionCarterasService, GestionCarterasService>();
 
         return services;
     }
