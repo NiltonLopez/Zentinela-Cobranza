@@ -35,6 +35,9 @@ public class AdminService : IAdminService
 
         var resultado = new List<UsuarioAdminDto>();
 
+        // GetRolesAsync requiere una llamada por usuario (limitación de UserManager).
+        // Para volúmenes grandes se podría optimizar con una query directa a AspNetUserRoles,
+        // pero el número de usuarios administrativos es acotado.
         foreach (var u in usuarios)
         {
             var roles = await _userManager.GetRolesAsync(u);
@@ -96,6 +99,8 @@ public class AdminService : IAdminService
         var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())
             ?? throw new InvalidOperationException("Usuario no encontrado.");
 
+        // El puente entre Zentinela y RRHH es NumeroDocumento (cédula).
+        // ApplicationUser.NumeroDocumento == Empleado.NumeroDocumento (long).
         var empleado = await _rrhh.Empleados
             .FirstOrDefaultAsync(e => e.NumeroDocumento == usuario.NumeroDocumento)
             ?? throw new InvalidOperationException("Empleado no encontrado en DBRecursosHumanos.");
@@ -106,11 +111,13 @@ public class AdminService : IAdminService
         if (!nuevoSupervisorExiste)
             throw new InvalidOperationException("El supervisor seleccionado no existe.");
 
-        // Actualizar supervisor en RRHH
+        // Actualizar campo recursivo IDSupervisor en RRHH (FK a Empleado.ID del mismo servicio)
         empleado.IDSupervisor = nuevoSupervisorEmpleadoId;
         await _rrhh.SaveChangesAsync();
 
-        // Limpiar todas las asignaciones de cartera del agente
+        // Limpiar todas las asignaciones de cartera del agente en DBCallCenter.
+        // Al cambiar de supervisor las carteras quedan desactualizadas; el nuevo supervisor
+        // deberá reasignarlas. Se usa el NumeroDocumento como AgenteID (convención del sistema).
         var asignaciones = _callCenter.CarteraAgentes
             .Where(ca => ca.AgenteID == empleado.NumeroDocumento);
         _callCenter.CarteraAgentes.RemoveRange(asignaciones);
@@ -144,7 +151,9 @@ public class AdminService : IAdminService
         var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())
             ?? throw new InvalidOperationException("Usuario no encontrado.");
 
-        // Poner EstadoEmpleado = false en DBRecursosHumanos
+        // Marcar inactivo en RRHH solo si el empleado existe en esa BD.
+        // Es posible que un usuario de Zentinela no tenga registro en RRHH
+        // (p.ej. usuarios creados manualmente), en ese caso se omite este paso.
         var empleado = await _rrhh.Empleados
             .FirstOrDefaultAsync(e => e.NumeroDocumento == usuario.NumeroDocumento);
 
@@ -154,7 +163,8 @@ public class AdminService : IAdminService
             await _rrhh.SaveChangesAsync();
         }
 
-        // Eliminar el usuario de Zentinela
+        // Eliminar el ApplicationUser de DBZentinela (Identity).
+        // Cascada de Identity elimina también AspNetUserRoles y AspNetUserClaims.
         var resultado = await _userManager.DeleteAsync(usuario);
         if (!resultado.Succeeded)
         {

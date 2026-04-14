@@ -540,6 +540,133 @@ Nombre del archivo: `BaseMadre_<CarteraID>_<timestamp>.xlsx`.
 
 ---
 
+---
+
+## GET /api/admin/usuarios
+
+Lista todos los usuarios registrados en Zentinela con su rol y estado de contraseña.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response body — 200 OK
+
+```json
+[
+  {
+    "id": 1,
+    "nombreCompleto": "Juan Pérez",
+    "usuario": "juan.perez",
+    "numeroDocumento": 1234567890,
+    "rol": "Líder",
+    "requiereCambioPassword": false
+  }
+]
+```
+
+---
+
+## POST /api/admin/usuarios/{id}/reset-password
+
+Restablece la contraseña del usuario a su número de cédula y activa el flag de cambio obligatorio en el próximo login.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response — 200 OK
+
+```json
+{ "mensaje": "Contraseña restablecida correctamente. El usuario deberá cambiarla en su próximo ingreso." }
+```
+
+---
+
+## GET /api/admin/usuarios/{id}/supervisor
+
+Retorna el supervisor actual del usuario según `Empleado.IDSupervisor` en DBRecursosHumanos.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response — 200 OK
+
+```json
+{
+  "id": 42,
+  "nombreCompleto": "Laura Gómez",
+  "cargo": "Líder de Cobranza",
+  "numeroDocumento": 9876543210
+}
+```
+
+> Devuelve `null` si el usuario no tiene supervisor asignado o si no existe en DBRecursosHumanos.
+
+---
+
+## GET /api/admin/supervisores
+
+Retorna los empleados activos con cargos que pueden supervisar (`CargoID` ∈ {2, 7, 8, 13, 18}).
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response — 200 OK
+
+```json
+[
+  {
+    "id": 42,
+    "nombreCompleto": "Laura Gómez",
+    "cargo": "Líder de Cobranza",
+    "numeroDocumento": 9876543210
+  }
+]
+```
+
+---
+
+## POST /api/admin/usuarios/{id}/reasignar-supervisor
+
+Reasigna el supervisor de un usuario. Actualiza `Empleado.IDSupervisor` en DBRecursosHumanos y elimina todas sus filas en `Cartera_Agente` (el nuevo supervisor deberá reasignarle carteras).
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Request body
+
+```json
+{ "nuevoSupervisorId": 42 }
+```
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `nuevoSupervisorId` | `int` | `Empleado.ID` del nuevo supervisor en DBRecursosHumanos |
+
+### Response — 200 OK
+
+```json
+{ "mensaje": "Supervisor reasignado correctamente. Las asignaciones de cartera anteriores fueron eliminadas." }
+```
+
+---
+
+## DELETE /api/admin/usuarios/{id}
+
+Inactiva un usuario: marca `EstadoEmpleado = false` en DBRecursosHumanos y elimina el `ApplicationUser` de Zentinela (incluye roles y claims por cascada de Identity).
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+> Si el usuario no tiene registro en DBRecursosHumanos, solo se elimina de Zentinela.
+
+### Response — 200 OK
+
+```json
+{ "mensaje": "Usuario inactivado y eliminado de Zentinela correctamente." }
+```
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`
