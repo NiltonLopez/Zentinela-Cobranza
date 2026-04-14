@@ -18,3 +18,7 @@ export const listarSupervisores = async (): Promise<Supervisor[]> => {
 export const reasignarSupervisor = async (usuarioId: number, nuevoSupervisorId: number): Promise<void> => {
   await api.post(`/api/admin/usuarios/${usuarioId}/reasignar-supervisor`, { nuevoSupervisorId });
 };
+
+export const inactivarUsuario = async (id: number): Promise<void> => {
+  await api.delete(`/api/admin/usuarios/${id}`);
+};

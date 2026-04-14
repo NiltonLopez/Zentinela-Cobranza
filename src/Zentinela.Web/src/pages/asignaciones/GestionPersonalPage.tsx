@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listarUsuarios, resetPassword, listarSupervisores, reasignarSupervisor } from '../../api/adminApi';
+import { listarUsuarios, resetPassword, listarSupervisores, reasignarSupervisor, inactivarUsuario } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
 
 const BADGE_COLORES: Record<string, { bg: string; color: string }> = {
@@ -14,6 +14,7 @@ function BadgeRol({ rol }: { rol: string }) {
   const colores = BADGE_COLORES[rol] ?? { bg: '#F5F5F4', color: '#78716C' };
   return (
     <span style={{
+      display: 'inline-block',
       padding: '2px 8px',
       borderRadius: '4px',
       fontSize: '11px',
@@ -100,6 +101,90 @@ function ModalConfirmar({
   );
 }
 
+function ModalInactivar({
+  usuario,
+  onConfirmar,
+  onCancelar,
+  cargando,
+}: {
+  usuario: UsuarioAdmin;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+  cargando: boolean;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '32px',
+        maxWidth: '400px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--z-text-primary)' }}>
+          Inactivar usuario
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '12px', lineHeight: 1.5 }}>
+          Se inactivará a <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong> y su cuenta será eliminada de Zentinela.
+        </p>
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: '8px',
+          fontSize: '12px',
+          background: '#fff5f5',
+          border: '0.5px solid #fecaca',
+          color: '#dc2626',
+          marginBottom: '24px',
+          lineHeight: 1.5,
+        }}>
+          Esta acción no se puede deshacer. El empleado quedará inactivo en RRHH y no podrá iniciar sesión.
+        </div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancelar}
+            disabled={cargando}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: '1px solid var(--z-border)',
+              background: 'transparent',
+              color: 'var(--z-text-muted)',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirmar}
+            disabled={cargando}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: 'none',
+              background: '#dc2626',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: cargando ? 'not-allowed' : 'pointer',
+              opacity: cargando ? 0.7 : 1,
+            }}
+          >
+            {cargando ? 'Inactivando...' : 'Inactivar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalReasignar({
   usuario,
   supervisores,
@@ -117,6 +202,16 @@ function ModalReasignar({
 }) {
   const [paso, setPaso] = useState<'seleccion' | 'confirmacion'>('seleccion');
   const [supervisorSeleccionado, setSupervisorSeleccionado] = useState<Supervisor | null>(null);
+  const [busqueda, setBusqueda] = useState('');
+
+  const supervisoresFiltrados = supervisores.filter((s) => {
+    const q = busqueda.toLowerCase();
+    return (
+      s.nombreCompleto.toLowerCase().includes(q) ||
+      s.cargo.toLowerCase().includes(q) ||
+      s.numeroDocumento.toString().includes(q)
+    );
+  });
 
   return (
     <div style={{
@@ -144,9 +239,31 @@ function ModalReasignar({
               <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>.
             </p>
 
+            {/* Buscador */}
+            <input
+              type="text"
+              placeholder="Buscar por nombre, cargo o cédula..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '7px 11px',
+                fontSize: '12px',
+                border: '1px solid var(--z-border)',
+                borderRadius: '6px',
+                background: 'var(--z-bg-card)',
+                color: 'var(--z-text-primary)',
+                outline: 'none',
+                marginBottom: '10px',
+                boxSizing: 'border-box',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--z-brand)'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--z-border)'; }}
+            />
+
             {/* Lista de supervisores */}
             <div style={{
-              maxHeight: '260px',
+              maxHeight: '240px',
               overflowY: 'auto',
               border: '0.5px solid var(--z-border)',
               borderRadius: '8px',
@@ -162,7 +279,12 @@ function ModalReasignar({
                   No hay supervisores disponibles.
                 </div>
               )}
-              {supervisores.map((s, i) => {
+              {!cargandoSupervisores && supervisores.length > 0 && supervisoresFiltrados.length === 0 && (
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+                  Sin resultados para la búsqueda.
+                </div>
+              )}
+              {supervisoresFiltrados.map((s, i) => {
                 const seleccionado = supervisorSeleccionado?.id === s.id;
                 return (
                   <div
@@ -171,7 +293,7 @@ function ModalReasignar({
                     style={{
                       padding: '12px 16px',
                       cursor: 'pointer',
-                      borderBottom: i < supervisores.length - 1 ? '0.5px solid var(--z-border)' : 'none',
+                      borderBottom: i < supervisoresFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
                       background: seleccionado ? 'var(--z-brand-subtle, #EFF6FF)' : 'transparent',
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -302,6 +424,7 @@ export function GestionPersonalPage() {
   const [busqueda, setBusqueda] = useState('');
   const [usuarioParaReset, setUsuarioParaReset] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaReasignar, setUsuarioParaReasignar] = useState<UsuarioAdmin | null>(null);
+  const [usuarioParaInactivar, setUsuarioParaInactivar] = useState<UsuarioAdmin | null>(null);
   const [feedback, setFeedback] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const queryClient = useQueryClient();
 
@@ -326,6 +449,19 @@ export function GestionPersonalPage() {
     onError: () => {
       setFeedback({ tipo: 'error', texto: 'No se pudo restablecer la contraseña. Intenta de nuevo.' });
       setUsuarioParaReset(null);
+    },
+  });
+
+  const mutationInactivar = useMutation({
+    mutationFn: (id: number) => inactivarUsuario(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-usuarios'] });
+      setFeedback({ tipo: 'exito', texto: `${usuarioParaInactivar?.nombreCompleto} fue inactivado y eliminado de Zentinela.` });
+      setUsuarioParaInactivar(null);
+    },
+    onError: () => {
+      setFeedback({ tipo: 'error', texto: 'No se pudo inactivar el usuario. Intenta de nuevo.' });
+      setUsuarioParaInactivar(null);
     },
   });
 
@@ -421,7 +557,8 @@ export function GestionPersonalPage() {
         {/* Encabezado tabla */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 160px 100px 120px 220px',
+          gridTemplateColumns: '1fr 160px 120px 140px 320px',
+          columnGap: '16px',
           padding: '10px 16px',
           borderBottom: '0.5px solid var(--z-border)',
           background: 'var(--z-bg-surface)',
@@ -456,7 +593,8 @@ export function GestionPersonalPage() {
             key={u.id}
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 160px 100px 120px 220px',
+              gridTemplateColumns: '1fr 160px 120px 140px 320px',
+          columnGap: '16px',
               padding: '12px 16px',
               alignItems: 'center',
               borderBottom: i < usuariosFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
@@ -535,6 +673,30 @@ export function GestionPersonalPage() {
               >
                 Reasignar supervisor
               </button>
+              <button
+                onClick={() => setUsuarioParaInactivar(u)}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '5px',
+                  border: '1px solid var(--z-border)',
+                  background: 'transparent',
+                  fontSize: '11px',
+                  color: 'var(--z-text-muted)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s',
+                }}
+                onMouseOver={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = '#dc2626';
+                  (e.currentTarget as HTMLElement).style.color = '#dc2626';
+                }}
+                onMouseOut={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--z-border)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
+                }}
+              >
+                Inactivar
+              </button>
             </div>
           </div>
         ))}
@@ -547,6 +709,16 @@ export function GestionPersonalPage() {
           cargando={mutationReset.isPending}
           onConfirmar={() => mutationReset.mutate(usuarioParaReset.id)}
           onCancelar={() => setUsuarioParaReset(null)}
+        />
+      )}
+
+      {/* Modal inactivar usuario */}
+      {usuarioParaInactivar && (
+        <ModalInactivar
+          usuario={usuarioParaInactivar}
+          cargando={mutationInactivar.isPending}
+          onConfirmar={() => mutationInactivar.mutate(usuarioParaInactivar.id)}
+          onCancelar={() => setUsuarioParaInactivar(null)}
         />
       )}
 

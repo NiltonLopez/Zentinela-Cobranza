@@ -116,4 +116,28 @@ public class AdminService : IAdminService
         _callCenter.CarteraAgentes.RemoveRange(asignaciones);
         await _callCenter.SaveChangesAsync();
     }
+
+    public async Task InactivarUsuarioAsync(int usuarioID)
+    {
+        var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())
+            ?? throw new InvalidOperationException("Usuario no encontrado.");
+
+        // Poner EstadoEmpleado = false en DBRecursosHumanos
+        var empleado = await _rrhh.Empleados
+            .FirstOrDefaultAsync(e => e.NumeroDocumento == usuario.NumeroDocumento);
+
+        if (empleado != null)
+        {
+            empleado.EstadoEmpleado = false;
+            await _rrhh.SaveChangesAsync();
+        }
+
+        // Eliminar el usuario de Zentinela
+        var resultado = await _userManager.DeleteAsync(usuario);
+        if (!resultado.Succeeded)
+        {
+            var errores = string.Join(", ", resultado.Errors.Select(e => e.Description));
+            throw new InvalidOperationException($"No se pudo eliminar el usuario: {errores}");
+        }
+    }
 }

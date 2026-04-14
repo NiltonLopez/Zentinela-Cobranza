@@ -72,4 +72,22 @@ public class AdminController : ControllerBase
             return BadRequest(new { mensaje = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Inactiva un usuario: pone EstadoEmpleado = false en DBRecursosHumanos
+    /// y elimina el ApplicationUser de Zentinela.
+    /// </summary>
+    [HttpDelete("usuarios/{id:int}")]
+    public async Task<IActionResult> InactivarUsuario(int id)
+    {
+        try
+        {
+            await _adminService.InactivarUsuarioAsync(id);
+            return Ok(new { mensaje = "Usuario inactivado y eliminado de Zentinela correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
 }

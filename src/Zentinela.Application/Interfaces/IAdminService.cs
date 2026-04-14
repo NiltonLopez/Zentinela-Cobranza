@@ -26,4 +26,10 @@ public interface IAdminService
     /// todas sus asignaciones en Cartera_Agente.
     /// </summary>
     Task ReasignarSupervisorAsync(int usuarioID, int nuevoSupervisorEmpleadoId);
+
+    /// <summary>
+    /// Inactiva un usuario: pone EstadoEmpleado = false en DBRecursosHumanos
+    /// y elimina el ApplicationUser de Zentinela.
+    /// </summary>
+    Task InactivarUsuarioAsync(int usuarioID);
 }
