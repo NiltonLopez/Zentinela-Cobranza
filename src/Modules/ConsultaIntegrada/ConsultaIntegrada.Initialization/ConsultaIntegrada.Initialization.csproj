@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ConsultaIntegrada.Application\ConsultaIntegrada.Application.csproj" />
+    <ProjectReference Include="..\ConsultaIntegrada.Core\ConsultaIntegrada.Core.csproj" />
+    <ProjectReference Include="..\ConsultaIntegrada.Infrastructure\ConsultaIntegrada.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
