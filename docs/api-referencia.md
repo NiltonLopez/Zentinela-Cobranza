@@ -667,6 +667,133 @@ Inactiva un usuario: marca `EstadoEmpleado = false` en DBRecursosHumanos y elimi
 
 ---
 
+---
+
+## GET /api/gestion-carteras/relaciones
+
+Lista todas las relaciones Líder_Cartera con el conteo de titulares asignados en Titular_Cartera.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response body — 200 OK
+
+```json
+[
+  {
+    "liderID": 3,
+    "carteraID": 12,
+    "nombreLider": "Laura Gómez",
+    "nombreCartera": "CARTERA VENCIDA 2024",
+    "totalAsignaciones": 438
+  }
+]
+```
+
+---
+
+## GET /api/gestion-carteras/lideres
+
+Lista todos los líderes activos para el dropdown de creación de relaciones.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response body — 200 OK
+
+```json
+[
+  { "id": 3, "nombre": "Laura Gómez" }
+]
+```
+
+---
+
+## GET /api/gestion-carteras/carteras/buscar
+
+Busca carteras por nombre para el autocompletado (máximo 10 resultados).
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Query params
+
+| Param | Tipo | Descripción |
+|-------|------|-------------|
+| `q` | `string` | Texto a buscar en `NombreCartera` |
+
+### Response body — 200 OK
+
+```json
+[
+  { "id": 12, "nombreCartera": "CARTERA VENCIDA 2024" }
+]
+```
+
+---
+
+## POST /api/gestion-carteras/relaciones
+
+Crea una relación Líder_Cartera. Si `carteraID` es null, crea primero una nueva Cartera con `nombreCartera` y luego la relación. Valida que la relación no exista ya y que el nombre de cartera nuevo no sea duplicado.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Request body
+
+```json
+{ "carteraID": 12, "liderID": 3 }
+```
+
+_o para cartera nueva:_
+
+```json
+{ "nombreCartera": "NUEVA CARTERA 2026", "liderID": 3 }
+```
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `carteraID` | `int?` | ID de cartera existente. Mutuamente excluyente con `nombreCartera` |
+| `nombreCartera` | `string?` | Nombre para cartera nueva. Mutuamente excluyente con `carteraID` |
+| `liderID` | `int` | ID del líder al que se asigna la cartera |
+
+### Response — 200 OK
+
+```json
+{
+  "liderID": 3,
+  "carteraID": 12,
+  "nombreLider": "Laura Gómez",
+  "nombreCartera": "CARTERA VENCIDA 2024",
+  "totalAsignaciones": 0
+}
+```
+
+### Errores posibles — 400 Bad Request
+
+| Condición | Mensaje |
+|-----------|---------|
+| Relación ya existe | `"Esta relación ya existe."` |
+| Nombre de cartera duplicado | `"Ya existe una cartera con el nombre '...'."` |
+| Líder no encontrado | `"El líder seleccionado no existe."` |
+
+---
+
+## DELETE /api/gestion-carteras/relaciones/{liderID}/{carteraID}
+
+Elimina una relación Líder_Cartera. **No elimina** los registros de `Titular_Cartera` asociados — deben reasignarse manualmente.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`
+
+### Response — 200 OK
+
+```json
+{ "mensaje": "Relación eliminada correctamente." }
+```
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`

@@ -6,6 +6,11 @@ using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
+/// <summary>
+/// Gestión administrativa de relaciones Líder_Cartera en DBCallCenter.
+/// Permite listar, crear y eliminar vínculos entre líderes y carteras,
+/// así como crear carteras nuevas cuando aún no existen en el sistema.
+/// </summary>
 public class GestionCarterasService : IGestionCarterasService
 {
     private readonly CallCenterDbContext _context;
@@ -65,6 +70,10 @@ public class GestionCarterasService : IGestionCarterasService
     {
         int carteraID;
 
+        // Rama 1: el usuario seleccionó una cartera existente desde el autocompletado.
+        // Solo se crea la relación Lider_Cartera; la cartera ya existe en BD.
+        // Rama 2: el usuario escribió un nombre nuevo; se crea la Cartera primero
+        // y luego la relación. Se valida unicidad de nombre para evitar duplicados.
         if (dto.CarteraID.HasValue)
         {
             // Usar cartera existente
