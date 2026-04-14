@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listarUsuarios, resetPassword } from '../../api/adminApi';
-import type { UsuarioAdmin } from '../../types/admin';
+import { listarUsuarios, resetPassword, listarSupervisores, reasignarSupervisor } from '../../api/adminApi';
+import type { UsuarioAdmin, Supervisor } from '../../types/admin';
 
 const BADGE_COLORES: Record<string, { bg: string; color: string }> = {
   Admin:    { bg: '#FEF0EC', color: '#F54927' },
@@ -100,9 +100,208 @@ function ModalConfirmar({
   );
 }
 
+function ModalReasignar({
+  usuario,
+  supervisores,
+  cargandoSupervisores,
+  cargando,
+  onConfirmar,
+  onCancelar,
+}: {
+  usuario: UsuarioAdmin;
+  supervisores: Supervisor[];
+  cargandoSupervisores: boolean;
+  cargando: boolean;
+  onConfirmar: (supervisorId: number) => void;
+  onCancelar: () => void;
+}) {
+  const [paso, setPaso] = useState<'seleccion' | 'confirmacion'>('seleccion');
+  const [supervisorSeleccionado, setSupervisorSeleccionado] = useState<Supervisor | null>(null);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '32px',
+        maxWidth: '480px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        {paso === 'seleccion' ? (
+          <>
+            <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '4px', color: 'var(--z-text-primary)' }}>
+              Reasignar Supervisor
+            </p>
+            <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+              Selecciona el nuevo supervisor para{' '}
+              <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>.
+            </p>
+
+            {/* Lista de supervisores */}
+            <div style={{
+              maxHeight: '260px',
+              overflowY: 'auto',
+              border: '0.5px solid var(--z-border)',
+              borderRadius: '8px',
+              marginBottom: '20px',
+            }}>
+              {cargandoSupervisores && (
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+                  Cargando supervisores...
+                </div>
+              )}
+              {!cargandoSupervisores && supervisores.length === 0 && (
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+                  No hay supervisores disponibles.
+                </div>
+              )}
+              {supervisores.map((s, i) => {
+                const seleccionado = supervisorSeleccionado?.id === s.id;
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => setSupervisorSeleccionado(s)}
+                    style={{
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      borderBottom: i < supervisores.length - 1 ? '0.5px solid var(--z-border)' : 'none',
+                      background: seleccionado ? 'var(--z-brand-subtle, #EFF6FF)' : 'transparent',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      transition: 'background 0.1s',
+                    }}
+                  >
+                    <div>
+                      <p style={{
+                        fontSize: '13px',
+                        fontWeight: seleccionado ? 600 : 400,
+                        color: seleccionado ? 'var(--z-brand)' : 'var(--z-text-primary)',
+                        marginBottom: '2px',
+                      }}>
+                        {s.nombreCompleto}
+                      </p>
+                      <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>
+                        {s.cargo} · CC {s.numeroDocumento}
+                      </p>
+                    </div>
+                    {seleccionado && (
+                      <span style={{ fontSize: '16px', color: 'var(--z-brand)' }}>✓</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={onCancelar}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--z-border)',
+                  background: 'transparent',
+                  color: 'var(--z-text-muted)',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => setPaso('confirmacion')}
+                disabled={!supervisorSeleccionado}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'var(--z-brand)',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: supervisorSeleccionado ? 'pointer' : 'not-allowed',
+                  opacity: supervisorSeleccionado ? 1 : 0.4,
+                }}
+              >
+                Siguiente
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--z-text-primary)' }}>
+              Confirmar reasignación
+            </p>
+            <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '12px', lineHeight: 1.5 }}>
+              El supervisor de{' '}
+              <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>{' '}
+              será cambiado a{' '}
+              <strong style={{ color: 'var(--z-text-primary)' }}>{supervisorSeleccionado!.nombreCompleto}</strong>.
+            </p>
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              background: '#fffbeb',
+              border: '0.5px solid #fde68a',
+              color: '#92400e',
+              marginBottom: '24px',
+              lineHeight: 1.5,
+            }}>
+              Esta acción también eliminará todas las asignaciones de cartera actuales del empleado.
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPaso('seleccion')}
+                disabled={cargando}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--z-border)',
+                  background: 'transparent',
+                  color: 'var(--z-text-muted)',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Atrás
+              </button>
+              <button
+                onClick={() => onConfirmar(supervisorSeleccionado!.id)}
+                disabled={cargando}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'var(--z-brand)',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: cargando ? 'not-allowed' : 'pointer',
+                  opacity: cargando ? 0.7 : 1,
+                }}
+              >
+                {cargando ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function GestionPersonalPage() {
   const [busqueda, setBusqueda] = useState('');
-  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<UsuarioAdmin | null>(null);
+  const [usuarioParaReset, setUsuarioParaReset] = useState<UsuarioAdmin | null>(null);
+  const [usuarioParaReasignar, setUsuarioParaReasignar] = useState<UsuarioAdmin | null>(null);
   const [feedback, setFeedback] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const queryClient = useQueryClient();
 
@@ -111,16 +310,36 @@ export function GestionPersonalPage() {
     queryFn: listarUsuarios,
   });
 
-  const mutation = useMutation({
+  const { data: supervisores = [], isLoading: cargandoSupervisores } = useQuery({
+    queryKey: ['admin-supervisores'],
+    queryFn: listarSupervisores,
+    enabled: !!usuarioParaReasignar,
+  });
+
+  const mutationReset = useMutation({
     mutationFn: (id: number) => resetPassword(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-usuarios'] });
-      setFeedback({ tipo: 'exito', texto: `Contraseña de ${usuarioSeleccionado?.nombreCompleto} restablecida correctamente.` });
-      setUsuarioSeleccionado(null);
+      setFeedback({ tipo: 'exito', texto: `Contraseña de ${usuarioParaReset?.nombreCompleto} restablecida correctamente.` });
+      setUsuarioParaReset(null);
     },
     onError: () => {
       setFeedback({ tipo: 'error', texto: 'No se pudo restablecer la contraseña. Intenta de nuevo.' });
-      setUsuarioSeleccionado(null);
+      setUsuarioParaReset(null);
+    },
+  });
+
+  const mutationReasignar = useMutation({
+    mutationFn: ({ usuarioId, nuevoSupervisorId }: { usuarioId: number; nuevoSupervisorId: number }) =>
+      reasignarSupervisor(usuarioId, nuevoSupervisorId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-usuarios'] });
+      setFeedback({ tipo: 'exito', texto: `Supervisor de ${usuarioParaReasignar?.nombreCompleto} reasignado correctamente.` });
+      setUsuarioParaReasignar(null);
+    },
+    onError: () => {
+      setFeedback({ tipo: 'error', texto: 'No se pudo reasignar el supervisor. Intenta de nuevo.' });
+      setUsuarioParaReasignar(null);
     },
   });
 
@@ -134,7 +353,7 @@ export function GestionPersonalPage() {
   });
 
   return (
-    <div style={{ maxWidth: '860px' }}>
+    <div style={{ maxWidth: '960px' }}>
       {/* Encabezado */}
       <div style={{ marginBottom: '24px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '4px' }}>
@@ -202,7 +421,7 @@ export function GestionPersonalPage() {
         {/* Encabezado tabla */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 160px 100px 120px 130px',
+          gridTemplateColumns: '1fr 160px 100px 120px 220px',
           padding: '10px 16px',
           borderBottom: '0.5px solid var(--z-border)',
           background: 'var(--z-bg-surface)',
@@ -237,7 +456,7 @@ export function GestionPersonalPage() {
             key={u.id}
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 160px 100px 120px 130px',
+              gridTemplateColumns: '1fr 160px 100px 120px 220px',
               padding: '12px 16px',
               alignItems: 'center',
               borderBottom: i < usuariosFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
@@ -266,17 +485,19 @@ export function GestionPersonalPage() {
               {u.requiereCambioPassword ? 'Cambio pendiente' : 'Al día'}
             </span>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            {/* Acciones */}
+            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => setUsuarioSeleccionado(u)}
+                onClick={() => setUsuarioParaReset(u)}
                 style={{
-                  padding: '5px 12px',
+                  padding: '5px 10px',
                   borderRadius: '5px',
                   border: '1px solid var(--z-border)',
                   background: 'transparent',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   color: 'var(--z-text-muted)',
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   transition: 'all 0.15s',
                 }}
                 onMouseOver={(e) => {
@@ -290,18 +511,56 @@ export function GestionPersonalPage() {
               >
                 Restablecer clave
               </button>
+              <button
+                onClick={() => setUsuarioParaReasignar(u)}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '5px',
+                  border: '1px solid var(--z-border)',
+                  background: 'transparent',
+                  fontSize: '11px',
+                  color: 'var(--z-text-muted)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s',
+                }}
+                onMouseOver={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = '#d97706';
+                  (e.currentTarget as HTMLElement).style.color = '#d97706';
+                }}
+                onMouseOut={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--z-border)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
+                }}
+              >
+                Reasignar supervisor
+              </button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Modal de confirmación */}
-      {usuarioSeleccionado && (
+      {/* Modal restablecer contraseña */}
+      {usuarioParaReset && (
         <ModalConfirmar
-          usuario={usuarioSeleccionado}
-          cargando={mutation.isPending}
-          onConfirmar={() => mutation.mutate(usuarioSeleccionado.id)}
-          onCancelar={() => setUsuarioSeleccionado(null)}
+          usuario={usuarioParaReset}
+          cargando={mutationReset.isPending}
+          onConfirmar={() => mutationReset.mutate(usuarioParaReset.id)}
+          onCancelar={() => setUsuarioParaReset(null)}
+        />
+      )}
+
+      {/* Modal reasignar supervisor */}
+      {usuarioParaReasignar && (
+        <ModalReasignar
+          usuario={usuarioParaReasignar}
+          supervisores={supervisores}
+          cargandoSupervisores={cargandoSupervisores}
+          cargando={mutationReasignar.isPending}
+          onConfirmar={(nuevoSupervisorId) =>
+            mutationReasignar.mutate({ usuarioId: usuarioParaReasignar.id, nuevoSupervisorId })
+          }
+          onCancelar={() => setUsuarioParaReasignar(null)}
         />
       )}
     </div>

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Zentinela.Application.DTOs.Admin;
 using Zentinela.Application.Interfaces;
 using Zentinela.Infrastructure.SQLServer.Models;
+using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
@@ -13,10 +14,17 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 public class AdminService : IAdminService
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RecursosHumanosDbContext _rrhh;
+    private readonly CallCenterDbContext _callCenter;
 
-    public AdminService(UserManager<ApplicationUser> userManager)
+    public AdminService(
+        UserManager<ApplicationUser> userManager,
+        RecursosHumanosDbContext rrhh,
+        CallCenterDbContext callCenter)
     {
         _userManager = userManager;
+        _rrhh = rrhh;
+        _callCenter = callCenter;
     }
 
     public async Task<IEnumerable<UsuarioAdminDto>> ListarUsuariosAsync()
@@ -63,5 +71,49 @@ public class AdminService : IAdminService
         // Obliga al usuario a cambiar su contraseña en el próximo login
         usuario.RequiereCambioPassword = true;
         await _userManager.UpdateAsync(usuario);
+    }
+
+    public async Task<IEnumerable<SupervisorDto>> ListarSupervisoresAsync()
+    {
+        var cargosSupervisores = new[] { 2, 7, 8, 13, 18 };
+
+        return await _rrhh.Empleados
+            .Include(e => e.Cargo)
+            .Where(e => cargosSupervisores.Contains(e.CargoID) && e.EstadoEmpleado)
+            .OrderBy(e => e.Nombre)
+            .Select(e => new SupervisorDto
+            {
+                Id              = e.ID,
+                NombreCompleto  = e.Nombre + " " + e.Apellidos,
+                Cargo           = e.Cargo.Descripcion,
+                NumeroDocumento = e.NumeroDocumento,
+            })
+            .ToListAsync();
+    }
+
+    public async Task ReasignarSupervisorAsync(int usuarioID, int nuevoSupervisorEmpleadoId)
+    {
+        var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())
+            ?? throw new InvalidOperationException("Usuario no encontrado.");
+
+        var empleado = await _rrhh.Empleados
+            .FirstOrDefaultAsync(e => e.NumeroDocumento == usuario.NumeroDocumento)
+            ?? throw new InvalidOperationException("Empleado no encontrado en DBRecursosHumanos.");
+
+        // Verificar que el nuevo supervisor exista
+        var nuevoSupervisorExiste = await _rrhh.Empleados
+            .AnyAsync(e => e.ID == nuevoSupervisorEmpleadoId);
+        if (!nuevoSupervisorExiste)
+            throw new InvalidOperationException("El supervisor seleccionado no existe.");
+
+        // Actualizar supervisor en RRHH
+        empleado.IDSupervisor = nuevoSupervisorEmpleadoId;
+        await _rrhh.SaveChangesAsync();
+
+        // Limpiar todas las asignaciones de cartera del agente
+        var asignaciones = _callCenter.CarteraAgentes
+            .Where(ca => ca.AgenteID == empleado.NumeroDocumento);
+        _callCenter.CarteraAgentes.RemoveRange(asignaciones);
+        await _callCenter.SaveChangesAsync();
     }
 }

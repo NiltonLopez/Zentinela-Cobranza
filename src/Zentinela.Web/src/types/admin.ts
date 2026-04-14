@@ -6,3 +6,10 @@ export interface UsuarioAdmin {
   rol: string;
   requiereCambioPassword: boolean;
 }
+
+export interface Supervisor {
+  id: number;
+  nombreCompleto: string;
+  cargo: string;
+  numeroDocumento: number;
+}

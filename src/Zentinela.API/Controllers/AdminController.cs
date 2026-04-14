@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Zentinela.Application;
+using Zentinela.Application.DTOs.Admin;
 using Zentinela.Application.Interfaces;
 
 namespace Zentinela.API.Controllers;
@@ -38,6 +39,33 @@ public class AdminController : ControllerBase
         {
             await _adminService.ResetPasswordAsync(id);
             return Ok(new { mensaje = "Contraseña restablecida correctamente. El usuario deberá cambiarla en su próximo ingreso." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Retorna empleados con cargos supervisores (CargoID ∈ {2,7,8,13,18}).
+    /// </summary>
+    [HttpGet("supervisores")]
+    public async Task<IActionResult> ListarSupervisores()
+    {
+        var supervisores = await _adminService.ListarSupervisoresAsync();
+        return Ok(supervisores);
+    }
+
+    /// <summary>
+    /// Reasigna el supervisor de un usuario y limpia sus asignaciones de cartera anteriores.
+    /// </summary>
+    [HttpPost("usuarios/{id:int}/reasignar-supervisor")]
+    public async Task<IActionResult> ReasignarSupervisor(int id, [FromBody] ReasignarSupervisorDto dto)
+    {
+        try
+        {
+            await _adminService.ReasignarSupervisorAsync(id, dto.NuevoSupervisorId);
+            return Ok(new { mensaje = "Supervisor reasignado correctamente. Las asignaciones de cartera anteriores fueron eliminadas." });
         }
         catch (InvalidOperationException ex)
         {
