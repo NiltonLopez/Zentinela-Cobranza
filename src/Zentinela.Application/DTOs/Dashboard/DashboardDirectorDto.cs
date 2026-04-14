@@ -6,8 +6,14 @@ public class MetricasDirectorDto
     public DateOnly  FechaDesde          { get; set; }
     public DateOnly  FechaHasta          { get; set; }
     public int       TotalGestiones      { get; set; }
+    /// <summary>Total de titulares asignados en Titular_Cartera según el filtro activo.</summary>
+    public int       TotalAsignados      { get; set; }
     public decimal   TasaContactabilidad { get; set; }
     public decimal   TasaEfectividad     { get; set; }
+    /// <summary>Suma de ValorPromesa donde UltimoPerfil es acuerdo o abono.</summary>
+    public decimal   ProyeccionPromesas  { get; set; }
+    /// <summary>Cantidad de titulares con UltimoPerfil = "Incumplido" en el período.</summary>
+    public int       TotalIncumplidos    { get; set; }
 }
 
 public class FilaLiderDto

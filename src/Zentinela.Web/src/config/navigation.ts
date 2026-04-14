@@ -52,9 +52,10 @@ export const MODULOS: Modulo[] = [
     rolesPermitidos: ['Admin'],
     defaultPath: '/asignaciones/gestion',
     subModulos: [
-      { key: 'gestion', label: 'Gestión de Asignaciones', path: '/asignaciones/gestion' },
-      { key: 'carteras', label: 'Gestión de Carteras', path: '/asignaciones/carteras' },
-      { key: 'personal', label: 'Gestión de Personal', path: '/asignaciones/personal' },
+      { key: 'gestion',  label: 'Gestión de Asignaciones', path: '/asignaciones/gestion' },
+      { key: 'reportes', label: 'Cargue de Reportes',      path: '/asignaciones/reportes' },
+      { key: 'carteras', label: 'Gestión de Carteras',     path: '/asignaciones/carteras' },
+      { key: 'personal', label: 'Gestión de Personal',     path: '/asignaciones/personal' },
     ],
   },
   {

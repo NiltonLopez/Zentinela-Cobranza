@@ -15,8 +15,11 @@ export interface MetricasDirectorDto {
   fechaDesde: string;  // ISO date "YYYY-MM-DD"
   fechaHasta: string;  // ISO date "YYYY-MM-DD"
   totalGestiones: number;
+  totalAsignados: number;
   tasaContactabilidad: number;
   tasaEfectividad: number;
+  proyeccionPromesas: number;
+  totalIncumplidos: number;
 }
 
 export interface FilaLiderDto {

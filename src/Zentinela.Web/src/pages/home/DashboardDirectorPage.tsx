@@ -59,6 +59,10 @@ function pct(valor: number): string {
   return `${(valor * 100).toFixed(1)}%`;
 }
 
+function formatearPesos(valor: number): string {
+  return valor.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+}
+
 function formatearFechaCorta(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
@@ -106,6 +110,77 @@ function TarjetaMetrica({ label, valor, sub }: { label: string; valor: string; s
       {sub && (
         <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>{sub}</p>
       )}
+    </div>
+  );
+}
+
+function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asignados: number }) {
+  const pctNum   = asignados > 0 ? Math.min((gestionados / asignados) * 100, 100) : 0;
+  const radio    = 40;
+  const grosor   = 7;
+  const circunf  = 2 * Math.PI * radio;
+  const offset   = circunf * (1 - pctNum / 100);
+
+  // Color según avance
+  const color = pctNum >= 80 ? '#22c55e' : pctNum >= 50 ? '#f59e0b' : '#3b82f6';
+
+  return (
+    <div style={{
+      background: 'var(--z-bg-card)',
+      border: '0.5px solid var(--z-border)',
+      borderRadius: '8px',
+      padding: '20px',
+      flex: 1,
+      minWidth: 0,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '20px',
+    }}>
+      {/* Ring SVG */}
+      <svg width="100" height="100" style={{ flexShrink: 0 }}>
+        {/* Pista de fondo */}
+        <circle
+          cx="50" cy="50" r={radio}
+          fill="none"
+          stroke="var(--z-border)"
+          strokeWidth={grosor}
+        />
+        {/* Arco de progreso */}
+        <circle
+          cx="50" cy="50" r={radio}
+          fill="none"
+          stroke={color}
+          strokeWidth={grosor}
+          strokeLinecap="round"
+          strokeDasharray={circunf}
+          strokeDashoffset={offset}
+          transform="rotate(-90 50 50)"
+          style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+        />
+        {/* Texto central */}
+        <text x="50" y="46" textAnchor="middle" dominantBaseline="middle"
+          style={{ fontSize: '16px', fontWeight: 700, fill: 'var(--z-text-primary)', fontFamily: 'inherit' }}>
+          {pctNum.toFixed(1)}%
+        </text>
+        <text x="50" y="62" textAnchor="middle" dominantBaseline="middle"
+          style={{ fontSize: '9px', fill: 'var(--z-text-muted)', fontFamily: 'inherit' }}>
+          avance
+        </text>
+      </svg>
+
+      {/* Leyenda */}
+      <div>
+        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+          Avance de gestión
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-primary)', marginBottom: '4px' }}>
+          <span style={{ fontWeight: 600 }}>{gestionados.toLocaleString('es-CO')}</span>
+          <span style={{ color: 'var(--z-text-muted)' }}> gestionados</span>
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
+          de {asignados.toLocaleString('es-CO')} asignados
+        </p>
+      </div>
     </div>
   );
 }
@@ -494,10 +569,9 @@ export function DashboardDirectorPage() {
           <CargandoSpiral mensaje="Cargando métricas..." />
         ) : data ? (
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <TarjetaMetrica
-              label="Gestiones"
-              valor={data.metricas.totalGestiones.toLocaleString('es-CO')}
-              sub="Total de gestiones en el período"
+            <TarjetaAvance
+              gestionados={data.metricas.totalGestiones}
+              asignados={data.metricas.totalAsignados}
             />
             <TarjetaMetrica
               label="Contactabilidad"
@@ -508,6 +582,16 @@ export function DashboardDirectorPage() {
               label="Efectividad"
               valor={pct(data.metricas.tasaEfectividad)}
               sub="Acuerdos y abonos / Contactos positivos"
+            />
+            <TarjetaMetrica
+              label="Proyección promesas"
+              valor={formatearPesos(data.metricas.proyeccionPromesas)}
+              sub="Suma de acuerdos y abonos del período"
+            />
+            <TarjetaMetrica
+              label="Incumplidos"
+              valor={data.metricas.totalIncumplidos.toLocaleString('es-CO')}
+              sub="Titulares con tipificación Incumplido"
             />
           </div>
         ) : null}

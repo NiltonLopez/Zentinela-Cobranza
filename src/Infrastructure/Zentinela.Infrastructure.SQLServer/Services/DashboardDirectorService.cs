@@ -80,8 +80,11 @@ public class DashboardDirectorService : IDashboardDirectorService
         var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDsFiltro)
             .Where(u => u.FechaUltimaGestion >= desde && u.FechaUltimaGestion <= hasta);
 
+        // Total de titulares asignados (sin filtro de fecha — es el universo completo del filtro)
+        var totalAsignados = await ContarAsignadosAsync(liderID, carteraID);
+
         var registros = await query
-            .Select(u => new { u.CarteraID, u.AgenteID, u.UltimoPerfil })
+            .Select(u => new { u.CarteraID, u.AgenteID, u.UltimoPerfil, u.ValorPromesa })
             .AsNoTracking()
             .ToListAsync();
 
@@ -89,6 +92,11 @@ public class DashboardDirectorService : IDashboardDirectorService
         var totalGestiones     = registros.Count;
         var contactosPositivos = registros.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
         var acuerdosAbonos     = registros.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
+        var proyeccionPromesas = registros
+            .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+            .Sum(r => r.ValorPromesa ?? 0m);
+        var totalIncumplidos   = registros.Count(r =>
+            string.Equals(r.UltimoPerfil, "Incumplido", StringComparison.OrdinalIgnoreCase));
 
         var metricas = new MetricasDirectorDto
         {
@@ -100,6 +108,9 @@ public class DashboardDirectorService : IDashboardDirectorService
                 ? Math.Round((decimal)contactosPositivos / totalGestiones, 4) : 0,
             TasaEfectividad     = contactosPositivos > 0
                 ? Math.Round((decimal)acuerdosAbonos / contactosPositivos, 4) : 0,
+            ProyeccionPromesas  = Math.Round(proyeccionPromesas, 0),
+            TotalIncumplidos    = totalIncumplidos,
+            TotalAsignados      = totalAsignados,
         };
 
         // ── Desglose ─────────────────────────────────────────────────────────
@@ -143,6 +154,17 @@ public class DashboardDirectorService : IDashboardDirectorService
         var carteraIDs = await ResolverCarteraIDsAsync(liderID, carteraID);
         var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDs);
         return await query.MaxAsync(u => u.FechaUltimaGestion);
+    }
+
+    /// <summary>Cuenta el universo total de titulares asignados según el filtro activo.</summary>
+    private async Task<int> ContarAsignadosAsync(int? liderID, int? carteraID)
+    {
+        var q = _callCenter.TitularCarteras.AsQueryable();
+        if (carteraID.HasValue)
+            q = q.Where(tc => tc.CarteraID == carteraID.Value);
+        else if (liderID.HasValue)
+            q = q.Where(tc => tc.LiderID == liderID.Value);
+        return await q.CountAsync();
     }
 
     private async Task<List<int>?> ResolverCarteraIDsAsync(int? liderID, int? carteraID)
