@@ -1216,3 +1216,38 @@ Pagos confirmados cargados manualmente por cartera desde la UI. Alimenta los inf
 - `AgenteControlID` se resuelve desde `Agente.UsuarioControlNext` (valor textual del CSV).
 - `UsuarioControlID` referencia a `ApplicationUser` en `DBZentinela` — no existe FK a nivel de BD por ser cross-database.
 - La tabla usa `ExcludeFromMigrations` en EF Core; el schema se gestiona con el script SQL manual.
+
+---
+
+### Meta_Agente_Mes
+Metas mensuales de recaudo por agente individual. Alimenta el sub-informe de Agentes.
+
+> **Creada:** 2026-04-15 — script en `docs/migrations/create_Meta_tables.sql`
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| MetaID | int (identity) | NO | SI | — |
+| AgenteID | bigint | NO | — | Agente |
+| Año | smallint | NO | — | — |
+| Mes | tinyint | NO | — | — (1-12) |
+| MetaRecaudo | decimal(18,2) | NO | — | — |
+
+**Constraint UNIQUE:** `(AgenteID, Año, Mes)`
+
+---
+
+### Meta_Lider_Cartera_Mes
+Metas mensuales de recaudo por combinación líder-cartera. Alimenta el sub-informe de Líderes.
+
+> **Creada:** 2026-04-15 — script en `docs/migrations/create_Meta_tables.sql`
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| MetaID | int (identity) | NO | SI | — |
+| LiderID | int | NO | — | Lider_Cartera |
+| CarteraID | int | NO | — | Lider_Cartera |
+| Año | smallint | NO | — | — |
+| Mes | tinyint | NO | — | — (1-12) |
+| MetaRecaudo | decimal(18,2) | NO | — | — |
+
+**Constraint UNIQUE:** `(LiderID, CarteraID, Año, Mes)`
