@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using ClosedXML.Excel;
 using Zentinela.Application.DTOs.CreadorZentinela;
 using Zentinela.Application.DTOs.Reportes;
@@ -148,42 +150,167 @@ public class ExcelExporter : IExcelExporter
         return stream.ToArray();
     }
 
+    // ── Tipos y alias para resolución flexible de columnas ──────────────────
+
+    private record IndicesExcel(
+        int TitularID, int AgenteID, int Nombre, int UltimoPerfil, int MejorPerfil,
+        int FechaMejorPerfil, int SaldoTotal, int NumeroMarcado, int Rotacion,
+        int FechaUltimaGestion, int FechaPromesa, int ValorPromesa, int MotivoNoPago,
+        int FechaActualizacion);
+
+    private static readonly Dictionary<string, string> AliasColumnasExcel = new(StringComparer.Ordinal)
+    {
+        // TitularID
+        ["titularid"]            = "titularid",
+        ["titular"]              = "titularid",
+        ["numerodocumento"]      = "titularid",
+        ["documento"]            = "titularid",
+        ["cedula"]               = "titularid",
+        // AgenteID
+        ["agenteid"]             = "agenteid",
+        ["agente"]               = "agenteid",
+        // Nombre
+        ["nombre"]               = "nombre",
+        ["nombrecliente"]        = "nombre",
+        ["cliente"]              = "nombre",
+        // UltimoPerfil
+        ["ultimoperfil"]         = "ultimoperfil",
+        ["perfil"]               = "ultimoperfil",
+        // MejorPerfil
+        ["mejorperfil"]          = "mejorperfil",
+        // FechaMejorPerfil
+        ["fechamejorperfil"]     = "fechamejorperfil",
+        ["fechamejor"]           = "fechamejorperfil",
+        // SaldoTotal
+        ["saldototal"]           = "saldototal",
+        ["saldo"]                = "saldototal",
+        // NumeroMarcado
+        ["numeromarcado"]        = "numeromarcado",
+        ["marcado"]              = "numeromarcado",
+        // Rotacion
+        ["rotacion"]             = "rotacion",
+        // FechaUltimaGestion
+        ["fechaultimagestion"]   = "fechaultimagestion",
+        ["ultimagestion"]        = "fechaultimagestion",
+        ["fechagestion"]         = "fechaultimagestion",
+        // FechaPromesa
+        ["fechapromesa"]         = "fechapromesa",
+        ["promesa"]              = "fechapromesa",
+        // ValorPromesa
+        ["valorpromesa"]         = "valorpromesa",
+        // MotivoNoPago
+        ["motivonopago"]         = "motivonopago",
+        ["motivo"]               = "motivonopago",
+        // FechaActualizacion
+        ["fechaactualizacion"]   = "fechaactualizacion",
+        ["actualizacion"]        = "fechaactualizacion",
+        ["fechaact"]             = "fechaactualizacion",
+    };
+
+    /// <summary>
+    /// Normaliza un encabezado de columna: quita tildes, espacios, asteriscos y pasa a minúsculas.
+    /// Ej: "TitularID *" → "titularid", "Fecha Última Gestión" → "fechaultimagestion"
+    /// </summary>
+    private static string NormalizarColumna(string s)
+    {
+        var sinTildes = s.Normalize(NormalizationForm.FormD)
+            .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            .ToArray();
+        return new string(sinTildes)
+            .ToLowerInvariant()
+            .Replace(" ", "")
+            .Replace("_", "")
+            .Replace("-", "")
+            .Replace("*", "")
+            .Replace("(", "")
+            .Replace(")", "")
+            .Trim();
+    }
+
+    /// <summary>
+    /// Resuelve el índice (1-based) de cada columna del archivo.
+    /// Columnas no encontradas quedan en 0; Cell() devuelve string.Empty para índice 0.
+    /// </summary>
+    private static IndicesExcel ResolverIndicesExcel(Dictionary<string, int> headers)
+    {
+        var resuelto = new Dictionary<string, int>();
+        foreach (var (clave, col) in headers)
+        {
+            if (AliasColumnasExcel.TryGetValue(clave, out var campo) && !resuelto.ContainsKey(campo))
+                resuelto[campo] = col;
+        }
+
+        int Get(string campo) => resuelto.TryGetValue(campo, out var c) ? c : 0;
+
+        return new IndicesExcel(
+            TitularID:          Get("titularid"),
+            AgenteID:           Get("agenteid"),
+            Nombre:             Get("nombre"),
+            UltimoPerfil:       Get("ultimoperfil"),
+            MejorPerfil:        Get("mejorperfil"),
+            FechaMejorPerfil:   Get("fechamejorperfil"),
+            SaldoTotal:         Get("saldototal"),
+            NumeroMarcado:      Get("numeromarcado"),
+            Rotacion:           Get("rotacion"),
+            FechaUltimaGestion: Get("fechaultimagestion"),
+            FechaPromesa:       Get("fechapromesa"),
+            ValorPromesa:       Get("valorpromesa"),
+            MotivoNoPago:       Get("motivonopago"),
+            FechaActualizacion: Get("fechaactualizacion"));
+    }
+
     public List<FilaReporteRaw> ParsearFilasReporte(Stream stream)
     {
         using var workbook = new XLWorkbook(stream);
         var ws     = workbook.Worksheet(1);
         var result = new List<FilaReporteRaw>();
 
-        // Layout de columnas (CarteraID se inyecta desde la UI, no viene en el archivo):
-        // 1=TitularID, 2=AgenteID, 3=Nombre, 4=UltimoPerfil, 5=MejorPerfil,
-        // 6=FechaMejorPerfil, 7=SaldoTotal, 8=NumeroMarcado, 9=Rotacion,
-        // 10=FechaUltimaGestion, 11=FechaPromesa, 12=ValorPromesa,
-        // 13=MotivoNoPago, 14=FechaActualizacion
-        foreach (var fila in ws.RowsUsed().Skip(1))
-        {
-            string Cell(int col) => fila.Cell(col).GetString().Trim();
+        var todasFilas = ws.RowsUsed().ToList();
+        if (todasFilas.Count == 0) return result;
 
-            // Ignorar filas completamente vacías (sin TitularID ni AgenteID)
-            if (string.IsNullOrEmpty(Cell(1)) && string.IsNullOrEmpty(Cell(2)))
+        // ── Leer encabezado y resolver índices por nombre ─────────────────────
+        var filaEncabezado = todasFilas[0];
+        var headers        = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var celda in filaEncabezado.CellsUsed())
+        {
+            var clave = NormalizarColumna(celda.GetString());
+            if (!string.IsNullOrEmpty(clave) && !headers.ContainsKey(clave))
+                headers[clave] = celda.Address.ColumnNumber; // 1-based
+        }
+
+        var idx = ResolverIndicesExcel(headers);
+
+        // Función segura: col=0 significa columna no encontrada → string.Empty
+        string Cell(IXLRow fila, int col) =>
+            col > 0 ? fila.Cell(col).GetString().Trim() : string.Empty;
+
+        // ── Parsear filas de datos ────────────────────────────────────────────
+        // CarteraID se inyecta desde la UI en ValidarExcelAsync, no viene en el archivo
+        foreach (var fila in todasFilas.Skip(1))
+        {
+            var titularStr = Cell(fila, idx.TitularID);
+            var agenteStr  = Cell(fila, idx.AgenteID);
+
+            // Ignorar filas completamente vacías
+            if (string.IsNullOrEmpty(titularStr) && string.IsNullOrEmpty(agenteStr))
                 continue;
 
             result.Add(new FilaReporteRaw
             {
-                TitularID          = long.TryParse(Cell(1),    out var tid)  ? tid    : null,
-                AgenteID           = int.TryParse(Cell(2),     out var aid)  ? aid    : null,
-                Nombre             = NullIfEmpty(Cell(3)),
-                // CarteraID se inyecta desde la UI en ValidarExcelAsync
-                UltimoPerfil       = NullIfEmpty(Cell(4)),
-                MejorPerfil        = NullIfEmpty(Cell(5)),
-                FechaMejorPerfil   = ParseDate(Cell(6)),
-                SaldoTotal         = decimal.TryParse(Cell(7),  out var sal)  ? sal    : null,
-                NumeroMarcado      = NullIfEmpty(Cell(8)),
-                Rotacion           = int.TryParse(Cell(9),     out var rot)  ? rot    : null,
-                FechaUltimaGestion = ParseDate(Cell(10)),
-                FechaPromesa       = ParseDate(Cell(11)),
-                ValorPromesa       = decimal.TryParse(Cell(12), out var vp)   ? vp     : null,
-                MotivoNoPago       = NullIfEmpty(Cell(13)),
-                FechaActualizacion = DateTime.TryParse(Cell(14), out var fa)  ? fa     : null,
+                TitularID          = long.TryParse(titularStr,                      out var tid) ? tid : null,
+                AgenteID           = int.TryParse(agenteStr,                        out var aid) ? aid : null,
+                Nombre             = NullIfEmpty(Cell(fila, idx.Nombre)),
+                UltimoPerfil       = NullIfEmpty(Cell(fila, idx.UltimoPerfil)),
+                MejorPerfil        = NullIfEmpty(Cell(fila, idx.MejorPerfil)),
+                FechaMejorPerfil   = ParseDate(Cell(fila, idx.FechaMejorPerfil)),
+                SaldoTotal         = decimal.TryParse(Cell(fila, idx.SaldoTotal),   out var sal) ? sal : null,
+                NumeroMarcado      = NullIfEmpty(Cell(fila, idx.NumeroMarcado)),
+                Rotacion           = int.TryParse(Cell(fila, idx.Rotacion),         out var rot) ? rot : null,
+                FechaUltimaGestion = ParseDate(Cell(fila, idx.FechaUltimaGestion)),
+                FechaPromesa       = ParseDate(Cell(fila, idx.FechaPromesa)),
+                ValorPromesa       = decimal.TryParse(Cell(fila, idx.ValorPromesa), out var vp)  ? vp  : null,
+                MotivoNoPago       = NullIfEmpty(Cell(fila, idx.MotivoNoPago)),
+                FechaActualizacion = DateTime.TryParse(Cell(fila, idx.FechaActualizacion), out var fa) ? fa : null,
             });
         }
 

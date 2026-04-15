@@ -7,4 +7,5 @@ public class RelacionLiderCarteraDto
     public string NombreLider       { get; set; } = string.Empty;
     public string NombreCartera     { get; set; } = string.Empty;
     public int    TotalAsignaciones { get; set; }
+    public int    TotalAsesores     { get; set; }
 }

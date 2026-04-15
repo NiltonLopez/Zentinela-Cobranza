@@ -22,6 +22,7 @@ public class CallCenterDbContext : DbContext
     public DbSet<HistoricoEstadoTitular> HistoricoEstadosTitular { get; set; }
     public DbSet<BaseMadreRow> BaseMadreRows { get; set; }
     public DbSet<CarteraAgente> CarteraAgentes { get; set; }
+    public DbSet<Pago>          Pagos          { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -36,5 +37,6 @@ public class CallCenterDbContext : DbContext
         builder.ApplyConfiguration(new HistoricoEstadoTitularMapping());
         builder.ApplyConfiguration(new BaseMadreRowMapping());
         builder.ApplyConfiguration(new CarteraAgenteMapping());
+        builder.ApplyConfiguration(new PagoMapping());
     }
 }

@@ -1,6 +1,6 @@
 import type { Rol } from '../types/auth';
 
-export type ModuloKey = 'home' | 'cartera' | 'informes' | 'asignaciones' | 'consulta';
+export type ModuloKey = 'home' | 'cartera' | 'informes' | 'administracion' | 'consulta';
 
 export interface SubModulo {
   key: string;
@@ -43,19 +43,20 @@ export const MODULOS: Modulo[] = [
     defaultPath: '/informes/virtualidad',
     subModulos: [
       { key: 'virtualidad', label: 'Informes de Virtualidad', path: '/informes/virtualidad' },
-      { key: 'recaudo',     label: 'Informes de Recaudo',    path: '/informes/recaudo'     },
+      { key: 'recaudo',    label: 'Informes de Recaudo',     path: '/informes/recaudo'     },
     ],
   },
   {
-    key: 'asignaciones',
-    label: 'Asignaciones',
+    key: 'administracion',
+    label: 'Administración',
     rolesPermitidos: ['Admin'],
-    defaultPath: '/asignaciones/gestion',
+    defaultPath: '/administracion/gestion',
     subModulos: [
-      { key: 'gestion',  label: 'Gestión de Asignaciones', path: '/asignaciones/gestion' },
-      { key: 'reportes', label: 'Cargue de Reportes',      path: '/asignaciones/reportes' },
-      { key: 'carteras', label: 'Gestión de Líderes y Carteras', path: '/asignaciones/carteras' },
-      { key: 'personal', label: 'Gestión de Personal',     path: '/asignaciones/personal' },
+      { key: 'gestion',  label: 'Gestión de Asignaciones',       path: '/administracion/gestion' },
+      { key: 'carteras', label: 'Gestión de Líderes y Carteras', path: '/administracion/carteras' },
+      { key: 'personal', label: 'Gestión de Personal',           path: '/administracion/personal' },
+      { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes' },
+      { key: 'pagos',    label: 'Cargue de Pagos',               path: '/administracion/pagos' },
     ],
   },
   {
@@ -73,7 +74,7 @@ export const MODULOS: Modulo[] = [
 export function pathToModulo(pathname: string): ModuloKey {
   if (pathname.startsWith('/cartera')) return 'cartera';
   if (pathname.startsWith('/informes')) return 'informes';
-  if (pathname.startsWith('/asignaciones')) return 'asignaciones';
+  if (pathname.startsWith('/administracion')) return 'administracion';
   if (pathname.startsWith('/consulta')) return 'consulta';
   return 'home';
 }

@@ -37,6 +37,8 @@ public class GestionCarterasService : IGestionCarterasService
                 NombreCartera     = lc.Cartera.NombreCartera,
                 TotalAsignaciones = _context.TitularCarteras
                     .Count(tc => tc.LiderID == lc.LiderID && tc.CarteraID == lc.CarteraID),
+                TotalAsesores     = _context.CarteraAgentes
+                    .Count(ca => ca.LiderID == lc.LiderID && ca.CarteraID == lc.CarteraID),
             })
             .AsNoTracking()
             .ToListAsync();

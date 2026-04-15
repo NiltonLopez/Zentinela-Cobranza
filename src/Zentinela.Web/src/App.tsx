@@ -21,11 +21,12 @@ import { CalificadorCarteraPage } from './pages/cartera/CalificadorCarteraPage';
 import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPage';
 import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
 
-// Asignaciones
-import { GestionAsignacionesPage } from './pages/asignaciones/GestionAsignacionesPage';
-import { CargueReportesPage } from './pages/asignaciones/CargueReportesPage';
-import { GestionCarterasPage } from './pages/asignaciones/GestionCarterasPage';
-import { GestionPersonalPage } from './pages/asignaciones/GestionPersonalPage';
+// Administración
+import { GestionAsignacionesPage } from './pages/administracion/GestionAsignacionesPage';
+import { CargueReportesPage } from './pages/administracion/CargueReportesPage';
+import { GestionCarterasPage } from './pages/administracion/GestionCarterasPage';
+import { GestionPersonalPage } from './pages/administracion/GestionPersonalPage';
+import { CarguePagosPage } from './pages/administracion/CarguePagosPage';
 
 // Consulta
 import { ConsultaIntegradaPage } from './pages/consulta/ConsultaIntegradaPage';
@@ -104,7 +105,7 @@ function App() {
 
               {/* Asignaciones — solo Admin */}
               <Route
-                path="/asignaciones/gestion"
+                path="/administracion/gestion"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin']}>
                     <GestionAsignacionesPage />
@@ -112,7 +113,7 @@ function App() {
                 }
               />
               <Route
-                path="/asignaciones/reportes"
+                path="/administracion/reportes"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin']}>
                     <CargueReportesPage />
@@ -120,7 +121,7 @@ function App() {
                 }
               />
               <Route
-                path="/asignaciones/carteras"
+                path="/administracion/carteras"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin']}>
                     <GestionCarterasPage />
@@ -128,10 +129,19 @@ function App() {
                 }
               />
               <Route
-                path="/asignaciones/personal"
+                path="/administracion/personal"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin']}>
                     <GestionPersonalPage />
+                  </RutaProtegida>
+                }
+              />
+
+              <Route
+                path="/administracion/pagos"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin']}>
+                    <CarguePagosPage />
                   </RutaProtegida>
                 }
               />

@@ -4,6 +4,7 @@ export interface RelacionLiderCartera {
   nombreLider: string;
   nombreCartera: string;
   totalAsignaciones: number;
+  totalAsesores: number;
 }
 
 export interface LiderDropdown {

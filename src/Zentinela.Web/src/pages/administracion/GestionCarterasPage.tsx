@@ -372,15 +372,26 @@ function TarjetaRelacion({
         {relacion.nombreLider}
       </p>
 
-      <span style={{
-        display: 'inline-block',
-        fontSize: '11px', fontWeight: 500,
-        padding: '2px 8px', borderRadius: '4px',
-        background: relacion.totalAsignaciones > 0 ? '#EFF6FF' : '#F5F5F4',
-        color: relacion.totalAsignaciones > 0 ? '#2563EB' : '#78716C',
-      }}>
-        {relacion.totalAsignaciones.toLocaleString('es-CO')} asignaciones
-      </span>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        <span style={{
+          display: 'inline-block',
+          fontSize: '11px', fontWeight: 500,
+          padding: '2px 8px', borderRadius: '4px',
+          background: relacion.totalAsignaciones > 0 ? '#EFF6FF' : '#F5F5F4',
+          color: relacion.totalAsignaciones > 0 ? '#2563EB' : '#78716C',
+        }}>
+          {relacion.totalAsignaciones.toLocaleString('es-CO')} asignaciones
+        </span>
+        <span style={{
+          display: 'inline-block',
+          fontSize: '11px', fontWeight: 500,
+          padding: '2px 8px', borderRadius: '4px',
+          background: relacion.totalAsesores > 0 ? '#F0FDF4' : '#F5F5F4',
+          color: relacion.totalAsesores > 0 ? '#16A34A' : '#78716C',
+        }}>
+          {relacion.totalAsesores} asesor{relacion.totalAsesores !== 1 ? 'es' : ''}
+        </span>
+      </div>
     </div>
   );
 }

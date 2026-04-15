@@ -1,0 +1,24 @@
+using Zentinela.Application.DTOs.Pagos;
+
+namespace Zentinela.Application.Interfaces;
+
+/// <summary>
+/// Servicio para el cargue de pagos confirmados desde CSV.
+/// Flujo de 2 pasos: validar (preview sin persistir) → confirmar (bulk insert).
+/// </summary>
+public interface ICarguePagosService
+{
+    /// <summary>
+    /// Parsea el CSV y valida cada fila contra la BD.
+    /// Por cada fila válida, resuelve el LiderID desde TitularCartera (CedulaTitular + CarteraID).
+    /// No persiste nada — solo retorna el preview y las filas válidas para la UI.
+    /// </summary>
+    Task<ValidarPagosResponse> ValidarCsvAsync(Stream csv, int carteraID);
+
+    /// <summary>
+    /// Inserta en bloque las filas válidas en la tabla Pago.
+    /// El LiderID de cada fila viene resuelto desde la validación.
+    /// Retorna el número de registros insertados.
+    /// </summary>
+    Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, int usuarioControlID);
+}

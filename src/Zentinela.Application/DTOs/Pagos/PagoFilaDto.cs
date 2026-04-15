@@ -1,0 +1,22 @@
+namespace Zentinela.Application.DTOs.Pagos;
+
+/// <summary>
+/// Representa una fila parseada del CSV de pagos, con resultado de validación.
+/// EsValida = true si CedulaTitular existe en la tabla Titular.
+/// </summary>
+public class PagoFilaDto
+{
+    public long     CedulaTitular { get; set; }
+    public string   NombreCliente { get; set; } = string.Empty;
+    public decimal  ValorPagado   { get; set; }
+    public DateOnly FechaPago     { get; set; }
+    public decimal  Honorarios       { get; set; }
+    /// <summary>Valor crudo de la columna 6 del CSV — se usa como clave de búsqueda en Agente.UsuarioControlNext.</summary>
+    public string   UsuarioControl   { get; set; } = string.Empty;
+    /// <summary>AgenteID resuelto por lookup Agente.UsuarioControlNext = UsuarioControl.</summary>
+    public long     AgenteControlID  { get; set; }
+    /// <summary>LiderID resuelto automáticamente desde TitularCartera durante la validación.</summary>
+    public int      LiderID          { get; set; }
+    public bool     EsValida         { get; set; }
+    public string?  ErrorMensaje     { get; set; }
+}

@@ -86,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IAsignacionMasivaService, AsignacionMasivaService>();
         services.AddScoped<ICargueReporteService, CargueReporteService>();
         services.AddScoped<IGestionCarterasService, GestionCarterasService>();
+        services.AddScoped<ICarguePagosService, CarguePagosService>();
 
         return services;
     }
