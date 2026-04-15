@@ -794,6 +794,133 @@ Elimina una relación Líder_Cartera. **No elimina** los registros de `Titular_C
 
 ---
 
+---
+
+## GET /api/pagos/carteras
+
+Devuelve la lista de carteras disponibles para el selector de Cargue de Pagos.
+
+**Autenticación requerida:** Sí — `Admin`
+
+### Response body — 200 OK
+
+```json
+[
+  { "id": 1, "nombre": "Cartera Empresas 2024" },
+  { "id": 2, "nombre": "Cartera Hogares Q1" }
+]
+```
+
+---
+
+## POST /api/pagos/validar
+
+Parsea y valida un archivo CSV de pagos. No persiste nada en BD. Devuelve un preview con las primeras 10 filas y la lista completa de filas válidas para el paso de confirmación.
+
+**Autenticación requerida:** Sí — `Admin`  
+**Content-Type:** `multipart/form-data`  
+**Límite de tamaño:** 10 MB
+
+### Form fields
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `archivo` | `File (.csv)` | Archivo CSV de pagos |
+| `carteraID` | `int` | ID de la cartera seleccionada en la UI |
+
+### Columnas reconocidas en el CSV
+
+El sistema busca columnas por nombre (no por posición). Acepta mayúsculas, tildes y espacios indistintamente.
+
+| Campo interno | Alias aceptados |
+|---|---|
+| CedulaTitular | `cedula`, `numerodocumento`, `documento` |
+| NombreCliente | `nombre`, `nombrecliente`, `cliente` |
+| ValorPagado | `valor`, `valorpagado`, `valorpago`, `montopagado`, `monto` |
+| FechaPago | `fecha`, `fechapago`, `fechadepago` |
+| Honorarios | `honorarios`, `honorario` |
+| UsuarioControl | `usuariocontrol`, `usuario`, `usuariocontrolnext`, `control` |
+
+### Response body — 200 OK
+
+```json
+{
+  "totalFilas": 150,
+  "cantidadValidas": 148,
+  "cantidadErrores": 2,
+  "preview": [
+    {
+      "cedulaTitular": 1020304050,
+      "nombreCliente": "PEREZ JUAN",
+      "valorPagado": 500000.00,
+      "fechaPago": "2026-04-10",
+      "honorarios": 75000.00,
+      "usuarioControl": "jperez",
+      "esValida": true,
+      "errorMensaje": null
+    }
+  ],
+  "todasLasValidas": [ ... ]
+}
+```
+
+**Validaciones por fila:**
+1. Cédula numérica válida
+2. Valor pagado y honorarios parseables como decimal
+3. Fecha en formato reconocible por `DateOnly.TryParse`
+4. `CedulaTitular` asignada a la cartera seleccionada en `Titular_Cartera`
+5. `UsuarioControl` existe como `Agente.UsuarioControlNext` en BD
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Archivo procesado (puede tener filas inválidas) |
+| `400 Bad Request` | Archivo vacío, extensión incorrecta o `carteraID` inválido |
+
+---
+
+## POST /api/pagos/confirmar
+
+Inserta en la tabla `Pago` las filas válidas devueltas por `/validar`. El `UsuarioControlID` se toma del JWT del usuario autenticado.
+
+**Autenticación requerida:** Sí — `Admin`
+
+### Request body
+
+```json
+{
+  "carteraID": 1,
+  "filasValidas": [
+    {
+      "cedulaTitular": 1020304050,
+      "nombreCliente": "PEREZ JUAN",
+      "valorPagado": 500000.00,
+      "fechaPago": "2026-04-10",
+      "honorarios": 75000.00,
+      "liderID": 3,
+      "agenteControlID": 98765,
+      "esValida": true
+    }
+  ]
+}
+```
+
+### Response body — 200 OK
+
+```json
+{ "mensaje": "Se registraron 148 pagos correctamente." }
+```
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Pagos insertados |
+| `400 Bad Request` | Lista de filas vacía |
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`

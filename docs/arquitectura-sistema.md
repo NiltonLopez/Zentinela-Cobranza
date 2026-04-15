@@ -103,17 +103,21 @@ Flujo sin autenticación previa (auto-registro):
 
 ## Módulos implementados
 
-| Módulo | Estado | Roles |
-|---|---|---|
-| Autenticación (login / cambio de contraseña) | ✅ Completo | Todos |
-| Registro de usuario | ✅ Completo | Público |
-| Dashboard Asesor | ✅ Completo | Asesor |
-| Creador Zentinela (Generador de Bases Excel) | ✅ Completo | Admin, Líder, Director |
-| Calificador de Cartera | ✅ Completo | Admin, Líder, Director |
-| Carteras | 🚧 Listado básico | Admin, Líder, Director |
-| KPIs / Reportes | 🚧 Placeholder | Admin, Director |
-| Dashboard Líder | ⏳ Pendiente | Líder |
-| Dashboard Director | ✅ Completo | Director, Admin |
+| Módulo | Sub-módulo | Estado | Roles |
+|---|---|---|---|
+| Autenticación | Login / cambio de contraseña | ✅ Completo | Todos |
+| Autenticación | Registro de usuario | ✅ Completo | Público |
+| Home | Dashboard (Asesor / Líder / Director) | ✅ Completo | Todos |
+| Cartera | Creador Zentinela (Generador de Bases Excel) | ✅ Completo | Admin, Líder, Director |
+| Cartera | Calificador de Cartera | ✅ Completo | Admin, Líder, Director |
+| Informes | Informes de Virtualidad | ✅ Completo | Admin, Líder, Director |
+| Informes | Informes de Recaudo | 🚧 Placeholder | Admin, Líder, Director |
+| Administración | Gestión de Asignaciones | ✅ Completo | Admin |
+| Administración | Gestión de Líderes y Carteras | ✅ Completo | Admin |
+| Administración | Gestión de Personal | ✅ Completo | Admin |
+| Administración | Cargue de Reportes | ✅ Completo | Admin |
+| Administración | Cargue de Pagos | ✅ Completo | Admin |
+| Consulta Integrada | — | ✅ Completo | Todos |
 
 ---
 
@@ -121,12 +125,11 @@ Flujo sin autenticación previa (auto-registro):
 
 | Tab navbar | Ruta default | Roles que lo ven |
 |---|---|---|
-| Dashboard | `/dashboard` | Asesor |
-| Bases | `/bases` | Admin, Director, Líder |
-| Carteras | `/carteras` | Admin, Director, Líder |
-| Reportes | `/kpis` | Admin, Director |
-
-Redirect por defecto: Asesor → `/dashboard`, otros → `/bases`
+| Home | `/home` | Todos |
+| Cartera | `/cartera/creador` | Admin, Líder, Director |
+| Informes | `/informes/virtualidad` | Admin, Líder, Director |
+| Administración | `/administracion/gestion` | Admin |
+| Consulta Integrada | `/consulta` | Todos |
 
 ---
 

@@ -1189,3 +1189,30 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 CREATE INDEX IX_TitularCartera_LiderID_CarteraID
     ON Titular_Cartera(LiderID, CarteraID);
 ```
+
+---
+
+### Pago
+Pagos confirmados cargados manualmente por cartera desde la UI. Alimenta los informes de recaudo.
+
+> **Creada:** 2026-04-15 — script en `docs/migrations/create_Pago_table.sql`
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| PagoID | int (identity) | NO | SI | — |
+| CedulaTitular | bigint | NO | — | Titular |
+| NombreCliente | varchar(100) | NO | — | — |
+| ValorPagado | decimal(18,2) | NO | — | — |
+| FechaPago | date | NO | — | — |
+| Honorarios | decimal(18,2) | NO | — | — |
+| LiderID | int | NO | — | Lider_Cartera |
+| CarteraID | int | NO | — | Cartera |
+| AgenteControlID | bigint | NO | — | Agente (cross-DB ref) |
+| UsuarioControlID | int | NO | — | ApplicationUser (DBZentinela, sin FK) |
+| FechaRegistro | datetime | NO | — | — |
+
+**Notas:**
+- `LiderID` se resuelve automáticamente desde `Titular_Cartera` usando `(CedulaTitular, CarteraID)`.
+- `AgenteControlID` se resuelve desde `Agente.UsuarioControlNext` (valor textual del CSV).
+- `UsuarioControlID` referencia a `ApplicationUser` en `DBZentinela` — no existe FK a nivel de BD por ser cross-database.
+- La tabla usa `ExcludeFromMigrations` en EF Core; el schema se gestiona con el script SQL manual.
