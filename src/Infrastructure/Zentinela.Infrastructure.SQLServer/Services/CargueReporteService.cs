@@ -61,17 +61,26 @@ public class CargueReporteService : ICargueReporteService
             .Select(t => t.NumeroDocumento)
             .ToHashSetAsync();
 
-        // Batch lookup: AgenteIDs válidos
-        var agenteIDs = filasRaw
-            .Where(f => f.AgenteID.HasValue)
-            .Select(f => (long)f.AgenteID!.Value)
+        // Batch lookup: AgenteID desde Agente.UsuarioControlNext (igual que Cargue de Pagos)
+        var usuariosControl = filasRaw
+            .Where(f => !string.IsNullOrWhiteSpace(f.UsuarioControl))
+            .Select(f => f.UsuarioControl!.Trim())
             .Distinct()
             .ToList();
 
-        var agentesOk = await _db.Agentes
-            .Where(a => agenteIDs.Contains(a.AgenteID))
-            .Select(a => (int)a.AgenteID)
-            .ToHashSetAsync();
+        var agentePorUsuario = await _db.Agentes
+            .Where(a => a.UsuarioControlNext != null && usuariosControl.Contains(a.UsuarioControlNext))
+            .Select(a => new { a.UsuarioControlNext, a.AgenteID })
+            .AsNoTracking()
+            .ToDictionaryAsync(a => a.UsuarioControlNext!, a => a.AgenteID, StringComparer.OrdinalIgnoreCase);
+
+        // Resolver AgenteID en cada fila desde el username
+        foreach (var f in filasRaw)
+        {
+            if (!string.IsNullOrWhiteSpace(f.UsuarioControl) &&
+                agentePorUsuario.TryGetValue(f.UsuarioControl.Trim(), out var agenteID))
+                f.AgenteID = agenteID;
+        }
 
         // Clasificar filas
         var todasLasFilas = new List<FilaValidacionReporteDto>(filasRaw.Count);
@@ -80,15 +89,15 @@ public class CargueReporteService : ICargueReporteService
 
         foreach (var fila in filasRaw)
         {
-            var estado = ClasificarFila(fila, titularesExistentes, agentesOk, out var razon);
+            var estado = ClasificarFila(fila, titularesExistentes, out var razon);
 
             todasLasFilas.Add(new FilaValidacionReporteDto
             {
-                TitularID = fila.TitularID?.ToString() ?? "—",
-                Nombre    = fila.Nombre,
-                AgenteID  = fila.AgenteID?.ToString()  ?? "—",
-                Estado    = estado,
-                Razon     = razon,
+                TitularID      = fila.TitularID?.ToString() ?? "—",
+                Nombre         = fila.Nombre,
+                UsuarioControl = fila.UsuarioControl ?? "—",
+                Estado         = estado,
+                Razon          = razon,
             });
 
             if (estado is EstadoFilaReporte.Ok or EstadoFilaReporte.NuevoTitular)
@@ -152,12 +161,11 @@ public class CargueReporteService : ICargueReporteService
     private static EstadoFilaReporte ClasificarFila(
         FilaReporteRaw    fila,
         HashSet<long>     titularesExistentes,
-        HashSet<int>      agentesOk,
         out string?       razon)
     {
-        // AgenteID siempre es obligatorio
-        if (!fila.AgenteID.HasValue || !agentesOk.Contains(fila.AgenteID.Value))
-        { razon = "AgenteID no encontrado en la base de datos"; return EstadoFilaReporte.AgenteIDInvalido; }
+        // UsuarioControl obligatorio y debe haber resuelto un AgenteID
+        if (string.IsNullOrWhiteSpace(fila.UsuarioControl) || !fila.AgenteID.HasValue)
+        { razon = $"Usuario Control '{fila.UsuarioControl}' no encontrado en el sistema"; return EstadoFilaReporte.AgenteNoEncontrado; }
 
         // TitularID no existe → ¿tiene Nombre para crearlo?
         if (!fila.TitularID.HasValue || !titularesExistentes.Contains(fila.TitularID.Value))
@@ -186,7 +194,7 @@ public class CargueReporteService : ICargueReporteService
         static string Dat(DateOnly? d) => d.HasValue    ? $"'{d.Value:yyyy-MM-dd}'" : "NULL";
         static string Dtm(DateTime? d) => d.HasValue    ? $"'{d.Value:yyyy-MM-dd HH:mm:ss}'" : "NULL";
 
-        return $"({Num(f.TitularID)}, {Str(f.Nombre)}, {Int(f.CarteraID)}, {Int(f.AgenteID)}, " +
+        return $"({Num(f.TitularID)}, {Str(f.Nombre)}, {Int(f.CarteraID)}, {Num(f.AgenteID)}, " +
                $"{Str(f.UltimoPerfil)}, {Str(f.MejorPerfil)}, {Dat(f.FechaMejorPerfil)}, " +
                $"{Dec(f.SaldoTotal)}, {Str(f.NumeroMarcado)}, {Int(f.Rotacion)}, " +
                $"{Dat(f.FechaUltimaGestion)}, {Dat(f.FechaPromesa)}, {Dec(f.ValorPromesa)}, " +

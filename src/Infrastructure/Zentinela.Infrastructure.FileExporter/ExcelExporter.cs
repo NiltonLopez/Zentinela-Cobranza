@@ -134,7 +134,7 @@ public class ExcelExporter : IExcelExporter
         }
 
         // Fila de ejemplo en gris (sin CarteraID — la UI lo provee)
-        var ejemplos = new object?[] { 1020304050L, 98765, "PEREZ JUAN", "Incumplido",
+        var ejemplos = new object?[] { 1020304050L, "jperez", "PEREZ JUAN", "Incumplido",
             "Acuerdo de pago total", null, 1500000m, null, 1, "2026-04-01", null, null, null, DateTime.Today };
         for (var i = 0; i < ejemplos.Length; i++)
         {
@@ -298,7 +298,7 @@ public class ExcelExporter : IExcelExporter
             result.Add(new FilaReporteRaw
             {
                 TitularID          = long.TryParse(titularStr,                      out var tid) ? tid : null,
-                AgenteID           = int.TryParse(agenteStr,                        out var aid) ? aid : null,
+                UsuarioControl     = NullIfEmpty(agenteStr),
                 Nombre             = NullIfEmpty(Cell(fila, idx.Nombre)),
                 UltimoPerfil       = NullIfEmpty(Cell(fila, idx.UltimoPerfil)),
                 MejorPerfil        = NullIfEmpty(Cell(fila, idx.MejorPerfil)),

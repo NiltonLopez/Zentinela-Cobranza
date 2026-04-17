@@ -5,7 +5,7 @@ public enum EstadoFilaReporte
     Ok,
     NuevoTitular,       // TitularID no existe pero tiene Nombre → se creará
     SinNombreParaCrear, // TitularID no existe y sin Nombre → error
-    AgenteIDInvalido,
+    AgenteNoEncontrado,
 }
 
 /// <summary>Fila raw parseada del Excel antes de validar.</summary>
@@ -14,7 +14,10 @@ public class FilaReporteRaw
     public long?     TitularID          { get; set; }
     public string?   Nombre             { get; set; }   // obligatorio si es titular nuevo
     public int?      CarteraID          { get; set; }   // inyectado desde la UI
-    public int?      AgenteID           { get; set; }
+    /// <summary>Username de ControlNext leído del Excel. Se resuelve a AgenteID en validación.</summary>
+    public string?   UsuarioControl     { get; set; }
+    /// <summary>Resuelto desde UsuarioControl → Agente.UsuarioControlNext durante la validación.</summary>
+    public long?     AgenteID           { get; set; }
     public string?   UltimoPerfil       { get; set; }
     public string?   MejorPerfil        { get; set; }
     public DateOnly? FechaMejorPerfil   { get; set; }
@@ -31,9 +34,9 @@ public class FilaReporteRaw
 /// <summary>Resultado de validación visible en la tabla de preview.</summary>
 public class FilaValidacionReporteDto
 {
-    public string  TitularID { get; set; } = string.Empty;
-    public string? Nombre    { get; set; }
-    public string  AgenteID  { get; set; } = string.Empty;
+    public string  TitularID      { get; set; } = string.Empty;
+    public string? Nombre         { get; set; }
+    public string  UsuarioControl { get; set; } = string.Empty;
     public EstadoFilaReporte Estado { get; set; }
     public string? Razon     { get; set; }
 }
