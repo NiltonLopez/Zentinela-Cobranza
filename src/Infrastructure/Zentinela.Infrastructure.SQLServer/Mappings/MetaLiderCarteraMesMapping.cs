@@ -13,7 +13,7 @@ public class MetaLiderCarteraMesMapping : IEntityTypeConfiguration<MetaLiderCart
         builder.Property(m => m.MetaID).UseIdentityColumn();
         builder.Property(m => m.LiderID).IsRequired();
         builder.Property(m => m.CarteraID).IsRequired();
-        builder.Property(m => m.Año).IsRequired();
+        builder.Property(m => m.Año).HasColumnName("Anio").IsRequired();
         builder.Property(m => m.Mes).IsRequired();
         builder.Property(m => m.MetaRecaudo).HasColumnType("decimal(18,2)").IsRequired();
     }
