@@ -28,6 +28,24 @@ Estos valores aparecen directamente en el código fuente como literales:
 | `#E2E2DF` | Fondo del avatar de iniciales en la Navbar |
 | `#e53e1a` | Color del botón "Salir" en hover |
 
+### Paleta de módulo Informes (Virtualidad / Recaudo)
+
+Los módulos de informes definen una paleta local (`const C`) en cada página. La paleta estándar para Virtualidad es:
+
+| Clave | Hex | Uso |
+|---|---|---|
+| `brand` | `#F54927` | Naranja principal Zentinela — botones primarios, SelectorPeriodo activo, LoadingRow, tab Pagos vs Impacto |
+| `brandLight` | `#FEF0EC` | Fondo de hover en DropZone, fondo de LoadingRow |
+| `success` | `#16a34a` | KPI válidos, banners de éxito, barras "contestaron" |
+| `warning` | `#d97706` | AlertPanel, alertas de umbral superado |
+| `danger` | `#dc2626` | KPI errores, filas inválidas, ErrorPanel |
+| `gray` | `#64748b` | Texto secundario, ejes de gráficos, botones secundarios |
+| `mensajes` | `#7c3aed` | Tab Mensajería — headers, KPIs, gráficos |
+| `ivr` | `#0891b2` | Tab IVR — headers, KPIs, sub-tabs, gráficos |
+| `llamadas` | `#059669` | Tab Llamadas Perdidas — headers, KPIs, gráficos |
+| `entrantes` | `#ea580c` | Tab Llamadas Entrantes — headers, KPIs, gráficos |
+| `impacto` | `#F54927` | Tab Pagos vs Impacto (igual a brand) |
+
 ---
 
 ## Tipografía
@@ -291,6 +309,85 @@ export type Rol = 'Admin' | 'Supervisor' | 'Líder' | 'Analista' | 'Asesor';
 ```typescript
 export interface CarteraDto { id: number; nombreCartera: string; }
 ```
+
+---
+
+## Componentes de módulos de informes
+
+Los módulos de Informes (Recaudo, Virtualidad) definen componentes internos reutilizables dentro de cada página. No están en `/components/` globales — viven en el archivo de la página. El patrón estándar es:
+
+### KpiCard
+
+```tsx
+function KpiCard({ label, value, color = C.brand }: { label: string; value: string | number; color?: string })
+```
+
+Tarjeta de métrica con borde superior de 3px del color asignado. `value` puede ser string o número. `label` se muestra en uppercase con letter-spacing.
+
+### DropZone
+
+```tsx
+function DropZone({ onFile, accept = '.xlsx', label }: { onFile: (f: File) => void; accept?: string; label?: string })
+```
+
+Zona de carga de archivos con hover interactivo (borde naranja + fondo `brandLight`). Usa `useRef<HTMLInputElement>` internamente.
+
+### BtnPrimary / BtnSecondary
+
+```tsx
+function BtnPrimary({ children, onClick, disabled, color = C.brand }: ...)
+function BtnSecondary({ children, onClick }: ...)
+```
+
+Botones locales del módulo. `BtnPrimary` admite un `color` para mantener el color del tab activo. `BtnSecondary` es siempre gris con borde.
+
+### SelectorPeriodo
+
+```tsx
+function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string) => void })
+```
+
+Selector de período con chips de preset (Hoy, Este mes, Mes pasado, 7d, 30d, Personalizado). El chip activo usa el naranja principal. Incluye inputs de fecha cuando se selecciona "Personalizado".
+
+### SuccessBanner
+
+```tsx
+function SuccessBanner({ mensaje, onNuevaCarga, labelBtn }: ...)
+```
+
+Banner de confirmación con borde izquierdo verde, ícono ✓ y botón de acción.
+
+### LoadingRow
+
+```tsx
+function LoadingRow({ label }: { label: string })
+```
+
+Fila de carga con fondo `brandLight` y símbolo ⟳. Reemplaza el `<p>` plano de carga.
+
+### ErrorPanel
+
+```tsx
+function ErrorPanel({ mensaje }: { mensaje: string })
+```
+
+Panel de error con borde izquierdo rojo, fondo `#fef2f2`.
+
+### AlertPanel
+
+```tsx
+function AlertPanel({ title, children }: { title: string; children: React.ReactNode })
+```
+
+Panel de alerta con borde izquierdo amarillo (`#d97706`) y fondo ámbar suave. Para alertas de umbral (>4 mensajes, >5 IVR, etc.).
+
+### SectionDivider
+
+```tsx
+function SectionDivider({ title, color = C.brand }: { title: string; color?: string })
+```
+
+Separador de sección con línea horizontal + barra vertical de color + título bold. Divide la sección de carga de la sección de informe dentro de un mismo tab.
 
 ---
 
