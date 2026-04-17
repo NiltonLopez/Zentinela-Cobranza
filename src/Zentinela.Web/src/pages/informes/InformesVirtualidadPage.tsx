@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell, Legend, CartesianGrid,
 } from 'recharts';
 import {
   validarMensajeria, confirmarMensajeria, getInformeMensajeria,
@@ -21,42 +21,42 @@ import type {
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
 const C = {
-  brand:    '#2563eb',
-  success:  '#16a34a',
-  warning:  '#d97706',
-  danger:   '#dc2626',
-  gray:     '#64748b',
-  mensajes: '#7c3aed',
-  ivr:      '#0891b2',
-  llamadas: '#059669',
-  entrantes:'#d97706',
-  impacto:  '#2563eb',
+  brand:      '#F54927',   // Naranja principal Zentinela
+  brandLight: '#FEF0EC',
+  success:    '#16a34a',
+  warning:    '#d97706',
+  danger:     '#dc2626',
+  gray:       '#64748b',
+  mensajes:   '#7c3aed',
+  ivr:        '#0891b2',
+  llamadas:   '#059669',
+  entrantes:  '#ea580c',
+  impacto:    '#F54927',
 };
 
 type Tab = 'mensajeria' | 'ivr' | 'llamadas-perdidas' | 'llamadas-entrantes' | 'pagos-impacto';
 
 const AÑO_HOY = new Date().getFullYear();
 
-// ── Selector de período (copiado del Dashboard de Directores) ─────────────────
-
+// ── Utilidades de fecha ───────────────────────────────────────────────────────
 type Preset = 'hoy' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
 
 const PRESETS_PERIODO: { valor: Preset; label: string }[] = [
-  { valor: 'hoy',        label: 'Hoy'             },
-  { valor: 'ciclo',      label: 'Este mes'         },
-  { valor: 'mes-pasado', label: 'Mes pasado'       },
-  { valor: '7d',         label: 'Últimos 7 días'   },
-  { valor: '30d',        label: 'Últimos 30 días'  },
-  { valor: 'custom',     label: 'Personalizado'    },
+  { valor: 'hoy',        label: 'Hoy'            },
+  { valor: 'ciclo',      label: 'Este mes'        },
+  { valor: 'mes-pasado', label: 'Mes pasado'      },
+  { valor: '7d',         label: 'Últimos 7 días'  },
+  { valor: '30d',        label: 'Últimos 30 días' },
+  { valor: 'custom',     label: 'Personalizado'   },
 ];
 
 function isoFecha(d: Date) { return d.toISOString().slice(0, 10); }
-function isoHoy()          { return isoFecha(new Date()); }
+function isoHoy()           { return isoFecha(new Date()); }
 
 const HOY    = isoHoy();
 const HACE30 = (() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoFecha(d); })();
 
-function calcularRangoPeriodo(preset: Preset, customDesde: string, customHasta: string): { desde: string; hasta: string } {
+function calcularRangoPeriodo(preset: Preset, cd: string, ch: string): { desde: string; hasta: string } {
   const hoy = new Date();
   switch (preset) {
     case 'hoy':        return { desde: isoHoy(), hasta: isoHoy() };
@@ -67,21 +67,26 @@ function calcularRangoPeriodo(preset: Preset, customDesde: string, customHasta: 
     };
     case '7d':  { const d = new Date(hoy); d.setDate(hoy.getDate() - 6);  return { desde: isoFecha(d), hasta: isoHoy() }; }
     case '30d': { const d = new Date(hoy); d.setDate(hoy.getDate() - 29); return { desde: isoFecha(d), hasta: isoHoy() }; }
-    case 'custom': return { desde: customDesde || isoHoy(), hasta: customHasta || isoHoy() };
+    case 'custom': return { desde: cd || isoHoy(), hasta: ch || isoHoy() };
   }
 }
+
+// ── Componentes base ──────────────────────────────────────────────────────────
 
 function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string) => void }) {
   const [preset,      setPreset]      = useState<Preset>('30d');
   const [customDesde, setCustomDesde] = useState('');
   const [customHasta, setCustomHasta] = useState('');
 
-  const estilo = (activo: boolean): React.CSSProperties => ({
-    padding: '5px 12px', borderRadius: '20px',
-    border: '0.5px solid var(--z-border)',
-    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
-    color:      activo ? 'var(--z-bg-page)'       : 'var(--z-text-muted)',
-    fontSize: '12px', fontWeight: activo ? 600 : 400, cursor: 'pointer',
+  const chip = (activo: boolean): React.CSSProperties => ({
+    padding: '5px 14px',
+    borderRadius: 20,
+    border: activo ? `1.5px solid ${C.brand}` : '1px solid var(--z-border)',
+    background: activo ? C.brand : 'var(--z-bg-card)',
+    color:      activo ? '#fff'   : 'var(--z-text-muted)',
+    fontSize: 12,
+    fontWeight: activo ? 600 : 400,
+    cursor: 'pointer',
   });
 
   const aplicar = (p: Preset, cd = customDesde, ch = customHasta) => {
@@ -91,31 +96,31 @@ function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string
 
   return (
     <div>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
         Período
       </p>
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {PRESETS_PERIODO.map(p => (
-          <button key={p.valor} style={estilo(preset === p.valor)}
+          <button key={p.valor} style={chip(preset === p.valor)}
             onClick={() => { setPreset(p.valor); if (p.valor !== 'custom') aplicar(p.valor); }}>
             {p.label}
           </button>
         ))}
       </div>
       {preset === 'custom' && (
-        <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Desde</label>
+        <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, color: 'var(--z-text-muted)', fontWeight: 600 }}>Desde</label>
             <input type="date" value={customDesde} onChange={e => setCustomDesde(e.target.value)}
-              style={{ padding: '6px 10px', fontSize: '13px', borderRadius: '6px', border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
+              style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Hasta</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, color: 'var(--z-text-muted)', fontWeight: 600 }}>Hasta</label>
             <input type="date" value={customHasta} onChange={e => setCustomHasta(e.target.value)}
-              style={{ padding: '6px 10px', fontSize: '13px', borderRadius: '6px', border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
+              style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
           </div>
           <button onClick={() => aplicar('custom')}
-            style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: C.brand, color: '#fff', fontSize: '13px', cursor: 'pointer' }}>
+            style={{ padding: '8px 18px', borderRadius: 7, border: 'none', background: C.brand, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             Aplicar
           </button>
         </div>
@@ -124,154 +129,306 @@ function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string
   );
 }
 
-// ── Componentes compartidos ───────────────────────────────────────────────────
-
 function KpiCard({ label, value, color = C.brand }: { label: string; value: string | number; color?: string }) {
   return (
-    <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 8, padding: '12px 20px', minWidth: 120 }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 12, color: C.gray }}>{label}</div>
+    <div style={{
+      background: 'var(--z-bg-card)',
+      border: '1px solid var(--z-border)',
+      borderTop: `3px solid ${color}`,
+      borderRadius: 8,
+      padding: '14px 20px',
+      minWidth: 120,
+      flex: 1,
+    }}>
+      <div style={{ fontSize: 26, fontWeight: 700, color, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: C.gray, marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
     </div>
   );
 }
 
 function DropZone({ onFile, accept = '.xlsx', label }: { onFile: (f: File) => void; accept?: string; label?: string }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const ref   = useRef<HTMLInputElement>(null);
+  const [hover, setHover] = useState(false);
   return (
     <div
       onClick={() => ref.current?.click()}
-      style={{ border: `2px dashed ${C.brand}`, borderRadius: 10, padding: '24px 32px', textAlign: 'center', cursor: 'pointer', color: C.brand, fontSize: 14 }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        border: `2px dashed ${hover ? C.brand : 'var(--z-border)'}`,
+        borderRadius: 12,
+        padding: '36px 40px',
+        textAlign: 'center',
+        cursor: 'pointer',
+        background: hover ? C.brandLight : 'var(--z-bg-page)',
+        transition: 'border-color 0.15s, background 0.15s',
+      }}
     >
-      {label ?? `Arrastra o haz clic para subir ${accept.toUpperCase()}`}
-      <input ref={ref} type="file" accept={accept} style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) onFile(e.target.files[0]); }} />
+      <div style={{ fontSize: 30, marginBottom: 10, opacity: 0.6 }}>↑</div>
+      <div style={{ color: hover ? C.brand : C.gray, fontWeight: 600, fontSize: 14 }}>
+        {label ?? `Arrastra o haz clic para subir ${accept.toUpperCase()}`}
+      </div>
+      <div style={{ color: C.gray, fontSize: 12, marginTop: 4, opacity: 0.7 }}>
+        Máximo 50 MB · Formato {accept.toUpperCase()}
+      </div>
+      <input ref={ref} type="file" accept={accept} style={{ display: 'none' }}
+        onChange={e => { if (e.target.files?.[0]) onFile(e.target.files[0]); }} />
     </div>
   );
 }
 
 function ErrorPanel({ mensaje }: { mensaje: string }) {
-  return <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12, color: C.danger, fontSize: 13 }}>{mensaje}</div>;
+  return (
+    <div style={{
+      background: '#fef2f2',
+      border: `1px solid ${C.danger}30`,
+      borderLeft: `4px solid ${C.danger}`,
+      borderRadius: 8,
+      padding: '12px 16px',
+      color: C.danger,
+      fontSize: 13,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    }}>
+      <span>⚠</span> {mensaje}
+    </div>
+  );
+}
+
+function SuccessBanner({ mensaje, onNuevaCarga, labelBtn = 'Nueva carga' }: { mensaje: string; onNuevaCarga: () => void; labelBtn?: string }) {
+  return (
+    <div style={{
+      background: '#f0fdf4',
+      border: `1px solid ${C.success}40`,
+      borderLeft: `4px solid ${C.success}`,
+      borderRadius: 8,
+      padding: '14px 20px',
+      color: C.success,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 14,
+      fontSize: 14,
+      fontWeight: 500,
+    }}>
+      <span style={{ fontSize: 18 }}>✓</span>
+      <span style={{ flex: 1 }}>{mensaje}</span>
+      <button onClick={onNuevaCarga}
+        style={{ background: C.success, color: '#fff', border: 'none', borderRadius: 7, padding: '6px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+        {labelBtn}
+      </button>
+    </div>
+  );
+}
+
+function LoadingRow({ label }: { label: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      color: C.brand, fontSize: 13, padding: '12px 16px',
+      background: C.brandLight, borderRadius: 8,
+    }}>
+      <span>⟳</span> {label}
+    </div>
+  );
+}
+
+function SectionDivider({ title, color = C.brand }: { title: string; color?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid var(--z-border)', paddingTop: 22, marginTop: 6 }}>
+      <div style={{ width: 4, height: 18, borderRadius: 2, background: color, flexShrink: 0 }} />
+      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--z-text-primary)' }}>{title}</h4>
+    </div>
+  );
+}
+
+function AlertPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: '#fffbeb',
+      border: `1px solid ${C.warning}40`,
+      borderLeft: `4px solid ${C.warning}`,
+      borderRadius: 8,
+      padding: '12px 16px',
+    }}>
+      <strong style={{ color: C.warning, fontSize: 13, display: 'block', marginBottom: 8 }}>⚠ {title}</strong>
+      {children}
+    </div>
+  );
+}
+
+const tooltipStyle = {
+  contentStyle: {
+    background: 'var(--z-bg-card)',
+    border: '1px solid var(--z-border)',
+    borderRadius: 7,
+    fontSize: 12,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+  },
+};
+
+const thStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  textAlign: 'left',
+  color: C.gray,
+  fontSize: 11,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  borderBottom: '2px solid var(--z-border)',
+  background: 'var(--z-bg-page)',
+};
+
+const tdStyle: React.CSSProperties = { padding: '7px 12px' };
+
+function BtnPrimary({ children, onClick, disabled, color = C.brand }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; color?: string }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ background: disabled ? '#ccc' : color, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 13 }}>
+      {children}
+    </button>
+  );
+}
+
+function BtnSecondary({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+  return (
+    <button onClick={onClick}
+      style={{ background: 'transparent', border: '1px solid var(--z-border)', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', color: C.gray, fontSize: 13 }}>
+      {children}
+    </button>
+  );
 }
 
 // ── Tab Mensajería ────────────────────────────────────────────────────────────
 
 function TabMensajeria() {
-  const [etapa, setEtapa]         = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [preview, setPreview]     = useState<ValidarMensajeriaResponse | null>(null);
-  const [desde, setDesde]         = useState(HACE30);
-  const [hasta, setHasta]         = useState(HOY);
+  const [etapa,   setEtapa]   = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [preview, setPreview] = useState<ValidarMensajeriaResponse | null>(null);
+  const [desde,   setDesde]   = useState(HACE30);
+  const [hasta,   setHasta]   = useState(HOY);
 
-  const validar  = useMutation({ mutationFn: validarMensajeria, onSuccess: r => { setPreview(r); setEtapa('preview'); } });
-  const confirmar= useMutation({ mutationFn: (f: FilaMensajeria[]) => confirmarMensajeria(f), onSuccess: () => setEtapa('exito') });
+  const validar   = useMutation({ mutationFn: validarMensajeria,                                       onSuccess: r => { setPreview(r); setEtapa('preview'); } });
+  const confirmar = useMutation({ mutationFn: (f: FilaMensajeria[]) => confirmarMensajeria(f),          onSuccess: () => setEtapa('exito') });
 
   const { data: informe, refetch } = useQuery({
     queryKey: ['informe-mensajeria', desde, hasta],
-    queryFn: () => getInformeMensajeria(desde, hasta),
-    enabled: false,
+    queryFn:  () => getInformeMensajeria(desde, hasta),
+    enabled:  false,
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h3 style={{ margin: 0, color: C.mensajes }}>Mensajería</h3>
+
+      {/* Cabecera del tab */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
+        <div style={{ width: 4, height: 32, borderRadius: 2, background: C.mensajes }} />
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Mensajería</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Carga y seguimiento de mensajes de texto enviados a titulares</p>
+        </div>
+      </div>
 
       {etapa === 'carga' && (
         <>
           <DropZone onFile={f => validar.mutate(f)} label="Subir Excel de mensajería (.xlsx)" />
-          {validar.isPending && <p style={{ color: C.gray }}>Validando…</p>}
-          {validar.isError && <ErrorPanel mensaje="Error al validar el archivo." />}
+          {validar.isPending && <LoadingRow label="Validando archivo…" />}
+          {validar.isError   && <ErrorPanel mensaje="Error al validar el archivo." />}
         </>
       )}
 
       {etapa === 'preview' && preview && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Total filas"  value={preview.totalFilas}   />
-            <KpiCard label="Válidas"      value={preview.totalValidas} color={C.success} />
-            <KpiCard label="Con errores"  value={preview.totalErrores} color={C.danger}  />
-            <KpiCard label="Alertas >4"   value={preview.alertas.length} color={C.warning} />
+            <KpiCard label="Total filas"  value={preview.totalFilas}     color={C.mensajes} />
+            <KpiCard label="Válidas"      value={preview.totalValidas}   color={C.success}  />
+            <KpiCard label="Con errores"  value={preview.totalErrores}   color={C.danger}   />
+            <KpiCard label="Alertas >4"   value={preview.alertas.length} color={C.warning}  />
           </div>
 
           {preview.alertas.length > 0 && (
-            <div style={{ background: '#fffbeb', border: `1px solid ${C.warning}`, borderRadius: 8, padding: 12 }}>
-              <strong style={{ color: C.warning }}>⚠ Líneas con más de 4 mensajes en esta carga:</strong>
-              <table style={{ width: '100%', fontSize: 12, marginTop: 8, borderCollapse: 'collapse' }}>
-                <thead><tr style={{ color: C.gray }}><th style={{ textAlign: 'left' }}>Teléfono</th><th>Cartera</th><th>Total</th></tr></thead>
+            <AlertPanel title="Líneas con más de 4 mensajes en esta carga">
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Teléfono</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
                 <tbody>{preview.alertas.map((a, i) => (
-                  <tr key={i}><td>{a.numeroTelefono}</td><td>{a.nombreCartera}</td><td style={{ color: C.danger, fontWeight: 700 }}>{a.totalMensajes}</td></tr>
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                    <td style={tdStyle}>{a.numeroTelefono}</td>
+                    <td style={tdStyle}>{a.nombreCartera}</td>
+                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalMensajes}</td>
+                  </tr>
                 ))}</tbody>
               </table>
-            </div>
+            </AlertPanel>
           )}
 
           <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-            <thead style={{ background: 'var(--z-bg-subtle)' }}>
-              <tr>{['Documento','Teléfono','Cartera','Fecha','Estado'].map(h => <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: C.gray }}>{h}</th>)}</tr>
+            <thead>
+              <tr>{['Documento', 'Teléfono', 'Cartera', 'Fecha', 'Estado'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
             </thead>
             <tbody>{preview.preview.map((f, i) => (
-              <tr key={i} style={{ borderTop: '1px solid var(--z-border)' }}>
-                <td style={{ padding: '5px 10px' }}>{f.numeroDocumento}</td>
-                <td style={{ padding: '5px 10px' }}>{f.numeroTelefono}</td>
-                <td style={{ padding: '5px 10px' }}>{f.nombreCartera}</td>
-                <td style={{ padding: '5px 10px' }}>{f.fechaEnvio}</td>
-                <td style={{ padding: '5px 10px', color: f.esValida ? C.success : C.danger }}>{f.esValida ? 'Válida' : f.errorMensaje}</td>
+              <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                <td style={tdStyle}>{f.numeroDocumento}</td>
+                <td style={tdStyle}>{f.numeroTelefono}</td>
+                <td style={tdStyle}>{f.nombreCartera}</td>
+                <td style={tdStyle}>{f.fechaEnvio}</td>
+                <td style={{ ...tdStyle, color: f.esValida ? C.success : C.danger, fontWeight: 500 }}>
+                  {f.esValida ? '✓ Válida' : f.errorMensaje}
+                </td>
               </tr>
             ))}</tbody>
           </table>
 
           <div style={{ display: 'flex', gap: 10 }}>
-            <button disabled={preview.totalValidas === 0 || confirmar.isPending}
-              onClick={() => confirmar.mutate(preview.filasValidas)}
-              style={{ background: C.brand, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 20px', cursor: 'pointer' }}>
+            <BtnPrimary color={C.mensajes} disabled={preview.totalValidas === 0 || confirmar.isPending}
+              onClick={() => confirmar.mutate(preview.filasValidas)}>
               Confirmar {preview.totalValidas} registro(s)
-            </button>
-            <button onClick={() => setEtapa('carga')}
-              style={{ background: 'transparent', border: `1px solid ${C.gray}`, borderRadius: 6, padding: '8px 16px', cursor: 'pointer', color: C.gray }}>
-              Cancelar
-            </button>
+            </BtnPrimary>
+            <BtnSecondary onClick={() => setEtapa('carga')}>Cancelar</BtnSecondary>
           </div>
         </>
       )}
 
       {etapa === 'exito' && (
-        <div style={{ background: '#dcfce7', border: `1px solid ${C.success}`, borderRadius: 8, padding: 16, color: C.success }}>
-          ✓ Mensajes registrados correctamente.
-          <button onClick={() => { setEtapa('carga'); setPreview(null); }}
-            style={{ marginLeft: 16, background: C.success, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer' }}>
-            Nueva carga
-          </button>
-        </div>
+        <SuccessBanner mensaje="Mensajes registrados correctamente."
+          onNuevaCarga={() => { setEtapa('carga'); setPreview(null); }} />
       )}
 
       {/* Sección informe */}
-      <div style={{ borderTop: '1px solid var(--z-border)', paddingTop: 20 }}>
-        <h4 style={{ margin: '0 0 12px' }}>Informe de mensajería enviada</h4>
-        <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
-        {informe && (
-          <>
+      <SectionDivider title="Informe de mensajería enviada" color={C.mensajes} />
+      <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
+
+      {informe && (
+        <>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <KpiCard label="Total mensajes" value={informe.totalMensajes} color={C.mensajes} />
-            <div style={{ marginTop: 16, height: 220 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={informe.porCartera} layout="vertical">
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="nombreCartera" type="category" width={120} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="total" fill={C.mensajes} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            {informe.alertas.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <strong style={{ color: C.warning, fontSize: 13 }}>Alertas: líneas con &gt;4 mensajes en el período</strong>
-                <table style={{ width: '100%', fontSize: 12, marginTop: 6, borderCollapse: 'collapse' }}>
-                  <thead><tr style={{ color: C.gray }}><th style={{ textAlign: 'left' }}>Teléfono</th><th>Cartera</th><th>Total</th></tr></thead>
-                  <tbody>{informe.alertas.map((a, i) => (
-                    <tr key={i}><td>{a.numeroTelefono}</td><td>{a.nombreCartera}</td><td style={{ color: C.danger, fontWeight: 700 }}>{a.totalMensajes}</td></tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          </div>
+          <div style={{ height: 230, marginTop: 4 }}>
+            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Mensajes por cartera</p>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={informe.porCartera} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis dataKey="nombreCartera" type="category" width={130} tick={{ fontSize: 11 }} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="total" fill={C.mensajes} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {informe.alertas.length > 0 && (
+            <AlertPanel title={`Alertas en el período — líneas con >4 mensajes`}>
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Teléfono</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
+                <tbody>{informe.alertas.map((a, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                    <td style={tdStyle}>{a.numeroTelefono}</td>
+                    <td style={tdStyle}>{a.nombreCartera}</td>
+                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalMensajes}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </AlertPanel>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -279,138 +436,156 @@ function TabMensajeria() {
 // ── Tab IVR ───────────────────────────────────────────────────────────────────
 
 function TabIVR() {
-  const [subTab, setSubTab]       = useState<'pre' | 'post' | 'informe'>('pre');
-  const [previewPre, setPreviewPre]   = useState<ValidarIVRResponse | null>(null);
+  const [subTab,      setSubTab]      = useState<'pre' | 'post' | 'informe'>('pre');
+  const [previewPre,  setPreviewPre]  = useState<ValidarIVRResponse | null>(null);
   const [previewPost, setPreviewPost] = useState<ValidarIVRResponse | null>(null);
-  const [etapaPre, setEtapaPre]   = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [etapaPost, setEtapaPost] = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [desde, setDesde]         = useState(HACE30);
-  const [hasta, setHasta]         = useState(HOY);
+  const [etapaPre,    setEtapaPre]    = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [etapaPost,   setEtapaPost]   = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [desde,       setDesde]       = useState(HACE30);
+  const [hasta,       setHasta]       = useState(HOY);
 
-  const validarPre   = useMutation({ mutationFn: validarIVRPreEnvio,   onSuccess: r => { setPreviewPre(r); setEtapaPre('preview'); } });
-  const confirmarPre = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVRPreEnvio(f), onSuccess: () => setEtapaPre('exito') });
-  const validarPost  = useMutation({ mutationFn: validarIVRPostEnvio,  onSuccess: r => { setPreviewPost(r); setEtapaPost('preview'); } });
-  const confirmarPost= useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVRPostEnvio(f), onSuccess: () => setEtapaPost('exito') });
+  const validarPre    = useMutation({ mutationFn: validarIVRPreEnvio,                                    onSuccess: r => { setPreviewPre(r);  setEtapaPre('preview');  } });
+  const confirmarPre  = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVRPreEnvio(f),             onSuccess: () => setEtapaPre('exito')  });
+  const validarPost   = useMutation({ mutationFn: validarIVRPostEnvio,                                   onSuccess: r => { setPreviewPost(r); setEtapaPost('preview'); } });
+  const confirmarPost = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVRPostEnvio(f),            onSuccess: () => setEtapaPost('exito') });
 
   const { data: informe, refetch } = useQuery({
     queryKey: ['informe-ivr', desde, hasta],
-    queryFn: () => getInformeIVR(desde, hasta),
-    enabled: false,
+    queryFn:  () => getInformeIVR(desde, hasta),
+    enabled:  false,
   });
 
-  const PIES = [{ name: 'Contestaron', value: informe?.totalContestaron ?? 0 }, { name: 'No contestaron', value: informe?.totalNoContestaron ?? 0 }];
+  const PIES       = [{ name: 'Contestaron', value: informe?.totalContestaron ?? 0 }, { name: 'No contestaron', value: informe?.totalNoContestaron ?? 0 }];
   const PIE_COLORS = [C.success, C.danger];
+
+  const subTabLabels: Record<'pre' | 'post' | 'informe', string> = { pre: 'Pre-envío', post: 'Post-envío', informe: 'Informe' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h3 style={{ margin: 0, color: C.ivr }}>IVR</h3>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        {(['pre', 'post', 'informe'] as const).map(t => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
+        <div style={{ width: 4, height: 32, borderRadius: 2, background: C.ivr }} />
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>IVR</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Envío automatizado de voz — carga pre-envío, actualización de resultados e informe</p>
+        </div>
+      </div>
+
+      {/* Sub-tabs IVR */}
+      <div style={{ display: 'flex', gap: 0, borderRadius: 8, border: '1px solid var(--z-border)', overflow: 'hidden', width: 'fit-content' }}>
+        {(['pre', 'post', 'informe'] as const).map((t, idx) => (
           <button key={t} onClick={() => setSubTab(t)}
-            style={{ padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13,
-              background: subTab === t ? C.ivr : 'var(--z-bg-subtle)', color: subTab === t ? '#fff' : C.gray }}>
-            {t === 'pre' ? 'Pre-envío' : t === 'post' ? 'Post-envío' : 'Informe'}
+            style={{
+              padding: '8px 20px',
+              border: 'none',
+              borderRight: idx < 2 ? '1px solid var(--z-border)' : 'none',
+              cursor: 'pointer',
+              fontSize: 13,
+              background: subTab === t ? C.ivr : 'var(--z-bg-card)',
+              color:      subTab === t ? '#fff' : C.gray,
+              fontWeight: subTab === t ? 600 : 400,
+            }}>
+            {subTabLabels[t]}
           </button>
         ))}
       </div>
 
+      {/* Pre-envío */}
       {subTab === 'pre' && (
         <>
           {etapaPre === 'carga' && (
             <>
               <DropZone onFile={f => validarPre.mutate(f)} label="Subir Excel pre-envío IVR (.xlsx)" />
-              {validarPre.isPending && <p style={{ color: C.gray }}>Validando…</p>}
+              {validarPre.isPending && <LoadingRow label="Validando archivo…" />}
             </>
           )}
           {etapaPre === 'preview' && previewPre && (
             <>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <KpiCard label="Total"   value={previewPre.totalFilas}   />
-                <KpiCard label="Válidas" value={previewPre.totalValidas} color={C.success} />
-                <KpiCard label="Errores" value={previewPre.totalErrores} color={C.danger}  />
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <KpiCard label="Total"    value={previewPre.totalFilas}   color={C.ivr}     />
+                <KpiCard label="Válidas"  value={previewPre.totalValidas} color={C.success} />
+                <KpiCard label="Errores"  value={previewPre.totalErrores} color={C.danger}  />
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                <button disabled={previewPre.totalValidas === 0 || confirmarPre.isPending}
-                  onClick={() => confirmarPre.mutate(previewPre.filasValidas)}
-                  style={{ background: C.ivr, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 20px', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <BtnPrimary color={C.ivr} disabled={previewPre.totalValidas === 0 || confirmarPre.isPending}
+                  onClick={() => confirmarPre.mutate(previewPre.filasValidas)}>
                   Confirmar {previewPre.totalValidas} pre-envío(s)
-                </button>
-                <button onClick={() => setEtapaPre('carga')} style={{ background: 'transparent', border: `1px solid ${C.gray}`, borderRadius: 6, padding: '8px 16px', cursor: 'pointer', color: C.gray }}>Cancelar</button>
+                </BtnPrimary>
+                <BtnSecondary onClick={() => setEtapaPre('carga')}>Cancelar</BtnSecondary>
               </div>
             </>
           )}
           {etapaPre === 'exito' && (
-            <div style={{ background: '#dcfce7', border: `1px solid ${C.success}`, borderRadius: 8, padding: 16, color: C.success }}>
-              ✓ Pre-envíos registrados.
-              <button onClick={() => { setEtapaPre('carga'); setPreviewPre(null); }} style={{ marginLeft: 12, background: C.success, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>Nuevo</button>
-            </div>
+            <SuccessBanner mensaje="Pre-envíos IVR registrados correctamente."
+              onNuevaCarga={() => { setEtapaPre('carga'); setPreviewPre(null); }} labelBtn="Nuevo" />
           )}
         </>
       )}
 
+      {/* Post-envío */}
       {subTab === 'post' && (
         <>
           {etapaPost === 'carga' && (
             <>
               <DropZone onFile={f => validarPost.mutate(f)} label="Subir Excel post-envío con resultados (.xlsx)" />
-              {validarPost.isPending && <p style={{ color: C.gray }}>Validando…</p>}
+              {validarPost.isPending && <LoadingRow label="Validando archivo…" />}
             </>
           )}
           {etapaPost === 'preview' && previewPost && (
             <>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <KpiCard label="Total"      value={previewPost.totalFilas}   />
-                <KpiCard label="Actualizará" value={previewPost.totalValidas} color={C.success} />
-                <KpiCard label="Sin match"  value={previewPost.totalErrores} color={C.danger}  />
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <KpiCard label="Total"        value={previewPost.totalFilas}   color={C.ivr}     />
+                <KpiCard label="Actualizará"  value={previewPost.totalValidas} color={C.success} />
+                <KpiCard label="Sin match"    value={previewPost.totalErrores} color={C.danger}  />
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                <button disabled={previewPost.totalValidas === 0 || confirmarPost.isPending}
-                  onClick={() => confirmarPost.mutate(previewPost.filasValidas)}
-                  style={{ background: C.ivr, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 20px', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <BtnPrimary color={C.ivr} disabled={previewPost.totalValidas === 0 || confirmarPost.isPending}
+                  onClick={() => confirmarPost.mutate(previewPost.filasValidas)}>
                   Confirmar {previewPost.totalValidas} resultado(s)
-                </button>
-                <button onClick={() => setEtapaPost('carga')} style={{ background: 'transparent', border: `1px solid ${C.gray}`, borderRadius: 6, padding: '8px 16px', cursor: 'pointer', color: C.gray }}>Cancelar</button>
+                </BtnPrimary>
+                <BtnSecondary onClick={() => setEtapaPost('carga')}>Cancelar</BtnSecondary>
               </div>
             </>
           )}
           {etapaPost === 'exito' && (
-            <div style={{ background: '#dcfce7', border: `1px solid ${C.success}`, borderRadius: 8, padding: 16, color: C.success }}>
-              ✓ Resultados actualizados.
-              <button onClick={() => { setEtapaPost('carga'); setPreviewPost(null); }} style={{ marginLeft: 12, background: C.success, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>Nuevo</button>
-            </div>
+            <SuccessBanner mensaje="Resultados IVR actualizados correctamente."
+              onNuevaCarga={() => { setEtapaPost('carga'); setPreviewPost(null); }} labelBtn="Nuevo" />
           )}
         </>
       )}
 
+      {/* Informe IVR */}
       {subTab === 'informe' && (
         <>
           <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
           {informe && (
             <>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <KpiCard label="Solicitados"   value={informe.totalSolicitados}   color={C.ivr}     />
-                <KpiCard label="Contestaron"   value={`${informe.totalContestaron} (${informe.pctContesto}%)`}    color={C.success} />
-                <KpiCard label="No contestaron" value={`${informe.totalNoContestaron} (${informe.pctNoContesto}%)`} color={C.danger}  />
+                <KpiCard label="Solicitados"    value={informe.totalSolicitados}                                      color={C.ivr}     />
+                <KpiCard label="Contestaron"    value={`${informe.totalContestaron} (${informe.pctContesto}%)`}       color={C.success} />
+                <KpiCard label="No contestaron" value={`${informe.totalNoContestaron} (${informe.pctNoContesto}%)`}  color={C.danger}  />
               </div>
-              <div style={{ display: 'flex', gap: 20, marginTop: 8, flexWrap: 'wrap' }}>
-                <div style={{ flex: 2, minWidth: 260, height: 200 }}>
-                  <p style={{ fontSize: 13, color: C.gray, margin: '0 0 6px' }}>IVR solicitados por semana</p>
+              <div style={{ display: 'flex', gap: 20, marginTop: 4, flexWrap: 'wrap' }}>
+                <div style={{ flex: 2, minWidth: 260, height: 210 }}>
+                  <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>IVR por semana</p>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={informe.porSemana}>
-                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} label={{ value: 'Semana', position: 'insideBottom', offset: -2, fontSize: 11 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" vertical={false} />
+                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Bar dataKey="total" fill={C.ivr} name="Solicitados" radius={[4, 4, 0, 0]} />
+                      <Tooltip {...tooltipStyle} />
+                      <Bar dataKey="total"      fill={C.ivr}     name="Solicitados" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="contestaron" fill={C.success} name="Contestaron" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div style={{ flex: 1, minWidth: 200, height: 200 }}>
-                  <p style={{ fontSize: 13, color: C.gray, margin: '0 0 6px' }}>Resultado global</p>
+                <div style={{ flex: 1, minWidth: 200, height: 210 }}>
+                  <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Resultado global</p>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={PIES} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      <Pie data={PIES} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        labelLine={false}>
                         {PIES.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
                       </Pie>
                       <Legend />
@@ -419,33 +594,38 @@ function TabIVR() {
                 </div>
               </div>
               {informe.alertas.length > 0 && (
-                <div style={{ background: '#fffbeb', border: `1px solid ${C.warning}`, borderRadius: 8, padding: 12, marginTop: 8 }}>
-                  <strong style={{ color: C.warning, fontSize: 13 }}>⚠ Líneas con más de 5 IVR</strong>
-                  <table style={{ width: '100%', fontSize: 12, marginTop: 6, borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ color: C.gray }}><th style={{ textAlign: 'left' }}>Celular</th><th>Cartera</th><th>Total</th></tr></thead>
+                <AlertPanel title="Líneas con más de 5 IVR">
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead><tr><th style={thStyle}>Celular</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
                     <tbody>{informe.alertas.map((a, i) => (
-                      <tr key={i}><td>{a.celular}</td><td>{a.nombreCartera}</td><td style={{ color: C.danger, fontWeight: 700 }}>{a.totalIVR}</td></tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              )}
-              {informe.vsGestion.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <strong style={{ fontSize: 13 }}>IVR Contestado vs Gestión</strong>
-                  <table style={{ width: '100%', fontSize: 12, marginTop: 6, borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ color: C.gray }}>{['TitularID','Celular','Resultado','Último Perfil','Últ. Gestión','Promesa'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 8px' }}>{h}</th>)}</tr></thead>
-                    <tbody>{informe.vsGestion.map((r, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid var(--z-border)' }}>
-                        <td style={{ padding: '4px 8px' }}>{r.titularID}</td>
-                        <td style={{ padding: '4px 8px' }}>{r.celular}</td>
-                        <td style={{ padding: '4px 8px', color: C.success }}>{r.resultado}</td>
-                        <td style={{ padding: '4px 8px' }}>{r.ultimoPerfil ?? '—'}</td>
-                        <td style={{ padding: '4px 8px' }}>{r.fechaUltimaGestion ?? '—'}</td>
-                        <td style={{ padding: '4px 8px' }}>{r.fechaPromesa ?? '—'}</td>
+                      <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                        <td style={tdStyle}>{a.celular}</td>
+                        <td style={tdStyle}>{a.nombreCartera}</td>
+                        <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalIVR}</td>
                       </tr>
                     ))}</tbody>
                   </table>
-                </div>
+                </AlertPanel>
+              )}
+              {informe.vsGestion.length > 0 && (
+                <>
+                  <SectionDivider title="IVR Contestado vs Gestión" color={C.ivr} />
+                  <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr>{['TitularID', 'Celular', 'Resultado', 'Último Perfil', 'Últ. Gestión', 'Promesa'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+                    </thead>
+                    <tbody>{informe.vsGestion.map((r, i) => (
+                      <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                        <td style={tdStyle}>{r.titularID}</td>
+                        <td style={tdStyle}>{r.celular}</td>
+                        <td style={{ ...tdStyle, color: C.success, fontWeight: 500 }}>{r.resultado}</td>
+                        <td style={tdStyle}>{r.ultimoPerfil ?? '—'}</td>
+                        <td style={tdStyle}>{r.fechaUltimaGestion ?? '—'}</td>
+                        <td style={tdStyle}>{r.fechaPromesa ?? '—'}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </>
               )}
             </>
           )}
@@ -458,97 +638,111 @@ function TabIVR() {
 // ── Tab Llamadas Perdidas ─────────────────────────────────────────────────────
 
 function TabLlamadasPerdidas() {
-  const [etapa, setEtapa]     = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [etapa,   setEtapa]   = useState<'carga' | 'preview' | 'exito'>('carga');
   const [preview, setPreview] = useState<ValidarLlamadasResponse | null>(null);
 
-  const validar   = useMutation({ mutationFn: validarLlamadasPerdidas, onSuccess: r => { setPreview(r); setEtapa('preview'); } });
-  const confirmar = useMutation({ mutationFn: (f: FilaLlamada[]) => confirmarLlamadasPerdidas(f), onSuccess: () => setEtapa('exito') });
+  const validar   = useMutation({ mutationFn: validarLlamadasPerdidas,                                           onSuccess: r => { setPreview(r); setEtapa('preview'); } });
+  const confirmar = useMutation({ mutationFn: (f: FilaLlamada[]) => confirmarLlamadasPerdidas(f),               onSuccess: () => setEtapa('exito') });
 
   const { data: informe, refetch } = useQuery({
     queryKey: ['informe-llamadas'],
-    queryFn: getInformeLlamadasPerdidas,
-    enabled: false,
+    queryFn:  getInformeLlamadasPerdidas,
+    enabled:  false,
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h3 style={{ margin: 0, color: C.llamadas }}>Llamadas Perdidas</h3>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
+        <div style={{ width: 4, height: 32, borderRadius: 2, background: C.llamadas }} />
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Llamadas Perdidas</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Registro de clientes vigentes que intentaron comunicarse. Formato: TitularID · Celular · Cartera</p>
+        </div>
+      </div>
 
       {etapa === 'carga' && (
         <>
-          <p style={{ fontSize: 13, color: C.gray, margin: 0 }}>Formato esperado: TitularID, Celular, Cartera. Solo se conservan clientes vigentes.</p>
           <DropZone onFile={f => validar.mutate(f)} label="Subir Excel de llamadas perdidas (.xlsx)" />
-          {validar.isPending && <p style={{ color: C.gray }}>Validando…</p>}
+          {validar.isPending && <LoadingRow label="Validando archivo…" />}
+          {validar.isError   && <ErrorPanel mensaje="Error al validar el archivo." />}
         </>
       )}
 
       {etapa === 'preview' && preview && (
         <>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <KpiCard label="Total filas"  value={preview.totalFilas}     />
-            <KpiCard label="Vigentes"     value={preview.totalValidas}   color={C.success} />
-            <KpiCard label="Descartadas"  value={preview.totalInvalidas} color={C.danger}  />
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <KpiCard label="Total filas"   value={preview.totalFilas}     color={C.llamadas} />
+            <KpiCard label="Vigentes"      value={preview.totalValidas}   color={C.success}  />
+            <KpiCard label="Descartadas"   value={preview.totalInvalidas} color={C.danger}   />
           </div>
           <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-            <thead style={{ background: 'var(--z-bg-subtle)' }}>
-              <tr>{['TitularID','Celular','Cartera','Estado'].map(h => <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: C.gray }}>{h}</th>)}</tr>
+            <thead>
+              <tr>{['TitularID', 'Celular', 'Cartera', 'Estado'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
             </thead>
             <tbody>{preview.preview.map((f, i) => (
-              <tr key={i} style={{ borderTop: '1px solid var(--z-border)' }}>
-                <td style={{ padding: '5px 10px' }}>{f.titularID}</td>
-                <td style={{ padding: '5px 10px' }}>{f.celular}</td>
-                <td style={{ padding: '5px 10px' }}>{f.nombreCartera}</td>
-                <td style={{ padding: '5px 10px', color: f.estado === 'Válida' ? C.success : C.danger }}>{f.estado}</td>
+              <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                <td style={tdStyle}>{f.titularID}</td>
+                <td style={tdStyle}>{f.celular}</td>
+                <td style={tdStyle}>{f.nombreCartera}</td>
+                <td style={{ ...tdStyle, color: f.estado === 'Válida' ? C.success : C.danger, fontWeight: 500 }}>
+                  {f.estado === 'Válida' ? '✓ Vigente' : f.estado}
+                </td>
               </tr>
             ))}</tbody>
           </table>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button disabled={preview.totalValidas === 0 || confirmar.isPending}
-              onClick={() => confirmar.mutate(preview.filasValidas)}
-              style={{ background: C.llamadas, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 20px', cursor: 'pointer' }}>
+            <BtnPrimary color={C.llamadas} disabled={preview.totalValidas === 0 || confirmar.isPending}
+              onClick={() => confirmar.mutate(preview.filasValidas)}>
               Confirmar {preview.totalValidas} llamada(s)
-            </button>
-            <button onClick={() => setEtapa('carga')} style={{ background: 'transparent', border: `1px solid ${C.gray}`, borderRadius: 6, padding: '8px 16px', cursor: 'pointer', color: C.gray }}>Cancelar</button>
+            </BtnPrimary>
+            <BtnSecondary onClick={() => setEtapa('carga')}>Cancelar</BtnSecondary>
           </div>
         </>
       )}
 
       {etapa === 'exito' && (
-        <div style={{ background: '#dcfce7', border: `1px solid ${C.success}`, borderRadius: 8, padding: 16, color: C.success }}>
-          ✓ Llamadas perdidas registradas.
-          <button onClick={() => { setEtapa('carga'); setPreview(null); }} style={{ marginLeft: 12, background: C.success, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>Nueva carga</button>
-        </div>
+        <SuccessBanner mensaje="Llamadas perdidas registradas correctamente."
+          onNuevaCarga={() => { setEtapa('carga'); setPreview(null); }} />
       )}
 
-      <div style={{ borderTop: '1px solid var(--z-border)', paddingTop: 20 }}>
-        <h4 style={{ margin: '0 0 12px' }}>Informe histórico</h4>
-        <button onClick={() => refetch()} style={{ background: C.llamadas, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>Consultar</button>
-        {informe && (
-          <>
-            <div style={{ marginTop: 12, height: 200 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={informe.porCartera} layout="vertical">
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="nombreCartera" type="category" width={120} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="total" fill={C.llamadas} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            {informe.alertas.length > 0 && (
-              <div style={{ background: '#fffbeb', border: `1px solid ${C.warning}`, borderRadius: 8, padding: 12, marginTop: 12 }}>
-                <strong style={{ color: C.warning, fontSize: 13 }}>⚠ Misma línea comunicada múltiples veces</strong>
-                <table style={{ width: '100%', fontSize: 12, marginTop: 6, borderCollapse: 'collapse' }}>
-                  <thead><tr style={{ color: C.gray }}><th style={{ textAlign: 'left' }}>Celular</th><th>Veces comunicado</th></tr></thead>
-                  <tbody>{informe.alertas.map((a, i) => (
-                    <tr key={i}><td>{a.celular}</td><td style={{ color: C.danger, fontWeight: 700 }}>{a.vecesComunicado}</td></tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
+      <SectionDivider title="Informe histórico de llamadas" color={C.llamadas} />
+      <div>
+        <BtnPrimary color={C.llamadas} onClick={() => refetch()}>Consultar historial</BtnPrimary>
       </div>
+
+      {informe && (
+        <>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <KpiCard label="Total registros" value={informe.totalRegistros} color={C.llamadas} />
+          </div>
+          <div style={{ height: 220 }}>
+            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Llamadas perdidas por cartera</p>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={informe.porCartera} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis dataKey="nombreCartera" type="category" width={130} tick={{ fontSize: 11 }} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="total" fill={C.llamadas} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {informe.alertas.length > 0 && (
+            <AlertPanel title="Misma línea comunicada múltiples veces">
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Celular</th><th style={thStyle}>Veces comunicado</th></tr></thead>
+                <tbody>{informe.alertas.map((a, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                    <td style={tdStyle}>{a.celular}</td>
+                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.vecesComunicado}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </AlertPanel>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -556,77 +750,88 @@ function TabLlamadasPerdidas() {
 // ── Tab Llamadas Entrantes ────────────────────────────────────────────────────
 
 function TabLlamadasEntrantes() {
-  const [etapa, setEtapa]     = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [etapa,   setEtapa]   = useState<'carga' | 'preview' | 'exito'>('carga');
   const [preview, setPreview] = useState<ValidarEntrantesResponse | null>(null);
-  const [anio, setAnio]       = useState(AÑO_HOY);
+  const [anio,    setAnio]    = useState(AÑO_HOY);
 
-  const validar   = useMutation({ mutationFn: validarLlamadasEntrantes, onSuccess: r => { setPreview(r); setEtapa('preview'); } });
-  const confirmar = useMutation({ mutationFn: () => confirmarLlamadasEntrantes(preview!.filasParaGuardar), onSuccess: () => setEtapa('exito') });
+  const validar   = useMutation({ mutationFn: validarLlamadasEntrantes,                                          onSuccess: r => { setPreview(r); setEtapa('preview'); } });
+  const confirmar = useMutation({ mutationFn: () => confirmarLlamadasEntrantes(preview!.filasParaGuardar),       onSuccess: () => setEtapa('exito') });
 
   const { data: informe, refetch } = useQuery({
     queryKey: ['informe-entrantes', anio],
-    queryFn: () => getInformeEntrantes(anio),
-    enabled: false,
+    queryFn:  () => getInformeEntrantes(anio),
+    enabled:  false,
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h3 style={{ margin: 0, color: C.entrantes }}>Llamadas Entrantes</h3>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
+        <div style={{ width: 4, height: 32, borderRadius: 2, background: C.entrantes }} />
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Llamadas Entrantes</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Carga semanal con celulares. El sistema resuelve titulares y detecta acuerdos de pago.</p>
+        </div>
+      </div>
 
       {etapa === 'carga' && (
         <>
-          <p style={{ fontSize: 13, color: C.gray, margin: 0 }}>Sube el archivo semanal con celulares (una columna). El sistema resuelve titulares y detecta acuerdos de pago.</p>
           <DropZone onFile={f => validar.mutate(f)} label="Subir Excel de llamadas entrantes (.xlsx)" />
-          {validar.isPending && <p style={{ color: C.gray }}>Procesando…</p>}
+          {validar.isPending && <LoadingRow label="Procesando archivo…" />}
+          {validar.isError   && <ErrorPanel mensaje="Error al validar el archivo." />}
         </>
       )}
 
       {etapa === 'preview' && preview && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Celulares"     value={preview.totalCelulares}  />
-            <KpiCard label="Resueltos"     value={preview.totalResueltos}  color={C.brand}    />
-            <KpiCard label="Con acuerdo"   value={preview.totalConAcuerdo} color={C.success}  />
-            <KpiCard label="Efectividad"   value={`${preview.efectividad}%`} color={C.entrantes} />
+            <KpiCard label="Celulares"    value={preview.totalCelulares}               color={C.entrantes} />
+            <KpiCard label="Resueltos"    value={preview.totalResueltos}               color={C.brand}     />
+            <KpiCard label="Con acuerdo"  value={preview.totalConAcuerdo}              color={C.success}   />
+            <KpiCard label="Efectividad"  value={`${preview.efectividad}%`}            color={C.warning}   />
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button disabled={confirmar.isPending} onClick={() => confirmar.mutate()}
-              style={{ background: C.entrantes, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 20px', cursor: 'pointer' }}>
+            <BtnPrimary color={C.entrantes} disabled={confirmar.isPending} onClick={() => confirmar.mutate()}>
               Guardar {preview.totalCelulares} registro(s)
-            </button>
-            <button onClick={() => setEtapa('carga')} style={{ background: 'transparent', border: `1px solid ${C.gray}`, borderRadius: 6, padding: '8px 16px', cursor: 'pointer', color: C.gray }}>Cancelar</button>
+            </BtnPrimary>
+            <BtnSecondary onClick={() => setEtapa('carga')}>Cancelar</BtnSecondary>
           </div>
         </>
       )}
 
       {etapa === 'exito' && (
-        <div style={{ background: '#dcfce7', border: `1px solid ${C.success}`, borderRadius: 8, padding: 16, color: C.success }}>
-          ✓ Llamadas entrantes guardadas.
-          <button onClick={() => { setEtapa('carga'); setPreview(null); }} style={{ marginLeft: 12, background: C.success, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>Nueva carga</button>
-        </div>
+        <SuccessBanner mensaje="Llamadas entrantes guardadas correctamente."
+          onNuevaCarga={() => { setEtapa('carga'); setPreview(null); }} />
       )}
 
-      <div style={{ borderTop: '1px solid var(--z-border)', paddingTop: 20 }}>
-        <h4 style={{ margin: '0 0 12px' }}>Efectividad por semana</h4>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-          <label style={{ fontSize: 13 }}>Año <input type="number" value={anio} min={2024} max={2099} onChange={e => setAnio(+e.target.value)} style={{ width: 70, marginLeft: 4 }} /></label>
-          <button onClick={() => refetch()} style={{ background: C.entrantes, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>Consultar</button>
+      <SectionDivider title="Efectividad por semana" color={C.entrantes} />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, color: 'var(--z-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Año</label>
+          <input type="number" value={anio} min={2024} max={2099}
+            onChange={e => setAnio(+e.target.value)}
+            style={{ width: 84, padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
         </div>
-        {informe && (
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={informe.porSemana}>
-                <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(val, name) => [name === 'efectividad' ? `${val}%` : val, name]} />
-                <Bar dataKey="totalCelulares" fill={C.gray}      name="Total"       radius={[4, 4, 0, 0]} />
-                <Bar dataKey="resueltos"      fill={C.brand}     name="Resueltos"   radius={[4, 4, 0, 0]} />
-                <Bar dataKey="conAcuerdo"     fill={C.success}   name="Con acuerdo" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+        <BtnPrimary color={C.entrantes} onClick={() => refetch()}>Consultar</BtnPrimary>
       </div>
+
+      {informe && (
+        <div style={{ height: 240 }}>
+          <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Llamadas entrantes por semana — {anio}</p>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={informe.porSemana}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" vertical={false} />
+              <XAxis dataKey="semana" tick={{ fontSize: 11 }} label={{ value: 'Semana', position: 'insideBottom', offset: -2, fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip {...tooltipStyle} formatter={(val, name) => [name === 'efectividad' ? `${val}%` : val, name]} />
+              <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="totalCelulares" fill={C.gray}      name="Total"        radius={[4, 4, 0, 0]} />
+              <Bar dataKey="resueltos"      fill={C.brand}     name="Resueltos"    radius={[4, 4, 0, 0]} />
+              <Bar dataKey="conAcuerdo"     fill={C.success}   name="Con acuerdo"  radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }
@@ -639,59 +844,77 @@ function TabPagosImpacto() {
 
   const { data: informe, refetch, isFetching } = useQuery({
     queryKey: ['pagos-impacto', desde, hasta],
-    queryFn: () => getInformePagosImpacto(desde, hasta),
-    enabled: false,
+    queryFn:  () => getInformePagosImpacto(desde, hasta),
+    enabled:  false,
   });
 
   const barData = informe ? [
-    { canal: 'Mensajería',      pagos: informe.resumen.pagosConMensajeria },
-    { canal: 'IVR',             pagos: informe.resumen.pagosConIVR        },
-    { canal: 'Llamada perdida', pagos: informe.resumen.pagosConLlamada    },
-    { canal: 'Sin impacto',     pagos: informe.resumen.pagosSinImpacto    },
+    { canal: 'Mensajería',       pagos: informe.resumen.pagosConMensajeria, fill: C.mensajes  },
+    { canal: 'IVR',              pagos: informe.resumen.pagosConIVR,        fill: C.ivr       },
+    { canal: 'Llamada perdida',  pagos: informe.resumen.pagosConLlamada,    fill: C.llamadas  },
+    { canal: 'Sin impacto',      pagos: informe.resumen.pagosSinImpacto,    fill: C.gray      },
   ] : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h3 style={{ margin: 0, color: C.impacto }}>Pagos vs Canal de Impacto</h3>
-      <p style={{ fontSize: 13, color: C.gray, margin: 0 }}>De los titulares que pagaron en el período, ¿por qué canal de virtualidad fueron impactados previamente?</p>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
+        <div style={{ width: 4, height: 32, borderRadius: 2, background: C.brand }} />
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Pagos vs Canal de Impacto</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>De los titulares que pagaron, ¿por qué canal de virtualidad fueron impactados previamente?</p>
+        </div>
+      </div>
 
       <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
 
-      {isFetching && <p style={{ color: C.gray }}>Calculando…</p>}
+      {isFetching && <LoadingRow label="Calculando relación pagos vs canales…" />}
 
       {informe && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Total pagos"       value={informe.resumen.totalPagos}         />
-            <KpiCard label="Con mensajería"    value={informe.resumen.pagosConMensajeria} color={C.mensajes}  />
-            <KpiCard label="Con IVR"           value={informe.resumen.pagosConIVR}        color={C.ivr}       />
-            <KpiCard label="Con llamada"       value={informe.resumen.pagosConLlamada}    color={C.llamadas}  />
-            <KpiCard label="Sin impacto"       value={informe.resumen.pagosSinImpacto}    color={C.gray}      />
+            <KpiCard label="Total pagos"     value={informe.resumen.totalPagos}         color={C.brand}    />
+            <KpiCard label="Con mensajería"  value={informe.resumen.pagosConMensajeria} color={C.mensajes} />
+            <KpiCard label="Con IVR"         value={informe.resumen.pagosConIVR}        color={C.ivr}      />
+            <KpiCard label="Con llamada"     value={informe.resumen.pagosConLlamada}    color={C.llamadas} />
+            <KpiCard label="Sin impacto"     value={informe.resumen.pagosSinImpacto}    color={C.gray}     />
           </div>
 
-          <div style={{ height: 220, marginTop: 8 }}>
+          <div style={{ height: 240, marginTop: 4 }}>
+            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Distribución de pagos por canal</p>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={barData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" vertical={false} />
                 <XAxis dataKey="canal" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="pagos" fill={C.impacto} radius={[4, 4, 0, 0]} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="pagos" radius={[4, 4, 0, 0]}>
+                  {barData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%', marginTop: 8 }}>
-            <thead style={{ background: 'var(--z-bg-subtle)' }}>
-              <tr>{['Cédula','Fecha pago','Valor','Mensajería','IVR','Llamada'].map(h => <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: C.gray }}>{h}</th>)}</tr>
+          <SectionDivider title={`Detalle de pagos — mostrando ${Math.min(informe.filas.length, 50)} de ${informe.filas.length}`} color={C.brand} />
+
+          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>{['Cédula', 'Fecha pago', 'Valor', 'Mensajería', 'IVR', 'Llamada'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
             </thead>
             <tbody>{informe.filas.slice(0, 50).map((f, i) => (
-              <tr key={i} style={{ borderTop: '1px solid var(--z-border)' }}>
-                <td style={{ padding: '5px 10px' }}>{f.cedulaTitular}</td>
-                <td style={{ padding: '5px 10px' }}>{f.fechaPago}</td>
-                <td style={{ padding: '5px 10px' }}>${f.valorPagado.toLocaleString('es-CO')}</td>
-                <td style={{ padding: '5px 10px', color: f.impactadoMensajeria ? C.success : C.gray }}>{f.impactadoMensajeria ? '✓' : '—'}</td>
-                <td style={{ padding: '5px 10px', color: f.impactadoIVR        ? C.success : C.gray }}>{f.impactadoIVR        ? '✓' : '—'}</td>
-                <td style={{ padding: '5px 10px', color: f.impactadoLlamada    ? C.success : C.gray }}>{f.impactadoLlamada    ? '✓' : '—'}</td>
+              <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                <td style={tdStyle}>{f.cedulaTitular}</td>
+                <td style={tdStyle}>{f.fechaPago}</td>
+                <td style={{ ...tdStyle, fontWeight: 500 }}>${f.valorPagado.toLocaleString('es-CO')}</td>
+                <td style={{ ...tdStyle, color: f.impactadoMensajeria ? C.mensajes : C.gray, fontWeight: f.impactadoMensajeria ? 700 : 400 }}>
+                  {f.impactadoMensajeria ? '✓' : '—'}
+                </td>
+                <td style={{ ...tdStyle, color: f.impactadoIVR ? C.ivr : C.gray, fontWeight: f.impactadoIVR ? 700 : 400 }}>
+                  {f.impactadoIVR ? '✓' : '—'}
+                </td>
+                <td style={{ ...tdStyle, color: f.impactadoLlamada ? C.llamadas : C.gray, fontWeight: f.impactadoLlamada ? 700 : 400 }}>
+                  {f.impactadoLlamada ? '✓' : '—'}
+                </td>
               </tr>
             ))}</tbody>
           </table>
@@ -704,38 +927,66 @@ function TabPagosImpacto() {
 // ── Página principal ──────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string; color: string }[] = [
-  { key: 'mensajeria',        label: 'Mensajería',       color: C.mensajes  },
-  { key: 'ivr',               label: 'IVR',              color: C.ivr       },
-  { key: 'llamadas-perdidas', label: 'Llamadas Perdidas',color: C.llamadas  },
-  { key: 'llamadas-entrantes',label: 'Llamadas Entrantes',color: C.entrantes},
-  { key: 'pagos-impacto',     label: 'Pagos vs Impacto', color: C.impacto   },
+  { key: 'mensajeria',         label: 'Mensajería',        color: C.mensajes  },
+  { key: 'ivr',                label: 'IVR',               color: C.ivr       },
+  { key: 'llamadas-perdidas',  label: 'Llamadas Perdidas', color: C.llamadas  },
+  { key: 'llamadas-entrantes', label: 'Llamadas Entrantes',color: C.entrantes },
+  { key: 'pagos-impacto',      label: 'Pagos vs Impacto',  color: C.brand     },
 ];
 
 export function InformesVirtualidadPage() {
   const [tab, setTab] = useState<Tab>('mensajeria');
 
   return (
-    <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h2 style={{ margin: 0 }}>Informes de Virtualidad</h2>
+    <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* Cabecera de página */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Informes de Virtualidad</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: C.gray }}>
+            Gestión de canales digitales — Mensajería, IVR, Llamadas y análisis de impacto en pagos
+          </p>
+        </div>
+        <div style={{
+          background: C.brandLight,
+          border: `1px solid ${C.brand}30`,
+          borderLeft: `3px solid ${C.brand}`,
+          borderRadius: 7,
+          padding: '7px 14px',
+          fontSize: 12,
+          color: C.brand,
+          fontWeight: 600,
+        }}>
+          Módulo de Virtualidad
+        </div>
+      </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '2px solid var(--z-border)', paddingBottom: 4 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '2px solid var(--z-border)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{
-              padding: '6px 16px', borderRadius: '6px 6px 0 0', border: 'none', cursor: 'pointer', fontSize: 13,
-              background: tab === t.key ? t.color : 'transparent',
-              color:      tab === t.key ? '#fff' : C.gray,
-              fontWeight: tab === t.key ? 600 : 400,
-              borderBottom: tab === t.key ? `2px solid ${t.color}` : '2px solid transparent',
+              padding: '9px 18px',
+              borderRadius: '8px 8px 0 0',
+              border: '1px solid var(--z-border)',
+              borderBottom: tab === t.key ? '2px solid var(--z-bg-card)' : '1px solid var(--z-border)',
+              cursor: 'pointer',
+              fontSize: 13,
+              background:  tab === t.key ? 'var(--z-bg-card)' : 'var(--z-bg-page)',
+              color:       tab === t.key ? t.color            : C.gray,
+              fontWeight:  tab === t.key ? 700 : 400,
+              borderTop:   tab === t.key ? `3px solid ${t.color}` : '3px solid transparent',
+              marginBottom: tab === t.key ? '-2px' : 0,
+              position: 'relative',
             }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* Contenido */}
-      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: 24 }}>
+      {/* Contenido del tab activo */}
+      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: '0 10px 10px 10px', padding: 28 }}>
         {tab === 'mensajeria'         && <TabMensajeria />}
         {tab === 'ivr'                && <TabIVR />}
         {tab === 'llamadas-perdidas'  && <TabLlamadasPerdidas />}
