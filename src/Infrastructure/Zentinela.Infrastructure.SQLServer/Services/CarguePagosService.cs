@@ -190,9 +190,11 @@ public class CarguePagosService : ICarguePagosService
         ["cedula"]           = "cedula",
         ["numerodocumento"]  = "cedula",
         ["documento"]        = "cedula",
+        ["identificacion"]   = "cedula",
         // Nombre
         ["nombre"]           = "nombre",
         ["nombrecliente"]    = "nombre",
+        ["nombrecompleto"]   = "nombre",
         ["cliente"]          = "nombre",
         // Valor
         ["valor"]            = "valor",

@@ -88,6 +88,11 @@ public static class DependencyInjection
         services.AddScoped<IGestionCarterasService, GestionCarterasService>();
         services.AddScoped<ICarguePagosService, CarguePagosService>();
         services.AddScoped<IInformesRecaudoService, InformesRecaudoService>();
+        services.AddScoped<IVirtualidadMensajeriaService, VirtualidadMensajeriaService>();
+        services.AddScoped<IVirtualidadIVRService, VirtualidadIVRService>();
+        services.AddScoped<IVirtualidadLlamadasService, VirtualidadLlamadasService>();
+        services.AddScoped<IVirtualidadEntrantesService, VirtualidadEntrantesService>();
+        services.AddScoped<IVirtualidadPagosImpactoService, VirtualidadPagosImpactoService>();
 
         return services;
     }

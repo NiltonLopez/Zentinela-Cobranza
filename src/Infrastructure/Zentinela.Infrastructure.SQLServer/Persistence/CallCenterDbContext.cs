@@ -25,6 +25,10 @@ public class CallCenterDbContext : DbContext
     public DbSet<Pago>                Pagos               { get; set; }
     public DbSet<MetaAgenteMes>       MetaAgentesMes      { get; set; }
     public DbSet<MetaLiderCarteraMes> MetaLiderCarteraMes { get; set; }
+    public DbSet<MensajeriaEnviada>   MensajeriaEnviadas  { get; set; }
+    public DbSet<IVREnvio>            IVREnvios           { get; set; }
+    public DbSet<LlamadaPerdida>      LlamadasPerdidas    { get; set; }
+    public DbSet<LlamadaEntrante>     LlamadasEntrantes   { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -42,5 +46,9 @@ public class CallCenterDbContext : DbContext
         builder.ApplyConfiguration(new PagoMapping());
         builder.ApplyConfiguration(new MetaAgenteMesMapping());
         builder.ApplyConfiguration(new MetaLiderCarteraMesMapping());
+        builder.ApplyConfiguration(new MensajeriaEnviadaMapping());
+        builder.ApplyConfiguration(new IVREnvioMapping());
+        builder.ApplyConfiguration(new LlamadaPerdidaMapping());
+        builder.ApplyConfiguration(new LlamadaEntranteMapping());
     }
 }

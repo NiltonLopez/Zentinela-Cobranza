@@ -166,12 +166,15 @@ public class ExcelExporter : IExcelExporter
         ["numerodocumento"]      = "titularid",
         ["documento"]            = "titularid",
         ["cedula"]               = "titularid",
+        ["identificacion"]       = "titularid",
         // AgenteID
         ["agenteid"]             = "agenteid",
         ["agente"]               = "agenteid",
+        ["ultusugestion"]        = "agenteid",
         // Nombre
         ["nombre"]               = "nombre",
         ["nombrecliente"]        = "nombre",
+        ["nombrecompleto"]       = "nombre",
         ["cliente"]              = "nombre",
         // UltimoPerfil
         ["ultimoperfil"]         = "ultimoperfil",
@@ -184,6 +187,12 @@ public class ExcelExporter : IExcelExporter
         // SaldoTotal
         ["saldototal"]           = "saldototal",
         ["saldo"]                = "saldototal",
+        ["totalapagar"]          = "saldototal",
+        ["inicobro365"]          = "saldototal",
+        ["saldocapital"]         = "saldototal",
+        ["valortotalcredito"]    = "saldototal",
+        ["vlrsaldototal"]        = "saldototal",
+        ["pagototal"]            = "saldototal",
         // NumeroMarcado
         ["numeromarcado"]        = "numeromarcado",
         ["marcado"]              = "numeromarcado",
@@ -201,6 +210,7 @@ public class ExcelExporter : IExcelExporter
         // MotivoNoPago
         ["motivonopago"]         = "motivonopago",
         ["motivo"]               = "motivonopago",
+        ["motvnopago"]           = "motivonopago",
         // FechaActualizacion
         ["fechaactualizacion"]   = "fechaactualizacion",
         ["actualizacion"]        = "fechaactualizacion",

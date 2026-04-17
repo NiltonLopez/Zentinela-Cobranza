@@ -89,6 +89,10 @@ public class CargueReporteService : ICargueReporteService
 
         foreach (var fila in filasRaw)
         {
+            // Sin Gestión no requiere agente: forzar null para que staging quede limpio
+            if (EsSinGestion(fila.UltimoPerfil))
+                fila.AgenteID = null;
+
             var estado = ClasificarFila(fila, titularesExistentes, out var razon);
 
             todasLasFilas.Add(new FilaValidacionReporteDto
@@ -158,14 +162,23 @@ public class CargueReporteService : ICargueReporteService
 
     // ── Helpers privados ──────────────────────────────────────────────────────
 
+    private static readonly HashSet<string> PerfilesSinGestion =
+        new(StringComparer.OrdinalIgnoreCase) { "Sin Gestion", "Sin Gestión" };
+
+    private static bool EsSinGestion(string? perfil) =>
+        !string.IsNullOrWhiteSpace(perfil) && PerfilesSinGestion.Contains(perfil.Trim());
+
     private static EstadoFilaReporte ClasificarFila(
         FilaReporteRaw    fila,
         HashSet<long>     titularesExistentes,
         out string?       razon)
     {
-        // UsuarioControl obligatorio y debe haber resuelto un AgenteID
-        if (string.IsNullOrWhiteSpace(fila.UsuarioControl) || !fila.AgenteID.HasValue)
-        { razon = $"Usuario Control '{fila.UsuarioControl}' no encontrado en el sistema"; return EstadoFilaReporte.AgenteNoEncontrado; }
+        // Sin Gestión: se admite sin agente, AgenteID ya viene null desde el foreach
+        if (!EsSinGestion(fila.UltimoPerfil))
+        {
+            if (string.IsNullOrWhiteSpace(fila.UsuarioControl) || !fila.AgenteID.HasValue)
+            { razon = $"Usuario Control '{fila.UsuarioControl}' no encontrado en el sistema"; return EstadoFilaReporte.AgenteNoEncontrado; }
+        }
 
         // TitularID no existe → ¿tiene Nombre para crearlo?
         if (!fila.TitularID.HasValue || !titularesExistentes.Contains(fila.TitularID.Value))

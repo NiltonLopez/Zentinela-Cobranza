@@ -34,7 +34,7 @@ public class CargueReportesController : ControllerBase
     /// Devuelve preview con primeros 10 registros, conteos y las filas válidas completas.
     /// </summary>
     [HttpPost("validar")]
-    [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB — reportes pueden ser grandes
+    [RequestSizeLimit(100 * 1024 * 1024)] // 100 MB
     public async Task<IActionResult> Validar([FromForm] IFormFile archivo, [FromForm] int carteraID)
     {
         if (archivo is null || archivo.Length == 0)
