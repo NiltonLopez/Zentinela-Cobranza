@@ -921,6 +921,237 @@ Inserta en la tabla `Pago` las filas válidas devueltas por `/validar`. El `Usua
 
 ---
 
+## GET /api/reportes/plantilla
+
+Descarga la plantilla Excel para Cargue de Reportes.  
+La columna `AgenteID` debe contener el **username de ControlNext** (`Agente.UsuarioControlNext`), no la cédula numérica. Ver ADR-005.
+
+### Response — 200 OK
+
+Archivo `plantilla_reporte.xlsx`.
+
+---
+
+## POST /api/reportes/validar
+
+Parsea el Excel y valida cada fila. Resuelve `UsuarioControl → AgenteID` via `Agente.UsuarioControlNext` (batch lookup, OrdinalIgnoreCase).
+
+**Roles permitidos:** `Admin`
+
+### Request — `multipart/form-data`
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `archivo` | file | Excel con filas de gestión |
+| `carteraID` | int | Cartera a la que pertenecen los registros |
+
+### Validaciones por fila
+
+1. `TitularID` existe en `Titular` → `Ok`
+2. `TitularID` no existe pero hay `Nombre` → `NuevoTitular` (se creará en BD)
+3. `TitularID` no existe y sin `Nombre` → `SinNombreParaCrear` (error)
+4. `UsuarioControl` no resuelve a ningún `Agente.UsuarioControlNext` → `AgenteNoEncontrado` (error)
+
+### Response body — 200 OK
+
+```json
+{
+  "totalValidos": 180,
+  "totalNuevos": 5,
+  "totalInvalidos": 3,
+  "filas": [
+    {
+      "titularID": "1020304050",
+      "nombre": "PEREZ JUAN",
+      "usuarioControl": "jperez",
+      "estado": "Ok",
+      "razon": null
+    }
+  ],
+  "filasValidasRaw": [ ]
+}
+```
+
+---
+
+## POST /api/reportes/confirmar
+
+Procesa las filas válidas devueltas por `/validar`:
+1. `TRUNCATE` de `ReporteEstadoAuxiliar`
+2. Bulk INSERT en chunks de 66 filas
+3. `EXEC sp_ProcesarUltimoEstado` → UPSERT en `UltimoEstadoTitular` + inserta titulares nuevos en `Titular`
+4. `EXEC sp_ProcesarHistoricoEstado` → INSERT append en `HistoricoEstadoTitular`
+
+### Request body
+
+```json
+{ "filasValidas": [ ] }
+```
+
+### Response body — 200 OK
+
+```json
+{
+  "procesados": 180,
+  "titularesNuevos": 5,
+  "mensaje": "Se procesaron 180 registro(s): UltimoEstadoTitular actualizado e HistoricoEstadoTitular enriquecido."
+}
+```
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Cargue exitoso |
+| `400 Bad Request` | Lista de filas vacía |
+
+---
+
+## GET /api/informes/recaudo/agentes
+
+Retorna el consolidado de recaudo del mes por agente, ordenado de menor a mayor.  
+Incluye meta (si existe), cumplimiento y proyección diaria.
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `año` | int | Sí | Año del período |
+| `mes` | int | Sí | Mes del período (1-12) |
+
+### Response body — 200 OK
+
+```json
+{
+  "totalRecaudo": 15000000,
+  "totalHonorarios": 1500000,
+  "totalAgentes": 8,
+  "totalGestionado": 142,
+  "agentes": [
+    {
+      "agenteID": 1020304050,
+      "nombreAgente": "Juan Pérez García",
+      "nombreLider": "María López",
+      "gestionado": 18,
+      "recaudo": 1200000,
+      "honorarios": 120000,
+      "meta": 3000000,
+      "tieneMeta": true,
+      "deberiaLlevarHoy": 1850000,
+      "faltaParaMeta": 1800000,
+      "promedioPagoDia": 85714
+    }
+  ]
+}
+```
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Informe generado (puede tener `agentes: []` si no hay pagos en el período) |
+| `400 Bad Request` | Mes fuera de rango |
+
+---
+
+## GET /api/informes/recaudo/lideres
+
+Retorna una fila por combinación líder-cartera con meta, capacity (titulares asignados) y proyección de cierre.
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `año` | int | Sí | Año del período |
+| `mes` | int | Sí | Mes del período (1-12) |
+
+### Response body — 200 OK
+
+```json
+{
+  "totalRecaudo": 15000000,
+  "totalMeta": 20000000,
+  "totalLideres": 3,
+  "liderCarteras": [
+    {
+      "liderID": 1,
+      "nombreLider": "María López",
+      "carteraID": 2,
+      "nombreCartera": "Cartera A",
+      "metaCartera": 5000000,
+      "tieneMeta": true,
+      "capacidad": 320,
+      "recaudo": 3200000,
+      "honorarios": 320000,
+      "deberiaLlevarHoy": 2750000,
+      "proyeccionCierre": 4640000
+    }
+  ]
+}
+```
+
+**Cálculos:**
+- `deberiaLlevarHoy` = `metaCartera × (díaActual / díasDelMes)`; si el mes ya pasó, usa el mes completo.
+- `proyeccionCierre` = `(recaudo / díasTranscurridos) × díasDelMes`; 0 si el mes no ha comenzado.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Informe generado |
+| `400 Bad Request` | Mes fuera de rango |
+
+---
+
+## GET /api/informes/recaudo/carteras
+
+Comparativo de recaudo y honorarios por cartera entre dos períodos.  
+Sirve tanto para "mes pasado vs este mes" (Tab Carteras) como para el comparativo libre (Tab Comparativo).
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `añoA` | int | Sí | Año del período A |
+| `mesA` | int | Sí | Mes del período A (1-12) |
+| `añoB` | int | Sí | Año del período B |
+| `mesB` | int | Sí | Mes del período B (1-12) |
+
+### Response body — 200 OK
+
+```json
+{
+  "periodoA": { "año": 2026, "mes": 3, "nombre": "Marzo 2026" },
+  "periodoB": { "año": 2026, "mes": 4, "nombre": "Abril 2026" },
+  "totalRecaudoA": 12000000,
+  "totalRecaudoB": 15000000,
+  "variacionTotal": 3000000,
+  "carteras": [
+    {
+      "carteraID": 1,
+      "nombreCartera": "Cartera A",
+      "recaudoA": 5000000,
+      "honorariosA": 500000,
+      "recaudoB": 6500000,
+      "honorariosB": 650000,
+      "variacionRecaudo": 1500000,
+      "porcentajeVariacion": 30.0
+    }
+  ]
+}
+```
+
+`porcentajeVariacion` es `null` cuando `recaudoA = 0`.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Comparativo generado |
+| `400 Bad Request` | Algún mes fuera de rango |
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`
