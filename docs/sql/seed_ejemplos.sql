@@ -1,8 +1,8 @@
 -- ============================================================
--- seed_ejemplos.sql — Datos de prueba Zentinela
+-- seed_ejemplos.sql — Datos de prueba Zentinela (completo)
 -- ============================================================
 -- 20 asesores "Ejemplo X" distribuidos en 3 líderes y 3 carteras.
--- 60 titulares con gestiones en UltimoEstadoTitular para métricas completas.
+-- Incluye gestiones, pagos abril 2026 y metas para Informes de Recaudo.
 --
 -- Contraseña de todos los usuarios: Ejemplo@1234
 -- Hash: PBKDF2-HMACSHA256, 100 000 iteraciones, sal fija
@@ -13,13 +13,12 @@
 --   Cartera Ejemplo C (ID 9003) → Líder Ejemplo 3 → Asesores 15–20
 --
 -- IDs reservados para datos de prueba:
---   Lider:      9001 – 9003
---   Cartera:    9001 – 9003
---   AgenteID:   90000001 – 90000020
---   TitularID:  70000001 – 70000060
---   AspNetUsers:90001 – 90023
+--   Lider:       9001 – 9003
+--   Cartera:     9001 – 9003
+--   AgenteID:    90000001 – 90000020
+--   TitularID:   70000001 – 70000060
+--   AspNetUsers: 90001 – 90023
 -- ============================================================
-DECLARE @hash NVARCHAR(MAX) = N'AQAAAAEAAYagAAAAEFplbnRpbmVsYUZpam8xMiGs0TExE1zoTlbe/QGG1DqlsU1Oncq8kUuRO0dZbTHiBw==';
 
 -- ============================================================
 --  BLOQUE 1 — DBCallCenter
@@ -59,7 +58,6 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Lider_Cartera WHERE LiderID = 9003 AND CarteraI
     INSERT INTO dbo.Lider_Cartera (LiderID, CarteraID) VALUES (9003, 9003);
 
 -- ── 1.4 Titulares (60) ──────────────────────────────────────
--- Deudores ficticios que serán gestionados por los asesores.
 INSERT INTO dbo.Titular (NumeroDocumento, Nombre)
 SELECT v.doc, v.nom
 FROM (VALUES
@@ -87,9 +85,9 @@ FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM dbo.Titular WHERE NumeroDocumento = v.doc);
 
 -- ── 1.5 Titular_Cartera ─────────────────────────────────────
--- Asesores 1-7 → Cartera 9001 → Titulares 70000001-70000021
+-- Asesores 1-7  → Cartera 9001 → Titulares 70000001-70000021
 -- Asesores 8-14 → Cartera 9002 → Titulares 70000022-70000042
--- Asesores 15-20 → Cartera 9003 → Titulares 70000043-70000060
+-- Asesores 15-20→ Cartera 9003 → Titulares 70000043-70000060
 INSERT INTO dbo.Titular_Cartera (TitularID, LiderID, CarteraID)
 SELECT v.t, v.l, v.c
 FROM (VALUES
@@ -142,18 +140,13 @@ FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM dbo.Cartera_Agente WHERE AgenteID = v.a AND LiderID = v.l AND CarteraID = v.c);
 
 -- ── 1.8 UltimoEstadoTitular (60 gestiones) ──────────────────
--- Cada asesor gestiona 3 titulares con tipificaciones variadas:
---   Registro 1: tipificación de acuerdo/pago (AcuerdoAbono + ContactoPositivo)
---   Registro 2: contacto positivo sin acuerdo
---   Registro 3: varía (Incumplido=ContactoPositivo | Ilocalizado/Buzón=NoContacto)
+-- Registro 1: acuerdo/pago  → ContactoPositivo + AcuerdoAbono
+-- Registro 2: contacto sin acuerdo → ContactoPositivo
+-- Registro 3: varía por patrón     → ContactoPositivo o NoContacto
 --
--- Fórmulas de métrica esperadas por asesor:
---   N%3=1 (1,4,7,10,13,16,19) → TasaContact=100%, TasaEfec=33%
---   N%3=0,2 (resto)           → TasaContact=67%,  TasaEfec=50%
---
--- Columnas: TitularID, CarteraID, AgenteID, UltimoPerfil, MejorPerfil,
---           FechaMejorPerfil, SaldoTotal, NumeroMarcado, Rotacion,
---           FechaUltimaGestion, FechaPromesa, ValorPromesa, MotivoNoPago, FechaActualizacion
+-- Métricas esperadas por asesor:
+--   Patrón Incumplido  (1,4,7,10,13,16,19) → Contactabilidad=100%, Efectividad=33%
+--   Patrón Ilocalizado/Buzón (resto)        → Contactabilidad=67%,  Efectividad=50%
 
 INSERT INTO dbo.UltimoEstadoTitular
        (TitularID,CarteraID,AgenteID,UltimoPerfil,MejorPerfil,FechaMejorPerfil,
@@ -161,83 +154,83 @@ INSERT INTO dbo.UltimoEstadoTitular
 SELECT v.tid,v.cid,v.aid,v.up,v.mp,v.fmp,v.saldo,v.tel,v.rot,
        '2026-04-17',v.fp,v.vp,v.motivo,'2026-04-17 08:00:00'
 FROM (VALUES
--- ── Asesor 1 (90000001) · Cartera 9001 ·· Patrón A/Incumplido ──────────────
+-- ── Asesor 1 · Cartera 9001 · Incumplido ──────────────────────────────────────
 (70000001,9001,90000001,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',5400000,'3001234001',3,'2026-04-25',1800000.00,NULL),
 (70000002,9001,90000001,'No hubo acuerdo','No hubo acuerdo','2026-04-17',5400000,'3001234001',3,NULL,NULL,NULL),
 (70000003,9001,90000001,'Incumplido','No hubo acuerdo','2026-04-10',5400000,'3001234001',3,NULL,NULL,NULL),
--- ── Asesor 2 (90000002) · Cartera 9001 ·· Patrón B/Ilocalizado ─────────────
+-- ── Asesor 2 · Cartera 9001 · Ilocalizado ─────────────────────────────────────
 (70000004,9001,90000002,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',7500000,'3001234002',5,'2026-04-30',2500000.00,NULL),
 (70000005,9001,90000002,'Renuente','Renuente','2026-04-17',7500000,'3001234002',5,NULL,NULL,NULL),
 (70000006,9001,90000002,'Ilocalizado',NULL,NULL,7500000,'3001234002',5,NULL,NULL,'Sin número de contacto'),
--- ── Asesor 3 (90000003) · Cartera 9001 ·· Patrón C/MsgBuzón ────────────────
+-- ── Asesor 3 · Cartera 9001 · Mensaje en buzón ────────────────────────────────
 (70000007,9001,90000003,'Realizo abono','Realizo abono','2026-04-17',2850000,'3001234003',2,'2026-05-05',950000.00,NULL),
 (70000008,9001,90000003,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2850000,'3001234003',2,NULL,NULL,NULL),
 (70000009,9001,90000003,'Mensaje en buzón',NULL,NULL,2850000,'3001234003',2,NULL,NULL,'Buzón de voz activo'),
--- ── Asesor 4 (90000004) · Cartera 9001 ·· Patrón D/Incumplido ──────────────
+-- ── Asesor 4 · Cartera 9001 · Incumplido ──────────────────────────────────────
 (70000010,9001,90000004,'Paz y salvo','Paz y salvo','2026-04-17',9600000,'3001234004',4,'2026-04-22',3200000.00,NULL),
 (70000011,9001,90000004,'No hubo acuerdo','No hubo acuerdo','2026-04-17',9600000,'3001234004',4,NULL,NULL,NULL),
 (70000012,9001,90000004,'Incumplido','No hubo acuerdo','2026-04-10',9600000,'3001234004',4,NULL,NULL,NULL),
--- ── Asesor 5 (90000005) · Cartera 9001 ·· Patrón A/Ilocalizado ─────────────
+-- ── Asesor 5 · Cartera 9001 · Ilocalizado ─────────────────────────────────────
 (70000013,9001,90000005,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',4500000,'3001234005',6,'2026-05-10',1500000.00,NULL),
 (70000014,9001,90000005,'No hubo acuerdo','No hubo acuerdo','2026-04-17',4500000,'3001234005',6,NULL,NULL,NULL),
 (70000015,9001,90000005,'Ilocalizado',NULL,NULL,4500000,'3001234005',6,NULL,NULL,'Sin número de contacto'),
--- ── Asesor 6 (90000006) · Cartera 9001 ·· Patrón B/MsgBuzón ────────────────
+-- ── Asesor 6 · Cartera 9001 · Mensaje en buzón ────────────────────────────────
 (70000016,9001,90000006,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',12300000,'3001234006',3,'2026-04-27',4100000.00,NULL),
 (70000017,9001,90000006,'Renuente','Renuente','2026-04-17',12300000,'3001234006',3,NULL,NULL,NULL),
 (70000018,9001,90000006,'Mensaje en buzón',NULL,NULL,12300000,'3001234006',3,NULL,NULL,'Buzón de voz activo'),
--- ── Asesor 7 (90000007) · Cartera 9001 ·· Patrón C/Incumplido ──────────────
+-- ── Asesor 7 · Cartera 9001 · Incumplido ──────────────────────────────────────
 (70000019,9001,90000007,'Realizo abono','Realizo abono','2026-04-17',2340000,'3001234007',7,'2026-05-03',780000.00,NULL),
 (70000020,9001,90000007,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2340000,'3001234007',7,NULL,NULL,NULL),
 (70000021,9001,90000007,'Incumplido','Potencial acuerdo','2026-04-10',2340000,'3001234007',7,NULL,NULL,NULL),
--- ── Asesor 8 (90000008) · Cartera 9002 ·· Patrón D/Ilocalizado ─────────────
+-- ── Asesor 8 · Cartera 9002 · Ilocalizado ─────────────────────────────────────
 (70000022,9002,90000008,'Paz y salvo','Paz y salvo','2026-04-17',8400000,'3001234008',4,'2026-04-24',2800000.00,NULL),
 (70000023,9002,90000008,'No hubo acuerdo','No hubo acuerdo','2026-04-17',8400000,'3001234008',4,NULL,NULL,NULL),
 (70000024,9002,90000008,'Ilocalizado',NULL,NULL,8400000,'3001234008',4,NULL,NULL,'Sin número de contacto'),
--- ── Asesor 9 (90000009) · Cartera 9002 ·· Patrón A/MsgBuzón ────────────────
+-- ── Asesor 9 · Cartera 9002 · Mensaje en buzón ────────────────────────────────
 (70000025,9002,90000009,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',3750000,'3001234009',2,'2026-04-29',1250000.00,NULL),
 (70000026,9002,90000009,'No hubo acuerdo','No hubo acuerdo','2026-04-17',3750000,'3001234009',2,NULL,NULL,NULL),
 (70000027,9002,90000009,'Mensaje en buzón',NULL,NULL,3750000,'3001234009',2,NULL,NULL,'Buzón de voz activo'),
--- ── Asesor 10 (90000010) · Cartera 9002 ·· Patrón B/Incumplido ─────────────
+-- ── Asesor 10 · Cartera 9002 · Incumplido ─────────────────────────────────────
 (70000028,9002,90000010,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',10800000,'3001234010',5,'2026-05-08',3600000.00,NULL),
 (70000029,9002,90000010,'Renuente','Renuente','2026-04-17',10800000,'3001234010',5,NULL,NULL,NULL),
 (70000030,9002,90000010,'Incumplido','Renuente','2026-04-10',10800000,'3001234010',5,NULL,NULL,NULL),
--- ── Asesor 11 (90000011) · Cartera 9002 ·· Patrón C/Ilocalizado ────────────
+-- ── Asesor 11 · Cartera 9002 · Ilocalizado ────────────────────────────────────
 (70000031,9002,90000011,'Realizo abono','Realizo abono','2026-04-17',2010000,'3001234011',3,'2026-04-21',670000.00,NULL),
 (70000032,9002,90000011,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2010000,'3001234011',3,NULL,NULL,NULL),
 (70000033,9002,90000011,'Ilocalizado',NULL,NULL,2010000,'3001234011',3,NULL,NULL,'Sin número de contacto'),
--- ── Asesor 12 (90000012) · Cartera 9002 ·· Patrón D/MsgBuzón ───────────────
+-- ── Asesor 12 · Cartera 9002 · Mensaje en buzón ───────────────────────────────
 (70000034,9002,90000012,'Paz y salvo','Paz y salvo','2026-04-17',14700000,'3001234012',6,'2026-05-01',4900000.00,NULL),
 (70000035,9002,90000012,'No hubo acuerdo','No hubo acuerdo','2026-04-17',14700000,'3001234012',6,NULL,NULL,NULL),
 (70000036,9002,90000012,'Mensaje en buzón',NULL,NULL,14700000,'3001234012',6,NULL,NULL,'Buzón de voz activo'),
--- ── Asesor 13 (90000013) · Cartera 9002 ·· Patrón A/Incumplido ─────────────
+-- ── Asesor 13 · Cartera 9002 · Incumplido ─────────────────────────────────────
 (70000037,9002,90000013,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',5850000,'3001234013',4,'2026-04-26',1950000.00,NULL),
 (70000038,9002,90000013,'No hubo acuerdo','No hubo acuerdo','2026-04-17',5850000,'3001234013',4,NULL,NULL,NULL),
 (70000039,9002,90000013,'Incumplido','No hubo acuerdo','2026-04-10',5850000,'3001234013',4,NULL,NULL,NULL),
--- ── Asesor 14 (90000014) · Cartera 9002 ·· Patrón B/Ilocalizado ────────────
+-- ── Asesor 14 · Cartera 9002 · Ilocalizado ────────────────────────────────────
 (70000040,9002,90000014,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',6900000,'3001234014',3,'2026-04-28',2300000.00,NULL),
 (70000041,9002,90000014,'Renuente','Renuente','2026-04-17',6900000,'3001234014',3,NULL,NULL,NULL),
 (70000042,9002,90000014,'Ilocalizado',NULL,NULL,6900000,'3001234014',3,NULL,NULL,'Sin número de contacto'),
--- ── Asesor 15 (90000015) · Cartera 9003 ·· Patrón C/MsgBuzón ───────────────
+-- ── Asesor 15 · Cartera 9003 · Mensaje en buzón ───────────────────────────────
 (70000043,9003,90000015,'Realizo abono','Realizo abono','2026-04-17',2460000,'3001234015',5,'2026-05-06',820000.00,NULL),
 (70000044,9003,90000015,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2460000,'3001234015',5,NULL,NULL,NULL),
 (70000045,9003,90000015,'Mensaje en buzón',NULL,NULL,2460000,'3001234015',5,NULL,NULL,'Buzón de voz activo'),
--- ── Asesor 16 (90000016) · Cartera 9003 ·· Patrón D/Incumplido ─────────────
+-- ── Asesor 16 · Cartera 9003 · Incumplido ─────────────────────────────────────
 (70000046,9003,90000016,'Paz y salvo','Paz y salvo','2026-04-17',11400000,'3001234016',2,'2026-04-23',3800000.00,NULL),
 (70000047,9003,90000016,'No hubo acuerdo','No hubo acuerdo','2026-04-17',11400000,'3001234016',2,NULL,NULL,NULL),
 (70000048,9003,90000016,'Incumplido','No hubo acuerdo','2026-04-10',11400000,'3001234016',2,NULL,NULL,NULL),
--- ── Asesor 17 (90000017) · Cartera 9003 ·· Patrón A/Ilocalizado ────────────
+-- ── Asesor 17 · Cartera 9003 · Ilocalizado ────────────────────────────────────
 (70000049,9003,90000017,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',4200000,'3001234017',7,'2026-05-09',1400000.00,NULL),
 (70000050,9003,90000017,'No hubo acuerdo','No hubo acuerdo','2026-04-17',4200000,'3001234017',7,NULL,NULL,NULL),
 (70000051,9003,90000017,'Ilocalizado',NULL,NULL,4200000,'3001234017',7,NULL,NULL,'Sin número de contacto'),
--- ── Asesor 18 (90000018) · Cartera 9003 ·· Patrón B/MsgBuzón ───────────────
+-- ── Asesor 18 · Cartera 9003 · Mensaje en buzón ───────────────────────────────
 (70000052,9003,90000018,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',8100000,'3001234018',4,'2026-04-30',2700000.00,NULL),
 (70000053,9003,90000018,'Renuente','Renuente','2026-04-17',8100000,'3001234018',4,NULL,NULL,NULL),
 (70000054,9003,90000018,'Mensaje en buzón',NULL,NULL,8100000,'3001234018',4,NULL,NULL,'Buzón de voz activo'),
--- ── Asesor 19 (90000019) · Cartera 9003 ·· Patrón C/Incumplido ─────────────
+-- ── Asesor 19 · Cartera 9003 · Incumplido ─────────────────────────────────────
 (70000055,9003,90000019,'Realizo abono','Realizo abono','2026-04-17',1890000,'3001234019',3,'2026-04-21',630000.00,NULL),
 (70000056,9003,90000019,'Potencial acuerdo','Potencial acuerdo','2026-04-17',1890000,'3001234019',3,NULL,NULL,NULL),
 (70000057,9003,90000019,'Incumplido','Potencial acuerdo','2026-04-10',1890000,'3001234019',3,NULL,NULL,NULL),
--- ── Asesor 20 (90000020) · Cartera 9003 ·· Patrón D/Ilocalizado ────────────
+-- ── Asesor 20 · Cartera 9003 · Ilocalizado ────────────────────────────────────
 (70000058,9003,90000020,'Paz y salvo','Paz y salvo','2026-04-17',12900000,'3001234020',6,'2026-05-04',4300000.00,NULL),
 (70000059,9003,90000020,'No hubo acuerdo','No hubo acuerdo','2026-04-17',12900000,'3001234020',6,NULL,NULL,NULL),
 (70000060,9003,90000020,'Ilocalizado',NULL,NULL,12900000,'3001234020',6,NULL,NULL,'Sin número de contacto')
@@ -245,6 +238,122 @@ FROM (VALUES
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.UltimoEstadoTitular
     WHERE TitularID = v.tid AND CarteraID = v.cid AND AgenteID = v.aid
+);
+
+-- ── 1.9 Pagos — abril 2026 (2-3 pagos por asesor) ──────────
+-- UsuarioControlID = ID del líder en DBZentinela.AspNetUsers
+--   Cartera 9001 → 90021 · Cartera 9002 → 90022 · Cartera 9003 → 90023
+-- Honorarios = 10% del ValorPagado (calculado en el INSERT)
+
+INSERT INTO dbo.Pago
+    (CedulaTitular, NombreCliente, ValorPagado, FechaPago,
+     Honorarios, LiderID, CarteraID, UsuarioControlID, AgenteControlID)
+SELECT v.ced, v.nom, v.valor, v.fecha, ROUND(v.valor * 0.10, 0), v.lid, v.car, v.usr, v.age
+FROM (VALUES
+    -- Asesor 1
+    (70000001,'Deudor Ejemplo 01', 900000.00,'2026-04-05',9001,9001,90021,90000001),
+    (70000001,'Deudor Ejemplo 01', 900000.00,'2026-04-15',9001,9001,90021,90000001),
+    -- Asesor 2
+    (70000004,'Deudor Ejemplo 04',1250000.00,'2026-04-07',9001,9001,90021,90000002),
+    (70000004,'Deudor Ejemplo 04',1250000.00,'2026-04-14',9001,9001,90021,90000002),
+    -- Asesor 3
+    (70000007,'Deudor Ejemplo 07', 475000.00,'2026-04-08',9001,9001,90021,90000003),
+    (70000007,'Deudor Ejemplo 07', 475000.00,'2026-04-16',9001,9001,90021,90000003),
+    -- Asesor 4
+    (70000010,'Deudor Ejemplo 10',1600000.00,'2026-04-05',9001,9001,90021,90000004),
+    (70000010,'Deudor Ejemplo 10',1600000.00,'2026-04-12',9001,9001,90021,90000004),
+    -- Asesor 5
+    (70000013,'Deudor Ejemplo 13', 750000.00,'2026-04-10',9001,9001,90021,90000005),
+    (70000013,'Deudor Ejemplo 13', 750000.00,'2026-04-17',9001,9001,90021,90000005),
+    -- Asesor 6
+    (70000016,'Deudor Ejemplo 16',2050000.00,'2026-04-06',9001,9001,90021,90000006),
+    (70000016,'Deudor Ejemplo 16',2050000.00,'2026-04-13',9001,9001,90021,90000006),
+    -- Asesor 7
+    (70000019,'Deudor Ejemplo 19', 390000.00,'2026-04-09',9001,9001,90021,90000007),
+    (70000019,'Deudor Ejemplo 19', 390000.00,'2026-04-16',9001,9001,90021,90000007),
+    -- Asesor 8
+    (70000022,'Deudor Ejemplo 22', 933000.00,'2026-04-05',9002,9002,90022,90000008),
+    (70000022,'Deudor Ejemplo 22', 933000.00,'2026-04-11',9002,9002,90022,90000008),
+    (70000022,'Deudor Ejemplo 22', 934000.00,'2026-04-17',9002,9002,90022,90000008),
+    -- Asesor 9
+    (70000025,'Deudor Ejemplo 25', 625000.00,'2026-04-08',9002,9002,90022,90000009),
+    (70000025,'Deudor Ejemplo 25', 625000.00,'2026-04-15',9002,9002,90022,90000009),
+    -- Asesor 10
+    (70000028,'Deudor Ejemplo 28',1200000.00,'2026-04-06',9002,9002,90022,90000010),
+    (70000028,'Deudor Ejemplo 28',1200000.00,'2026-04-12',9002,9002,90022,90000010),
+    (70000028,'Deudor Ejemplo 28',1200000.00,'2026-04-17',9002,9002,90022,90000010),
+    -- Asesor 11
+    (70000031,'Deudor Ejemplo 31', 335000.00,'2026-04-09',9002,9002,90022,90000011),
+    (70000031,'Deudor Ejemplo 31', 335000.00,'2026-04-16',9002,9002,90022,90000011),
+    -- Asesor 12
+    (70000034,'Deudor Ejemplo 34',1633000.00,'2026-04-07',9002,9002,90022,90000012),
+    (70000034,'Deudor Ejemplo 34',1633000.00,'2026-04-14',9002,9002,90022,90000012),
+    (70000034,'Deudor Ejemplo 34',1634000.00,'2026-04-17',9002,9002,90022,90000012),
+    -- Asesor 13
+    (70000037,'Deudor Ejemplo 37', 975000.00,'2026-04-10',9002,9002,90022,90000013),
+    (70000037,'Deudor Ejemplo 37', 975000.00,'2026-04-17',9002,9002,90022,90000013),
+    -- Asesor 14
+    (70000040,'Deudor Ejemplo 40',1150000.00,'2026-04-05',9002,9002,90022,90000014),
+    (70000040,'Deudor Ejemplo 40',1150000.00,'2026-04-13',9002,9002,90022,90000014),
+    -- Asesor 15
+    (70000043,'Deudor Ejemplo 43', 410000.00,'2026-04-08',9003,9003,90023,90000015),
+    (70000043,'Deudor Ejemplo 43', 410000.00,'2026-04-15',9003,9003,90023,90000015),
+    -- Asesor 16
+    (70000046,'Deudor Ejemplo 46',1266000.00,'2026-04-06',9003,9003,90023,90000016),
+    (70000046,'Deudor Ejemplo 46',1267000.00,'2026-04-12',9003,9003,90023,90000016),
+    (70000046,'Deudor Ejemplo 46',1267000.00,'2026-04-17',9003,9003,90023,90000016),
+    -- Asesor 17
+    (70000049,'Deudor Ejemplo 49', 700000.00,'2026-04-09',9003,9003,90023,90000017),
+    (70000049,'Deudor Ejemplo 49', 700000.00,'2026-04-16',9003,9003,90023,90000017),
+    -- Asesor 18
+    (70000052,'Deudor Ejemplo 52', 900000.00,'2026-04-07',9003,9003,90023,90000018),
+    (70000052,'Deudor Ejemplo 52', 900000.00,'2026-04-14',9003,9003,90023,90000018),
+    (70000052,'Deudor Ejemplo 52', 900000.00,'2026-04-17',9003,9003,90023,90000018),
+    -- Asesor 19
+    (70000055,'Deudor Ejemplo 55', 315000.00,'2026-04-10',9003,9003,90023,90000019),
+    (70000055,'Deudor Ejemplo 55', 315000.00,'2026-04-17',9003,9003,90023,90000019),
+    -- Asesor 20
+    (70000058,'Deudor Ejemplo 58',1433000.00,'2026-04-05',9003,9003,90023,90000020),
+    (70000058,'Deudor Ejemplo 58',1433000.00,'2026-04-11',9003,9003,90023,90000020),
+    (70000058,'Deudor Ejemplo 58',1434000.00,'2026-04-16',9003,9003,90023,90000020)
+) AS v(ced, nom, valor, fecha, lid, car, usr, age)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.Pago
+    WHERE AgenteControlID = v.age AND CedulaTitular = v.ced AND FechaPago = v.fecha
+);
+
+-- ── 1.10 Metas por agente — abril 2026 ──────────────────────
+-- Meta ≈ 130% del recaudo real → cumplimiento esperado ~75%
+INSERT INTO dbo.Meta_Agente_Mes (AgenteID, Anio, Mes, MetaRecaudo)
+SELECT v.age, 2026, 4, v.meta
+FROM (VALUES
+    (90000001, 2500000.00),(90000002, 3500000.00),(90000003, 1300000.00),
+    (90000004, 4300000.00),(90000005, 2000000.00),(90000006, 5700000.00),
+    (90000007, 1100000.00),(90000008, 3700000.00),(90000009, 1750000.00),
+    (90000010, 4700000.00),(90000011,  950000.00),(90000012, 6600000.00),
+    (90000013, 2700000.00),(90000014, 3200000.00),(90000015, 1100000.00),
+    (90000016, 5100000.00),(90000017, 1900000.00),(90000018, 3600000.00),
+    (90000019,  870000.00),(90000020, 5900000.00)
+) AS v(age, meta)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.Meta_Agente_Mes
+    WHERE AgenteID = v.age AND Anio = 2026 AND Mes = 4
+);
+
+-- ── 1.11 Metas por líder-cartera — abril 2026 ───────────────
+-- Líder 1 recauda ≈ 19.6M → meta 25M
+-- Líder 2 recauda ≈ 22.3M → meta 29M
+-- Líder 3 recauda ≈ 17.5M → meta 23M
+INSERT INTO dbo.Meta_Lider_Cartera_Mes (LiderID, CarteraID, Anio, Mes, MetaRecaudo)
+SELECT v.lid, v.car, 2026, 4, v.meta
+FROM (VALUES
+    (9001,9001,25000000.00),
+    (9002,9002,29000000.00),
+    (9003,9003,23000000.00)
+) AS v(lid, car, meta)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.Meta_Lider_Cartera_Mes
+    WHERE LiderID = v.lid AND CarteraID = v.car AND Anio = 2026 AND Mes = 4
 );
 
 GO
@@ -256,8 +365,7 @@ GO
 USE DBRecursosHumanos;
 GO
 
--- NOTA: Ajusta CargoID y AreaID si los IDs no existen en tu Cargo table.
---       Si la tabla Cargo usa IDENTITY, ejecuta el bloque con SET IDENTITY_INSERT ON.
+-- NOTA: Ajusta AreaID si el ID 1 no existe en tu tabla de áreas.
 IF NOT EXISTS (SELECT 1 FROM dbo.Cargo WHERE ID = 9000)
 BEGIN
     SET IDENTITY_INSERT dbo.Cargo ON;
@@ -292,8 +400,7 @@ GO
 
 DECLARE @hash NVARCHAR(MAX) = N'AQAAAAEAAYagAAAAEFplbnRpbmVsYUZpam8xMiGs0TExE1zoTlbe/QGG1DqlsU1Oncq8kUuRO0dZbTHiBw==';
 
--- ── 3.1 Roles (deben existir; el seeder los crea al iniciar la app) ──────────
--- Si el servidor aún no arrancó, crearlos manualmente:
+-- ── 3.1 Roles ────────────────────────────────────────────────
 INSERT INTO dbo.AspNetRoles (Name, NormalizedName, ConcurrencyStamp)
 SELECT v.n, v.nn, NEWID()
 FROM (VALUES ('Asesor','ASESOR'),('Lider','LIDER'),('Director','DIRECTOR'),('Admin','ADMIN')) AS v(n,nn)
@@ -312,7 +419,6 @@ SELECT v.id, v.lid, v.nc, v.doc, 0,
        1, @hash, CAST(NEWID() AS NVARCHAR(MAX)), CAST(NEWID() AS NVARCHAR(MAX)),
        0, 0, 1, 0
 FROM (VALUES
-    -- Asesores (LiderID = NULL, NumeroDocumento = AgenteID)
     (90001,NULL,'Ejemplo 1', 90000001,'ejemplo1@zentinela.com'),
     (90002,NULL,'Ejemplo 2', 90000002,'ejemplo2@zentinela.com'),
     (90003,NULL,'Ejemplo 3', 90000003,'ejemplo3@zentinela.com'),
@@ -333,7 +439,6 @@ FROM (VALUES
     (90018,NULL,'Ejemplo 18',90000018,'ejemplo18@zentinela.com'),
     (90019,NULL,'Ejemplo 19',90000019,'ejemplo19@zentinela.com'),
     (90020,NULL,'Ejemplo 20',90000020,'ejemplo20@zentinela.com'),
-    -- Líderes (LiderID = ID en DBCallCenter.Lider)
     (90021,9001,'Líder Ejemplo 1',80000001,'lider.ejemplo1@zentinela.com'),
     (90022,9002,'Líder Ejemplo 2',80000002,'lider.ejemplo2@zentinela.com'),
     (90023,9003,'Líder Ejemplo 3',80000003,'lider.ejemplo3@zentinela.com')
@@ -343,58 +448,46 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.AspNetUsers WHERE Id = v.id);
 SET IDENTITY_INSERT dbo.AspNetUsers OFF;
 
 -- ── 3.3 Roles de usuario ────────────────────────────────────
--- Asesores → rol 'Asesor'
 INSERT INTO dbo.AspNetUserRoles (UserId, RoleId)
 SELECT u.Id, r.Id
 FROM dbo.AspNetUsers u
 CROSS JOIN dbo.AspNetRoles r
 WHERE u.Id BETWEEN 90001 AND 90020
   AND r.NormalizedName = 'ASESOR'
-  AND NOT EXISTS (
-      SELECT 1 FROM dbo.AspNetUserRoles WHERE UserId = u.Id AND RoleId = r.Id
-  );
+  AND NOT EXISTS (SELECT 1 FROM dbo.AspNetUserRoles WHERE UserId = u.Id AND RoleId = r.Id);
 
--- Líderes → rol 'Lider'
 INSERT INTO dbo.AspNetUserRoles (UserId, RoleId)
 SELECT u.Id, r.Id
 FROM dbo.AspNetUsers u
 CROSS JOIN dbo.AspNetRoles r
 WHERE u.Id BETWEEN 90021 AND 90023
   AND r.NormalizedName = 'LIDER'
-  AND NOT EXISTS (
-      SELECT 1 FROM dbo.AspNetUserRoles WHERE UserId = u.Id AND RoleId = r.Id
-  );
+  AND NOT EXISTS (SELECT 1 FROM dbo.AspNetUserRoles WHERE UserId = u.Id AND RoleId = r.Id);
 
 GO
 
 -- ============================================================
--- VERIFICACIÓN
--- Ejecutar después del seed para confirmar los datos:
+-- VERIFICACIÓN (descomentar para confirmar)
 -- ============================================================
 /*
 USE DBCallCenter;
-SELECT COUNT(*) AS Lideres   FROM dbo.Lider         WHERE ID BETWEEN 9001 AND 9003;
-SELECT COUNT(*) AS Carteras  FROM dbo.Cartera        WHERE ID BETWEEN 9001 AND 9003;
-SELECT COUNT(*) AS Titulares FROM dbo.Titular        WHERE NumeroDocumento BETWEEN 70000001 AND 70000060;
-SELECT COUNT(*) AS Agentes   FROM dbo.Agente         WHERE AgenteID BETWEEN 90000001 AND 90000020;
-SELECT COUNT(*) AS Gestiones FROM dbo.UltimoEstadoTitular WHERE AgenteID BETWEEN 90000001 AND 90000020;
+SELECT COUNT(*) AS Lideres   FROM dbo.Lider                WHERE ID BETWEEN 9001 AND 9003;
+SELECT COUNT(*) AS Carteras  FROM dbo.Cartera               WHERE ID BETWEEN 9001 AND 9003;
+SELECT COUNT(*) AS Titulares FROM dbo.Titular               WHERE NumeroDocumento BETWEEN 70000001 AND 70000060;
+SELECT COUNT(*) AS Agentes   FROM dbo.Agente                WHERE AgenteID BETWEEN 90000001 AND 90000020;
+SELECT COUNT(*) AS Gestiones FROM dbo.UltimoEstadoTitular   WHERE AgenteID BETWEEN 90000001 AND 90000020;
+SELECT COUNT(*) AS Pagos     FROM dbo.Pago                  WHERE AgenteControlID BETWEEN 90000001 AND 90000020;
+SELECT COUNT(*) AS MetasAge  FROM dbo.Meta_Agente_Mes        WHERE AgenteID BETWEEN 90000001 AND 90000020 AND Anio=2026 AND Mes=4;
+SELECT COUNT(*) AS MetasLid  FROM dbo.Meta_Lider_Cartera_Mes WHERE LiderID BETWEEN 9001 AND 9003 AND Anio=2026 AND Mes=4;
 
--- Métricas esperadas por líder:
-SELECT
-    l.Nombre AS Lider,
-    COUNT(*)                                                             AS TotalGestiones,
-    SUM(CASE WHEN u.UltimoPerfil IN (
-        'Acuerdo de pago abono','Acuerdo de pago total','Incumplido',
-        'No hubo acuerdo','Paz y salvo','PQR','Renuente','Realizo abono',
-        'Recordar','Fraude o suplantacion','Potencial acuerdo',
-        'No gestionar','Consignación por aplicar') THEN 1 ELSE 0 END)   AS ContactoPositivo,
-    SUM(CASE WHEN u.UltimoPerfil IN (
-        'Acuerdo de pago abono','Acuerdo de pago total','Realizo abono',
-        'Consignación por aplicar','Paz y salvo') THEN 1 ELSE 0 END)    AS AcuerdoAbono
-FROM dbo.UltimoEstadoTitular u
-JOIN dbo.Lider_Cartera lc ON lc.CarteraID = u.CarteraID
-JOIN dbo.Lider l          ON l.ID = lc.LiderID
-WHERE u.AgenteID BETWEEN 90000001 AND 90000020
-GROUP BY l.Nombre
-ORDER BY l.Nombre;
+-- Recaudo por líder vs meta (Informes de Recaudo):
+SELECT l.Nombre AS Lider,
+       SUM(p.ValorPagado)      AS Recaudo,
+       MAX(m.MetaRecaudo)      AS Meta,
+       ROUND(SUM(p.ValorPagado)/MAX(m.MetaRecaudo)*100,1) AS PctCumplimiento
+FROM dbo.Pago p
+JOIN dbo.Meta_Lider_Cartera_Mes m ON m.LiderID=p.LiderID AND m.CarteraID=p.CarteraID AND m.Anio=2026 AND m.Mes=4
+JOIN dbo.Lider l ON l.ID = p.LiderID
+WHERE p.AgenteControlID BETWEEN 90000001 AND 90000020
+GROUP BY l.Nombre, l.ID ORDER BY l.Nombre;
 */

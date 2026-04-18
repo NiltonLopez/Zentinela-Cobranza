@@ -1,8 +1,7 @@
 -- ============================================================
 -- seed_ejemplos_rollback.sql — Limpieza de datos de prueba
 -- ============================================================
--- Elimina exactamente los registros creados por seed_ejemplos.sql
--- y seed_ejemplos_pagos.sql.
+-- Elimina todos los registros creados por seed_ejemplos.sql.
 -- Orden: hijos antes que padres para respetar FKs.
 --
 -- IDs eliminados:
@@ -25,11 +24,10 @@ WHERE UserId BETWEEN 90001 AND 90023;
 
 -- 1.2 Usuarios (asesores y líderes)
 SET IDENTITY_INSERT dbo.AspNetUsers ON;
-DELETE FROM dbo.AspNetUsers
-WHERE Id BETWEEN 90001 AND 90023;
+DELETE FROM dbo.AspNetUsers WHERE Id BETWEEN 90001 AND 90023;
 SET IDENTITY_INSERT dbo.AspNetUsers OFF;
 
--- 1.3 Roles creados por el seed (solo si no los usa ningún otro usuario)
+-- 1.3 Roles creados por el seed (solo si ningún otro usuario los referencia)
 DELETE FROM dbo.AspNetRoles
 WHERE NormalizedName IN ('ASESOR','LIDER','DIRECTOR','ADMIN')
   AND NOT EXISTS (
@@ -48,8 +46,7 @@ GO
 
 -- 2.1 Empleados de ejemplo
 SET IDENTITY_INSERT dbo.Empleado ON;
-DELETE FROM dbo.Empleado
-WHERE NumeroDocumento BETWEEN 90000001 AND 90000020;
+DELETE FROM dbo.Empleado WHERE NumeroDocumento BETWEEN 90000001 AND 90000020;
 SET IDENTITY_INSERT dbo.Empleado OFF;
 
 -- 2.2 Cargo de ejemplo (solo si ningún otro empleado lo referencia)
@@ -71,7 +68,7 @@ GO
 USE DBCallCenter;
 GO
 
--- 3.1 Pagos (seed_ejemplos_pagos.sql)
+-- 3.1 Pagos
 DELETE FROM dbo.Pago
 WHERE AgenteControlID BETWEEN 90000001 AND 90000020;
 
@@ -89,32 +86,32 @@ WHERE LiderID BETWEEN 9001 AND 9003
 DELETE FROM dbo.UltimoEstadoTitular
 WHERE AgenteID BETWEEN 90000001 AND 90000020;
 
--- 3.6 Cartera_Agente
+-- 3.5 Cartera_Agente
 DELETE FROM dbo.Cartera_Agente
 WHERE AgenteID BETWEEN 90000001 AND 90000020;
 
--- 3.7 Agentes
+-- 3.6 Agentes
 DELETE FROM dbo.Agente
 WHERE AgenteID BETWEEN 90000001 AND 90000020;
 
--- 3.8 Titular_Cartera
+-- 3.7 Titular_Cartera
 DELETE FROM dbo.Titular_Cartera
 WHERE TitularID BETWEEN 70000001 AND 70000060;
 
--- 3.9 Titulares
+-- 3.8 Titulares
 DELETE FROM dbo.Titular
 WHERE NumeroDocumento BETWEEN 70000001 AND 70000060;
 
--- 3.10 Lider_Cartera
+-- 3.9 Lider_Cartera
 DELETE FROM dbo.Lider_Cartera
 WHERE LiderID BETWEEN 9001 AND 9003;
 
--- 3.11 Carteras
+-- 3.10 Carteras
 SET IDENTITY_INSERT dbo.Cartera ON;
 DELETE FROM dbo.Cartera WHERE ID BETWEEN 9001 AND 9003;
 SET IDENTITY_INSERT dbo.Cartera OFF;
 
--- 3.12 Líderes
+-- 3.11 Líderes
 SET IDENTITY_INSERT dbo.Lider ON;
 DELETE FROM dbo.Lider WHERE ID BETWEEN 9001 AND 9003;
 SET IDENTITY_INSERT dbo.Lider OFF;
@@ -126,15 +123,18 @@ GO
 -- ============================================================
 /*
 USE DBCallCenter;
-SELECT COUNT(*) AS Lideres   FROM dbo.Lider         WHERE ID BETWEEN 9001 AND 9003;          -- debe ser 0
-SELECT COUNT(*) AS Carteras  FROM dbo.Cartera        WHERE ID BETWEEN 9001 AND 9003;          -- debe ser 0
-SELECT COUNT(*) AS Titulares FROM dbo.Titular        WHERE NumeroDocumento BETWEEN 70000001 AND 70000060; -- debe ser 0
-SELECT COUNT(*) AS Agentes   FROM dbo.Agente         WHERE AgenteID BETWEEN 90000001 AND 90000020;       -- debe ser 0
-SELECT COUNT(*) AS Gestiones FROM dbo.UltimoEstadoTitular WHERE AgenteID BETWEEN 90000001 AND 90000020;  -- debe ser 0
+SELECT COUNT(*) AS Lideres   FROM dbo.Lider                WHERE ID BETWEEN 9001 AND 9003;          -- 0
+SELECT COUNT(*) AS Carteras  FROM dbo.Cartera               WHERE ID BETWEEN 9001 AND 9003;          -- 0
+SELECT COUNT(*) AS Titulares FROM dbo.Titular               WHERE NumeroDocumento BETWEEN 70000001 AND 70000060; -- 0
+SELECT COUNT(*) AS Agentes   FROM dbo.Agente                WHERE AgenteID BETWEEN 90000001 AND 90000020;       -- 0
+SELECT COUNT(*) AS Gestiones FROM dbo.UltimoEstadoTitular   WHERE AgenteID BETWEEN 90000001 AND 90000020;       -- 0
+SELECT COUNT(*) AS Pagos     FROM dbo.Pago                  WHERE AgenteControlID BETWEEN 90000001 AND 90000020; -- 0
+SELECT COUNT(*) AS MetasAge  FROM dbo.Meta_Agente_Mes        WHERE AgenteID BETWEEN 90000001 AND 90000020;       -- 0
+SELECT COUNT(*) AS MetasLid  FROM dbo.Meta_Lider_Cartera_Mes WHERE LiderID BETWEEN 9001 AND 9003;               -- 0
 
 USE DBRecursosHumanos;
-SELECT COUNT(*) AS Empleados FROM dbo.Empleado WHERE NumeroDocumento BETWEEN 90000001 AND 90000020; -- debe ser 0
+SELECT COUNT(*) AS Empleados FROM dbo.Empleado WHERE NumeroDocumento BETWEEN 90000001 AND 90000020; -- 0
 
 USE DBZentinela;
-SELECT COUNT(*) AS Usuarios FROM dbo.AspNetUsers WHERE Id BETWEEN 90001 AND 90023; -- debe ser 0
+SELECT COUNT(*) AS Usuarios FROM dbo.AspNetUsers WHERE Id BETWEEN 90001 AND 90023; -- 0
 */
