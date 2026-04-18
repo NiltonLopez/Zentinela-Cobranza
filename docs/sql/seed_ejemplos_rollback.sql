@@ -1,7 +1,8 @@
 -- ============================================================
 -- seed_ejemplos_rollback.sql — Limpieza de datos de prueba
 -- ============================================================
--- Elimina exactamente los registros creados por seed_ejemplos.sql.
+-- Elimina exactamente los registros creados por seed_ejemplos.sql
+-- y seed_ejemplos_pagos.sql.
 -- Orden: hijos antes que padres para respetar FKs.
 --
 -- IDs eliminados:
@@ -70,36 +71,50 @@ GO
 USE DBCallCenter;
 GO
 
--- 3.1 UltimoEstadoTitular
+-- 3.1 Pagos (seed_ejemplos_pagos.sql)
+DELETE FROM dbo.Pago
+WHERE AgenteControlID BETWEEN 90000001 AND 90000020;
+
+-- 3.2 Metas por agente
+DELETE FROM dbo.Meta_Agente_Mes
+WHERE AgenteID BETWEEN 90000001 AND 90000020
+  AND Anio = 2026 AND Mes = 4;
+
+-- 3.3 Metas por líder-cartera
+DELETE FROM dbo.Meta_Lider_Cartera_Mes
+WHERE LiderID BETWEEN 9001 AND 9003
+  AND Anio = 2026 AND Mes = 4;
+
+-- 3.4 UltimoEstadoTitular
 DELETE FROM dbo.UltimoEstadoTitular
 WHERE AgenteID BETWEEN 90000001 AND 90000020;
 
--- 3.2 Cartera_Agente
+-- 3.6 Cartera_Agente
 DELETE FROM dbo.Cartera_Agente
 WHERE AgenteID BETWEEN 90000001 AND 90000020;
 
--- 3.3 Agentes
+-- 3.7 Agentes
 DELETE FROM dbo.Agente
 WHERE AgenteID BETWEEN 90000001 AND 90000020;
 
--- 3.4 Titular_Cartera
+-- 3.8 Titular_Cartera
 DELETE FROM dbo.Titular_Cartera
 WHERE TitularID BETWEEN 70000001 AND 70000060;
 
--- 3.5 Titulares
+-- 3.9 Titulares
 DELETE FROM dbo.Titular
 WHERE NumeroDocumento BETWEEN 70000001 AND 70000060;
 
--- 3.6 Lider_Cartera
+-- 3.10 Lider_Cartera
 DELETE FROM dbo.Lider_Cartera
 WHERE LiderID BETWEEN 9001 AND 9003;
 
--- 3.7 Carteras
+-- 3.11 Carteras
 SET IDENTITY_INSERT dbo.Cartera ON;
 DELETE FROM dbo.Cartera WHERE ID BETWEEN 9001 AND 9003;
 SET IDENTITY_INSERT dbo.Cartera OFF;
 
--- 3.8 Líderes
+-- 3.12 Líderes
 SET IDENTITY_INSERT dbo.Lider ON;
 DELETE FROM dbo.Lider WHERE ID BETWEEN 9001 AND 9003;
 SET IDENTITY_INSERT dbo.Lider OFF;
