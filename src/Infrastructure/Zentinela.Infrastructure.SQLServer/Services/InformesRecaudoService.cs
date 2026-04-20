@@ -180,12 +180,12 @@ public class InformesRecaudoService : IInformesRecaudoService
             .AsNoTracking()
             .ToListAsync();
 
-        // Asesores activos por líder
-        var asesoresPorLider = await _callCenter.CarteraAgentes
-            .GroupBy(ca => ca.LiderID)
-            .Select(g => new { LiderID = g.Key, Total = g.Select(x => x.AgenteID).Distinct().Count() })
+        // Asesores activos por combinación líder-cartera
+        var asesoresPorLiderCartera = await _callCenter.CarteraAgentes
+            .GroupBy(ca => new { ca.LiderID, ca.CarteraID })
+            .Select(g => new { g.Key.LiderID, g.Key.CarteraID, Total = g.Select(x => x.AgenteID).Distinct().Count() })
             .AsNoTracking()
-            .ToDictionaryAsync(x => x.LiderID, x => x.Total);
+            .ToListAsync();
 
         var filas = liderCarteras.Select(lc =>
         {
@@ -213,7 +213,7 @@ public class InformesRecaudoService : IInformesRecaudoService
                 NombreLider      = lc.Lider.Nombre,
                 CarteraID        = lc.CarteraID,
                 NombreCartera    = lc.Cartera.NombreCartera,
-                TotalAsesores    = asesoresPorLider.TryGetValue(lc.LiderID, out var na) ? na : 0,
+                TotalAsesores    = asesoresPorLiderCartera.FirstOrDefault(x => x.LiderID == lc.LiderID && x.CarteraID == lc.CarteraID)?.Total ?? 0,
                 MetaCartera      = metaV,
                 MetaHonorarios   = metaHonorarios,
                 TieneMeta        = meta != null,

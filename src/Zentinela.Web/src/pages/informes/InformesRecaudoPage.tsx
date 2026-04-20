@@ -651,6 +651,288 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
 }
 
 // ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║  TAB — CARTERAS (desglose por Líder-Cartera o por Cartera)                  ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+type VistaCarteras = 'lider-cartera' | 'cartera';
+
+interface CarteraAgregada {
+  carteraID:        number;
+  nombreCartera:    string;
+  lideres:          number;
+  asesores:         number;
+  capacidad:        number;
+  meta:             number;
+  metaHonorarios:   number;
+  recaudo:          number;
+  honorarios:       number;
+  deberiaLlevarHoy: number;
+  proyeccionCierre: number;
+  tieneMeta:        boolean;
+  cumplimiento:     number;
+}
+
+function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
+  const [vista, setVista] = useState<VistaCarteras>('lider-cartera');
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['inf-lideres', año, mes],
+    queryFn:  () => getInformeLideres(año, mes),
+  });
+
+  if (isLoading) return <Cargando />;
+  if (isError || !data) return <ErrorMsg />;
+
+  // ── Vista Líder-Cartera ──────────────────────────────────────────────────────
+  const filasPorLiderCartera = data.liderCarteras.map(f => ({
+    ...f,
+    cumplimiento: f.metaCartera > 0 ? f.recaudo / f.metaCartera : 0,
+  }));
+
+  // ── Vista Cartera (agrupar todos los líderes de una misma cartera) ───────────
+  const porCartera = new Map<number, CarteraAgregada>();
+  for (const f of data.liderCarteras) {
+    const prev = porCartera.get(f.carteraID);
+    if (prev) {
+      prev.lideres          += 1;
+      prev.asesores         += f.totalAsesores;
+      prev.capacidad        += f.capacidad;
+      prev.meta             += f.metaCartera;
+      prev.metaHonorarios   += f.metaHonorarios;
+      prev.recaudo          += f.recaudo;
+      prev.honorarios       += f.honorarios;
+      prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
+      prev.proyeccionCierre += f.proyeccionCierre;
+      prev.tieneMeta         = prev.tieneMeta || f.tieneMeta;
+    } else {
+      porCartera.set(f.carteraID, {
+        carteraID:        f.carteraID,
+        nombreCartera:    f.nombreCartera,
+        lideres:          1,
+        asesores:         f.totalAsesores,
+        capacidad:        f.capacidad,
+        meta:             f.metaCartera,
+        metaHonorarios:   f.metaHonorarios,
+        recaudo:          f.recaudo,
+        honorarios:       f.honorarios,
+        deberiaLlevarHoy: f.deberiaLlevarHoy,
+        proyeccionCierre: f.proyeccionCierre,
+        tieneMeta:        f.tieneMeta,
+        cumplimiento:     0,
+      });
+    }
+  }
+  const filasCartera: CarteraAgregada[] = Array.from(porCartera.values()).map(c => ({
+    ...c, cumplimiento: c.meta > 0 ? c.recaudo / c.meta : 0,
+  }));
+
+  const filas = vista === 'lider-cartera' ? filasPorLiderCartera : filasCartera;
+  const totalHonorarios = filas.reduce((s: number, f: typeof filas[0]) => s + f.honorarios, 0);
+
+  // chartData: eje Y = nombre de la fila, barras en honorarios
+  type OrdenGrafico = 'honorarios' | 'deberiaLlevarHoy' | 'metaHonorarios';
+  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
+
+  const chartData = [...filas]
+    .sort((a: typeof filas[0], b: typeof filas[0]) => (b as Record<string, number>)[ordenGrafico] - (a as Record<string, number>)[ordenGrafico])
+    .map((f: typeof filas[0]) => ({
+      nombre:          vista === 'lider-cartera'
+                         ? `${(f as typeof filasPorLiderCartera[0]).nombreLider} / ${f.nombreCartera}`
+                         : f.nombreCartera,
+      honorarios:      f.honorarios,
+      deberiaLlevarHoy: f.deberiaLlevarHoy,
+      metaHonorarios:  f.metaHonorarios,
+    }));
+
+  const promDeberiaHoy = filas.length > 0
+    ? filas.reduce((s: number, f: typeof filas[0]) => s + f.deberiaLlevarHoy, 0) / filas.length
+    : 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* KPIs */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <KpiCard label="Total Honorarios" value={cop(totalHonorarios)} color={C.honorarios} />
+        <KpiCard label="Carteras"         value={String(filasCartera.length)} />
+        {vista === 'lider-cartera' && (
+          <KpiCard label="Combinaciones Líder-Cartera" value={String(filasPorLiderCartera.length)} />
+        )}
+      </div>
+
+      {/* Gráfico */}
+      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+
+            {/* Toggle de vista */}
+            <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--z-border)' }}>
+              {(['lider-cartera', 'cartera'] as VistaCarteras[]).map(v => {
+                const active = vista === v;
+                return (
+                  <button key={v} onClick={() => setVista(v)} style={{
+                    padding: '4px 14px', fontSize: 12, fontWeight: active ? 600 : 400,
+                    background: active ? C.naranja : 'transparent',
+                    color: active ? '#fff' : 'var(--z-text-muted)',
+                    border: 'none', cursor: 'pointer',
+                  }}>
+                    {v === 'lider-cartera' ? 'Líder-Cartera' : 'Cartera'}
+                  </button>
+                );
+              })}
+            </div>
+
+            <LeyendaGrafico items={[
+              { color: C.honorarios, label: 'Honorarios' },
+              { color: C.proyeccion, label: 'Debería hoy' },
+              { color: C.meta,       label: 'Meta Hon.' },
+            ]} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--z-text-muted)' }}>Ordenar por</span>
+            {(['honorarios', 'deberiaLlevarHoy', 'metaHonorarios'] as OrdenGrafico[]).map(op => {
+              const labels = { honorarios: 'Honorarios', deberiaLlevarHoy: 'Debería hoy', metaHonorarios: 'Meta Hon.' };
+              const active = ordenGrafico === op;
+              return (
+                <button key={op} onClick={() => setOrdenGrafico(op)} style={{
+                  padding: '3px 10px', borderRadius: 6, border: '1px solid var(--z-border)',
+                  background: active ? C.naranja : 'transparent',
+                  color: active ? '#fff' : 'var(--z-text-muted)',
+                  cursor: 'pointer', fontSize: 12, fontWeight: active ? 600 : 400,
+                }}>
+                  {labels[op]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={Math.max(220, chartData.length * 44)}>
+          <BarChart layout="vertical" data={chartData} margin={{ left: 10, right: 50, top: 4, bottom: 4 }}>
+            <CartesianGrid horizontal={false} stroke="var(--z-border)" />
+            <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
+            <YAxis type="category" dataKey="nombre" width={vista === 'lider-cartera' ? 200 : 150}
+              tick={{ fontSize: 11, fill: 'var(--z-text-primary)' }} />
+            <Tooltip content={<TooltipCOP />} />
+            <Bar dataKey="honorarios"       name="Honorarios"      fill={C.honorarios} radius={[0, 4, 4, 0]} barSize={10} />
+            <Bar dataKey="deberiaLlevarHoy" name="Debería hoy"     fill={C.proyeccion} radius={[0, 4, 4, 0]} barSize={10} />
+            <Bar dataKey="metaHonorarios"   name="Meta Honorarios" fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
+            {promDeberiaHoy > 0 && (
+              <ReferenceLine x={promDeberiaHoy} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
+                label={{ value: `Prom. ${cop(promDeberiaHoy)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Tabla */}
+      {vista === 'lider-cartera'
+        ? <TablaCarterasLiderCartera filas={filasPorLiderCartera} />
+        : <TablaCarterasAgrupada     filas={filasCartera} />
+      }
+    </div>
+  );
+}
+
+function TablaCarterasLiderCartera({ filas }: { filas: (InformeLiderCartera & { cumplimiento: number })[] }) {
+  const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
+  const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
+    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+  );
+  return (
+    <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
+              {th('Líder',             'nombreLider',     'left')}
+              {th('Cartera',           'nombreCartera',   'left')}
+              {th('Asesores',          'totalAsesores',   'center')}
+              {th('Capacidad',         'capacidad',       'center')}
+              {th('Recaudo',           'recaudo')}
+              {th('Honorarios',        'honorarios')}
+              {th('Meta Recaudo',      'metaCartera')}
+              {th('Meta Hon.',         'metaHonorarios')}
+              {th('Debería hoy',       'deberiaLlevarHoy')}
+              {th('Proyección',        'proyeccionCierre')}
+              {th('Cump.',             'cumplimiento',    'center')}
+            </tr>
+          </thead>
+          <tbody>
+            {(sorted as unknown as (InformeLiderCartera & { cumplimiento: number })[]).map(f => (
+              <tr key={`${f.liderID}-${f.carteraID}`}>
+                <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>
+                <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{f.nombreCartera}</td>
+                <td style={{ ...TD, textAlign: 'center' }}>{f.totalAsesores}</td>
+                <td style={{ ...TD, textAlign: 'center' }}>{f.capacidad.toLocaleString('es-CO')}</td>
+                <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(f.recaudo)}</td>
+                <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(f.honorarios)}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{f.tieneMeta ? cop(f.metaCartera) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{f.tieneMeta ? cop(f.metaHonorarios) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{f.tieneMeta ? cop(f.deberiaLlevarHoy) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: f.proyeccionCierre >= f.metaCartera && f.metaCartera > 0 ? C.verde : C.naranja, fontWeight: 600 }}>{cop(f.proyeccionCierre)}</td>
+                <td style={{ ...TD, textAlign: 'center' }}>
+                  <Semaforo recaudo={f.honorarios} meta={f.metaHonorarios} deberiaHoy={f.deberiaLlevarHoy} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
+  const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
+  const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
+    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+  );
+  return (
+    <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
+              {th('Cartera',           'nombreCartera',   'left')}
+              {th('Líderes',           'lideres',         'center')}
+              {th('Asesores',          'asesores',        'center')}
+              {th('Capacidad',         'capacidad',       'center')}
+              {th('Recaudo',           'recaudo')}
+              {th('Honorarios',        'honorarios')}
+              {th('Meta Recaudo',      'meta')}
+              {th('Meta Hon.',         'metaHonorarios')}
+              {th('Debería hoy',       'deberiaLlevarHoy')}
+              {th('Proyección',        'proyeccionCierre')}
+              {th('Cump.',             'cumplimiento',    'center')}
+            </tr>
+          </thead>
+          <tbody>
+            {(sorted as unknown as CarteraAgregada[]).map(c => (
+              <tr key={c.carteraID}>
+                <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{c.nombreCartera}</td>
+                <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{c.lideres}</td>
+                <td style={{ ...TD, textAlign: 'center' }}>{c.asesores}</td>
+                <td style={{ ...TD, textAlign: 'center' }}>{c.capacidad.toLocaleString('es-CO')}</td>
+                <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(c.recaudo)}</td>
+                <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(c.honorarios)}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{c.tieneMeta ? cop(c.meta) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{c.tieneMeta ? cop(c.metaHonorarios) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{c.tieneMeta ? cop(c.deberiaLlevarHoy) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: c.proyeccionCierre >= c.meta && c.meta > 0 ? C.verde : C.naranja, fontWeight: 600 }}>{cop(c.proyeccionCierre)}</td>
+                <td style={{ ...TD, textAlign: 'center' }}>
+                  <Semaforo recaudo={c.honorarios} meta={c.metaHonorarios} deberiaHoy={c.deberiaLlevarHoy} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  TAB — CARTERAS (mes pasado vs este mes)                                    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 function TabCarteras() {
@@ -864,7 +1146,7 @@ export function InformesRecaudoPage() {
   const [año, setAño] = useState(AÑO_ACTUAL);
   const [mes, setMes] = useState(MES_ACTUAL);
 
-  const usaPeriodoGlobal = tabActiva === 'agentes' || tabActiva === 'lideres';
+  const usaPeriodoGlobal = tabActiva === 'agentes' || tabActiva === 'lideres' || tabActiva === 'carteras';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1300, margin: '0 auto' }}>
@@ -912,7 +1194,7 @@ export function InformesRecaudoPage() {
       {/* Contenido */}
       {tabActiva === 'agentes'     && <TabAgentes     año={año} mes={mes} />}
       {tabActiva === 'lideres'     && <TabLideres     año={año} mes={mes} />}
-      {tabActiva === 'carteras'    && <TabComparativo />}
+      {tabActiva === 'carteras'    && <TabCarterasDetalle año={año} mes={mes} />}
       {tabActiva === 'comparativo' && <TabCarteras />}
     </div>
   );
