@@ -1315,7 +1315,7 @@ export function InformesRecaudoPage() {
       {tabActiva === 'agentes'     && <TabAgentes     año={año} mes={mes} />}
       {tabActiva === 'lideres'     && <TabLideres     año={año} mes={mes} />}
       {tabActiva === 'carteras'    && <TabCarterasDetalle año={año} mes={mes} />}
-      {tabActiva === 'comparativo' && <TabCarteras />}
+      {tabActiva === 'comparativo' && <TabComparativo />}
     </div>
   );
 }
