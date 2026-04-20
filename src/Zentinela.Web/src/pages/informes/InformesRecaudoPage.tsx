@@ -23,9 +23,6 @@ import type {
 } from '../../types/informesRecaudo';
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
-const MES_DOS_ANTES = MES_ACTUAL <= 2 ? MES_ACTUAL - 2 + 12 : MES_ACTUAL - 2;
-const AÑO_DOS_ANTES = MES_ACTUAL <= 2 ? AÑO_ACTUAL - 1 : AÑO_ACTUAL;
-
 const C = {
   brand:      '#2563eb',
   meta:       '#94a3b8',
@@ -56,8 +53,10 @@ const MESES = [
 const hoy          = new Date();
 const AÑO_ACTUAL   = hoy.getFullYear();
 const MES_ACTUAL   = hoy.getMonth() + 1;
-const MES_ANTERIOR = MES_ACTUAL === 1 ? 12 : MES_ACTUAL - 1;
-const AÑO_ANTERIOR = MES_ACTUAL === 1 ? AÑO_ACTUAL - 1 : AÑO_ACTUAL;
+const MES_ANTERIOR  = MES_ACTUAL === 1 ? 12 : MES_ACTUAL - 1;
+const AÑO_ANTERIOR  = MES_ACTUAL === 1 ? AÑO_ACTUAL - 1 : AÑO_ACTUAL;
+const MES_DOS_ANTES = MES_ACTUAL <= 2  ? MES_ACTUAL - 2 + 12 : MES_ACTUAL - 2;
+const AÑO_DOS_ANTES = MES_ACTUAL <= 2  ? AÑO_ACTUAL - 1 : AÑO_ACTUAL;
 
 // ── Tooltip personalizado ─────────────────────────────────────────────────────
 function TooltipCOP({ active, payload, label }: any) {
