@@ -184,6 +184,7 @@ function FiltroSelect({ label, value, onChange, options, placeholder }: {
 function TabAgentes({ año, mes }: { año: number; mes: number }) {
   const [filtroLider,   setFiltroLider]   = useState('');
   const [filtroCartera, setFiltroCartera] = useState('');
+  const [busqueda,      setBusqueda]      = useState('');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-agentes', año, mes],
@@ -207,14 +208,16 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
   ).map(([value, label]) => ({ value, label }));
 
   // Filtrado cliente-lado
+  const termino = busqueda.trim().toLowerCase();
   const agentesVisibles = data.agentes.filter(a => {
-    if (filtroLider   && String(a.liderID)     !== filtroLider)   return false;
-    if (filtroCartera && a.nombreCartera        !== filtroCartera) return false;
+    if (filtroLider   && String(a.liderID) !== filtroLider)   return false;
+    if (filtroCartera && a.nombreCartera   !== filtroCartera) return false;
+    if (termino       && !a.nombreAgente.toLowerCase().includes(termino)) return false;
     return true;
   });
 
   const chartData = agentesVisibles.map(a => ({
-    nombre:          a.nombreAgente.split(' ')[0],
+    nombre:          a.nombreAgente,
     recaudo:         a.recaudo,
     deberiaLlevarHoy: a.deberiaLlevarHoy,
     meta:            a.meta,
@@ -243,7 +246,7 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
             Recaudo por agente — ordenado de menor a mayor
           </p>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <FiltroSelect
               label="Líder:"
               value={filtroLider}
@@ -258,6 +261,20 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
               options={optsCartera}
               placeholder="Todas las carteras"
             />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--z-text-muted)', whiteSpace: 'nowrap' }}>Asesor:</span>
+              <input
+                type="text"
+                placeholder="Buscar asesor…"
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+                style={{
+                  background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
+                  borderRadius: 6, padding: '5px 10px', fontSize: 13,
+                  color: 'var(--z-text-primary)', minWidth: 150, outline: 'none',
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -268,7 +285,7 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
               <BarChart layout="vertical" data={chartData} margin={{ left: 10, right: 50, top: 4, bottom: 4 }}>
                 <CartesianGrid horizontal={false} stroke="var(--z-border)" />
                 <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
-                <YAxis type="category" dataKey="nombre" width={120} tick={{ fontSize: 12, fill: 'var(--z-text-primary)' }} />
+                <YAxis type="category" dataKey="nombre" width={160} tick={{ fontSize: 11, fill: 'var(--z-text-primary)' }} />
                 <Tooltip content={<TooltipCOP />} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="recaudo"          name="Recaudo"          fill={C.brand}      radius={[0, 4, 4, 0]} barSize={10} />
