@@ -555,7 +555,7 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
               { color: C.meta,       label: 'Meta Hon.' },
             ]} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--z-text-muted)' }}>
-            <span>Ordenar por</span>
+            <span style={{ fontWeight: 600 }}>Ordenar por</span>
             {(['honorarios', 'proyeccion', 'metaHonorarios'] as OrdenGrafico[]).map(op => {
               const labels = { honorarios: 'Honorarios', proyeccion: 'Proyección', metaHonorarios: 'Meta Hon.' };
               const active = ordenGrafico === op;
