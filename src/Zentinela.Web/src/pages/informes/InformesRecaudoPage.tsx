@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ResponsiveContainer,
@@ -143,6 +143,56 @@ function ErrorMsg() {
     <div style={{ textAlign: 'center', padding: '48px 0', color: C.rojo, fontSize: 13 }}>
       Error al cargar el informe. Verifica la conexión e inténtalo de nuevo.
     </div>
+  );
+}
+
+// ── Ordenamiento de tablas ────────────────────────────────────────────────────
+type SortDir = 'asc' | 'desc';
+
+function useSortable<T extends Record<string, unknown>>(items: T[]) {
+  const [key,  setKey]  = useState<keyof T | null>(null);
+  const [dir,  setDir]  = useState<SortDir>('asc');
+
+  const handleSort = (k: keyof T) => {
+    if (key === k) setDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setKey(k); setDir('asc'); }
+  };
+
+  const sorted = useMemo(() => {
+    if (!key) return items;
+    return [...items].sort((a, b) => {
+      const va = a[key], vb = b[key];
+      const cmp = typeof va === 'string'
+        ? (va as string).localeCompare(vb as string, 'es')
+        : (va as number) - (vb as number);
+      return dir === 'asc' ? cmp : -cmp;
+    });
+  }, [items, key, dir]);
+
+  return { sorted, sortKey: key, sortDir: dir, handleSort };
+}
+
+function ThSort({ label, k, sortKey, sortDir, onSort, align = 'right' }: {
+  label: string; k: string;
+  sortKey: string | null; sortDir: SortDir;
+  onSort: (k: string) => void;
+  align?: 'left' | 'right' | 'center';
+}) {
+  const active = sortKey === k;
+  return (
+    <th
+      onClick={() => onSort(k)}
+      style={{
+        ...TH, textAlign: align, cursor: 'pointer', userSelect: 'none',
+        color: active ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}&nbsp;
+      <span style={{ fontSize: 10, opacity: active ? 1 : 0.25 }}>
+        {active ? (sortDir === 'asc' ? '▲' : '▼') : '▲▼'}
+      </span>
+    </th>
   );
 }
 
@@ -298,30 +348,46 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
       </div>
 
       {/* Tabla */}
-      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-                <th style={{ ...TH, textAlign: 'center' }}>#</th>
-                <th style={{ ...TH, textAlign: 'left'   }}>Agente</th>
-                <th style={{ ...TH, textAlign: 'left'   }}>Líder</th>
-                <th style={{ ...TH, textAlign: 'left'   }}>Cartera</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Gestionado</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Recaudo</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Honorarios</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Meta</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Debería hoy</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Falta</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Prom./día</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Cump.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {agentesVisibles.map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} />)}
-            </tbody>
-          </table>
-        </div>
+      <TablaAgentes agentes={agentesVisibles} />
+    </div>
+  );
+}
+
+function TablaAgentes({ agentes }: { agentes: InformeAgenteMes[] }) {
+  type Row = InformeAgenteMes & { cumplimiento: number };
+  const rows: Row[] = agentes.map(a => ({
+    ...a, cumplimiento: a.meta > 0 ? a.recaudo / a.meta : 0,
+  })) as unknown as Row[];
+
+  const { sorted, sortKey, sortDir, handleSort } = useSortable(rows as unknown as Record<string, unknown>[]);
+  const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
+    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+  );
+
+  return (
+    <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
+              <th style={{ ...TH, textAlign: 'center' }}>#</th>
+              {th('Agente',       'nombreAgente',    'left')}
+              {th('Líder',        'nombreLider',     'left')}
+              {th('Cartera',      'nombreCartera',   'left')}
+              {th('Gestionado',   'gestionado',      'center')}
+              {th('Recaudo',      'recaudo')}
+              {th('Honorarios',   'honorarios')}
+              {th('Meta',         'meta')}
+              {th('Debería hoy',  'deberiaLlevarHoy')}
+              {th('Falta',        'faltaParaMeta')}
+              {th('Prom./día',    'promedioPagoDia')}
+              {th('Cump.',        'cumplimiento',    'center')}
+            </tr>
+          </thead>
+          <tbody>
+            {(sorted as unknown as Row[]).map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} />)}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -408,27 +474,43 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
       </div>
 
       {/* Tabla */}
-      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-                <th style={{ ...TH, textAlign: 'left'   }}>Líder</th>
-                <th style={{ ...TH, textAlign: 'left'   }}>Cartera</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Capacidad</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Meta</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Recaudo</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Honorarios</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Debería hoy</th>
-                <th style={{ ...TH, textAlign: 'right'  }}>Proyección cierre</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Cump.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.liderCarteras.map(f => <FilaLider key={`${f.liderID}-${f.carteraID}`} f={f} />)}
-            </tbody>
-          </table>
-        </div>
+      <TablaLideres filas={data.liderCarteras} />
+    </div>
+  );
+}
+
+function TablaLideres({ filas }: { filas: InformeLiderCartera[] }) {
+  type Row = InformeLiderCartera & { cumplimiento: number };
+  const rows: Row[] = filas.map(f => ({
+    ...f, cumplimiento: f.metaCartera > 0 ? f.recaudo / f.metaCartera : 0,
+  })) as unknown as Row[];
+
+  const { sorted, sortKey, sortDir, handleSort } = useSortable(rows as unknown as Record<string, unknown>[]);
+  const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
+    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+  );
+
+  return (
+    <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
+              {th('Líder',             'nombreLider',     'left')}
+              {th('Cartera',           'nombreCartera',   'left')}
+              {th('Capacidad',         'capacidad',       'center')}
+              {th('Meta',              'metaCartera')}
+              {th('Recaudo',           'recaudo')}
+              {th('Honorarios',        'honorarios')}
+              {th('Debería hoy',       'deberiaLlevarHoy')}
+              {th('Proyección cierre', 'proyeccionCierre')}
+              {th('Cump.',             'cumplimiento',    'center')}
+            </tr>
+          </thead>
+          <tbody>
+            {(sorted as unknown as Row[]).map(f => <FilaLider key={`${f.liderID}-${f.carteraID}`} f={f} />)}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -612,23 +694,29 @@ function TabComparativo() {
 function TablaComparativa({ carteras, labelA, labelB }: {
   carteras: InformeCarteraComparativo[]; labelA: string; labelB: string;
 }) {
+  const { sorted, sortKey, sortDir, handleSort } =
+    useSortable(carteras as unknown as Record<string, unknown>[]);
+  const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
+    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+  );
+
   return (
     <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-              <th style={{ ...TH, textAlign: 'left'  }}>Cartera</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Recaudo {labelA}</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Hon. {labelA}</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Recaudo {labelB}</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Hon. {labelB}</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Variación</th>
-              <th style={{ ...TH, textAlign: 'center' }}>%</th>
+              {th('Cartera',            'nombreCartera',      'left')}
+              {th(`Recaudo ${labelA}`,  'recaudoA')}
+              {th(`Hon. ${labelA}`,     'honorariosA')}
+              {th(`Recaudo ${labelB}`,  'recaudoB')}
+              {th(`Hon. ${labelB}`,     'honorariosB')}
+              {th('Variación',          'variacionRecaudo')}
+              {th('%',                  'porcentajeVariacion', 'center')}
             </tr>
           </thead>
           <tbody>
-            {carteras.map(c => (
+            {(sorted as unknown as InformeCarteraComparativo[]).map(c => (
               <tr key={c.carteraID}>
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{c.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(c.recaudoA)}</td>
