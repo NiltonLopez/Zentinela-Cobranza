@@ -29,12 +29,13 @@ public class InformeAgenteMesDto
     public decimal Honorarios        { get; set; }
 
     public decimal Meta              { get; set; }
+    public decimal MetaHonorarios    { get; set; }
     public bool    TieneMeta         { get; set; }
 
-    /// <summary>Meta proporcional a los días transcurridos del mes.</summary>
+    /// <summary>MetaHonorarios proporcional a los días transcurridos del mes.</summary>
     public decimal DeberiaLlevarHoy  { get; set; }
 
-    /// <summary>Máximo entre 0 y (Meta − Recaudo).</summary>
+    /// <summary>Máximo entre 0 y (MetaHonorarios − Honorarios).</summary>
     public decimal FaltaParaMeta     { get; set; }
 
     /// <summary>Recaudo / días del mes con al menos un pago.</summary>

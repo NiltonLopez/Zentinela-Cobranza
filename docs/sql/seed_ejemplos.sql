@@ -322,17 +322,17 @@ WHERE NOT EXISTS (
 
 -- ── 1.10 Metas por agente — abril 2026 ──────────────────────
 -- Meta ≈ 130% del recaudo real → cumplimiento esperado ~75%
-INSERT INTO dbo.Meta_Agente_Mes (AgenteID, Anio, Mes, MetaRecaudo)
-SELECT v.age, 2026, 4, v.meta
+INSERT INTO dbo.Meta_Agente_Mes (AgenteID, Anio, Mes, MetaRecaudo, MetaHonorarios)
+SELECT v.age, 2026, 4, v.meta, v.metahon
 FROM (VALUES
-    (90000001, 2500000.00),(90000002, 3500000.00),(90000003, 1300000.00),
-    (90000004, 4300000.00),(90000005, 2000000.00),(90000006, 5700000.00),
-    (90000007, 1100000.00),(90000008, 3700000.00),(90000009, 1750000.00),
-    (90000010, 4700000.00),(90000011,  950000.00),(90000012, 6600000.00),
-    (90000013, 2700000.00),(90000014, 3200000.00),(90000015, 1100000.00),
-    (90000016, 5100000.00),(90000017, 1900000.00),(90000018, 3600000.00),
-    (90000019,  870000.00),(90000020, 5900000.00)
-) AS v(age, meta)
+    (90000001, 2500000.00,  250000.00),(90000002, 3500000.00,  350000.00),(90000003, 1300000.00,  130000.00),
+    (90000004, 4300000.00,  430000.00),(90000005, 2000000.00,  200000.00),(90000006, 5700000.00,  570000.00),
+    (90000007, 1100000.00,  110000.00),(90000008, 3700000.00,  370000.00),(90000009, 1750000.00,  175000.00),
+    (90000010, 4700000.00,  470000.00),(90000011,  950000.00,   95000.00),(90000012, 6600000.00,  660000.00),
+    (90000013, 2700000.00,  270000.00),(90000014, 3200000.00,  320000.00),(90000015, 1100000.00,  110000.00),
+    (90000016, 5100000.00,  510000.00),(90000017, 1900000.00,  190000.00),(90000018, 3600000.00,  360000.00),
+    (90000019,  870000.00,   87000.00),(90000020, 5900000.00,  590000.00)
+) AS v(age, meta, metahon)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.Meta_Agente_Mes
     WHERE AgenteID = v.age AND Anio = 2026 AND Mes = 4
@@ -342,13 +342,13 @@ WHERE NOT EXISTS (
 -- Líder 1 recauda ≈ 19.6M → meta 25M
 -- Líder 2 recauda ≈ 22.3M → meta 29M
 -- Líder 3 recauda ≈ 17.5M → meta 23M
-INSERT INTO dbo.Meta_Lider_Cartera_Mes (LiderID, CarteraID, Anio, Mes, MetaRecaudo)
-SELECT v.lid, v.car, 2026, 4, v.meta
+INSERT INTO dbo.Meta_Lider_Cartera_Mes (LiderID, CarteraID, Anio, Mes, MetaRecaudo, MetaHonorarios)
+SELECT v.lid, v.car, 2026, 4, v.meta, v.metahon
 FROM (VALUES
-    (9001,9001,25000000.00),
-    (9002,9002,29000000.00),
-    (9003,9003,23000000.00)
-) AS v(lid, car, meta)
+    (9001,9001,25000000.00,2500000.00),
+    (9002,9002,29000000.00,2900000.00),
+    (9003,9003,23000000.00,2300000.00)
+) AS v(lid, car, meta, metahon)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.Meta_Lider_Cartera_Mes
     WHERE LiderID = v.lid AND CarteraID = v.car AND Anio = 2026 AND Mes = 4

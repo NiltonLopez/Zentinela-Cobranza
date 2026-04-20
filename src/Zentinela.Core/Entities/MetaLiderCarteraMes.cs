@@ -11,5 +11,6 @@ public class MetaLiderCarteraMes
     public int     CarteraID   { get; set; }
     public short   Año         { get; set; }
     public byte    Mes         { get; set; }
-    public decimal MetaRecaudo { get; set; }
+    public decimal MetaRecaudo    { get; set; }
+    public decimal MetaHonorarios { get; set; }
 }

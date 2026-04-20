@@ -10,6 +10,7 @@ export interface InformeAgenteMes {
   recaudo: number;
   honorarios: number;
   meta: number;
+  metaHonorarios: number;
   tieneMeta: boolean;
   deberiaLlevarHoy: number;
   faltaParaMeta: number;
@@ -32,6 +33,7 @@ export interface InformeLiderCartera {
   carteraID: number;
   nombreCartera: string;
   metaCartera: number;
+  metaHonorarios: number;
   tieneMeta: boolean;
   capacidad: number;
   recaudo: number;

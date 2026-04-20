@@ -47,10 +47,12 @@ public class InformesRecaudoService : IInformesRecaudoService
         var agenteIDs = pagos.Select(p => p.AgenteControlID).Distinct().ToList();
 
         // Metas de agentes para el mes
-        var metas = await _callCenter.MetaAgentesMes
+        var metasRaw = await _callCenter.MetaAgentesMes
             .Where(m => m.Año == año && m.Mes == mes && agenteIDs.Contains(m.AgenteID))
             .AsNoTracking()
-            .ToDictionaryAsync(m => m.AgenteID, m => m.MetaRecaudo);
+            .ToListAsync();
+        var metas           = metasRaw.ToDictionary(m => m.AgenteID, m => m.MetaRecaudo);
+        var metasHonorarios = metasRaw.ToDictionary(m => m.AgenteID, m => m.MetaHonorarios);
 
         // Líder y cartera asociados a cada agente (se toma el mínimo de Cartera_Agente)
         var asignaciones = await _callCenter.CarteraAgentes
@@ -96,12 +98,13 @@ public class InformesRecaudoService : IInformesRecaudoService
                 var honorarios = g.Sum(p => p.Honorarios);
                 var gestionado = g.Select(p => p.CedulaTitular).Distinct().Count();
                 var diasConPago = g.Select(p => p.FechaPago).Distinct().Count();
-                var meta        = metas.TryGetValue(agenteID, out var m) ? m : 0m;
-                var tieneMeta   = metas.ContainsKey(agenteID);
-                var liderID     = liderPorAgente.TryGetValue(agenteID, out var lid) ? lid : 0;
+                var meta           = metas.TryGetValue(agenteID, out var m) ? m : 0m;
+                var metaHonorarios = metasHonorarios.TryGetValue(agenteID, out var mh) ? mh : 0m;
+                var tieneMeta      = metas.ContainsKey(agenteID);
+                var liderID        = liderPorAgente.TryGetValue(agenteID, out var lid) ? lid : 0;
 
                 var deberiaHoy = diasDelMes > 0
-                    ? meta * diasTranscurridos / diasDelMes
+                    ? metaHonorarios * diasTranscurridos / diasDelMes
                     : 0m;
 
                 var carteraID    = carteraPorAgente.TryGetValue(agenteID, out var cid) ? cid : 0;
@@ -117,9 +120,10 @@ public class InformesRecaudoService : IInformesRecaudoService
                     Recaudo          = recaudo,
                     Honorarios       = honorarios,
                     Meta             = meta,
+                    MetaHonorarios   = metaHonorarios,
                     TieneMeta        = tieneMeta,
                     DeberiaLlevarHoy = deberiaHoy,
-                    FaltaParaMeta    = Math.Max(0m, meta - recaudo),
+                    FaltaParaMeta    = Math.Max(0m, metaHonorarios - honorarios),
                     PromedioPagoDia  = diasConPago > 0 ? recaudo / diasConPago : 0m,
                 };
             })
@@ -182,13 +186,14 @@ public class InformesRecaudoService : IInformesRecaudoService
             var meta = metas.FirstOrDefault(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID);
             var cap  = capacidades.FirstOrDefault(c => c.LiderID == lc.LiderID && c.CarteraID == lc.CarteraID);
 
-            var recaudo    = pago?.Recaudo    ?? 0m;
-            var honorarios = pago?.Honorarios ?? 0m;
-            var metaV      = meta?.MetaRecaudo ?? 0m;
-            var capacidad  = cap?.Capacidad ?? 0;
+            var recaudo        = pago?.Recaudo       ?? 0m;
+            var honorarios     = pago?.Honorarios    ?? 0m;
+            var metaV          = meta?.MetaRecaudo   ?? 0m;
+            var metaHonorarios = meta?.MetaHonorarios ?? 0m;
+            var capacidad      = cap?.Capacidad ?? 0;
 
             var deberiaHoy = diasDelMes > 0
-                ? metaV * diasTranscurridos / diasDelMes
+                ? metaHonorarios * diasTranscurridos / diasDelMes
                 : 0m;
 
             var proyeccion = diasTranscurridos > 0
@@ -202,6 +207,7 @@ public class InformesRecaudoService : IInformesRecaudoService
                 CarteraID        = lc.CarteraID,
                 NombreCartera    = lc.Cartera.NombreCartera,
                 MetaCartera      = metaV,
+                MetaHonorarios   = metaHonorarios,
                 TieneMeta        = meta != null,
                 Capacidad        = capacidad,
                 Recaudo          = recaudo,

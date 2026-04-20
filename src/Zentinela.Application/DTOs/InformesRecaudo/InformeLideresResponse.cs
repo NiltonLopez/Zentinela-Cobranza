@@ -22,6 +22,7 @@ public class InformeLiderCarteraDto
     public string  NombreCartera    { get; set; } = string.Empty;
 
     public decimal MetaCartera      { get; set; }
+    public decimal MetaHonorarios   { get; set; }
     public bool    TieneMeta        { get; set; }
 
     /// <summary>Titulares activos asignados a este líder en esta cartera.</summary>
