@@ -205,6 +205,19 @@ const TD: React.CSSProperties = {
 };
 
 // ── Select de filtro ──────────────────────────────────────────────────────────
+function LeyendaGrafico({ items }: { items: { color: string; label: string }[] }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      {items.map(it => (
+        <div key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: it.color, flexShrink: 0, display: 'inline-block' }} />
+          <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>{it.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FiltroSelect({ label, value, onChange, options, placeholder }: {
   label: string;
   value: string;
@@ -293,9 +306,16 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
 
         {/* Cabecera gráfico + filtros */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
-            Recaudo por agente — ordenado de menor a mayor
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+              Honorarios por asesor — menor a mayor
+            </p>
+            <LeyendaGrafico items={[
+              { color: C.honorarios, label: 'Honorarios' },
+              { color: C.proyeccion, label: 'Debería hoy' },
+              { color: C.meta,       label: 'Meta Hon.' },
+            ]} />
+          </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <FiltroSelect
               label="Líder:"
@@ -337,7 +357,6 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
                 <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
                 <YAxis type="category" dataKey="nombre" width={160} tick={{ fontSize: 11, fill: 'var(--z-text-primary)' }} />
                 <Tooltip content={<TooltipCOP />} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="honorarios"       name="Honorarios"       fill={C.honorarios} radius={[0, 4, 4, 0]} barSize={10} />
                 <Bar dataKey="deberiaLlevarHoy" name="Debería hoy"      fill={C.proyeccion} radius={[0, 4, 4, 0]} barSize={10} />
                 <Bar dataKey="metaHonorarios"   name="Meta Honorarios"  fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
@@ -529,7 +548,13 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
             Honorarios · Debería hoy · Meta Honorarios por líder
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--z-text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <LeyendaGrafico items={[
+              { color: C.honorarios, label: 'Honorarios' },
+              { color: C.proyeccion, label: 'Debería hoy' },
+              { color: C.meta,       label: 'Meta Hon.' },
+            ]} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--z-text-muted)' }}>
             <span>Ordenar por</span>
             {(['honorarios', 'proyeccion', 'metaHonorarios'] as OrdenGrafico[]).map(op => {
               const labels = { honorarios: 'Honorarios', proyeccion: 'Proyección', metaHonorarios: 'Meta Hon.' };
@@ -545,6 +570,7 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
         <ResponsiveContainer width="100%" height={280}>
@@ -553,7 +579,6 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--z-text-muted)', angle: -25, textAnchor: 'end' }} interval={0} />
             <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
             <Tooltip content={<TooltipCOP />} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="honorarios"     name="Honorarios"      fill={C.honorarios} radius={[4, 4, 0, 0]} />
             <Bar dataKey="deberiaHoy"     name="Debería hoy"     fill={C.proyeccion} radius={[4, 4, 0, 0]} />
             <Bar dataKey="metaHonorarios" name="Meta Honorarios" fill={C.meta}       radius={[4, 4, 0, 0]} />
