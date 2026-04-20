@@ -375,10 +375,11 @@ function TablaAgentes({ agentes }: { agentes: InformeAgenteMes[] }) {
               {th('Líder',        'nombreLider',     'left')}
               {th('Cartera',      'nombreCartera',   'left')}
               {th('Gestionado',   'gestionado',      'center')}
-              {th('Recaudo',      'recaudo')}
-              {th('Honorarios',   'honorarios')}
-              {th('Meta',         'meta')}
-              {th('Debería hoy',  'deberiaLlevarHoy')}
+              {th('Recaudo',        'recaudo')}
+              {th('Honorarios',     'honorarios')}
+              {th('Meta Recaudo',   'meta')}
+              {th('Meta Hon.',      'metaHonorarios')}
+              {th('Debería hoy',    'deberiaLlevarHoy')}
               {th('Falta',        'faltaParaMeta')}
               {th('Prom./día',    'promedioPagoDia')}
               {th('Cump.',        'cumplimiento',    'center')}
@@ -407,6 +408,9 @@ function FilaAgente({ a, pos }: { a: InformeAgenteMes; pos: number }) {
         {a.tieneMeta ? cop(a.meta) : '—'}
       </td>
       <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>
+        {a.tieneMeta ? cop(a.metaHonorarios) : '—'}
+      </td>
+      <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>
         {a.tieneMeta ? cop(a.deberiaLlevarHoy) : '—'}
       </td>
       <td style={{ ...TD, textAlign: 'right', color: a.faltaParaMeta > 0 ? C.rojo : C.verde }}>
@@ -429,6 +433,7 @@ interface LiderAgregado {
   carteras:         number;
   capacidad:        number;
   meta:             number;
+  metaHonorarios:   number;
   recaudo:          number;
   honorarios:       number;
   deberiaLlevarHoy: number;
@@ -454,6 +459,7 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
       prev.carteras         += 1;
       prev.capacidad        += f.capacidad;
       prev.meta             += f.metaCartera;
+      prev.metaHonorarios   += f.metaHonorarios;
       prev.recaudo          += f.recaudo;
       prev.honorarios       += f.honorarios;
       prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
@@ -466,6 +472,7 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
         carteras:         1,
         capacidad:        f.capacidad,
         meta:             f.metaCartera,
+        metaHonorarios:   f.metaHonorarios,
         recaudo:          f.recaudo,
         honorarios:       f.honorarios,
         deberiaLlevarHoy: f.deberiaLlevarHoy,
@@ -479,12 +486,24 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
     ...l, cumplimiento: l.meta > 0 ? l.recaudo / l.meta : 0,
   }));
 
-  const chartData = lideres.map(l => ({
-    label:     l.nombreLider,
-    meta:      l.meta,
-    recaudo:   l.recaudo,
-    proyeccion: l.proyeccionCierre,
-  }));
+  type OrdenGrafico = 'recaudo' | 'proyeccion' | 'meta';
+  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('recaudo');
+
+  const chartData = [...lideres]
+    .sort((a, b) => {
+      const campo = ordenGrafico === 'proyeccion' ? 'proyeccionCierre' : ordenGrafico;
+      return b[campo] - a[campo];
+    })
+    .map(l => ({
+      label:      l.nombreLider,
+      meta:       l.meta,
+      recaudo:    l.recaudo,
+      proyeccion: l.proyeccionCierre,
+    }));
+
+  const promProyeccion = lideres.length > 0
+    ? lideres.reduce((s, l) => s + l.proyeccionCierre, 0) / lideres.length
+    : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -503,19 +522,42 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
 
       {/* Gráfico agrupado Meta | Recaudo | Proyección por líder */}
       <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 16 }}>
-          Meta · Recaudo · Proyección de cierre por líder
-        </p>
-        <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 80)}>
-          <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Meta · Recaudo · Proyección de cierre por líder
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--z-text-muted)' }}>
+            <span>Ordenar por</span>
+            {(['recaudo', 'proyeccion', 'meta'] as OrdenGrafico[]).map(op => {
+              const labels = { recaudo: 'Recaudo', proyeccion: 'Proyección', meta: 'Meta' };
+              const active = ordenGrafico === op;
+              return (
+                <button key={op} onClick={() => setOrdenGrafico(op)} style={{
+                  padding: '3px 10px', borderRadius: 6, border: '1px solid var(--z-border)',
+                  background: active ? C.naranja : 'transparent',
+                  color: active ? '#fff' : 'var(--z-text-muted)',
+                  cursor: 'pointer', fontSize: 12, fontWeight: active ? 600 : 400,
+                }}>
+                  {labels[op]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 55 }}>
             <CartesianGrid vertical={false} stroke="var(--z-border)" />
-            <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'var(--z-text-muted)' }} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--z-text-muted)', angle: -25, textAnchor: 'end' }} interval={0} />
             <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
             <Tooltip content={<TooltipCOP />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="meta"       name="Meta"              fill={C.meta}       radius={[4, 4, 0, 0]} />
             <Bar dataKey="recaudo"    name="Recaudo"           fill={C.brand}      radius={[4, 4, 0, 0]} />
             <Bar dataKey="proyeccion" name="Proyección cierre" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
+            {promProyeccion > 0 && (
+              <ReferenceLine y={promProyeccion} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
+                label={{ value: `Prom. ${cop(promProyeccion)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
+            )}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -542,9 +584,10 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
               {th('Líder',             'nombreLider',     'left')}
               {th('Carteras',          'carteras',        'center')}
               {th('Capacidad',         'capacidad',       'center')}
-              {th('Meta',              'meta')}
               {th('Recaudo',           'recaudo')}
               {th('Honorarios',        'honorarios')}
+              {th('Meta Recaudo',      'meta')}
+              {th('Meta Hon.',         'metaHonorarios')}
               {th('Debería hoy',       'deberiaLlevarHoy')}
               {th('Proyección cierre', 'proyeccionCierre')}
               {th('Cump.',             'cumplimiento',    'center')}
@@ -558,9 +601,10 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
                   <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{l.nombreLider}</td>
                   <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{l.carteras}</td>
                   <td style={{ ...TD, textAlign: 'center' }}>{l.capacidad.toLocaleString('es-CO')}</td>
-                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.meta) : '—'}</td>
                   <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(l.recaudo)}</td>
                   <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(l.honorarios)}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.meta) : '—'}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.metaHonorarios) : '—'}</td>
                   <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.deberiaLlevarHoy) : '—'}</td>
                   <td style={{ ...TD, textAlign: 'right', color: proyOk ? C.verde : C.naranja, fontWeight: 600 }}>{cop(l.proyeccionCierre)}</td>
                   <td style={{ ...TD, textAlign: 'center' }}>
