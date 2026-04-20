@@ -32,6 +32,7 @@ export interface InformeLiderCartera {
   nombreLider: string;
   carteraID: number;
   nombreCartera: string;
+  totalAsesores: number;
   metaCartera: number;
   metaHonorarios: number;
   tieneMeta: boolean;

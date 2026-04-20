@@ -431,6 +431,7 @@ interface LiderAgregado {
   liderID:          number;
   nombreLider:      string;
   carteras:         number;
+  asesores:         number;
   capacidad:        number;
   meta:             number;
   metaHonorarios:   number;
@@ -470,6 +471,7 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
         liderID:          f.liderID,
         nombreLider:      f.nombreLider,
         carteras:         1,
+        asesores:         f.totalAsesores,
         capacidad:        f.capacidad,
         meta:             f.metaCartera,
         metaHonorarios:   f.metaHonorarios,
@@ -584,6 +586,7 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
             <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
               {th('Líder',             'nombreLider',     'left')}
               {th('Carteras',          'carteras',        'center')}
+              {th('Asesores',          'asesores',        'center')}
               {th('Capacidad',         'capacidad',       'center')}
               {th('Recaudo',           'recaudo')}
               {th('Honorarios',        'honorarios')}
@@ -601,6 +604,7 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
                 <tr key={l.liderID}>
                   <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{l.nombreLider}</td>
                   <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{l.carteras}</td>
+                  <td style={{ ...TD, textAlign: 'center' }}>{l.asesores}</td>
                   <td style={{ ...TD, textAlign: 'center' }}>{l.capacidad.toLocaleString('es-CO')}</td>
                   <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(l.recaudo)}</td>
                   <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(l.honorarios)}</td>

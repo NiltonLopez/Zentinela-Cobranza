@@ -21,6 +21,7 @@ public class InformeLiderCarteraDto
     public int     CarteraID        { get; set; }
     public string  NombreCartera    { get; set; } = string.Empty;
 
+    public int     TotalAsesores    { get; set; }
     public decimal MetaCartera      { get; set; }
     public decimal MetaHonorarios   { get; set; }
     public bool    TieneMeta        { get; set; }
