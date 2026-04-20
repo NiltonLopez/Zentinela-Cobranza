@@ -449,6 +449,9 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
     queryFn:  () => getInformeLideres(año, mes),
   });
 
+  type OrdenGrafico = 'honorarios' | 'proyeccion' | 'metaHonorarios';
+  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
+
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
 
@@ -487,9 +490,6 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
   const lideres: LiderAgregado[] = Array.from(porLider.values()).map(l => ({
     ...l, cumplimiento: l.meta > 0 ? l.recaudo / l.meta : 0,
   }));
-
-  type OrdenGrafico = 'honorarios' | 'proyeccion' | 'metaHonorarios';
-  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
 
   const chartData = [...lideres]
     .sort((a, b) => {
