@@ -673,6 +673,8 @@ interface CarteraAgregada {
 
 function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
   const [vista, setVista] = useState<VistaCarteras>('lider-cartera');
+  type OrdenGrafico = 'honorarios' | 'deberiaLlevarHoy' | 'metaHonorarios';
+  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-lideres', año, mes],
@@ -729,9 +731,6 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
   const totalHonorarios = filas.reduce((s: number, f: typeof filas[0]) => s + f.honorarios, 0);
 
   // chartData: eje Y = nombre de la fila, barras en honorarios
-  type OrdenGrafico = 'honorarios' | 'deberiaLlevarHoy' | 'metaHonorarios';
-  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
-
   const chartData = [...filas]
     .sort((a: typeof filas[0], b: typeof filas[0]) => (b as Record<string, number>)[ordenGrafico] - (a as Record<string, number>)[ordenGrafico])
     .map((f: typeof filas[0]) => ({
