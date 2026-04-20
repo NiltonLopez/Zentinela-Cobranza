@@ -27,7 +27,6 @@ USE DBCallCenter;
 GO
 
 -- ── 1.1 Líderes ─────────────────────────────────────────────
-SET IDENTITY_INSERT dbo.Lider ON;
 IF NOT EXISTS (SELECT 1 FROM dbo.Lider WHERE ID = 9001)
     INSERT INTO dbo.Lider (ID, Nombre, Email, Activo, NumeroDocumento)
     VALUES (9001, 'Líder Ejemplo 1', 'lider.ejemplo1@zentinela.com', 1, 80000001);
@@ -37,17 +36,14 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Lider WHERE ID = 9002)
 IF NOT EXISTS (SELECT 1 FROM dbo.Lider WHERE ID = 9003)
     INSERT INTO dbo.Lider (ID, Nombre, Email, Activo, NumeroDocumento)
     VALUES (9003, 'Líder Ejemplo 3', 'lider.ejemplo3@zentinela.com', 1, 80000003);
-SET IDENTITY_INSERT dbo.Lider OFF;
 
 -- ── 1.2 Carteras ────────────────────────────────────────────
-SET IDENTITY_INSERT dbo.Cartera ON;
 IF NOT EXISTS (SELECT 1 FROM dbo.Cartera WHERE ID = 9001)
     INSERT INTO dbo.Cartera (ID, NombreCartera, Activa) VALUES (9001, 'Cartera Ejemplo A', 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.Cartera WHERE ID = 9002)
     INSERT INTO dbo.Cartera (ID, NombreCartera, Activa) VALUES (9002, 'Cartera Ejemplo B', 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.Cartera WHERE ID = 9003)
     INSERT INTO dbo.Cartera (ID, NombreCartera, Activa) VALUES (9003, 'Cartera Ejemplo C', 1);
-SET IDENTITY_INSERT dbo.Cartera OFF;
 
 -- ── 1.3 Lider_Cartera ───────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM dbo.Lider_Cartera WHERE LiderID = 9001 AND CarteraID = 9001)
