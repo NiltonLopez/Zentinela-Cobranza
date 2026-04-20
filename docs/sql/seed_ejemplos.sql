@@ -147,8 +147,10 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.Cartera_Agente WHERE AgenteID = v.a AND Lide
 INSERT INTO dbo.UltimoEstadoTitular
        (TitularID,CarteraID,AgenteID,UltimoPerfil,MejorPerfil,FechaMejorPerfil,
         SaldoTotal,NumeroMarcado,Rotacion,FechaUltimaGestion,FechaPromesa,ValorPromesa,MotivoNoPago,FechaActualizacion)
-SELECT v.tid,v.cid,v.aid,v.up,v.mp,v.fmp,v.saldo,v.tel,v.rot,
-       '2026-04-17',v.fp,v.vp,v.motivo,'2026-04-17 08:00:00'
+SELECT v.tid,v.cid,v.aid,v.up,v.mp,
+       CONVERT(date,v.fmp,23),v.saldo,v.tel,v.rot,
+       CONVERT(date,'2026-04-17',23),CONVERT(date,v.fp,23),v.vp,v.motivo,
+       CONVERT(datetime2,'2026-04-17 08:00:00',120)
 FROM (VALUES
 -- ── Asesor 1 · Cartera 9001 · Incumplido ──────────────────────────────────────
 (70000001,9001,90000001,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',5400000,'3001234001',3,'2026-04-25',1800000.00,NULL),
@@ -244,7 +246,7 @@ WHERE NOT EXISTS (
 INSERT INTO dbo.Pago
     (CedulaTitular, NombreCliente, ValorPagado, FechaPago,
      Honorarios, LiderID, CarteraID, UsuarioControlID, AgenteControlID)
-SELECT v.ced, v.nom, v.valor, v.fecha, ROUND(v.valor * 0.10, 0), v.lid, v.car, v.usr, v.age
+SELECT v.ced, v.nom, v.valor, CONVERT(date,v.fecha,23), ROUND(v.valor * 0.10, 0), v.lid, v.car, v.usr, v.age
 FROM (VALUES
     -- Asesor 1
     (70000001,'Deudor Ejemplo 01', 900000.00,'2026-04-05',9001,9001,90021,90000001),
@@ -315,7 +317,7 @@ FROM (VALUES
 ) AS v(ced, nom, valor, fecha, lid, car, usr, age)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.Pago
-    WHERE AgenteControlID = v.age AND CedulaTitular = v.ced AND FechaPago = v.fecha
+    WHERE AgenteControlID = v.age AND CedulaTitular = v.ced AND FechaPago = CONVERT(date,v.fecha,23)
 );
 
 -- ── 1.10 Metas por agente — abril 2026 ──────────────────────
