@@ -268,9 +268,9 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
 
   const chartData = agentesVisibles.map(a => ({
     nombre:          a.nombreAgente,
-    recaudo:         a.recaudo,
+    honorarios:      a.honorarios,
     deberiaLlevarHoy: a.deberiaLlevarHoy,
-    meta:            a.meta,
+    metaHonorarios:  a.metaHonorarios,
   }));
 
   const totalRecaudo    = agentesVisibles.reduce((s, a) => s + a.recaudo, 0);
@@ -338,9 +338,9 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
                 <YAxis type="category" dataKey="nombre" width={160} tick={{ fontSize: 11, fill: 'var(--z-text-primary)' }} />
                 <Tooltip content={<TooltipCOP />} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="recaudo"          name="Recaudo"          fill={C.brand}      radius={[0, 4, 4, 0]} barSize={10} />
+                <Bar dataKey="honorarios"       name="Honorarios"       fill={C.honorarios} radius={[0, 4, 4, 0]} barSize={10} />
                 <Bar dataKey="deberiaLlevarHoy" name="Debería hoy"      fill={C.proyeccion} radius={[0, 4, 4, 0]} barSize={10} />
-                <Bar dataKey="meta"             name="Meta"             fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
+                <Bar dataKey="metaHonorarios"   name="Meta Honorarios"  fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
               </BarChart>
             </ResponsiveContainer>
           )
@@ -486,8 +486,8 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
     ...l, cumplimiento: l.meta > 0 ? l.recaudo / l.meta : 0,
   }));
 
-  type OrdenGrafico = 'recaudo' | 'proyeccion' | 'meta';
-  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('recaudo');
+  type OrdenGrafico = 'honorarios' | 'proyeccion' | 'metaHonorarios';
+  const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
 
   const chartData = [...lideres]
     .sort((a, b) => {
@@ -495,14 +495,15 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
       return b[campo] - a[campo];
     })
     .map(l => ({
-      label:      l.nombreLider,
-      meta:       l.meta,
-      recaudo:    l.recaudo,
-      proyeccion: l.proyeccionCierre,
+      label:           l.nombreLider,
+      honorarios:      l.honorarios,
+      deberiaHoy:      l.deberiaLlevarHoy,
+      metaHonorarios:  l.metaHonorarios,
+      proyeccion:      l.proyeccionCierre,
     }));
 
-  const promProyeccion = lideres.length > 0
-    ? lideres.reduce((s, l) => s + l.proyeccionCierre, 0) / lideres.length
+  const promDeberiaHoy = lideres.length > 0
+    ? lideres.reduce((s, l) => s + l.deberiaLlevarHoy, 0) / lideres.length
     : 0;
 
   return (
@@ -524,12 +525,12 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
       <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
-            Meta · Recaudo · Proyección de cierre por líder
+            Honorarios · Debería hoy · Meta Honorarios por líder
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--z-text-muted)' }}>
             <span>Ordenar por</span>
-            {(['recaudo', 'proyeccion', 'meta'] as OrdenGrafico[]).map(op => {
-              const labels = { recaudo: 'Recaudo', proyeccion: 'Proyección', meta: 'Meta' };
+            {(['honorarios', 'proyeccion', 'metaHonorarios'] as OrdenGrafico[]).map(op => {
+              const labels = { honorarios: 'Honorarios', proyeccion: 'Proyección', metaHonorarios: 'Meta Hon.' };
               const active = ordenGrafico === op;
               return (
                 <button key={op} onClick={() => setOrdenGrafico(op)} style={{
@@ -551,12 +552,12 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
             <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
             <Tooltip content={<TooltipCOP />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="meta"       name="Meta"              fill={C.meta}       radius={[4, 4, 0, 0]} />
-            <Bar dataKey="recaudo"    name="Recaudo"           fill={C.brand}      radius={[4, 4, 0, 0]} />
-            <Bar dataKey="proyeccion" name="Proyección cierre" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
-            {promProyeccion > 0 && (
-              <ReferenceLine y={promProyeccion} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
-                label={{ value: `Prom. ${cop(promProyeccion)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
+            <Bar dataKey="honorarios"     name="Honorarios"      fill={C.honorarios} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="deberiaHoy"     name="Debería hoy"     fill={C.proyeccion} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="metaHonorarios" name="Meta Honorarios" fill={C.meta}       radius={[4, 4, 0, 0]} />
+            {promDeberiaHoy > 0 && (
+              <ReferenceLine y={promDeberiaHoy} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
+                label={{ value: `Prom. ${cop(promDeberiaHoy)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
             )}
           </BarChart>
         </ResponsiveContainer>
