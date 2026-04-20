@@ -23,6 +23,9 @@ import type {
 } from '../../types/informesRecaudo';
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
+const MES_DOS_ANTES = MES_ACTUAL <= 2 ? MES_ACTUAL - 2 + 12 : MES_ACTUAL - 2;
+const AÑO_DOS_ANTES = MES_ACTUAL <= 2 ? AÑO_ACTUAL - 1 : AÑO_ACTUAL;
+
 const C = {
   brand:      '#2563eb',
   meta:       '#94a3b8',
@@ -33,6 +36,7 @@ const C = {
   naranja:    '#ea580c',
   mesA:       '#94a3b8',
   mesB:       '#2563eb',
+  mesC:       '#10b981',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1024,57 +1028,151 @@ function TabCarteras() {
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  TAB — COMPARATIVO LIBRE                                                    ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
-function TabComparativo() {
-  const [añoA, setAñoA] = useState(AÑO_ACTUAL);
-  const [mesA,  setMesA]  = useState(MES_ANTERIOR);
-  const [añoB, setAñoB] = useState(AÑO_ACTUAL);
-  const [mesB,  setMesB]  = useState(MES_ACTUAL);
+interface FilaComparativo {
+  carteraID:    number;
+  nombre:       string;
+  valA:         number; honA: number;
+  valB:         number; honB: number;
+  valC:         number; honC: number;
+}
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['inf-comparativo', añoA, mesA, añoB, mesB],
+function TabComparativo() {
+  const [numPeriodos, setNumPeriodos] = useState<2 | 3>(2);
+  const [añoA, setAñoA] = useState(AÑO_DOS_ANTES);
+  const [mesA,  setMesA]  = useState(MES_DOS_ANTES);
+  const [añoB, setAñoB] = useState(AÑO_ANTERIOR);
+  const [mesB,  setMesB]  = useState(MES_ANTERIOR);
+  const [añoC, setAñoC] = useState(AÑO_ACTUAL);
+  const [mesC,  setMesC]  = useState(MES_ACTUAL);
+
+  const qAB = useQuery({
+    queryKey: ['inf-comp-ab', añoA, mesA, añoB, mesB],
     queryFn:  () => getInformeCarteras(añoA, mesA, añoB, mesB),
   });
+  const qBC = useQuery({
+    queryKey: ['inf-comp-bc', añoB, mesB, añoC, mesC],
+    queryFn:  () => getInformeCarteras(añoB, mesB, añoC, mesC),
+    enabled:  numPeriodos === 3,
+  });
 
-  const labelA = data?.periodoA.nombre ?? `${MESES[mesA - 1]} ${añoA}`;
-  const labelB = data?.periodoB.nombre ?? `${MESES[mesB - 1]} ${añoB}`;
+  const isLoading = qAB.isLoading || (numPeriodos === 3 && qBC.isLoading);
+  const isError   = qAB.isError   || (numPeriodos === 3 && qBC.isError);
 
-  const chartData = (data?.carteras ?? []).map(c => ({
-    nombre:   c.nombreCartera.length > 14 ? c.nombreCartera.slice(0, 14) + '…' : c.nombreCartera,
-    [labelA]: c.recaudoA,
-    [labelB]: c.recaudoB,
+  const labelA = qAB.data?.periodoA.nombre ?? `${MESES[mesA - 1]} ${añoA}`;
+  const labelB = qAB.data?.periodoB.nombre ?? `${MESES[mesB - 1]} ${añoB}`;
+  const labelC = qBC.data?.periodoB.nombre ?? `${MESES[mesC - 1]} ${añoC}`;
+
+  // Fusionar por carteraID
+  const filas = useMemo<FilaComparativo[]>(() => {
+    if (!qAB.data) return [];
+    const map = new Map<number, FilaComparativo>();
+    for (const c of qAB.data.carteras) {
+      map.set(c.carteraID, {
+        carteraID: c.carteraID,
+        nombre:    c.nombreCartera,
+        valA: c.recaudoA,  honA: c.honorariosA,
+        valB: c.recaudoB,  honB: c.honorariosB,
+        valC: 0,           honC: 0,
+      });
+    }
+    if (numPeriodos === 3 && qBC.data) {
+      for (const c of qBC.data.carteras) {
+        const prev = map.get(c.carteraID);
+        if (prev) { prev.valC = c.recaudoB; prev.honC = c.honorariosB; }
+        else map.set(c.carteraID, {
+          carteraID: c.carteraID, nombre: c.nombreCartera,
+          valA: 0, honA: 0, valB: c.recaudoA, honB: c.honorariosA,
+          valC: c.recaudoB, honC: c.honorariosB,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [qAB.data, qBC.data, numPeriodos]);
+
+  const chartData = filas.map(f => ({
+    nombre:    f.nombre.length > 14 ? f.nombre.slice(0, 14) + '…' : f.nombre,
+    [labelA]:  f.valA,
+    [labelB]:  f.valB,
+    ...(numPeriodos === 3 ? { [labelC]: f.valC } : {}),
   }));
 
-  const variPct = data && data.totalRecaudoA > 0
-    ? ((data.totalRecaudoB - data.totalRecaudoA) / data.totalRecaudoA * 100).toFixed(1)
-    : null;
+  const totalA = filas.reduce((s, f) => s + f.valA, 0);
+  const totalB = filas.reduce((s, f) => s + f.valB, 0);
+  const totalC = filas.reduce((s, f) => s + f.valC, 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '14px 20px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SelectorPeriodo año={añoA} mes={mesA} onAño={setAñoA} onMes={setMesA} label="Mes A:" />
-        <span style={{ color: 'var(--z-text-muted)', fontSize: 18 }}>vs</span>
-        <SelectorPeriodo año={añoB} mes={mesB} onAño={setAñoB} onMes={setMesB} label="Mes B:" />
+      {/* Selectores + toggle 2/3 meses */}
+      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '14px 20px', display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+
+        {/* Toggle 2 / 3 períodos */}
+        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--z-border)', flexShrink: 0 }}>
+          {([2, 3] as (2 | 3)[]).map(n => {
+            const active = numPeriodos === n;
+            return (
+              <button key={n} onClick={() => setNumPeriodos(n)} style={{
+                padding: '4px 14px', fontSize: 12, fontWeight: active ? 600 : 400,
+                background: active ? C.naranja : 'transparent',
+                color: active ? '#fff' : 'var(--z-text-muted)',
+                border: 'none', cursor: 'pointer',
+              }}>
+                {n} meses
+              </button>
+            );
+          })}
+        </div>
+
+        <span style={{ color: 'var(--z-border)', fontSize: 18 }}>|</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: C.mesA, display: 'inline-block' }} />
+          <SelectorPeriodo año={añoA} mes={mesA} onAño={setAñoA} onMes={setMesA} label="Mes A:" />
+        </div>
+        <span style={{ color: 'var(--z-text-muted)' }}>vs</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: C.mesB, display: 'inline-block' }} />
+          <SelectorPeriodo año={añoB} mes={mesB} onAño={setAñoB} onMes={setMesB} label="Mes B:" />
+        </div>
+        {numPeriodos === 3 && (
+          <>
+            <span style={{ color: 'var(--z-text-muted)' }}>vs</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: C.mesC, display: 'inline-block' }} />
+              <SelectorPeriodo año={añoC} mes={mesC} onAño={setAñoC} onMes={setMesC} label="Mes C:" />
+            </div>
+          </>
+        )}
       </div>
 
       {isLoading && <Cargando />}
       {isError   && <ErrorMsg />}
 
-      {data && (
+      {!isLoading && !isError && filas.length > 0 && (
         <>
+          {/* KPIs */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label={`Recaudo ${labelA}`}   value={cop(data.totalRecaudoA)} color={C.mesA} />
-            <KpiCard label={`Recaudo ${labelB}`}   value={cop(data.totalRecaudoB)} color={C.mesB} />
+            <KpiCard label={labelA} value={cop(totalA)} color={C.mesA} />
+            <KpiCard label={labelB} value={cop(totalB)} color={C.mesB} />
+            {numPeriodos === 3 && <KpiCard label={labelC} value={cop(totalC)} color={C.mesC} />}
             <KpiCard
-              label="Variación total"
-              value={pct(variPct !== null ? Number(variPct) : null)}
-              color={data.variacionTotal >= 0 ? C.verde : C.rojo}
+              label="Var. A→B"
+              value={totalA > 0 ? `${((totalB - totalA) / totalA * 100).toFixed(1)}%` : '—'}
+              color={totalB >= totalA ? C.verde : C.rojo}
             />
+            {numPeriodos === 3 && (
+              <KpiCard
+                label="Var. B→C"
+                value={totalB > 0 ? `${((totalC - totalB) / totalB * 100).toFixed(1)}%` : '—'}
+                color={totalC >= totalB ? C.verde : C.rojo}
+              />
+            )}
           </div>
 
+          {/* Gráfico */}
           <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
             <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 16 }}>
-              {labelA} vs {labelB} — por cartera
+              Recaudo por cartera — {numPeriodos === 3 ? `${labelA} · ${labelB} · ${labelC}` : `${labelA} vs ${labelB}`}
             </p>
             <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 60)}>
               <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 50 }}>
@@ -1082,62 +1180,68 @@ function TabComparativo() {
                 <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} angle={-30} textAnchor="end" interval={0} />
                 <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
                 <Tooltip content={<TooltipCOP />} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <ReferenceLine y={0} stroke="var(--z-border)" />
                 <Bar dataKey={labelA} fill={C.mesA} radius={[4, 4, 0, 0]} />
                 <Bar dataKey={labelB} fill={C.mesB} radius={[4, 4, 0, 0]} />
+                {numPeriodos === 3 && <Bar dataKey={labelC} fill={C.mesC} radius={[4, 4, 0, 0]} />}
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <TablaComparativa carteras={data.carteras} labelA={labelA} labelB={labelB} />
+          <TablaComparativo filas={filas} labelA={labelA} labelB={labelB} labelC={numPeriodos === 3 ? labelC : null} />
         </>
       )}
     </div>
   );
 }
 
-// ── Tabla compartida Carteras/Comparativo ─────────────────────────────────────
-function TablaComparativa({ carteras, labelA, labelB }: {
-  carteras: InformeCarteraComparativo[]; labelA: string; labelB: string;
+function TablaComparativo({ filas, labelA, labelB, labelC }: {
+  filas: FilaComparativo[]; labelA: string; labelB: string; labelC: string | null;
 }) {
-  const { sorted, sortKey, sortDir, handleSort } =
-    useSortable(carteras as unknown as Record<string, unknown>[]);
+  const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
     <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
   );
-
   return (
     <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-              {th('Cartera',            'nombreCartera',      'left')}
-              {th(`Recaudo ${labelA}`,  'recaudoA')}
-              {th(`Hon. ${labelA}`,     'honorariosA')}
-              {th(`Recaudo ${labelB}`,  'recaudoB')}
-              {th(`Hon. ${labelB}`,     'honorariosB')}
-              {th('Variación',          'variacionRecaudo')}
-              {th('%',                  'porcentajeVariacion', 'center')}
+              {th('Cartera',             'nombre',  'left')}
+              {th(`Rec. ${labelA}`,      'valA')}
+              {th(`Hon. ${labelA}`,      'honA')}
+              {th(`Rec. ${labelB}`,      'valB')}
+              {th(`Hon. ${labelB}`,      'honB')}
+              {labelC && th(`Rec. ${labelC}`, 'valC')}
+              {labelC && th(`Hon. ${labelC}`, 'honC')}
+              {th('Var. A→B',            'valB',    'center')}
+              {labelC && th('Var. B→C',  'valC',    'center')}
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as InformeCarteraComparativo[]).map(c => (
-              <tr key={c.carteraID}>
-                <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{c.nombreCartera}</td>
-                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(c.recaudoA)}</td>
-                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(c.honorariosA)}</td>
-                <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(c.recaudoB)}</td>
-                <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(c.honorariosB)}</td>
-                <td style={{ ...TD, textAlign: 'right', color: c.variacionRecaudo >= 0 ? C.verde : C.rojo, fontWeight: 600 }}>
-                  {c.variacionRecaudo >= 0 ? '+' : ''}{cop(c.variacionRecaudo)}
-                </td>
-                <td style={{ ...TD, textAlign: 'center', color: c.variacionRecaudo >= 0 ? C.verde : C.rojo }}>
-                  {pct(c.porcentajeVariacion)}
-                </td>
-              </tr>
-            ))}
+            {(sorted as unknown as FilaComparativo[]).map(f => {
+              const varAB = f.valA > 0 ? ((f.valB - f.valA) / f.valA * 100) : null;
+              const varBC = f.valB > 0 ? ((f.valC - f.valB) / f.valB * 100) : null;
+              return (
+                <tr key={f.carteraID}>
+                  <td style={{ ...TD, textAlign: 'left', fontWeight: 500 }}>{f.nombre}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(f.valA)}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(f.honA)}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: C.mesB, fontWeight: 600 }}>{cop(f.valB)}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: C.mesB }}>{cop(f.honB)}</td>
+                  {labelC && <td style={{ ...TD, textAlign: 'right', color: C.mesC, fontWeight: 600 }}>{cop(f.valC)}</td>}
+                  {labelC && <td style={{ ...TD, textAlign: 'right', color: C.mesC }}>{cop(f.honC)}</td>}
+                  <td style={{ ...TD, textAlign: 'center', color: varAB !== null && varAB >= 0 ? C.verde : C.rojo, fontWeight: 600 }}>
+                    {pct(varAB)}
+                  </td>
+                  {labelC && (
+                    <td style={{ ...TD, textAlign: 'center', color: varBC !== null && varBC >= 0 ? C.verde : C.rojo, fontWeight: 600 }}>
+                      {pct(varBC)}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
