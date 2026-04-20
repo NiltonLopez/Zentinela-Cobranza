@@ -421,8 +421,22 @@ function FilaAgente({ a, pos }: { a: InformeAgenteMes; pos: number }) {
 }
 
 // ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  TAB — LÍDERES                                                              ║
+// ║  TAB — LÍDERES (agregado por líder)                                         ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
+interface LiderAgregado {
+  liderID:          number;
+  nombreLider:      string;
+  carteras:         number;
+  capacidad:        number;
+  meta:             number;
+  recaudo:          number;
+  honorarios:       number;
+  deberiaLlevarHoy: number;
+  proyeccionCierre: number;
+  tieneMeta:        boolean;
+  cumplimiento:     number;
+}
+
 function TabLideres({ año, mes }: { año: number; mes: number }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-lideres', año, mes],
@@ -432,11 +446,44 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
 
-  const chartData = data.liderCarteras.map(f => ({
-    label:     `${f.nombreLider.split(' ')[0]} / ${f.nombreCartera.slice(0, 10)}`,
-    meta:       f.metaCartera,
-    recaudo:    f.recaudo,
-    proyeccion: f.proyeccionCierre,
+  // Agregar todas las carteras de cada líder en una sola fila
+  const porLider = new Map<number, LiderAgregado>();
+  for (const f of data.liderCarteras) {
+    const prev = porLider.get(f.liderID);
+    if (prev) {
+      prev.carteras         += 1;
+      prev.capacidad        += f.capacidad;
+      prev.meta             += f.metaCartera;
+      prev.recaudo          += f.recaudo;
+      prev.honorarios       += f.honorarios;
+      prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
+      prev.proyeccionCierre += f.proyeccionCierre;
+      prev.tieneMeta         = prev.tieneMeta || f.tieneMeta;
+    } else {
+      porLider.set(f.liderID, {
+        liderID:          f.liderID,
+        nombreLider:      f.nombreLider,
+        carteras:         1,
+        capacidad:        f.capacidad,
+        meta:             f.metaCartera,
+        recaudo:          f.recaudo,
+        honorarios:       f.honorarios,
+        deberiaLlevarHoy: f.deberiaLlevarHoy,
+        proyeccionCierre: f.proyeccionCierre,
+        tieneMeta:        f.tieneMeta,
+        cumplimiento:     0,
+      });
+    }
+  }
+  const lideres: LiderAgregado[] = Array.from(porLider.values()).map(l => ({
+    ...l, cumplimiento: l.meta > 0 ? l.recaudo / l.meta : 0,
+  }));
+
+  const chartData = lideres.map(l => ({
+    label:     l.nombreLider,
+    meta:      l.meta,
+    recaudo:   l.recaudo,
+    proyeccion: l.proyeccionCierre,
   }));
 
   return (
@@ -454,38 +501,34 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
         />
       </div>
 
-      {/* Gráfico agrupado Meta | Recaudo | Proyección */}
+      {/* Gráfico agrupado Meta | Recaudo | Proyección por líder */}
       <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 16 }}>
-          Meta · Recaudo · Proyección de cierre por líder / cartera
+          Meta · Recaudo · Proyección de cierre por líder
         </p>
-        <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 60)}>
-          <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 50 }}>
+        <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 80)}>
+          <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 20 }}>
             <CartesianGrid vertical={false} stroke="var(--z-border)" />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} angle={-30} textAnchor="end" interval={0} />
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'var(--z-text-muted)' }} />
             <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
             <Tooltip content={<TooltipCOP />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="meta"       name="Meta"                fill={C.meta}       radius={[4, 4, 0, 0]} />
-            <Bar dataKey="recaudo"    name="Recaudo"             fill={C.brand}      radius={[4, 4, 0, 0]} />
-            <Bar dataKey="proyeccion" name="Proyección cierre"   fill={C.proyeccion} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="meta"       name="Meta"              fill={C.meta}       radius={[4, 4, 0, 0]} />
+            <Bar dataKey="recaudo"    name="Recaudo"           fill={C.brand}      radius={[4, 4, 0, 0]} />
+            <Bar dataKey="proyeccion" name="Proyección cierre" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Tabla */}
-      <TablaLideres filas={data.liderCarteras} />
+      <TablaLideres lideres={lideres} />
     </div>
   );
 }
 
-function TablaLideres({ filas }: { filas: InformeLiderCartera[] }) {
-  type Row = InformeLiderCartera & { cumplimiento: number };
-  const rows: Row[] = filas.map(f => ({
-    ...f, cumplimiento: f.metaCartera > 0 ? f.recaudo / f.metaCartera : 0,
-  })) as unknown as Row[];
-
-  const { sorted, sortKey, sortDir, handleSort } = useSortable(rows as unknown as Record<string, unknown>[]);
+function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
+  const { sorted, sortKey, sortDir, handleSort } =
+    useSortable(lideres as unknown as Record<string, unknown>[]);
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
     <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
   );
@@ -497,9 +540,9 @@ function TablaLideres({ filas }: { filas: InformeLiderCartera[] }) {
           <thead>
             <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
               {th('Líder',             'nombreLider',     'left')}
-              {th('Cartera',           'nombreCartera',   'left')}
+              {th('Carteras',          'carteras',        'center')}
               {th('Capacidad',         'capacidad',       'center')}
-              {th('Meta',              'metaCartera')}
+              {th('Meta',              'meta')}
               {th('Recaudo',           'recaudo')}
               {th('Honorarios',        'honorarios')}
               {th('Debería hoy',       'deberiaLlevarHoy')}
@@ -508,36 +551,28 @@ function TablaLideres({ filas }: { filas: InformeLiderCartera[] }) {
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as Row[]).map(f => <FilaLider key={`${f.liderID}-${f.carteraID}`} f={f} />)}
+            {(sorted as unknown as LiderAgregado[]).map(l => {
+              const proyOk = l.proyeccionCierre >= l.meta && l.meta > 0;
+              return (
+                <tr key={l.liderID}>
+                  <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{l.nombreLider}</td>
+                  <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{l.carteras}</td>
+                  <td style={{ ...TD, textAlign: 'center' }}>{l.capacidad.toLocaleString('es-CO')}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.meta) : '—'}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(l.recaudo)}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(l.honorarios)}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.deberiaLlevarHoy) : '—'}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: proyOk ? C.verde : C.naranja, fontWeight: 600 }}>{cop(l.proyeccionCierre)}</td>
+                  <td style={{ ...TD, textAlign: 'center' }}>
+                    <Semaforo recaudo={l.recaudo} meta={l.meta} deberiaHoy={l.deberiaLlevarHoy} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
     </div>
-  );
-}
-
-function FilaLider({ f }: { f: InformeLiderCartera }) {
-  const proyOk = f.proyeccionCierre >= f.metaCartera && f.metaCartera > 0;
-  return (
-    <tr>
-      <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>
-      <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{f.nombreCartera}</td>
-      <td style={{ ...TD, textAlign: 'center' }}>{f.capacidad.toLocaleString('es-CO')}</td>
-      <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>
-        {f.tieneMeta ? cop(f.metaCartera) : '—'}
-      </td>
-      <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(f.recaudo)}</td>
-      <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(f.honorarios)}</td>
-      <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>
-        {f.tieneMeta ? cop(f.deberiaLlevarHoy) : '—'}
-      </td>
-      <td style={{ ...TD, textAlign: 'right', color: proyOk ? C.verde : C.naranja, fontWeight: 600 }}>
-        {cop(f.proyeccionCierre)}
-      </td>
-      <td style={{ ...TD, textAlign: 'center' }}>
-        <Semaforo recaudo={f.recaudo} meta={f.metaCartera} deberiaHoy={f.deberiaLlevarHoy} />
-      </td>
-    </tr>
   );
 }
 
@@ -803,8 +838,8 @@ export function InformesRecaudoPage() {
       {/* Contenido */}
       {tabActiva === 'agentes'     && <TabAgentes     año={año} mes={mes} />}
       {tabActiva === 'lideres'     && <TabLideres     año={año} mes={mes} />}
-      {tabActiva === 'carteras'    && <TabCarteras />}
-      {tabActiva === 'comparativo' && <TabComparativo />}
+      {tabActiva === 'carteras'    && <TabComparativo />}
+      {tabActiva === 'comparativo' && <TabCarteras />}
     </div>
   );
 }
