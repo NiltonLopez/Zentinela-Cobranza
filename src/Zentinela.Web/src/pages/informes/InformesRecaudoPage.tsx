@@ -154,10 +154,37 @@ const TD: React.CSSProperties = {
   padding: '9px 12px', borderBottom: '1px solid var(--z-border)', whiteSpace: 'nowrap',
 };
 
+// ── Select de filtro ──────────────────────────────────────────────────────────
+function FiltroSelect({ label, value, onChange, options, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+}) {
+  const sel: React.CSSProperties = {
+    background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
+    borderRadius: 6, padding: '5px 10px', fontSize: 13,
+    color: 'var(--z-text-primary)', cursor: 'pointer', minWidth: 160,
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 12, color: 'var(--z-text-muted)', whiteSpace: 'nowrap' }}>{label}</span>
+      <select value={value} onChange={e => onChange(e.target.value)} style={sel}>
+        <option value="">{placeholder}</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  TAB — AGENTES                                                              ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 function TabAgentes({ año, mes }: { año: number; mes: number }) {
+  const [filtroLider,   setFiltroLider]   = useState('');
+  const [filtroCartera, setFiltroCartera] = useState('');
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-agentes', año, mes],
     queryFn:  () => getInformeAgentes(año, mes),
@@ -166,40 +193,91 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
 
-  const chartData = data.agentes.map(a => ({
-    nombre:     a.nombreAgente.split(' ')[0],
-    recaudo:    a.recaudo,
-    meta:       a.meta,
-    honorarios: a.honorarios,
+  // Opciones únicas para los dropdowns
+  const optsLider = Array.from(
+    new Map(data.agentes.map(a => [String(a.liderID), a.nombreLider])).entries()
+  ).map(([value, label]) => ({ value, label }));
+
+  const optsCartera = Array.from(
+    new Map(
+      data.agentes
+        .filter(a => !filtroLider || String(a.liderID) === filtroLider)
+        .map(a => [a.nombreCartera, a.nombreCartera])
+    ).entries()
+  ).map(([value, label]) => ({ value, label }));
+
+  // Filtrado cliente-lado
+  const agentesVisibles = data.agentes.filter(a => {
+    if (filtroLider   && String(a.liderID)     !== filtroLider)   return false;
+    if (filtroCartera && a.nombreCartera        !== filtroCartera) return false;
+    return true;
+  });
+
+  const chartData = agentesVisibles.map(a => ({
+    nombre:          a.nombreAgente.split(' ')[0],
+    recaudo:         a.recaudo,
+    deberiaLlevarHoy: a.deberiaLlevarHoy,
+    meta:            a.meta,
   }));
+
+  const totalRecaudo    = agentesVisibles.reduce((s, a) => s + a.recaudo, 0);
+  const totalHonorarios = agentesVisibles.reduce((s, a) => s + a.honorarios, 0);
+  const totalGestionado = agentesVisibles.reduce((s, a) => s + a.gestionado, 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* KPIs */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <KpiCard label="Total Recaudo"        value={cop(data.totalRecaudo)}    color={C.brand}      />
-        <KpiCard label="Total Honorarios"     value={cop(data.totalHonorarios)} color={C.honorarios} />
-        <KpiCard label="Agentes Activos"      value={String(data.totalAgentes)} />
-        <KpiCard label="Cuentas Gestionadas"  value={data.totalGestionado.toLocaleString('es-CO')} />
+        <KpiCard label="Total Recaudo"        value={cop(totalRecaudo)}    color={C.brand}      />
+        <KpiCard label="Total Honorarios"     value={cop(totalHonorarios)} color={C.honorarios} />
+        <KpiCard label="Agentes"              value={String(agentesVisibles.length)} />
+        <KpiCard label="Cuentas Gestionadas"  value={totalGestionado.toLocaleString('es-CO')} />
       </div>
 
       {/* Gráfico horizontal — menor a mayor */}
       <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 16 }}>
-          Recaudo por agente — ordenado de menor a mayor
-        </p>
-        <ResponsiveContainer width="100%" height={Math.max(220, data.agentes.length * 44)}>
-          <BarChart layout="vertical" data={chartData} margin={{ left: 10, right: 50, top: 4, bottom: 4 }}>
-            <CartesianGrid horizontal={false} stroke="var(--z-border)" />
-            <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
-            <YAxis type="category" dataKey="nombre" width={120} tick={{ fontSize: 12, fill: 'var(--z-text-primary)' }} />
-            <Tooltip content={<TooltipCOP />} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="recaudo"    name="Recaudo"    fill={C.brand} radius={[0, 4, 4, 0]} />
-            <Bar dataKey="meta"       name="Meta"       fill={C.meta}  radius={[0, 4, 4, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+
+        {/* Cabecera gráfico + filtros */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Recaudo por agente — ordenado de menor a mayor
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <FiltroSelect
+              label="Líder:"
+              value={filtroLider}
+              onChange={v => { setFiltroLider(v); setFiltroCartera(''); }}
+              options={optsLider}
+              placeholder="Todos los líderes"
+            />
+            <FiltroSelect
+              label="Cartera:"
+              value={filtroCartera}
+              onChange={setFiltroCartera}
+              options={optsCartera}
+              placeholder="Todas las carteras"
+            />
+          </div>
+        </div>
+
+        {agentesVisibles.length === 0
+          ? <p style={{ textAlign: 'center', color: 'var(--z-text-muted)', fontSize: 13, padding: '32px 0' }}>Sin agentes para el filtro seleccionado.</p>
+          : (
+            <ResponsiveContainer width="100%" height={Math.max(220, agentesVisibles.length * 44)}>
+              <BarChart layout="vertical" data={chartData} margin={{ left: 10, right: 50, top: 4, bottom: 4 }}>
+                <CartesianGrid horizontal={false} stroke="var(--z-border)" />
+                <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
+                <YAxis type="category" dataKey="nombre" width={120} tick={{ fontSize: 12, fill: 'var(--z-text-primary)' }} />
+                <Tooltip content={<TooltipCOP />} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="recaudo"          name="Recaudo"          fill={C.brand}      radius={[0, 4, 4, 0]} barSize={10} />
+                <Bar dataKey="deberiaLlevarHoy" name="Debería hoy"      fill={C.proyeccion} radius={[0, 4, 4, 0]} barSize={10} />
+                <Bar dataKey="meta"             name="Meta"             fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
+              </BarChart>
+            </ResponsiveContainer>
+          )
+        }
       </div>
 
       {/* Tabla */}
@@ -211,6 +289,7 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
                 <th style={{ ...TH, textAlign: 'center' }}>#</th>
                 <th style={{ ...TH, textAlign: 'left'   }}>Agente</th>
                 <th style={{ ...TH, textAlign: 'left'   }}>Líder</th>
+                <th style={{ ...TH, textAlign: 'left'   }}>Cartera</th>
                 <th style={{ ...TH, textAlign: 'center' }}>Gestionado</th>
                 <th style={{ ...TH, textAlign: 'right'  }}>Recaudo</th>
                 <th style={{ ...TH, textAlign: 'right'  }}>Honorarios</th>
@@ -222,7 +301,7 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
               </tr>
             </thead>
             <tbody>
-              {data.agentes.map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} />)}
+              {agentesVisibles.map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} />)}
             </tbody>
           </table>
         </div>
@@ -237,6 +316,7 @@ function FilaAgente({ a, pos }: { a: InformeAgenteMes; pos: number }) {
       <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{pos}</td>
       <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{a.nombreAgente}</td>
       <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{a.nombreLider}</td>
+      <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{a.nombreCartera}</td>
       <td style={{ ...TD, textAlign: 'center' }}>{a.gestionado}</td>
       <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(a.recaudo)}</td>
       <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(a.honorarios)}</td>

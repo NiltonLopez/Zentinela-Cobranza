@@ -3,7 +3,9 @@
 export interface InformeAgenteMes {
   agenteID: number;
   nombreAgente: string;
+  liderID: number;
   nombreLider: string;
+  nombreCartera: string;
   gestionado: number;
   recaudo: number;
   honorarios: number;

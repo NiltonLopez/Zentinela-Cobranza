@@ -52,19 +52,33 @@ public class InformesRecaudoService : IInformesRecaudoService
             .AsNoTracking()
             .ToDictionaryAsync(m => m.AgenteID, m => m.MetaRecaudo);
 
-        // Líder asociado a cada agente (se toma el primero de sus registros en Cartera_Agente)
-        var liderPorAgente = await _callCenter.CarteraAgentes
+        // Líder y cartera asociados a cada agente (se toma el mínimo de Cartera_Agente)
+        var asignaciones = await _callCenter.CarteraAgentes
             .Where(ca => agenteIDs.Contains(ca.AgenteID))
             .GroupBy(ca => ca.AgenteID)
-            .Select(g => new { AgenteID = g.Key, LiderID = g.Min(x => x.LiderID) })
+            .Select(g => new
+            {
+                AgenteID  = g.Key,
+                LiderID   = g.Min(x => x.LiderID),
+                CarteraID = g.Min(x => x.CarteraID),
+            })
             .AsNoTracking()
-            .ToDictionaryAsync(x => x.AgenteID, x => x.LiderID);
+            .ToListAsync();
+
+        var liderPorAgente   = asignaciones.ToDictionary(x => x.AgenteID, x => x.LiderID);
+        var carteraPorAgente = asignaciones.ToDictionary(x => x.AgenteID, x => x.CarteraID);
 
         var liderIDs = liderPorAgente.Values.Distinct().ToList();
         var lideres  = await _callCenter.Lideres
             .Where(l => liderIDs.Contains(l.ID))
             .AsNoTracking()
             .ToDictionaryAsync(l => l.ID, l => l.Nombre);
+
+        var carteraIDs = carteraPorAgente.Values.Distinct().ToList();
+        var carteras   = await _callCenter.Carteras
+            .Where(c => carteraIDs.Contains(c.ID))
+            .AsNoTracking()
+            .ToDictionaryAsync(c => c.ID, c => c.NombreCartera);
 
         // Nombres desde RRHH: AgenteID coincide con NumeroDocumento del empleado
         var empleados = await _rrhh.Empleados
@@ -90,11 +104,15 @@ public class InformesRecaudoService : IInformesRecaudoService
                     ? meta * diasTranscurridos / diasDelMes
                     : 0m;
 
+                var carteraID    = carteraPorAgente.TryGetValue(agenteID, out var cid) ? cid : 0;
+
                 return new InformeAgenteMesDto
                 {
                     AgenteID         = agenteID,
                     NombreAgente     = empleados.TryGetValue(agenteID, out var nombre) ? nombre : $"Agente {agenteID}",
+                    LiderID          = liderID,
                     NombreLider      = lideres.TryGetValue(liderID, out var lNombre) ? lNombre : "Sin líder",
+                    NombreCartera    = carteras.TryGetValue(carteraID, out var cNombre) ? cNombre : string.Empty,
                     Gestionado       = gestionado,
                     Recaudo          = recaudo,
                     Honorarios       = honorarios,
