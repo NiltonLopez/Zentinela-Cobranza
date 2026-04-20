@@ -675,6 +675,7 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
   const [vista, setVista] = useState<VistaCarteras>('lider-cartera');
   type OrdenGrafico = 'honorarios' | 'deberiaLlevarHoy' | 'metaHonorarios';
   const [ordenGrafico, setOrdenGrafico] = useState<OrdenGrafico>('honorarios');
+  const [filtroLider, setFiltroLider] = useState('');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-lideres', año, mes],
@@ -684,15 +685,23 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
 
+  const optsLider = Array.from(
+    new Map(data.liderCarteras.map(f => [f.liderID, f.nombreLider])).entries()
+  ).map(([value, label]) => ({ value: String(value), label }));
+
+  const fuenteFiltrada = filtroLider
+    ? data.liderCarteras.filter(f => String(f.liderID) === filtroLider)
+    : data.liderCarteras;
+
   // ── Vista Líder-Cartera ──────────────────────────────────────────────────────
-  const filasPorLiderCartera = data.liderCarteras.map(f => ({
+  const filasPorLiderCartera = fuenteFiltrada.map(f => ({
     ...f,
     cumplimiento: f.metaCartera > 0 ? f.recaudo / f.metaCartera : 0,
   }));
 
   // ── Vista Cartera (agrupar todos los líderes de una misma cartera) ───────────
   const porCartera = new Map<number, CarteraAgregada>();
-  for (const f of data.liderCarteras) {
+  for (const f of fuenteFiltrada) {
     const prev = porCartera.get(f.carteraID);
     if (prev) {
       prev.lideres          += 1;
@@ -779,6 +788,14 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
                 );
               })}
             </div>
+
+            <FiltroSelect
+              label="Líder:"
+              value={filtroLider}
+              onChange={setFiltroLider}
+              options={optsLider}
+              placeholder="Todos los líderes"
+            />
 
             <LeyendaGrafico items={[
               { color: C.honorarios, label: 'Honorarios' },
