@@ -10,11 +10,13 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// y DBRecursosHumanos (nombres de los agentes).
 ///
 /// Cálculos temporales clave:
-///   - DiasDelMes:       DateTime.DaysInMonth(año, mes)
-///   - DiasTranscurridos: día actual si mes=vigente, diasDelMes si mes pasado, 0 si mes futuro
-///   - DeberiaLlevarHoy: Meta × (diasTranscurridos / diasDelMes)
-///   - ProyeccionCierre: (Recaudo / diasTranscurridos) × diasDelMes
-///   - PromedioPagoDia:  Recaudo / días del mes con al menos un pago
+///   - DiasDelMes:                DateTime.DaysInMonth(año, mes)
+///   - DiasTranscurridos:         día actual si mes=vigente, diasDelMes si mes pasado, 0 si mes futuro
+///   - DiasHabilesDelMes:         días hábiles del mes (sin sábados, domingos ni festivos Colombia)
+///   - DiasHabilesTranscurridos:  días hábiles transcurridos hasta hoy (o fin del mes si pasado)
+///   - DeberiaLlevarHoy:          Meta × (diasHabilesTranscurridos / diasHabilesDelMes)
+///   - ProyeccionCierre:          (Recaudo / diasTranscurridos) × diasDelMes
+///   - PromedioPagoDia:           Recaudo / días del mes con al menos un pago
 /// </summary>
 public class InformesRecaudoService : IInformesRecaudoService
 {
@@ -33,7 +35,8 @@ public class InformesRecaudoService : IInformesRecaudoService
 
     public async Task<InformeAgentesResponse> GetInformeAgentesAsync(int año, int mes)
     {
-        var (diasDelMes, diasTranscurridos) = CalcularDias(año, mes);
+        var (diasDelMes, diasTranscurridos)           = CalcularDias(año, mes);
+        var (diasHabilesDelMes, diasHabilesTransc)    = CalcularDiasHabiles(año, mes);
 
         // Pagos del mes
         var pagos = await _callCenter.Pagos
@@ -103,8 +106,8 @@ public class InformesRecaudoService : IInformesRecaudoService
                 var tieneMeta      = metas.ContainsKey(agenteID);
                 var liderID        = liderPorAgente.TryGetValue(agenteID, out var lid) ? lid : 0;
 
-                var deberiaHoy = diasDelMes > 0
-                    ? metaHonorarios * diasTranscurridos / diasDelMes
+                var deberiaHoy = diasHabilesDelMes > 0
+                    ? metaHonorarios * diasHabilesTransc / diasHabilesDelMes
                     : 0m;
 
                 var carteraID    = carteraPorAgente.TryGetValue(agenteID, out var cid) ? cid : 0;
@@ -144,7 +147,8 @@ public class InformesRecaudoService : IInformesRecaudoService
 
     public async Task<InformeLideresResponse> GetInformeLideresAsync(int año, int mes)
     {
-        var (diasDelMes, diasTranscurridos) = CalcularDias(año, mes);
+        var (diasDelMes, diasTranscurridos)           = CalcularDias(año, mes);
+        var (diasHabilesDelMes, diasHabilesTransc)    = CalcularDiasHabiles(año, mes);
 
         // Recaudo del mes por líder-cartera
         var pagos = await _callCenter.Pagos
@@ -199,8 +203,8 @@ public class InformesRecaudoService : IInformesRecaudoService
             var metaHonorarios = meta?.MetaHonorarios ?? 0m;
             var capacidad      = cap?.Capacidad ?? 0;
 
-            var deberiaHoy = diasDelMes > 0
-                ? metaHonorarios * diasTranscurridos / diasDelMes
+            var deberiaHoy = diasHabilesDelMes > 0
+                ? metaHonorarios * diasHabilesTransc / diasHabilesDelMes
                 : 0m;
 
             var proyeccion = diasTranscurridos > 0
@@ -311,15 +315,9 @@ public class InformesRecaudoService : IInformesRecaudoService
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Calcula (diasDelMes, diasTranscurridos) para el período dado.
-    /// Si el mes es el vigente → diasTranscurridos = día actual.
-    /// Si el mes ya pasó       → diasTranscurridos = diasDelMes (mes completo).
-    /// Si el mes no ha llegado → diasTranscurridos = 0.
-    /// </summary>
     private static (int DiasDelMes, int DiasTranscurridos) CalcularDias(int año, int mes)
     {
-        var hoy       = DateOnly.FromDateTime(DateTime.Today);
+        var hoy        = DateOnly.FromDateTime(DateTime.Today);
         int diasDelMes = DateTime.DaysInMonth(año, mes);
 
         int diasTranscurridos;
@@ -331,6 +329,73 @@ public class InformesRecaudoService : IInformesRecaudoService
             diasTranscurridos = 0;
 
         return (diasDelMes, diasTranscurridos);
+    }
+
+    // Festivos oficiales de Colombia 2024-2027.
+    // Fijos: Año Nuevo, Día del Trabajo, Independencia, Boyacá, Inmaculada, Navidad.
+    // Ley Emiliani (traslado al lunes siguiente): Reyes Magos, San José, San Pedro y San Pablo,
+    //   Asunción, Día de la Raza, Todos los Santos, Independencia de Cartagena.
+    // Semana Santa + móviles de Pascua: Jueves Santo, Viernes Santo, Ascensión, Corpus Christi,
+    //   Sagrado Corazón.
+    private static readonly HashSet<DateOnly> _festivosColombia =
+    [
+        // ── 2024 (Pascua: 31-mar) ────────────────────────────────────────────
+        new(2024,  1,  1), new(2024,  1,  8), new(2024,  3, 25), new(2024,  3, 28),
+        new(2024,  3, 29), new(2024,  5,  1), new(2024,  5, 13), new(2024,  6,  3),
+        new(2024,  6, 10), new(2024,  7,  1), new(2024,  7, 20), new(2024,  8,  7),
+        new(2024,  8, 19), new(2024, 10, 14), new(2024, 11,  4), new(2024, 11, 11),
+        new(2024, 12,  8), new(2024, 12, 25),
+
+        // ── 2025 (Pascua: 20-abr) ────────────────────────────────────────────
+        new(2025,  1,  1), new(2025,  1,  6), new(2025,  3, 24), new(2025,  4, 17),
+        new(2025,  4, 18), new(2025,  5,  1), new(2025,  6,  2), new(2025,  6, 23),
+        new(2025,  6, 30), new(2025,  7, 20), new(2025,  8,  7), new(2025,  8, 18),
+        new(2025, 10, 13), new(2025, 11,  3), new(2025, 11, 17), new(2025, 12,  8),
+        new(2025, 12, 25),
+
+        // ── 2026 (Pascua: 05-abr) ────────────────────────────────────────────
+        new(2026,  1,  1), new(2026,  1, 12), new(2026,  3, 23), new(2026,  4,  2),
+        new(2026,  4,  3), new(2026,  5,  1), new(2026,  5, 18), new(2026,  6,  8),
+        new(2026,  6, 15), new(2026,  6, 29), new(2026,  7, 20), new(2026,  8,  7),
+        new(2026,  8, 17), new(2026, 10, 12), new(2026, 11,  2), new(2026, 11, 16),
+        new(2026, 12,  8), new(2026, 12, 25),
+
+        // ── 2027 (Pascua: 28-mar) ────────────────────────────────────────────
+        new(2027,  1,  1), new(2027,  1, 11), new(2027,  3, 22), new(2027,  3, 25),
+        new(2027,  3, 26), new(2027,  5,  1), new(2027,  5, 10), new(2027,  5, 31),
+        new(2027,  6,  7), new(2027,  7,  5), new(2027,  7, 20), new(2027,  8,  7),
+        new(2027,  8, 16), new(2027, 10, 18), new(2027, 11,  1), new(2027, 11, 15),
+        new(2027, 12,  8), new(2027, 12, 25),
+    ];
+
+    private static bool EsDiaHabil(DateOnly d) =>
+        d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday &&
+        !_festivosColombia.Contains(d);
+
+    private static (int DiasHabilesDelMes, int DiasHabilesTranscurridos) CalcularDiasHabiles(int año, int mes)
+    {
+        var hoy       = DateOnly.FromDateTime(DateTime.Today);
+        int totalDias = DateTime.DaysInMonth(año, mes);
+
+        DateOnly limite;
+        if (año == hoy.Year && mes == hoy.Month)
+            limite = hoy;
+        else if (new DateOnly(año, mes, 1) < new DateOnly(hoy.Year, hoy.Month, 1))
+            limite = new DateOnly(año, mes, totalDias);
+        else
+            limite = new DateOnly(año, mes, 1).AddDays(-1); // mes futuro → 0
+
+        int habilesDelMes        = 0;
+        int habilesTranscurridos = 0;
+
+        for (var d = new DateOnly(año, mes, 1); d.Month == mes; d = d.AddDays(1))
+        {
+            if (!EsDiaHabil(d)) continue;
+            habilesDelMes++;
+            if (d <= limite) habilesTranscurridos++;
+        }
+
+        return (habilesDelMes, habilesTranscurridos);
     }
 
     private static readonly string[] _meses =
