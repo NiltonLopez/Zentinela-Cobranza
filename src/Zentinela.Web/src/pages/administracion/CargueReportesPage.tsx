@@ -29,6 +29,7 @@ export function CargueReportesPage() {
   const inputArchivoRef = useRef<HTMLInputElement>(null);
 
   const [etapa,          setEtapa]          = useState<Etapa>('inicial');
+  const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
   const [carteraID,      setCarteraID]      = useState<number>(0);
   const [archivoNombre,  setArchivoNombre]  = useState('');
   const [preview,        setPreview]        = useState<PreviewReporteDto | null>(null);
@@ -91,7 +92,7 @@ export function CargueReportesPage() {
           Cargue de Reportes
         </h1>
         <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
-          Actualiza <strong>UltimoEstadoTitular</strong> (UPSERT) y enriquece <strong>HistoricoEstadoTitular</strong> (append) desde plantilla Excel.
+          Actualiza <strong>UltimoEstadoTitular</strong> (UPSERT) y enriquece <strong>HistoricoEstadoTitular</strong> (append) desde archivo CSV o XLSX.
           Compatible con carga manual y con SSIS.
         </p>
       </div>
@@ -135,14 +136,21 @@ export function CargueReportesPage() {
               Paso 2 — Descarga la plantilla
             </p>
             <button
-              onClick={() => generarPlantillaReporte()}
+              onClick={async () => {
+                setGenerandoPlantilla(true);
+                await generarPlantillaReporte();
+                setGenerandoPlantilla(false);
+              }}
+              disabled={generandoPlantilla}
               style={{
                 padding: '8px 16px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
-                fontSize: '13px', fontWeight: 600, cursor: 'pointer', width: 'fit-content',
+                background: generandoPlantilla ? 'var(--z-border)' : 'var(--z-bg-page)',
+                color: generandoPlantilla ? 'var(--z-text-muted)' : 'var(--z-text-primary)',
+                fontSize: '13px', fontWeight: 600, width: 'fit-content',
+                cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
               }}
             >
-              Generar plantilla .xlsx
+              {generandoPlantilla ? 'Generando...' : 'Generar Plantilla'}
             </button>
             <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
               Campos obligatorios: <strong>TitularID</strong>, <strong>AgenteID</strong>.
@@ -168,13 +176,13 @@ export function CargueReportesPage() {
                 opacity: carteraID === 0 ? 0.6 : 1,
               }}
             >
-              {archivoNombre || 'Seleccionar archivo .xlsx'}
+              {archivoNombre || 'Seleccionar archivo .csv o .xlsx'}
             </label>
             <input
               id="archivo-reporte"
               ref={inputArchivoRef}
               type="file"
-              accept=".xlsx"
+              accept=".csv,.xlsx"
               disabled={carteraID === 0}
               onChange={handleSeleccionarArchivo}
               style={{ display: 'none' }}

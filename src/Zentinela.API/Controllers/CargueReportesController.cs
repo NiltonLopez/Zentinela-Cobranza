@@ -40,14 +40,15 @@ public class CargueReportesController : ControllerBase
         if (archivo is null || archivo.Length == 0)
             return BadRequest(new { mensaje = "El archivo no puede estar vacío." });
 
-        if (!archivo.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { mensaje = "El archivo debe ser .xlsx." });
+        var ext = Path.GetExtension(archivo.FileName).ToLowerInvariant();
+        if (ext != ".csv" && ext != ".xlsx")
+            return BadRequest(new { mensaje = "El archivo debe ser .csv o .xlsx." });
 
         if (carteraID <= 0)
             return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
 
         using var stream = archivo.OpenReadStream();
-        var preview = await _service.ValidarExcelAsync(stream, carteraID);
+        var preview = await _service.ValidarArchivoAsync(stream, carteraID, ext);
         return Ok(preview);
     }
 

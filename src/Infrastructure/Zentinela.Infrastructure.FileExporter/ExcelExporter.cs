@@ -102,9 +102,9 @@ public class ExcelExporter : IExcelExporter
     // Nombre es obligatorio solo para titulares nuevos.
     private static readonly (string Campo, string Etiqueta)[] ColumnasReporte =
     [
-        ("TitularID",          "TitularID *"),
-        ("AgenteID",           "AgenteID *"),
-        ("Nombre",             "Nombre (obligatorio si es titular nuevo)"),
+        ("TitularID",          "TitularID"),
+        ("AgenteID",           "AgenteID"),
+        ("Nombre",             "Nombre"),
         ("UltimoPerfil",       "UltimoPerfil"),
         ("MejorPerfil",        "MejorPerfil"),
         ("FechaMejorPerfil",   "FechaMejorPerfil"),
@@ -269,7 +269,12 @@ public class ExcelExporter : IExcelExporter
             FechaActualizacion: Get("fechaactualizacion"));
     }
 
-    public List<FilaReporteRaw> ParsearFilasReporte(Stream stream)
+    public List<FilaReporteRaw> ParsearFilasReporte(Stream stream, string extension)
+        => extension == ".csv"
+            ? ParsearFilasReporteCsv(stream)
+            : ParsearFilasReporteXlsx(stream);
+
+    private static List<FilaReporteRaw> ParsearFilasReporteXlsx(Stream stream)
     {
         using var workbook = new XLWorkbook(stream);
         var ws     = workbook.Worksheet(1);
@@ -278,7 +283,7 @@ public class ExcelExporter : IExcelExporter
         var todasFilas = ws.RowsUsed().ToList();
         if (todasFilas.Count == 0) return result;
 
-        // ── Leer encabezado y resolver índices por nombre ─────────────────────
+        // ── Encabezado → índices 1-based ─────────────────────────────────────
         var filaEncabezado = todasFilas[0];
         var headers        = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var celda in filaEncabezado.CellsUsed())
@@ -290,42 +295,83 @@ public class ExcelExporter : IExcelExporter
 
         var idx = ResolverIndicesExcel(headers);
 
-        // Función segura: col=0 significa columna no encontrada → string.Empty
         string Cell(IXLRow fila, int col) =>
             col > 0 ? fila.Cell(col).GetString().Trim() : string.Empty;
 
-        // ── Parsear filas de datos ────────────────────────────────────────────
-        // CarteraID se inyecta desde la UI en ValidarExcelAsync, no viene en el archivo
         foreach (var fila in todasFilas.Skip(1))
         {
             var titularStr = Cell(fila, idx.TitularID);
             var agenteStr  = Cell(fila, idx.AgenteID);
+            if (string.IsNullOrEmpty(titularStr) && string.IsNullOrEmpty(agenteStr)) continue;
 
-            // Ignorar filas completamente vacías
-            if (string.IsNullOrEmpty(titularStr) && string.IsNullOrEmpty(agenteStr))
-                continue;
-
-            result.Add(new FilaReporteRaw
-            {
-                TitularID          = long.TryParse(titularStr,                      out var tid) ? tid : null,
-                UsuarioControl     = NullIfEmpty(agenteStr),
-                Nombre             = NullIfEmpty(Cell(fila, idx.Nombre)),
-                UltimoPerfil       = NullIfEmpty(Cell(fila, idx.UltimoPerfil)),
-                MejorPerfil        = NullIfEmpty(Cell(fila, idx.MejorPerfil)),
-                FechaMejorPerfil   = ParseDate(Cell(fila, idx.FechaMejorPerfil)),
-                SaldoTotal         = decimal.TryParse(Cell(fila, idx.SaldoTotal),   out var sal) ? sal : null,
-                NumeroMarcado      = NullIfEmpty(Cell(fila, idx.NumeroMarcado)),
-                Rotacion           = int.TryParse(Cell(fila, idx.Rotacion),         out var rot) ? rot : null,
-                FechaUltimaGestion = ParseDate(Cell(fila, idx.FechaUltimaGestion)),
-                FechaPromesa       = ParseDate(Cell(fila, idx.FechaPromesa)),
-                ValorPromesa       = decimal.TryParse(Cell(fila, idx.ValorPromesa), out var vp)  ? vp  : null,
-                MotivoNoPago       = NullIfEmpty(Cell(fila, idx.MotivoNoPago)),
-                FechaActualizacion = DateTime.TryParse(Cell(fila, idx.FechaActualizacion), out var fa) ? fa : null,
-            });
+            result.Add(ConstruirFila(
+                col => Cell(fila, col), idx));
         }
 
         return result;
     }
+
+    private static List<FilaReporteRaw> ParsearFilasReporteCsv(Stream stream)
+    {
+        var result = new List<FilaReporteRaw>();
+        using var reader = new StreamReader(stream);
+
+        var headerLine = reader.ReadLine();
+        if (headerLine is null) return result;
+
+        var sep     = headerLine.Contains(';') ? ';' : ',';
+        var partsH  = headerLine.Split(sep);
+
+        // Construir headers con índices 1-based para reutilizar ResolverIndicesExcel
+        var headers = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < partsH.Length; i++)
+        {
+            var clave = NormalizarColumna(partsH[i]);
+            if (!string.IsNullOrEmpty(clave) && !headers.ContainsKey(clave))
+                headers[clave] = i + 1; // 1-based
+        }
+
+        var idx = ResolverIndicesExcel(headers);
+
+        while (!reader.EndOfStream)
+        {
+            var linea = reader.ReadLine();
+            if (linea is null) continue;
+            var partes = linea.Split(sep);
+
+            // 1-based accessor compatible con ResolverIndicesExcel
+            string Col(int col) =>
+                col > 0 && col <= partes.Length ? partes[col - 1].Trim() : string.Empty;
+
+            var titularStr = Col(idx.TitularID);
+            var agenteStr  = Col(idx.AgenteID);
+            if (string.IsNullOrEmpty(titularStr) && string.IsNullOrEmpty(agenteStr)) continue;
+
+            result.Add(ConstruirFila(Col, idx));
+        }
+
+        return result;
+    }
+
+    // Construye FilaReporteRaw desde cualquier fuente (XLSX o CSV) vía un delegado de columna.
+    private static FilaReporteRaw ConstruirFila(Func<int, string> col, IndicesExcel idx)
+        => new()
+        {
+            TitularID          = long.TryParse(col(idx.TitularID),          out var tid) ? tid : null,
+            UsuarioControl     = NullIfEmpty(col(idx.AgenteID)),
+            Nombre             = NullIfEmpty(col(idx.Nombre)),
+            UltimoPerfil       = NullIfEmpty(col(idx.UltimoPerfil)),
+            MejorPerfil        = NullIfEmpty(col(idx.MejorPerfil)),
+            FechaMejorPerfil   = ParseDate(col(idx.FechaMejorPerfil)),
+            SaldoTotal         = decimal.TryParse(col(idx.SaldoTotal),      out var sal) ? sal : null,
+            NumeroMarcado      = NullIfEmpty(col(idx.NumeroMarcado)),
+            Rotacion           = int.TryParse(col(idx.Rotacion),            out var rot) ? rot : null,
+            FechaUltimaGestion = ParseDate(col(idx.FechaUltimaGestion)),
+            FechaPromesa       = ParseDate(col(idx.FechaPromesa)),
+            ValorPromesa       = decimal.TryParse(col(idx.ValorPromesa),    out var vp)  ? vp  : null,
+            MotivoNoPago       = NullIfEmpty(col(idx.MotivoNoPago)),
+            FechaActualizacion = DateTime.TryParse(col(idx.FechaActualizacion), out var fa) ? fa : null,
+        };
 
     private static string? NullIfEmpty(string s) => string.IsNullOrEmpty(s) ? null : s;
 

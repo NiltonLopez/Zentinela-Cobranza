@@ -1,6 +1,16 @@
 import api from './authApi';
 import type { ValidarPagosResponse, CarteraDropdown, PagoFila } from '../types/pagos';
 
+export const generarPlantillaPagos = async (): Promise<void> => {
+  const response = await api.get('/api/pagos/plantilla', { responseType: 'blob' });
+  const url  = URL.createObjectURL(response.data as Blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = 'plantilla_cargue_pagos.xlsx';
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
 export const listarCarterasPagos = async (): Promise<CarteraDropdown[]> => {
   const res = await api.get<CarteraDropdown[]>('/api/pagos/carteras');
   return res.data;

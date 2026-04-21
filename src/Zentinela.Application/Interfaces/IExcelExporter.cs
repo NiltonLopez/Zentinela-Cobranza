@@ -15,5 +15,5 @@ public interface IExcelExporter
 
     byte[] GenerarPlantillaReporte();
 
-    List<Application.DTOs.Reportes.FilaReporteRaw> ParsearFilasReporte(Stream stream);
+    List<Application.DTOs.Reportes.FilaReporteRaw> ParsearFilasReporte(Stream stream, string extension);
 }

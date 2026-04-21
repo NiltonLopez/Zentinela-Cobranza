@@ -5,11 +5,11 @@ namespace Zentinela.Application.Interfaces;
 public interface ICargueReporteService
 {
     /// <summary>
-    /// Parsea el Excel, inyecta carteraID en cada fila, valida AgenteID contra BD
+    /// Parsea el archivo (CSV o XLSX), inyecta carteraID en cada fila, valida AgenteID contra BD
     /// y determina si los TitularIDs son existentes o nuevos (con Nombre para crear).
     /// Devuelve preview con primeros 10 registros, conteos y filas válidas completas.
     /// </summary>
-    Task<PreviewReporteDto> ValidarExcelAsync(Stream excelStream, int carteraID);
+    Task<PreviewReporteDto> ValidarArchivoAsync(Stream archivoStream, int carteraID, string extension);
 
     /// <summary>
     /// Carga las filas válidas en ReporteEstadoAuxiliar y ejecuta:

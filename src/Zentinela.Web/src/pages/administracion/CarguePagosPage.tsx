@@ -4,6 +4,7 @@ import {
   listarCarterasPagos,
   validarCsvPagos,
   confirmarCarguePagos,
+  generarPlantillaPagos,
 } from '../../api/pagosApi';
 import type { ValidarPagosResponse } from '../../types/pagos';
 
@@ -17,6 +18,8 @@ export function CarguePagosPage() {
   const [feedback, setFeedback]     = useState<string | null>(null);
   const [errorMsg, setErrorMsg]     = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
 
   const { data: carteras = [] } = useQuery({
     queryKey: ['pagos-carteras'],
@@ -109,10 +112,37 @@ export function CarguePagosPage() {
             </p>
           </div>
 
+          {/* Plantilla */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--z-text-muted)', display: 'block', marginBottom: '6px' }}>
+              Plantilla
+            </label>
+            <button
+              onClick={async () => {
+                setGenerandoPlantilla(true);
+                await generarPlantillaPagos();
+                setGenerandoPlantilla(false);
+              }}
+              disabled={generandoPlantilla}
+              style={{
+                padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--z-border)',
+                background: generandoPlantilla ? 'var(--z-border)' : 'var(--z-bg-page)',
+                color: generandoPlantilla ? 'var(--z-text-muted)' : 'var(--z-text-primary)',
+                fontSize: '13px', fontWeight: 600,
+                cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {generandoPlantilla ? 'Generando...' : 'Generar Plantilla'}
+            </button>
+            <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '4px' }}>
+              Columnas requeridas: Cédula, Nombre, Valor, Fecha, Honorarios, UsuarioControl.
+            </p>
+          </div>
+
           {/* Zona de carga de archivo */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--z-text-muted)', display: 'block', marginBottom: '6px' }}>
-              Archivo CSV
+              Archivo CSV o XLSX
             </label>
             <div
               onClick={() => inputRef.current?.click()}
@@ -127,7 +157,7 @@ export function CarguePagosPage() {
               }}
             >
               <p style={{ fontSize: '13px', color: archivo ? 'var(--z-brand)' : 'var(--z-text-muted)', marginBottom: '4px' }}>
-                {archivo ? archivo.name : 'Haz clic para seleccionar un archivo .csv'}
+                {archivo ? archivo.name : 'Haz clic para seleccionar un archivo .csv o .xlsx'}
               </p>
               {archivo && (
                 <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>
@@ -136,14 +166,14 @@ export function CarguePagosPage() {
               )}
               {!archivo && (
                 <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>
-                  Formato: Cedula, Nombre, Valor, Fecha (YYYY-MM-DD), Honorarios, UsuarioControl
+                  Columnas requeridas: Cedula, Nombre, Valor, Fecha (YYYY-MM-DD), Honorarios, UsuarioControl
                 </p>
               )}
             </div>
             <input
               ref={inputRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx"
               style={{ display: 'none' }}
               onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
             />
@@ -302,14 +332,18 @@ export function CarguePagosPage() {
                             borderRadius: '4px', background: '#f0fdf4', color: '#16a34a',
                           }}>OK</span>
                         ) : (
-                          <span
-                            title={fila.errorMensaje}
-                            style={{
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{
                               fontSize: '11px', fontWeight: 500, padding: '2px 8px',
                               borderRadius: '4px', background: '#fff5f5', color: '#dc2626',
-                              cursor: 'help',
-                            }}
-                          >Error</span>
+                              width: 'fit-content',
+                            }}>Error</span>
+                            {fila.errorMensaje && (
+                              <span style={{ fontSize: '11px', color: '#dc2626' }}>
+                                {fila.errorMensaje}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

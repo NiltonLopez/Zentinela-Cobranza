@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application.DTOs.Pagos;
 using Zentinela.Application.Interfaces;
@@ -34,21 +35,35 @@ public class CarguePagosService : ICarguePagosService
         _context = context;
     }
 
-    public async Task<ValidarPagosResponse> ValidarCsvAsync(Stream csv, int carteraID)
+    public async Task<ValidarPagosResponse> ValidarArchivoAsync(Stream archivo, int carteraID, string extension)
     {
-        using var reader = new StreamReader(csv);
+        // ── Extraer todas las filas como string[][] ───────────────────────────
+        List<string[]> todasLasFilas;
+        char separador = ',';
 
-        // ── Leer encabezado y resolver índices por nombre ─────────────────────
-        var lineaEncabezado = await reader.ReadLineAsync();
-        if (string.IsNullOrWhiteSpace(lineaEncabezado))
+        if (extension == ".xlsx")
+        {
+            todasLasFilas = ExtraerFilasXlsx(archivo);
+        }
+        else
+        {
+            (todasLasFilas, separador) = await ExtraerFilasCsvAsync(archivo);
+        }
+
+        if (todasLasFilas.Count == 0)
             return new ValidarPagosResponse();
 
-        var separador = lineaEncabezado.Contains(';') ? ';' : ',';
-        var headers   = lineaEncabezado
-            .Split(separador)
-            .Select((h, i) => (Clave: Normalizar(h), Indice: i))
-            .ToDictionary(x => x.Clave, x => x.Indice);
+        // ── Leer encabezado y resolver índices por nombre ─────────────────────
+        var headerParts = todasLasFilas[0];
+        var headers = new Dictionary<string, int>();
+        for (int i = 0; i < headerParts.Length; i++)
+        {
+            var clave = Normalizar(headerParts[i]);
+            if (!string.IsNullOrEmpty(clave) && !headers.ContainsKey(clave))
+                headers[clave] = i;
+        }
 
+        var lineaEncabezado = string.Join(separador, headerParts);
         var (idx, errorColumna) = ResolverIndices(headers, lineaEncabezado, separador);
         if (idx is null)
         {
@@ -60,17 +75,14 @@ public class CarguePagosService : ICarguePagosService
             };
         }
 
-        // ── Parsear filas ─────────────────────────────────────────────────────
+        // ── Parsear filas de datos ────────────────────────────────────────────
         var filas = new List<PagoFilaDto>();
-        int numeroLinea = 1;
 
-        while (!reader.EndOfStream)
+        for (int i = 1; i < todasLasFilas.Count; i++)
         {
-            var linea = await reader.ReadLineAsync();
-            if (string.IsNullOrWhiteSpace(linea)) continue;
-
-            numeroLinea++;
-            filas.Add(ParsearLinea(linea, numeroLinea, separador, idx));
+            var partes = todasLasFilas[i];
+            if (partes.All(string.IsNullOrWhiteSpace)) continue;
+            filas.Add(ParsearPartes(partes, i + 1, idx));
         }
 
         var filasValidas = filas.Where(f => f.EsValida).ToList();
@@ -160,6 +172,49 @@ public class CarguePagosService : ICarguePagosService
         await _context.SaveChangesAsync();
 
         return pagos.Count;
+    }
+
+    // ── Plantilla ─────────────────────────────────────────────────────────────
+
+    public byte[] GenerarPlantilla()
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Pagos");
+
+        var columnas = new[]
+        {
+            ("Cedula",         "Cedula"),
+            ("Nombre",         "Nombre"),
+            ("Valor",          "Valor"),
+            ("Fecha",          "Fecha"),
+            ("Honorarios",     "Honorarios"),
+            ("UsuarioControl", "UsuarioControl"),
+        };
+
+        for (int i = 0; i < columnas.Length; i++)
+        {
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = columnas[i].Item2;
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        // Fila de ejemplo en gris
+        var ejemplo = new object[] { 1020304050L, "PEREZ JUAN", 1500000, "2026-04-21", 225000, "jperez" };
+        for (int i = 0; i < ejemplo.Length; i++)
+        {
+            var celda = ws.Cell(2, i + 1);
+            celda.Value = ejemplo[i].ToString();
+            celda.Style.Font.FontColor = XLColor.Gray;
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -253,14 +308,47 @@ public class CarguePagosService : ICarguePagosService
         ), string.Empty);
     }
 
+    // ── Extractores de filas ─────────────────────────────────────────────────
+
+    private static async Task<(List<string[]> filas, char sep)> ExtraerFilasCsvAsync(Stream csv)
+    {
+        var filas  = new List<string[]>();
+        using var reader = new StreamReader(csv);
+
+        var primera = await reader.ReadLineAsync();
+        if (primera is null) return (filas, ',');
+
+        var sep = primera.Contains(';') ? ';' : ',';
+        filas.Add(primera.Split(sep));
+
+        while (!reader.EndOfStream)
+        {
+            var linea = await reader.ReadLineAsync();
+            if (linea is null) continue;
+            filas.Add(linea.Split(sep));
+        }
+        return (filas, sep);
+    }
+
+    private static List<string[]> ExtraerFilasXlsx(Stream stream)
+    {
+        var filas = new List<string[]>();
+        using var workbook = new XLWorkbook(stream);
+        var rango = workbook.Worksheets.First().RangeUsed();
+        if (rango is null) return filas;
+
+        foreach (var fila in rango.Rows())
+            filas.Add(fila.Cells().Select(c => c.GetString()).ToArray());
+
+        return filas;
+    }
+
     /// <summary>
-    /// Parsea una línea usando los índices resueltos desde el encabezado.
+    /// Parsea una fila (ya spliteada) usando los índices resueltos desde el encabezado.
     /// Columnas extra en el archivo se ignoran.
     /// </summary>
-    private static PagoFilaDto ParsearLinea(string linea, int numeroLinea, char separador, IndicesColumnas idx)
+    private static PagoFilaDto ParsearPartes(string[] partes, int numeroLinea, IndicesColumnas idx)
     {
-        var partes = linea.Split(separador);
-
         var maxIdx = new[] { idx.Cedula, idx.Nombre, idx.Valor, idx.Fecha, idx.Honorarios, idx.UsuarioControl }.Max();
         if (partes.Length <= maxIdx)
             return new PagoFilaDto

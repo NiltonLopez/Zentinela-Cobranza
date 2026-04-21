@@ -26,6 +26,16 @@ public class PagosController : ControllerBase
         _gestionCarteras = gestionCarteras;
     }
 
+    /// <summary>Descarga la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
+    [HttpGet("plantilla")]
+    public IActionResult DescargarPlantilla()
+    {
+        var bytes = _service.GenerarPlantilla();
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_cargue_pagos.xlsx");
+    }
+
     /// <summary>
     /// Lista las carteras disponibles para el selector de la UI.
     /// Reutiliza la lista de relaciones de GestionCarterasService.
@@ -54,15 +64,23 @@ public class PagosController : ControllerBase
         if (archivo is null || archivo.Length == 0)
             return BadRequest(new { mensaje = "El archivo no puede estar vacío." });
 
-        if (!archivo.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { mensaje = "El archivo debe ser .csv." });
+        var ext = Path.GetExtension(archivo.FileName).ToLowerInvariant();
+        if (ext != ".csv" && ext != ".xlsx")
+            return BadRequest(new { mensaje = "El archivo debe ser .csv o .xlsx." });
 
         if (carteraID <= 0)
             return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
 
-        using var stream = archivo.OpenReadStream();
-        var resultado = await _service.ValidarCsvAsync(stream, carteraID);
-        return Ok(resultado);
+        try
+        {
+            using var stream = archivo.OpenReadStream();
+            var resultado = await _service.ValidarArchivoAsync(stream, carteraID, ext);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { mensaje = $"Error al procesar el archivo: {ex.Message}" });
+        }
     }
 
     /// <summary>

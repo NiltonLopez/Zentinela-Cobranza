@@ -38,9 +38,9 @@ public class CargueReporteService : ICargueReporteService
 
     // ── Validación ────────────────────────────────────────────────────────────
 
-    public async Task<PreviewReporteDto> ValidarExcelAsync(Stream excelStream, int carteraID)
+    public async Task<PreviewReporteDto> ValidarArchivoAsync(Stream archivoStream, int carteraID, string extension)
     {
-        var filasRaw = _excelExporter.ParsearFilasReporte(excelStream);
+        var filasRaw = _excelExporter.ParsearFilasReporte(archivoStream, extension);
 
         if (filasRaw.Count == 0)
             return new PreviewReporteDto();
