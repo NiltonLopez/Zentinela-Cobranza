@@ -1220,34 +1220,40 @@ Pagos confirmados cargados manualmente por cartera desde la UI. Alimenta los inf
 ---
 
 ### Meta_Agente_Mes
-Metas mensuales de recaudo por agente individual. Alimenta el sub-informe de Agentes.
+Metas mensuales de recaudo y honorarios por agente individual. Alimenta el sub-informe de Agentes.
 
-> **Creada:** 2026-04-15 — script en `docs/migrations/create_Meta_tables.sql`
+> **Creada:** 2026-04-15 — script en `docs/migrations/create_Meta_tables.sql`  
+> **Actualizada:** 2026-04-20 — se agregó `MetaHonorarios` (columna gestionada desde módulo Metas del mes)
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
 | MetaID | int (identity) | NO | SI | — |
 | AgenteID | bigint | NO | — | Agente |
-| Año | smallint | NO | — | — |
+| Año | smallint | NO | — | — (columna en BD: `Anio`) |
 | Mes | tinyint | NO | — | — (1-12) |
 | MetaRecaudo | decimal(18,2) | NO | — | — |
+| MetaHonorarios | decimal(18,2) | NO | — | — |
 
-**Constraint UNIQUE:** `(AgenteID, Año, Mes)`
+**Constraint UNIQUE:** `(AgenteID, Año, Mes)`  
+**Gestión:** UPSERT desde el módulo Administración → Metas del mes. Solo se pueden establecer metas para el ciclo (mes/año) actual.
 
 ---
 
 ### Meta_Lider_Cartera_Mes
-Metas mensuales de recaudo por combinación líder-cartera. Alimenta el sub-informe de Líderes.
+Metas mensuales de recaudo y honorarios por combinación líder-cartera. Alimenta el sub-informe de Líderes.
 
-> **Creada:** 2026-04-15 — script en `docs/migrations/create_Meta_tables.sql`
+> **Creada:** 2026-04-15 — script en `docs/migrations/create_Meta_tables.sql`  
+> **Actualizada:** 2026-04-20 — se agregó `MetaHonorarios` (columna gestionada desde módulo Metas del mes)
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
 | MetaID | int (identity) | NO | SI | — |
 | LiderID | int | NO | — | Lider_Cartera |
 | CarteraID | int | NO | — | Lider_Cartera |
-| Año | smallint | NO | — | — |
+| Año | smallint | NO | — | — (columna en BD: `Anio`) |
 | Mes | tinyint | NO | — | — (1-12) |
 | MetaRecaudo | decimal(18,2) | NO | — | — |
+| MetaHonorarios | decimal(18,2) | NO | — | — |
 
-**Constraint UNIQUE:** `(LiderID, CarteraID, Año, Mes)`
+**Constraint UNIQUE:** `(LiderID, CarteraID, Año, Mes)`  
+**Gestión:** UPSERT desde el módulo Administración → Metas del mes. Solo se pueden establecer metas para el ciclo (mes/año) actual.

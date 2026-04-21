@@ -57,6 +57,7 @@ export const MODULOS: Modulo[] = [
       { key: 'personal', label: 'Gestión de Personal',           path: '/administracion/personal' },
       { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes' },
       { key: 'pagos',    label: 'Cargue de Pagos',               path: '/administracion/pagos' },
+      { key: 'metas',    label: 'Cargue de Metas',               path: '/administracion/metas' },
     ],
   },
   {

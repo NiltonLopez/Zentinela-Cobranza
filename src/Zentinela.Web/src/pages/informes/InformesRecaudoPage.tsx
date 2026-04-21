@@ -658,6 +658,8 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 type VistaCarteras = 'lider-cartera' | 'cartera';
 
+const COSTO_ASESOR = 4_100_000;
+
 interface CarteraAgregada {
   carteraID:        number;
   nombreCartera:    string;
@@ -672,6 +674,7 @@ interface CarteraAgregada {
   proyeccionCierre: number;
   tieneMeta:        boolean;
   cumplimiento:     number;
+  centroCostos:     number;
 }
 
 function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
@@ -699,7 +702,8 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
   // ── Vista Líder-Cartera ──────────────────────────────────────────────────────
   const filasPorLiderCartera = fuenteFiltrada.map(f => ({
     ...f,
-    cumplimiento: f.metaCartera > 0 ? f.recaudo / f.metaCartera : 0,
+    cumplimiento:  f.metaCartera > 0 ? f.recaudo / f.metaCartera : 0,
+    centroCostos:  f.totalAsesores * COSTO_ASESOR,
   }));
 
   // ── Vista Cartera (agrupar todos los líderes de una misma cartera) ───────────
@@ -717,6 +721,7 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
       prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
       prev.proyeccionCierre += f.proyeccionCierre;
       prev.tieneMeta         = prev.tieneMeta || f.tieneMeta;
+      prev.centroCostos     += f.totalAsesores * COSTO_ASESOR;
     } else {
       porCartera.set(f.carteraID, {
         carteraID:        f.carteraID,
@@ -732,6 +737,7 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
         proyeccionCierre: f.proyeccionCierre,
         tieneMeta:        f.tieneMeta,
         cumplimiento:     0,
+        centroCostos:     f.totalAsesores * COSTO_ASESOR,
       });
     }
   }
@@ -867,6 +873,7 @@ function TablaCarterasLiderCartera({ filas }: { filas: (InformeLiderCartera & { 
               {th('Líder',             'nombreLider',     'left')}
               {th('Cartera',           'nombreCartera',   'left')}
               {th('Asesores',          'totalAsesores',   'center')}
+              {th('Centro de costos',  'centroCostos')}
               {th('Capacidad',         'capacidad',       'center')}
               {th('Recaudo',           'recaudo')}
               {th('Honorarios',        'honorarios')}
@@ -883,6 +890,7 @@ function TablaCarterasLiderCartera({ filas }: { filas: (InformeLiderCartera & { 
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>
                 <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{f.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{f.totalAsesores}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(f.centroCostos)}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{f.capacidad.toLocaleString('es-CO')}</td>
                 <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(f.recaudo)}</td>
                 <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(f.honorarios)}</td>
@@ -916,6 +924,7 @@ function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
               {th('Cartera',           'nombreCartera',   'left')}
               {th('Líderes',           'lideres',         'center')}
               {th('Asesores',          'asesores',        'center')}
+              {th('Centro de costos',  'centroCostos')}
               {th('Capacidad',         'capacidad',       'center')}
               {th('Recaudo',           'recaudo')}
               {th('Honorarios',        'honorarios')}
@@ -932,6 +941,7 @@ function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{c.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{c.lideres}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{c.asesores}</td>
+                <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(c.centroCostos)}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{c.capacidad.toLocaleString('es-CO')}</td>
                 <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(c.recaudo)}</td>
                 <td style={{ ...TD, textAlign: 'right', color: C.honorarios }}>{cop(c.honorarios)}</td>

@@ -27,6 +27,7 @@ import { CargueReportesPage } from './pages/administracion/CargueReportesPage';
 import { GestionCarterasPage } from './pages/administracion/GestionCarterasPage';
 import { GestionPersonalPage } from './pages/administracion/GestionPersonalPage';
 import { CarguePagosPage } from './pages/administracion/CarguePagosPage';
+import { CargueMetasPage } from './pages/administracion/CargueMetasPage';
 
 // Consulta
 import { ConsultaIntegradaPage } from './pages/consulta/ConsultaIntegradaPage';
@@ -142,6 +143,15 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin']}>
                     <CarguePagosPage />
+                  </RutaProtegida>
+                }
+              />
+
+              <Route
+                path="/administracion/metas"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin']}>
+                    <CargueMetasPage />
                   </RutaProtegida>
                 }
               />
