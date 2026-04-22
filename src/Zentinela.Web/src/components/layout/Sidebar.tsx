@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { MODULOS, type ModuloKey } from '../../config/navigation';
+import type { Rol } from '../../types/auth';
 
 interface Props {
   moduloActivo: ModuloKey;
@@ -8,10 +10,12 @@ interface Props {
 export function Sidebar({ moduloActivo }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { usuario } = useAuth();
 
-  // Encontrar el módulo activo y obtener sus sub-módulos
   const modulo = MODULOS.find((m) => m.key === moduloActivo);
-  const subModulos = modulo?.subModulos ?? [];
+  const subModulos = (modulo?.subModulos ?? []).filter(
+    (s) => !s.rolesPermitidos || s.rolesPermitidos.includes(usuario?.rol as Rol)
+  );
 
   return (
     <aside style={{

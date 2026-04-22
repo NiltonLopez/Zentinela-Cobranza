@@ -63,8 +63,28 @@ export interface RendimientoAsesorDto {
   tasaEfectividad: number;     // 0-1
 }
 
+export interface PagoAsesorDto {
+  pagoID: number;
+  cedulaTitular: number;
+  nombreCliente: string;
+  valorPagado: number;
+  fechaPago: string;      // ISO date "YYYY-MM-DD"
+  honorarios: number;
+  nombreCartera: string;
+  fechaRegistro: string;  // ISO datetime
+}
+
+export interface PagosConfirmadosDto {
+  fechaActualizacion: string | null; // ISO datetime o null
+  totalRecaudo: number;
+  totalHonorarios: number;
+  metaHonorarios: number;
+  porcentajeEfectividad: number; // 0-1
+}
+
 export interface DashboardAsesorDto {
   nombreSupervisor: string | null;
   acuerdosVigentes: AcuerdoVigenteDto[];
   rendimiento: RendimientoAsesorDto;
+  pagosConfirmados: PagosConfirmadosDto;
 }

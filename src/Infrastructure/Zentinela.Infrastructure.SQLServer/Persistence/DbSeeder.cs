@@ -35,5 +35,6 @@ public static class DbSeeder
             if (resultado.Succeeded)
                 await userManager.AddToRoleAsync(admin, Roles.Admin);
         }
+
     }
 }

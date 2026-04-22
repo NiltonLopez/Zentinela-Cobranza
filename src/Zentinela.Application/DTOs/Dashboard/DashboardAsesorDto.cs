@@ -7,5 +7,6 @@ public class DashboardAsesorDto
 
     public IEnumerable<AcuerdoVigenteDto> AcuerdosVigentes { get; set; } = [];
 
-    public RendimientoAsesorDto Rendimiento { get; set; } = new();
+    public RendimientoAsesorDto   Rendimiento      { get; set; } = new();
+    public PagosConfirmadosDto    PagosConfirmados { get; set; } = new();
 }

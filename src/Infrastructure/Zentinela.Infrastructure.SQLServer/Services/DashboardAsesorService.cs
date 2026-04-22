@@ -29,17 +29,20 @@ public class DashboardAsesorService : IDashboardAsesorService
         // AgenteID en UltimoEstadoTitular / HistoricoEstadoTitular es INT en la BD operacional
         var agenteID = (int)numeroDocumento;
 
+        // Supervisor usa _rrhh → puede correr en paralelo con las consultas a _callCenter.
+        // Las consultas a _callCenter deben ser secuenciales (DbContext no es thread-safe).
         var supervisorTask = ObtenerNombreSupervisorAsync(numeroDocumento);
-        var acuerdosTask = ObtenerAcuerdosVigentesAsync(agenteID);
-        var rendimientoTask = ObtenerRendimientoAsync(agenteID);
 
-        await Task.WhenAll(supervisorTask, acuerdosTask, rendimientoTask);
+        var acuerdos         = await ObtenerAcuerdosVigentesAsync(agenteID);
+        var rendimiento      = await ObtenerRendimientoAsync(agenteID);
+        var pagosConfirmados = await ObtenerPagosConfirmadosAsync(agenteID);
 
         return new DashboardAsesorDto
         {
-            NombreSupervisor = supervisorTask.Result,
-            AcuerdosVigentes = acuerdosTask.Result,
-            Rendimiento = rendimientoTask.Result,
+            NombreSupervisor = await supervisorTask,
+            AcuerdosVigentes = acuerdos,
+            Rendimiento      = rendimiento,
+            PagosConfirmados = pagosConfirmados,
         };
     }
 
@@ -129,6 +132,87 @@ public class DashboardAsesorService : IDashboardAsesorService
                 : 0,
             TasaEfectividad = contactosPositivos > 0
                 ? Math.Round((decimal)acuerdosAbonos / contactosPositivos, 4)
+                : 0,
+        };
+    }
+
+    // ── Detalle de pagos (sub-módulo) ─────────────────────────────────────────
+    public async Task<List<PagoAsesorDto>> ObtenerPagosDetalleAsync(int agenteID)
+    {
+        return await _callCenter.Pagos
+            .Where(p => p.AgenteControlID == agenteID)
+            .Join(_callCenter.Carteras,
+                  p => p.CarteraID,
+                  c => c.ID,
+                  (p, c) => new PagoAsesorDto
+                  {
+                      PagoID        = p.PagoID,
+                      CedulaTitular = p.CedulaTitular,
+                      NombreCliente = p.NombreCliente,
+                      ValorPagado   = p.ValorPagado,
+                      FechaPago     = p.FechaPago,
+                      Honorarios    = p.Honorarios,
+                      NombreCartera = c.NombreCartera,
+                      FechaRegistro = p.FechaRegistro,
+                  })
+            .OrderByDescending(p => p.FechaRegistro)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    // ── Pagos confirmados (resumen dashboard) ─────────────────────────────────
+    private async Task<PagosConfirmadosDto> ObtenerPagosConfirmadosAsync(int agenteID)
+    {
+        var hoy = DateTime.Today;
+
+        // FechaActualizacion: para cada cartera del asesor, tomar el MAX(FechaRegistro),
+        // luego exponer el MIN de esos máximos para evidenciar la cartera más desactualizada.
+        var maxFechasPorCartera = await _callCenter.Pagos
+            .Where(p => p.AgenteControlID == agenteID)
+            .GroupBy(p => p.CarteraID)
+            .Select(g => g.Max(p => p.FechaRegistro))
+            .ToListAsync();
+
+        var fechaActualizacion = maxFechasPorCartera.Count > 0
+            ? maxFechasPorCartera.Min()
+            : (DateTime?)null;
+
+        // Totales de recaudo y honorarios (todos los pagos del asesor)
+        var totales = await _callCenter.Pagos
+            .Where(p => p.AgenteControlID == agenteID)
+            .GroupBy(p => 1)
+            .Select(g => new
+            {
+                Recaudo    = g.Sum(p => p.ValorPagado),
+                Honorarios = g.Sum(p => p.Honorarios),
+            })
+            .FirstOrDefaultAsync();
+
+        // Meta de honorarios del mes actual
+        var meta = await _callCenter.MetaAgentesMes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.AgenteID == agenteID
+                                   && m.Año == (short)hoy.Year
+                                   && m.Mes == (byte)hoy.Month);
+
+        // Efectividad = acuerdos/abonos sobre total gestiones
+        var perfiles = await _callCenter.UltimosEstadosTitular
+            .AsNoTracking()
+            .Where(u => u.AgenteID == agenteID)
+            .Select(u => u.UltimoPerfil)
+            .ToListAsync();
+
+        var totalGestiones = perfiles.Count;
+        var acuerdosAbonos = perfiles.Count(p => Tipificaciones.AcuerdoAbono.Contains(p ?? string.Empty));
+
+        return new PagosConfirmadosDto
+        {
+            FechaActualizacion   = fechaActualizacion,
+            TotalRecaudo         = totales?.Recaudo    ?? 0,
+            TotalHonorarios      = totales?.Honorarios ?? 0,
+            MetaHonorarios       = meta?.MetaHonorarios ?? 0,
+            PorcentajeEfectividad = totalGestiones > 0
+                ? Math.Round((decimal)acuerdosAbonos / totalGestiones, 4)
                 : 0,
         };
     }

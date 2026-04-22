@@ -15,14 +15,15 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de respuesta: si el token expiró o es inválido, cierra la sesión
+// Interceptor de respuesta: si el token expiró o es inválido, cierra la sesión.
+// Excluye /api/auth/login para que las credenciales incorrectas no disparen el redirect.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const esLoginEndpoint = error.config?.url?.includes('/api/auth/login');
+    if (error.response?.status === 401 && !esLoginEndpoint) {
       localStorage.removeItem(STORAGE_KEYS.TOKEN);
       localStorage.removeItem(STORAGE_KEYS.USUARIO);
-      // Redirige al login sin depender de React Router (funciona desde cualquier contexto)
       window.location.href = '/login';
     }
     return Promise.reject(error);

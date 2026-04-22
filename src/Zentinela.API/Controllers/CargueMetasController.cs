@@ -50,4 +50,5 @@ public class CargueMetasController : ControllerBase
         var resultado = await _service.GuardarMetaAgenteAsync(request);
         return Ok(resultado);
     }
+
 }

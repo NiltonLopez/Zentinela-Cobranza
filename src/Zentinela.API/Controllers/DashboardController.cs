@@ -33,8 +33,37 @@ public class DashboardController : ControllerBase
         if (!long.TryParse(numDocClaim, out var numeroDocumento) || numeroDocumento == 0)
             return Forbid();
 
-        var resultado = await _asesorService.ObtenerDashboardAsync(numeroDocumento);
-        return Ok(resultado);
+        try
+        {
+            var resultado = await _asesorService.ObtenerDashboardAsync(numeroDocumento);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { mensaje = $"Error al cargar el dashboard: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Detalle completo de pagos confirmados del asesor autenticado.
+    /// </summary>
+    [HttpGet("asesor/pagos")]
+    [Authorize(Roles = Roles.Asesor)]
+    public async Task<IActionResult> ObtenerPagosAsesor()
+    {
+        var numDocClaim = User.FindFirst("numeroDocumento")?.Value;
+        if (!long.TryParse(numDocClaim, out var numeroDocumento) || numeroDocumento == 0)
+            return Forbid();
+
+        try
+        {
+            var resultado = await _asesorService.ObtenerPagosDetalleAsync((int)numeroDocumento);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { mensaje = $"Error al cargar los pagos: {ex.Message}" });
+        }
     }
 
     // ── Director ──────────────────────────────────────────────────────────────

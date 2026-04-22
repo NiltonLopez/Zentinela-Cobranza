@@ -1,6 +1,7 @@
 import api from './authApi';
 import type {
   DashboardAsesorDto,
+  PagoAsesorDto,
   DashboardDirectorDto,
   LiderDropdownDto,
   CarteraDropdownDto,
@@ -10,6 +11,11 @@ import type {
 
 export const obtenerDashboardAsesor = async (): Promise<DashboardAsesorDto> => {
   const response = await api.get<DashboardAsesorDto>('/api/dashboard/asesor');
+  return response.data;
+};
+
+export const obtenerPagosAsesor = async (): Promise<PagoAsesorDto[]> => {
+  const response = await api.get<PagoAsesorDto[]>('/api/dashboard/asesor/pagos');
   return response.data;
 };
 

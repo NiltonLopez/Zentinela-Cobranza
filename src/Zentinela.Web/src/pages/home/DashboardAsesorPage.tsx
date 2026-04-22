@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { obtenerDashboardAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
-import type { AcuerdoVigenteDto } from '../../types/dashboard';
+import type { AcuerdoVigenteDto, PagosConfirmadosDto } from '../../types/dashboard';
 
 // ── Helpers de formato ────────────────────────────────────────────────────────
 
@@ -61,6 +62,9 @@ function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
       <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', borderBottom: `0.5px solid ${color.border}` }}>
         {formatearMoneda(acuerdo.valorPromesa)}
       </td>
+      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)', textAlign: 'right', borderBottom: `0.5px solid ${color.border}` }}>
+        {formatearMoneda(acuerdo.saldoTotal)}
+      </td>
       <td style={{ padding: '10px 14px', textAlign: 'center', borderBottom: `0.5px solid ${color.border}` }}>
         <span style={{
           display: 'inline-block',
@@ -78,19 +82,154 @@ function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
   );
 }
 
-function TarjetaMetrica({ label, valor, sub }: { label: string; valor: string; sub?: string }) {
+function TarjetaMetrica({ label, valor, sub, valorSize = 28 }: { label: string; valor: string; sub?: string; valorSize?: number }) {
   return (
     <div style={{
       background: 'var(--z-bg-card)',
       border: '0.5px solid var(--z-border)',
       borderRadius: '8px',
       padding: '20px',
-      flex: 1,
+      flex: '1 1 140px',
+      minWidth: '140px',
     }}>
       <p style={{ fontSize: '12px', color: 'var(--z-text-muted)', marginBottom: '8px' }}>{label}</p>
-      <p style={{ fontSize: '28px', fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1 }}>{valor}</p>
+      <p style={{ fontSize: `${valorSize}px`, fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>{valor}</p>
       {sub && <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>{sub}</p>}
     </div>
+  );
+}
+
+// ── Ring de honorarios ────────────────────────────────────────────────────────
+
+function RingHonorarios({ actual, meta }: { actual: number; meta: number }) {
+  const r = 40;
+  const circum = 2 * Math.PI * r;
+  const pct = meta > 0 ? Math.min(actual / meta, 1) : 0;
+  const dash = pct * circum;
+  const pctLabel = meta > 0 ? `${(pct * 100).toFixed(0)}%` : '—';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+      <svg viewBox="0 0 96 96" width="140" height="140">
+        {/* Fondo */}
+        <circle cx="48" cy="48" r={r} fill="none" stroke="var(--z-border)" strokeWidth="8" />
+        {/* Progreso */}
+        <circle
+          cx="48" cy="48" r={r} fill="none"
+          stroke="var(--z-brand)"
+          strokeWidth="8"
+          strokeDasharray={`${dash} ${circum}`}
+          strokeLinecap="round"
+          transform="rotate(-90 48 48)"
+          style={{ transition: 'stroke-dasharray 0.4s ease' }}
+        />
+        <text x="48" y="43" textAnchor="middle" fontSize="14" fontWeight="700"
+          fill="var(--z-text-primary)" fontFamily="inherit">
+          {pctLabel}
+        </text>
+        <text x="48" y="57" textAnchor="middle" fontSize="9"
+          fill="var(--z-text-muted)" fontFamily="inherit">
+          de meta
+        </text>
+      </svg>
+      <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', textAlign: 'center', lineHeight: 1.4 }}>
+        Honorarios<br />
+        <span style={{ fontWeight: 600, color: 'var(--z-text-primary)' }}>
+          {formatearMoneda(actual)}
+        </span>
+        {' / '}{formatearMoneda(meta)}
+      </p>
+    </div>
+  );
+}
+
+// ── Sección Pagos Confirmados ─────────────────────────────────────────────────
+
+function SeccionPagosConfirmados({ pagos, isLoading }: { pagos?: PagosConfirmadosDto; isLoading: boolean }) {
+  const navigate = useNavigate();
+  return (
+    <section>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div>
+          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '2px' }}>
+            Pagos confirmados
+          </h2>
+          <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
+            Actualizado última vez:{' '}
+            <span style={{ fontWeight: 500, color: 'var(--z-text-primary)' }}>
+              {isLoading ? '...' : formatearFechaActualizacion(pagos?.fechaActualizacion ?? null)}
+            </span>
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/home/pagos')}
+          style={{
+            background: 'none',
+            border: '0.5px solid var(--z-border)',
+            borderRadius: '6px',
+            padding: '5px 12px',
+            fontSize: '12px',
+            color: 'var(--z-brand)',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
+        >
+          Ver detalles →
+        </button>
+      </div>
+
+      {!isLoading && pagos && (
+        <div style={{
+          background: 'var(--z-bg-card)',
+          border: '0.5px solid var(--z-border)',
+          borderRadius: '8px',
+          padding: '24px',
+          display: 'flex',
+          gap: '24px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          {/* Ring principal */}
+          <RingHonorarios actual={pagos.totalHonorarios} meta={pagos.metaHonorarios} />
+
+          {/* Separador */}
+          <div style={{ width: '1px', background: 'var(--z-border)', alignSelf: 'stretch', minHeight: '80px' }} />
+
+          {/* Tarjetas métricas */}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1 }}>
+            <TarjetaMetrica
+              label="Recaudo"
+              valor={formatearMoneda(pagos.totalRecaudo)}
+              valorSize={18}
+            />
+            <TarjetaMetrica
+              label="Honorarios"
+              valor={formatearMoneda(pagos.totalHonorarios)}
+              valorSize={18}
+            />
+            <TarjetaMetrica
+              label="Efectividad / gestiones"
+              valor={`${(pagos.porcentajeEfectividad * 100).toFixed(1)}%`}
+              sub="Acuerdos y abonos / Total gestiones"
+            />
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !pagos && (
+        <div style={{
+          background: 'var(--z-bg-card)',
+          border: '0.5px solid var(--z-border)',
+          borderRadius: '8px',
+          padding: '32px',
+          textAlign: 'center',
+          fontSize: '13px',
+          color: 'var(--z-text-muted)',
+        }}>
+          Sin datos de pagos disponibles.
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -98,10 +237,11 @@ function TarjetaMetrica({ label, valor, sub }: { label: string; valor: string; s
 
 export function DashboardAsesorPage() {
   const { usuario } = useAuth();
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['dashboard-asesor'],
     queryFn: obtenerDashboardAsesor,
-    staleTime: 5 * 60 * 1000, // 5 minutos
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
   return (
@@ -126,7 +266,7 @@ export function DashboardAsesorPage() {
           borderRadius: '8px', padding: '14px 16px',
           fontSize: '13px', color: '#dc2626',
         }}>
-          No se pudo cargar el dashboard. Intenta de nuevo.
+          {(error as any)?.response?.data?.mensaje ?? 'No se pudo cargar el dashboard. Intenta de nuevo.'}
         </div>
       )}
 
@@ -159,9 +299,9 @@ export function DashboardAsesorPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--z-bg-page)' }}>
-                  {['Titular', 'Tipificación', 'Fecha promesa', 'Valor', 'Estado'].map(col => (
+                  {['Titular', 'Tipificación', 'Fecha promesa', 'Promesa', 'Saldo', 'Estado'].map(col => (
                     <th key={col} style={{
-                      padding: '10px 14px', textAlign: col === 'Valor' ? 'right' : col === 'Estado' ? 'center' : 'left',
+                      padding: '10px 14px', textAlign: (col === 'Promesa' || col === 'Saldo') ? 'right' : col === 'Estado' ? 'center' : 'left',
                       fontSize: '11px', fontWeight: 600,
                       color: 'var(--z-text-muted)',
                       borderBottom: '0.5px solid var(--z-border)',
@@ -198,7 +338,7 @@ export function DashboardAsesorPage() {
         </div>
 
         {!isLoading && data && (
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <TarjetaMetrica
               label="Contactabilidad"
               valor={formatearPorcentaje(data.rendimiento.tasaContactabilidad)}
@@ -233,6 +373,9 @@ export function DashboardAsesorPage() {
           </div>
         )}
       </section>
+
+      {/* ── Pagos confirmados ─────────────────────────────────────────────── */}
+      <SeccionPagosConfirmados pagos={data?.pagosConfirmados} isLoading={isLoading} />
 
     </div>
   );

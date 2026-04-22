@@ -12,6 +12,7 @@ import { SinPermisoPage } from './pages/SinPermisoPage';
 
 // Home
 import { HomeDashboardPage } from './pages/home/HomeDashboardPage';
+import { PagosConfirmadosAsesorPage } from './pages/home/PagosConfirmadosAsesorPage';
 
 // Cartera
 import { CreadorZentinelaPage } from './pages/cartera/CreadorZentinelaPage';
@@ -64,6 +65,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor']}>
                     <HomeDashboardPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/home/pagos"
+                element={
+                  <RutaProtegida rolesPermitidos={['Asesor']}>
+                    <PagosConfirmadosAsesorPage />
                   </RutaProtegida>
                 }
               />

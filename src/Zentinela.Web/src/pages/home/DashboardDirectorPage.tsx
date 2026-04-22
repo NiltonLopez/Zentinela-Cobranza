@@ -91,95 +91,84 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, sub }: { label: string; valor: string; sub?: string }) {
+function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: { label: string; valor: string; sub?: string; valorSize?: number }) {
   return (
     <div style={{
       background: 'var(--z-bg-card)',
       border: '0.5px solid var(--z-border)',
       borderRadius: '8px',
-      padding: '20px',
-      flex: 1,
-      minWidth: 0,
+      padding: '20px 22px',
+      flex: '1 1 160px',
+      minWidth: '160px',
     }}>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
         {label}
       </p>
-      <p style={{ fontSize: '28px', fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1 }}>
+      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
         {valor}
       </p>
       {sub && (
-        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>{sub}</p>
+        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
       )}
     </div>
   );
 }
 
 function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asignados: number }) {
-  const pctNum   = asignados > 0 ? Math.min((gestionados / asignados) * 100, 100) : 0;
-  const radio    = 40;
-  const grosor   = 7;
-  const circunf  = 2 * Math.PI * radio;
-  const offset   = circunf * (1 - pctNum / 100);
-
-  // Color según avance
-  const color = pctNum >= 80 ? '#22c55e' : pctNum >= 50 ? '#f59e0b' : '#3b82f6';
+  const pctNum  = asignados > 0 ? Math.min((gestionados / asignados) * 100, 100) : 0;
+  const radio   = 38;
+  const grosor  = 7;
+  const circunf = 2 * Math.PI * radio;
+  const offset  = circunf * (1 - pctNum / 100);
+  const color   = pctNum >= 80 ? '#22c55e' : pctNum >= 50 ? '#f59e0b' : '#3b82f6';
 
   return (
     <div style={{
       background: 'var(--z-bg-card)',
       border: '0.5px solid var(--z-border)',
       borderRadius: '8px',
-      padding: '20px',
-      flex: 1,
-      minWidth: 0,
+      padding: '20px 22px',
+      flex: '1 1 260px',
+      minWidth: '260px',
       display: 'flex',
       alignItems: 'center',
       gap: '20px',
     }}>
-      {/* Ring SVG */}
-      <svg width="100" height="100" style={{ flexShrink: 0 }}>
-        {/* Pista de fondo */}
+      <svg width="96" height="96" viewBox="0 0 96 96" style={{ flexShrink: 0 }}>
+        <circle cx="48" cy="48" r={radio} fill="none" stroke="var(--z-border)" strokeWidth={grosor} />
         <circle
-          cx="50" cy="50" r={radio}
-          fill="none"
-          stroke="var(--z-border)"
-          strokeWidth={grosor}
-        />
-        {/* Arco de progreso */}
-        <circle
-          cx="50" cy="50" r={radio}
-          fill="none"
-          stroke={color}
-          strokeWidth={grosor}
+          cx="48" cy="48" r={radio}
+          fill="none" stroke={color} strokeWidth={grosor}
           strokeLinecap="round"
-          strokeDasharray={circunf}
-          strokeDashoffset={offset}
-          transform="rotate(-90 50 50)"
+          strokeDasharray={circunf} strokeDashoffset={offset}
+          transform="rotate(-90 48 48)"
           style={{ transition: 'stroke-dashoffset 0.6s ease' }}
         />
-        {/* Texto central */}
-        <text x="50" y="46" textAnchor="middle" dominantBaseline="middle"
-          style={{ fontSize: '16px', fontWeight: 700, fill: 'var(--z-text-primary)', fontFamily: 'inherit' }}>
+        <text x="48" y="44" textAnchor="middle" dominantBaseline="middle"
+          style={{ fontSize: '15px', fontWeight: 700, fill: 'var(--z-text-primary)', fontFamily: 'inherit' }}>
           {pctNum.toFixed(1)}%
         </text>
-        <text x="50" y="62" textAnchor="middle" dominantBaseline="middle"
+        <text x="48" y="60" textAnchor="middle" dominantBaseline="middle"
           style={{ fontSize: '9px', fill: 'var(--z-text-muted)', fontFamily: 'inherit' }}>
           avance
         </text>
       </svg>
 
-      {/* Leyenda */}
-      <div>
+      <div style={{ minWidth: 0 }}>
         <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
           Avance de gestión
         </p>
         <p style={{ fontSize: '13px', color: 'var(--z-text-primary)', marginBottom: '4px' }}>
-          <span style={{ fontWeight: 600 }}>{gestionados.toLocaleString('es-CO')}</span>
+          <span style={{ fontWeight: 700 }}>{gestionados.toLocaleString('es-CO')}</span>
           <span style={{ color: 'var(--z-text-muted)' }}> gestionados</span>
         </p>
         <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
           de {asignados.toLocaleString('es-CO')} asignados
         </p>
+        {/* Barra lineal de soporte visual */}
+        <div style={{ marginTop: '10px', height: 4, borderRadius: 99, background: 'var(--z-border)', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pctNum}%`, background: color, borderRadius: 99, transition: 'width 0.6s ease' }} />
+        </div>
       </div>
     </div>
   );
@@ -568,7 +557,7 @@ export function DashboardDirectorPage() {
         {isLoading ? (
           <CargandoSpiral mensaje="Cargando métricas..." />
         ) : data ? (
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'stretch' }}>
             <TarjetaAvance
               gestionados={data.metricas.totalGestiones}
               asignados={data.metricas.totalAsignados}
@@ -576,17 +565,18 @@ export function DashboardDirectorPage() {
             <TarjetaMetrica
               label="Contactabilidad"
               valor={pct(data.metricas.tasaContactabilidad)}
-              sub="Contactos positivos / Total gestiones"
+              sub="Contactos positivos / total gestiones"
             />
             <TarjetaMetrica
               label="Efectividad"
               valor={pct(data.metricas.tasaEfectividad)}
-              sub="Acuerdos y abonos / Contactos positivos"
+              sub="Acuerdos y abonos / contactos positivos"
             />
             <TarjetaMetrica
               label="Proyección promesas"
               valor={formatearPesos(data.metricas.proyeccionPromesas)}
               sub="Suma de acuerdos y abonos del período"
+              valorSize={18}
             />
             <TarjetaMetrica
               label="Incumplidos"

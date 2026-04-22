@@ -6,6 +6,7 @@ export interface SubModulo {
   key: string;
   label: string;
   path: string;
+  rolesPermitidos?: Rol[];
 }
 
 export interface Modulo {
@@ -23,7 +24,8 @@ export const MODULOS: Modulo[] = [
     rolesPermitidos: ['Admin', 'Líder', 'Director', 'Asesor'],
     defaultPath: '/home',
     subModulos: [
-      { key: 'dashboard', label: 'Dashboard', path: '/home' },
+      { key: 'dashboard',         label: 'Dashboard',          path: '/home' },
+      { key: 'pagos-confirmados', label: 'Pagos confirmados',  path: '/home/pagos', rolesPermitidos: ['Asesor'] },
     ],
   },
   {
