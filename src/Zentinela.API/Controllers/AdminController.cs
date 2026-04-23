@@ -67,6 +67,17 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Retorna todos los empleados cuyo ID aparece como IDSupervisor de algún empleado.
+    /// Fuente de datos para el filtro de supervisor en Gestión de Personal.
+    /// </summary>
+    [HttpGet("supervisores-activos")]
+    public async Task<IActionResult> ListarSupervisoresActivos()
+    {
+        var supervisores = await _adminService.ListarSupervisoresActivosAsync();
+        return Ok(supervisores);
+    }
+
+    /// <summary>
     /// Reasigna el supervisor de un usuario y limpia sus asignaciones de cartera anteriores.
     /// </summary>
     [HttpPost("usuarios/{id:int}/reasignar-supervisor")]

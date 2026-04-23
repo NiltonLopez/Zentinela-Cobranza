@@ -33,22 +33,38 @@ public class AdminService : IAdminService
             .OrderBy(u => u.NombreCompleto)
             .ToListAsync();
 
-        var resultado = new List<UsuarioAdminDto>();
+        // ── Batch: supervisor por usuario — una sola query usando navegación ──
+        var docs = usuarios.Select(u => u.NumeroDocumento).ToList();
 
-        // GetRolesAsync requiere una llamada por usuario (limitación de UserManager).
-        // Para volúmenes grandes se podría optimizar con una query directa a AspNetUserRoles,
-        // pero el número de usuarios administrativos es acotado.
+        // Aprovecha la relación recursiva Empleado.Supervisor ya mapeada.
+        // Resultado: NumeroDocumento → nombre completo del supervisor (o null)
+        var supervisorMap = await _rrhh.Empleados
+            .Where(e => docs.Contains(e.NumeroDocumento))
+            .Select(e => new
+            {
+                e.NumeroDocumento,
+                NombreSupervisor = e.Supervisor != null
+                    ? e.Supervisor.Nombre + " " + e.Supervisor.Apellidos
+                    : (string?)null,
+            })
+            .ToDictionaryAsync(e => e.NumeroDocumento, e => e.NombreSupervisor);
+
+        // ── Roles (limitación de UserManager: una llamada por usuario) ────────
+        var resultado = new List<UsuarioAdminDto>();
         foreach (var u in usuarios)
         {
             var roles = await _userManager.GetRolesAsync(u);
+            supervisorMap.TryGetValue(u.NumeroDocumento, out var supervisorNombre);
+
             resultado.Add(new UsuarioAdminDto
             {
-                Id = u.Id,
-                NombreCompleto = u.NombreCompleto,
-                Usuario = u.UserName ?? string.Empty,
-                NumeroDocumento = u.NumeroDocumento,
-                Rol = roles.FirstOrDefault() ?? string.Empty,
+                Id                     = u.Id,
+                NombreCompleto         = u.NombreCompleto,
+                Usuario                = u.UserName ?? string.Empty,
+                NumeroDocumento        = u.NumeroDocumento,
+                Rol                    = roles.FirstOrDefault() ?? string.Empty,
                 RequiereCambioPassword = u.RequiereCambioPassword,
+                NombreSupervisor       = supervisorNombre,
             });
         }
 
@@ -83,6 +99,29 @@ public class AdminService : IAdminService
         return await _rrhh.Empleados
             .Include(e => e.Cargo)
             .Where(e => cargosSupervisores.Contains(e.CargoID) && e.EstadoEmpleado)
+            .OrderBy(e => e.Nombre)
+            .Select(e => new SupervisorDto
+            {
+                Id              = e.ID,
+                NombreCompleto  = e.Nombre + " " + e.Apellidos,
+                Cargo           = e.Cargo.Descripcion,
+                NumeroDocumento = e.NumeroDocumento,
+            })
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<SupervisorDto>> ListarSupervisoresActivosAsync()
+    {
+        // Obtiene los IDs únicos que aparecen como supervisor de algún empleado
+        var supervisorIds = await _rrhh.Empleados
+            .Where(e => e.IDSupervisor != null)
+            .Select(e => e.IDSupervisor!.Value)
+            .Distinct()
+            .ToListAsync();
+
+        return await _rrhh.Empleados
+            .Include(e => e.Cargo)
+            .Where(e => supervisorIds.Contains(e.ID))
             .OrderBy(e => e.Nombre)
             .Select(e => new SupervisorDto
             {

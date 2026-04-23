@@ -17,8 +17,15 @@ public interface IAdminService
 
     /// <summary>
     /// Retorna los empleados con cargos que pueden supervisar (CargoID ∈ {2,7,8,13,18}).
+    /// Usado en el modal de reasignación.
     /// </summary>
     Task<IEnumerable<SupervisorDto>> ListarSupervisoresAsync();
+
+    /// <summary>
+    /// Retorna todos los empleados cuyo ID aparece en el campo IDSupervisor de algún otro
+    /// empleado. Fuente de datos para el filtro de supervisores en la tabla de personal.
+    /// </summary>
+    Task<IEnumerable<SupervisorDto>> ListarSupervisoresActivosAsync();
 
     /// <summary>
     /// Reasigna el supervisor de un usuario:

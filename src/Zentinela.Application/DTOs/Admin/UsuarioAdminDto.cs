@@ -8,4 +8,5 @@ public class UsuarioAdminDto
     public long NumeroDocumento { get; set; }
     public string Rol { get; set; } = string.Empty;
     public bool RequiereCambioPassword { get; set; }
+    public string? NombreSupervisor { get; set; }
 }

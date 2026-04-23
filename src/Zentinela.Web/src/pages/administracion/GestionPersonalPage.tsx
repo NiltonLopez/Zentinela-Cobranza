@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listarUsuarios, resetPassword, listarSupervisores, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual } from '../../api/adminApi';
+import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
 
 const BADGE_COLORES: Record<string, { bg: string; color: string }> = {
@@ -445,7 +445,8 @@ function ModalReasignar({
 }
 
 export function GestionPersonalPage() {
-  const [busqueda, setBusqueda] = useState('');
+  const [busqueda,          setBusqueda]          = useState('');
+  const [filtroSupervisor,  setFiltroSupervisor]  = useState('');
   const [usuarioParaReset, setUsuarioParaReset] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaReasignar, setUsuarioParaReasignar] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaInactivar, setUsuarioParaInactivar] = useState<UsuarioAdmin | null>(null);
@@ -461,6 +462,11 @@ export function GestionPersonalPage() {
     queryKey: ['admin-supervisores'],
     queryFn: listarSupervisores,
     enabled: !!usuarioParaReasignar,
+  });
+
+  const { data: supervisoresActivos = [] } = useQuery({
+    queryKey: ['admin-supervisores-activos'],
+    queryFn: listarSupervisoresActivos,
   });
 
   const { data: supervisorActual, isLoading: cargandoSupervisorActual } = useQuery({
@@ -509,13 +515,20 @@ export function GestionPersonalPage() {
     },
   });
 
+  // Opciones del dropdown — todos los empleados que son supervisor de alguien en RRHH
+  const opcionesSupervisor = supervisoresActivos
+    .map(s => s.nombreCompleto)
+    .sort();
+
   const usuariosFiltrados = usuarios.filter((u) => {
     const q = busqueda.toLowerCase();
-    return (
+    const coincideTexto =
       u.nombreCompleto.toLowerCase().includes(q) ||
       u.usuario.toLowerCase().includes(q) ||
-      u.rol.toLowerCase().includes(q)
-    );
+      u.rol.toLowerCase().includes(q);
+    const coincideSupervisor =
+      !filtroSupervisor || u.supervisorNombre === filtroSupervisor;
+    return coincideTexto && coincideSupervisor;
   });
 
   return (
@@ -554,16 +567,16 @@ export function GestionPersonalPage() {
         </div>
       )}
 
-      {/* Buscador */}
-      <div style={{ marginBottom: '16px' }}>
+      {/* Buscador + filtro supervisor */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <input
           type="text"
           placeholder="Buscar por nombre, usuario o rol..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           style={{
-            width: '100%',
-            maxWidth: '360px',
+            flex: '1 1 260px',
+            maxWidth: '380px',
             padding: '8px 12px',
             fontSize: '13px',
             border: '1px solid var(--z-border)',
@@ -575,6 +588,26 @@ export function GestionPersonalPage() {
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
         />
+        <select
+          value={filtroSupervisor}
+          onChange={(e) => setFiltroSupervisor(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            fontSize: '13px',
+            border: '1px solid var(--z-border)',
+            borderRadius: '6px',
+            background: 'var(--z-bg-card)',
+            color: filtroSupervisor ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+            outline: 'none',
+            cursor: 'pointer',
+            minWidth: '200px',
+          }}
+        >
+          <option value="">Todos los supervisores</option>
+          {opcionesSupervisor.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
       </div>
 
       {/* Tabla */}
@@ -624,7 +657,7 @@ export function GestionPersonalPage() {
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 160px 120px 140px 320px',
-          columnGap: '16px',
+              columnGap: '16px',
               padding: '12px 16px',
               alignItems: 'center',
               borderBottom: i < usuariosFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',

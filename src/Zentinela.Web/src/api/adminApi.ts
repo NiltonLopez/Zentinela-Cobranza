@@ -15,6 +15,11 @@ export const listarSupervisores = async (): Promise<Supervisor[]> => {
   return response.data;
 };
 
+export const listarSupervisoresActivos = async (): Promise<Supervisor[]> => {
+  const response = await api.get<Supervisor[]>('/api/admin/supervisores-activos');
+  return response.data;
+};
+
 export const obtenerSupervisorActual = async (usuarioId: number): Promise<Supervisor | null> => {
   const response = await api.get<Supervisor | null>(`/api/admin/usuarios/${usuarioId}/supervisor`);
   return response.data;
