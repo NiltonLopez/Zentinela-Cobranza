@@ -1,3 +1,5 @@
+export type TipoMeta = 0 | 1; // 0 = Recaudo, 1 = Honorarios
+
 export interface FilaMetaLiderCarteraDto {
   liderID:              number;
   carteraID:            number;
@@ -5,19 +7,19 @@ export interface FilaMetaLiderCarteraDto {
   nombreCartera:        string;
   capacidadActual:      number;
   cantidadAsignaciones: number;
-  metaRecaudo:          number | null;
-  metaHonorarios:       number | null;
+  tipoMeta:             TipoMeta | null;
+  valorMeta:            number | null;
   tieneMeta:            boolean;
 }
 
 export interface FilaMetaAgenteDto {
-  agenteID:       number;
-  nombreAgente:   string;
-  nombreCartera:  string | null;
-  nombreLider:    string | null;
-  metaRecaudo:    number | null;
-  metaHonorarios: number | null;
-  tieneMeta:      boolean;
+  agenteID:      number;
+  nombreAgente:  string;
+  nombreCartera: string | null;
+  nombreLider:   string | null;
+  tipoMeta:      TipoMeta | null;
+  valorMeta:     number | null;
+  tieneMeta:     boolean;
 }
 
 export interface EstadoMetasMesDto {
@@ -28,20 +30,20 @@ export interface EstadoMetasMesDto {
 }
 
 export interface GuardarMetaLiderRequest {
-  liderID:        number;
-  carteraID:      number;
-  año:            number;
-  mes:            number;
-  metaRecaudo:    number;
-  metaHonorarios: number;
+  liderID:   number;
+  carteraID: number;
+  año:       number;
+  mes:       number;
+  tipoMeta:  TipoMeta;
+  valor:     number;
 }
 
 export interface GuardarMetaAgenteRequest {
-  agenteID:       number;
-  año:            number;
-  mes:            number;
-  metaRecaudo:    number;
-  metaHonorarios: number;
+  agenteID: number;
+  año:      number;
+  mes:      number;
+  tipoMeta: TipoMeta;
+  valor:    number;
 }
 
 export interface ResultadoMetaDto {

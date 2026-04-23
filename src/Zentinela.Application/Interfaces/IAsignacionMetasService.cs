@@ -2,7 +2,7 @@ using Zentinela.Application.DTOs.Metas;
 
 namespace Zentinela.Application.Interfaces;
 
-public interface ICargueMetasService
+public interface IAsignacionMetasService
 {
     /// <summary>
     /// Devuelve todas las combinaciones líder-cartera y agentes activos con su meta

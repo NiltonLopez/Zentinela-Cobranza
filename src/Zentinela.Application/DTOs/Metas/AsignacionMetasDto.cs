@@ -12,20 +12,20 @@ public class FilaMetaLiderCarteraDto
     public string   NombreCartera        { get; set; } = string.Empty;
     public int      CapacidadActual      { get; set; }   // asesores asignados
     public int      CantidadAsignaciones { get; set; }   // titulares asignados
-    public decimal? MetaRecaudo          { get; set; }
-    public decimal? MetaHonorarios       { get; set; }
+    public byte?    TipoMeta             { get; set; }   // 0 = Recaudo, 1 = Honorarios
+    public decimal? ValorMeta            { get; set; }
     public bool     TieneMeta            { get; set; }
 }
 
 public class FilaMetaAgenteDto
 {
-    public long     AgenteID       { get; set; }
-    public string   NombreAgente   { get; set; } = string.Empty;
-    public string?  NombreCartera  { get; set; }
-    public string?  NombreLider    { get; set; }
-    public decimal? MetaRecaudo    { get; set; }
-    public decimal? MetaHonorarios { get; set; }
-    public bool     TieneMeta      { get; set; }
+    public long     AgenteID      { get; set; }
+    public string   NombreAgente  { get; set; } = string.Empty;
+    public string?  NombreCartera { get; set; }
+    public string?  NombreLider   { get; set; }
+    public byte?    TipoMeta      { get; set; }   // 0 = Recaudo, 1 = Honorarios
+    public decimal? ValorMeta     { get; set; }
+    public bool     TieneMeta     { get; set; }
 }
 
 public class EstadoMetasMesDto
@@ -40,21 +40,21 @@ public class EstadoMetasMesDto
 
 public class GuardarMetaLiderRequest
 {
-    public int     LiderID        { get; set; }
-    public int     CarteraID      { get; set; }
-    public short   Año            { get; set; }
-    public byte    Mes            { get; set; }
-    public decimal MetaRecaudo    { get; set; }
-    public decimal MetaHonorarios { get; set; }
+    public int     LiderID   { get; set; }
+    public int     CarteraID { get; set; }
+    public short   Año       { get; set; }
+    public byte    Mes       { get; set; }
+    public byte    TipoMeta  { get; set; }   // 0 = Recaudo, 1 = Honorarios
+    public decimal Valor     { get; set; }
 }
 
 public class GuardarMetaAgenteRequest
 {
-    public long    AgenteID       { get; set; }
-    public short   Año            { get; set; }
-    public byte    Mes            { get; set; }
-    public decimal MetaRecaudo    { get; set; }
-    public decimal MetaHonorarios { get; set; }
+    public long    AgenteID { get; set; }
+    public short   Año      { get; set; }
+    public byte    Mes      { get; set; }
+    public byte    TipoMeta { get; set; }   // 0 = Recaudo, 1 = Honorarios
+    public decimal Valor    { get; set; }
 }
 
 public class ResultadoMetaDto

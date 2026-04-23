@@ -6,12 +6,12 @@ using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
-public class CargueMetasService : ICargueMetasService
+public class AsignacionMetasService : IAsignacionMetasService
 {
     private readonly CallCenterDbContext      _callCenter;
     private readonly RecursosHumanosDbContext _rrhh;
 
-    public CargueMetasService(CallCenterDbContext callCenter, RecursosHumanosDbContext rrhh)
+    public AsignacionMetasService(CallCenterDbContext callCenter, RecursosHumanosDbContext rrhh)
     {
         _callCenter = callCenter;
         _rrhh       = rrhh;
@@ -71,8 +71,8 @@ public class CargueMetasService : ICargueMetasService
                     NombreCartera        = lc.Cartera.NombreCartera,
                     CapacidadActual      = asesores.FirstOrDefault(a => a.LiderID == lc.LiderID && a.CarteraID == lc.CarteraID)?.Total ?? 0,
                     CantidadAsignaciones = asignaciones.FirstOrDefault(a => a.LiderID == lc.LiderID && a.CarteraID == lc.CarteraID)?.Total ?? 0,
-                    MetaRecaudo          = meta?.MetaRecaudo,
-                    MetaHonorarios       = meta?.MetaHonorarios,
+                    TipoMeta             = meta?.TipoMeta,
+                    ValorMeta            = meta?.ValorMeta,
                     TieneMeta            = meta is not null,
                 };
             })
@@ -120,13 +120,13 @@ public class CargueMetasService : ICargueMetasService
                 var lc   = lideres.FirstOrDefault(l => l.LiderID == a.LiderID && l.CarteraID == a.CarteraID);
                 return new FilaMetaAgenteDto
                 {
-                    AgenteID       = a.AgenteID,
-                    NombreAgente   = nombres.TryGetValue(a.AgenteID, out var n) ? n : $"Agente {a.AgenteID}",
-                    NombreCartera  = lc?.Cartera.NombreCartera,
-                    NombreLider    = lc?.Lider.Nombre,
-                    MetaRecaudo    = meta?.MetaRecaudo,
-                    MetaHonorarios = meta?.MetaHonorarios,
-                    TieneMeta      = meta is not null,
+                    AgenteID      = a.AgenteID,
+                    NombreAgente  = nombres.TryGetValue(a.AgenteID, out var n) ? n : $"Agente {a.AgenteID}",
+                    NombreCartera = lc?.Cartera.NombreCartera,
+                    NombreLider   = lc?.Lider.Nombre,
+                    TipoMeta      = meta?.TipoMeta,
+                    ValorMeta     = meta?.ValorMeta,
+                    TieneMeta     = meta is not null,
                 };
             })
             .OrderBy(a => a.NombreAgente)
@@ -144,20 +144,20 @@ public class CargueMetasService : ICargueMetasService
         bool actualizado;
         if (existing is not null)
         {
-            existing.MetaRecaudo    = req.MetaRecaudo;
-            existing.MetaHonorarios = req.MetaHonorarios;
+            existing.TipoMeta  = req.TipoMeta;
+            existing.ValorMeta = req.Valor;
             actualizado = true;
         }
         else
         {
             _callCenter.MetaLiderCarteraMes.Add(new MetaLiderCarteraMes
             {
-                LiderID        = req.LiderID,
-                CarteraID      = req.CarteraID,
-                Año            = req.Año,
-                Mes            = req.Mes,
-                MetaRecaudo    = req.MetaRecaudo,
-                MetaHonorarios = req.MetaHonorarios,
+                LiderID   = req.LiderID,
+                CarteraID = req.CarteraID,
+                Año       = req.Año,
+                Mes       = req.Mes,
+                TipoMeta  = req.TipoMeta,
+                ValorMeta = req.Valor,
             });
             actualizado = false;
         }
@@ -179,19 +179,19 @@ public class CargueMetasService : ICargueMetasService
         bool actualizado;
         if (existing is not null)
         {
-            existing.MetaRecaudo    = req.MetaRecaudo;
-            existing.MetaHonorarios = req.MetaHonorarios;
+            existing.TipoMeta  = req.TipoMeta;
+            existing.ValorMeta = req.Valor;
             actualizado = true;
         }
         else
         {
             _callCenter.MetaAgentesMes.Add(new MetaAgenteMes
             {
-                AgenteID       = req.AgenteID,
-                Año            = req.Año,
-                Mes            = req.Mes,
-                MetaRecaudo    = req.MetaRecaudo,
-                MetaHonorarios = req.MetaHonorarios,
+                AgenteID  = req.AgenteID,
+                Año       = req.Año,
+                Mes       = req.Mes,
+                TipoMeta  = req.TipoMeta,
+                ValorMeta = req.Valor,
             });
             actualizado = false;
         }

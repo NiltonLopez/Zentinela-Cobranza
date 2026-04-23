@@ -59,7 +59,7 @@ public class AsignacionesController : ControllerBase
             return BadRequest(new { mensaje = "No hay titulares para confirmar." });
 
         var resultado = await _service.ConfirmarCargueAsync(
-            request.CarteraID, request.LiderID, request.TitularIDs);
+            request.CarteraID, request.LiderID, request.TitularIDs, request.NuevosTitulares);
         return Ok(resultado);
     }
 }

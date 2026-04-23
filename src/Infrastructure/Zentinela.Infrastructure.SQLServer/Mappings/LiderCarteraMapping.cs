@@ -11,7 +11,11 @@ public class LiderCarteraMapping : IEntityTypeConfiguration<LiderCartera>
 {
     public void Configure(EntityTypeBuilder<LiderCartera> builder)
     {
-        builder.ToTable("Lider_Cartera", t => t.ExcludeFromMigrations());
+        builder.ToTable("Lider_Cartera", t =>
+        {
+            t.ExcludeFromMigrations();
+            t.HasTrigger("TR_LiderCartera"); // indica a EF Core que hay triggers → evita OUTPUT clause
+        });
         builder.HasKey(lc => new { lc.LiderID, lc.CarteraID });
         builder.HasOne(lc => lc.Lider)
                .WithMany()

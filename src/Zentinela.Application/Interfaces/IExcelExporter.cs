@@ -11,7 +11,11 @@ public interface IExcelExporter
 
     byte[] GenerarPlantillaAsignaciones();
 
-    List<long> ParsearNumerosDocumento(Stream stream);
+    /// <summary>
+    /// Parsea el Excel de asignaciones y devuelve las filas como pares (NumeroDocumento, Nombre).
+    /// La columna A es NumeroDocumento (obligatoria); la columna B es Nombre (opcional).
+    /// </summary>
+    List<(long NumeroDocumento, string Nombre)> ParsearFilasAsignacion(Stream stream);
 
     byte[] GenerarPlantillaReporte();
 

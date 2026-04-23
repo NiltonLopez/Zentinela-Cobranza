@@ -319,16 +319,18 @@ function ModalCrear({
 
 function TarjetaRelacion({
   relacion,
+  activa,
+  onSeleccionar,
   onEliminar,
 }: {
   relacion: RelacionLiderCartera;
+  activa: boolean;
+  onSeleccionar: () => void;
   onEliminar: (r: RelacionLiderCartera) => void;
 }) {
-  const [activa, setActiva] = useState(false);
-
   return (
     <div
-      onClick={() => setActiva((v) => !v)}
+      onClick={onSeleccionar}
       style={{
         position: 'relative',
         background: 'var(--z-bg-card)',
@@ -400,6 +402,7 @@ function TarjetaRelacion({
 
 export function GestionCarterasPage() {
   const [busqueda, setBusqueda] = useState('');
+  const [tarjetaActiva, setTarjetaActiva] = useState<string | null>(null);
   const [relacionAEliminar, setRelacionAEliminar] = useState<RelacionLiderCartera | null>(null);
   const [mostrarCrear, setMostrarCrear] = useState(false);
   const [errorCrear, setErrorCrear] = useState<string | null>(null);
@@ -425,8 +428,10 @@ export function GestionCarterasPage() {
       setFeedback({ tipo: 'exito', texto: 'Relación eliminada correctamente.' });
       setRelacionAEliminar(null);
     },
-    onError: () => {
-      setFeedback({ tipo: 'error', texto: 'No se pudo eliminar la relación. Intenta de nuevo.' });
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { mensaje?: string } } })
+        ?.response?.data?.mensaje ?? 'No se pudo eliminar la relación. Intenta de nuevo.';
+      setFeedback({ tipo: 'error', texto: msg });
       setRelacionAEliminar(null);
     },
   });
@@ -541,13 +546,18 @@ export function GestionCarterasPage() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
           gap: '12px',
         }}>
-          {relacionesFiltradas.map((r) => (
-            <TarjetaRelacion
-              key={`${r.liderID}-${r.carteraID}`}
-              relacion={r}
-              onEliminar={setRelacionAEliminar}
-            />
-          ))}
+          {relacionesFiltradas.map((r) => {
+            const key = `${r.liderID}-${r.carteraID}`;
+            return (
+              <TarjetaRelacion
+                key={key}
+                relacion={r}
+                activa={tarjetaActiva === key}
+                onSeleccionar={() => setTarjetaActiva(tarjetaActiva === key ? null : key)}
+                onEliminar={(rel) => { setRelacionAEliminar(rel); setTarjetaActiva(null); }}
+              />
+            );
+          })}
         </div>
       )}
 

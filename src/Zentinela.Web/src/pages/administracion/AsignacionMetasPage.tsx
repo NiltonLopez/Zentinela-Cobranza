@@ -6,6 +6,7 @@ import {
   guardarMetaAgente,
 } from '../../api/metasApi';
 import type {
+  TipoMeta,
   FilaMetaLiderCarteraDto,
   FilaMetaAgenteDto,
   GuardarMetaLiderRequest,
@@ -37,22 +38,42 @@ const TD: React.CSSProperties = {
   borderBottom: '1px solid var(--z-border)', whiteSpace: 'nowrap',
 };
 
+// ── Toggle Recaudo / Honorarios ───────────────────────────────────────────────
+
+function ToggleTipo({ value, onChange }: { value: TipoMeta; onChange: (v: TipoMeta) => void }) {
+  return (
+    <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--z-border)', width: 'fit-content' }}>
+      {([0, 1] as TipoMeta[]).map(t => {
+        const active = value === t;
+        return (
+          <button
+            key={t}
+            onClick={() => onChange(t)}
+            style={{
+              padding: '4px 10px', fontSize: 11, fontWeight: active ? 600 : 400,
+              background: active ? (t === 0 ? '#2563eb' : '#7c3aed') : 'transparent',
+              color: active ? '#fff' : 'var(--z-text-muted)',
+              border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            {t === 0 ? 'Recaudo' : 'Honorarios'}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Input numérico en tabla ───────────────────────────────────────────────────
 
-function InputMeta({
-  value, onChange, placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
+function InputMeta({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <input
       type="number"
       min={0}
       value={value}
       onChange={e => onChange(e.target.value)}
-      placeholder={placeholder ?? '0'}
+      placeholder="0"
       style={{
         width: 130, padding: '5px 8px', borderRadius: 6,
         border: '1px solid var(--z-border)',
@@ -63,18 +84,30 @@ function InputMeta({
   );
 }
 
-// ── Badge "Sin meta" / "Con meta" ─────────────────────────────────────────────
+// ── Badge "Sin meta" / tipo de meta ──────────────────────────────────────────
 
-function BadgeMeta({ tieneMeta }: { tieneMeta: boolean }) {
+function BadgeMeta({ tieneMeta, tipo }: { tieneMeta: boolean; tipo: TipoMeta | null }) {
+  if (!tieneMeta) {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+        fontSize: 11, fontWeight: 600,
+        background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa',
+      }}>
+        Sin meta
+      </span>
+    );
+  }
+  const esHon = tipo === 1;
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 99,
       fontSize: 11, fontWeight: 600,
-      background: tieneMeta ? '#f0fdf4' : '#fff7ed',
-      color:      tieneMeta ? '#16a34a' : '#ea580c',
-      border:     `1px solid ${tieneMeta ? '#86efac' : '#fed7aa'}`,
+      background: esHon ? '#f5f3ff' : '#eff6ff',
+      color:      esHon ? '#7c3aed' : '#2563eb',
+      border:     `1px solid ${esHon ? '#c4b5fd' : '#93c5fd'}`,
     }}>
-      {tieneMeta ? 'Con meta' : 'Sin meta'}
+      {esHon ? 'Honorarios' : 'Recaudo'}
     </span>
   );
 }
@@ -88,53 +121,47 @@ function FilaLider({
   año: number; mes: number;
   onGuardado: () => void;
 }) {
-  const [recaudo,    setRecaudo]    = useState(fila.metaRecaudo?.toString() ?? '');
-  const [honorarios, setHonorarios] = useState(fila.metaHonorarios?.toString() ?? '');
-  const [guardado,   setGuardado]   = useState(false);
+  const [tipo,    setTipo]    = useState<TipoMeta>(fila.tipoMeta ?? 0);
+  const [valor,   setValor]   = useState(fila.valorMeta?.toString() ?? '');
+  const [guardado, setGuardado] = useState(false);
 
   const { mutate, isPending } = useMutation({
     mutationFn: (req: GuardarMetaLiderRequest) => guardarMetaLider(req),
     onSuccess: () => { setGuardado(true); onGuardado(); setTimeout(() => setGuardado(false), 2500); },
   });
 
+  const modificado   = tipo !== (fila.tipoMeta ?? 0) || valor !== (fila.valorMeta?.toString() ?? '');
+  const puedeGuardar = Number(valor) > 0;
   const sinMeta      = !fila.tieneMeta;
-  const modificado   = recaudo !== (fila.metaRecaudo?.toString() ?? '') ||
-                       honorarios !== (fila.metaHonorarios?.toString() ?? '');
-  const puedeGuardar = Number(recaudo) > 0 && Number(honorarios) > 0;
-
-  const rowStyle: React.CSSProperties = sinMeta
-    ? { background: '#fff7ed' }   // naranja suave para los sin meta
-    : {};
 
   return (
-    <tr style={rowStyle}>
-      <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>
-        {fila.nombreCartera}
-      </td>
+    <tr style={sinMeta ? { background: '#fff7ed' } : {}}>
+      <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{fila.nombreCartera}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreLider}</td>
       <td style={{ ...TD, textAlign: 'center' }}>{fila.capacidadActual}</td>
       <td style={{ ...TD, textAlign: 'center' }}>{fila.cantidadAsignaciones.toLocaleString('es-CO')}</td>
       <td style={TD}>
-        <InputMeta value={recaudo} onChange={setRecaudo} placeholder="Meta recaudo" />
+        <ToggleTipo value={tipo} onChange={t => { setTipo(t); setValor(''); }} />
       </td>
       <td style={TD}>
-        <InputMeta value={honorarios} onChange={setHonorarios} placeholder="Meta honorarios" />
+        <InputMeta value={valor} onChange={setValor} />
       </td>
       <td style={{ ...TD, textAlign: 'center' }}>
-        <BadgeMeta tieneMeta={fila.tieneMeta && !modificado || guardado} />
+        <BadgeMeta tieneMeta={(fila.tieneMeta && !modificado) || guardado} tipo={guardado ? tipo : fila.tipoMeta} />
       </td>
-      <td style={{ ...TD }}>
+      <td style={TD}>
         <button
           onClick={() => mutate({
             liderID: fila.liderID, carteraID: fila.carteraID,
             año: año as GuardarMetaLiderRequest['año'],
             mes: mes as GuardarMetaLiderRequest['mes'],
-            metaRecaudo: Number(recaudo),
-            metaHonorarios: Number(honorarios),
+            tipoMeta: tipo,
+            valor: Number(valor),
           })}
           disabled={isPending || !puedeGuardar}
           style={{
-            padding: '5px 14px', borderRadius: 6, border: 'none', cursor: puedeGuardar ? 'pointer' : 'not-allowed',
+            padding: '5px 14px', borderRadius: 6, border: 'none',
+            cursor: puedeGuardar ? 'pointer' : 'not-allowed',
             background: guardado ? '#16a34a' : puedeGuardar ? 'var(--z-brand)' : 'var(--z-border)',
             color: puedeGuardar || guardado ? '#fff' : 'var(--z-text-muted)',
             fontSize: 12, fontWeight: 600, transition: 'background 0.2s',
@@ -156,33 +183,32 @@ function FilaAgente({
   año: number; mes: number;
   onGuardado: () => void;
 }) {
-  const [recaudo,    setRecaudo]    = useState(fila.metaRecaudo?.toString() ?? '');
-  const [honorarios, setHonorarios] = useState(fila.metaHonorarios?.toString() ?? '');
-  const [guardado,   setGuardado]   = useState(false);
+  const [tipo,     setTipo]     = useState<TipoMeta>(fila.tipoMeta ?? 0);
+  const [valor,    setValor]    = useState(fila.valorMeta?.toString() ?? '');
+  const [guardado, setGuardado] = useState(false);
 
   const { mutate, isPending } = useMutation({
     mutationFn: (req: GuardarMetaAgenteRequest) => guardarMetaAgente(req),
     onSuccess: () => { setGuardado(true); onGuardado(); setTimeout(() => setGuardado(false), 2500); },
   });
 
+  const modificado   = tipo !== (fila.tipoMeta ?? 0) || valor !== (fila.valorMeta?.toString() ?? '');
+  const puedeGuardar = Number(valor) > 0;
   const sinMeta      = !fila.tieneMeta;
-  const puedeGuardar = Number(recaudo) > 0 && Number(honorarios) > 0;
-
-  const rowStyle: React.CSSProperties = sinMeta ? { background: '#fff7ed' } : {};
 
   return (
-    <tr style={rowStyle}>
+    <tr style={sinMeta ? { background: '#fff7ed' } : {}}>
       <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{fila.nombreAgente}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreCartera ?? '—'}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreLider ?? '—'}</td>
       <td style={TD}>
-        <InputMeta value={recaudo} onChange={setRecaudo} placeholder="Meta recaudo" />
+        <ToggleTipo value={tipo} onChange={t => { setTipo(t); setValor(''); }} />
       </td>
       <td style={TD}>
-        <InputMeta value={honorarios} onChange={setHonorarios} placeholder="Meta honorarios" />
+        <InputMeta value={valor} onChange={setValor} />
       </td>
       <td style={{ ...TD, textAlign: 'center' }}>
-        <BadgeMeta tieneMeta={fila.tieneMeta && !( recaudo !== (fila.metaRecaudo?.toString() ?? '') ) || guardado} />
+        <BadgeMeta tieneMeta={(fila.tieneMeta && !modificado) || guardado} tipo={guardado ? tipo : fila.tipoMeta} />
       </td>
       <td style={TD}>
         <button
@@ -190,12 +216,13 @@ function FilaAgente({
             agenteID: fila.agenteID,
             año: año as GuardarMetaAgenteRequest['año'],
             mes: mes as GuardarMetaAgenteRequest['mes'],
-            metaRecaudo: Number(recaudo),
-            metaHonorarios: Number(honorarios),
+            tipoMeta: tipo,
+            valor: Number(valor),
           })}
           disabled={isPending || !puedeGuardar}
           style={{
-            padding: '5px 14px', borderRadius: 6, border: 'none', cursor: puedeGuardar ? 'pointer' : 'not-allowed',
+            padding: '5px 14px', borderRadius: 6, border: 'none',
+            cursor: puedeGuardar ? 'pointer' : 'not-allowed',
             background: guardado ? '#16a34a' : puedeGuardar ? 'var(--z-brand)' : 'var(--z-border)',
             color: puedeGuardar || guardado ? '#fff' : 'var(--z-text-muted)',
             fontSize: 12, fontWeight: 600, transition: 'background 0.2s',
@@ -212,7 +239,7 @@ function FilaAgente({
 // ║  PÁGINA PRINCIPAL                                                            ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 
-export function CargueMetasPage() {
+export function AsignacionMetasPage() {
   const qc = useQueryClient();
   const [tab,         setTab]        = useState<TabMeta>('lider');
   const [soloSinMeta, setSoloSinMeta] = useState(false);
@@ -274,7 +301,6 @@ export function CargueMetasPage() {
             Gestión de metas de recaudo y honorarios para el ciclo actual.
           </p>
         </div>
-        {/* Badge período — solo lectura */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
@@ -318,7 +344,6 @@ export function CargueMetasPage() {
 
           {/* KPIs + filtros */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            {/* Con meta */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: '#f0fdf4', border: '1px solid #86efac',
@@ -329,7 +354,6 @@ export function CargueMetasPage() {
               </span>
               <span style={{ fontSize: 12, color: '#15803d' }}>con meta</span>
             </div>
-            {/* Sin meta */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: '#fff7ed', border: '1px solid #fed7aa',
@@ -341,7 +365,6 @@ export function CargueMetasPage() {
               <span style={{ fontSize: 12, color: '#c2410c' }}>sin meta</span>
             </div>
 
-            {/* Filtro solo sin meta */}
             <button
               onClick={() => setSoloSinMeta(v => !v)}
               style={{
@@ -354,7 +377,6 @@ export function CargueMetasPage() {
               {soloSinMeta ? '▪ Solo sin meta' : 'Solo sin meta'}
             </button>
 
-            {/* Búsqueda */}
             <input
               type="text"
               placeholder={tab === 'lider' ? 'Buscar cartera o líder…' : 'Buscar agente…'}
@@ -375,14 +397,14 @@ export function CargueMetasPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-                      <th style={{ ...TH }}>Cartera</th>
-                      <th style={{ ...TH }}>Líder</th>
+                      <th style={TH}>Cartera</th>
+                      <th style={TH}>Líder</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Asesores</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Cuentas asignadas</th>
-                      <th style={{ ...TH }}>Meta Recaudo</th>
-                      <th style={{ ...TH }}>Meta Honorarios</th>
+                      <th style={TH}>Tipo de meta</th>
+                      <th style={TH}>Valor meta</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Estado</th>
-                      <th style={{ ...TH }}></th>
+                      <th style={TH}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -395,10 +417,7 @@ export function CargueMetasPage() {
                     ) : filasFiltradas.lider.map(f => (
                       <FilaLider
                         key={`${f.liderID}-${f.carteraID}`}
-                        fila={f}
-                        año={data.año}
-                        mes={data.mes}
-                        onGuardado={refrescar}
+                        fila={f} año={data.año} mes={data.mes} onGuardado={refrescar}
                       />
                     ))}
                   </tbody>
@@ -414,13 +433,13 @@ export function CargueMetasPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-                      <th style={{ ...TH }}>Agente</th>
-                      <th style={{ ...TH }}>Cartera</th>
-                      <th style={{ ...TH }}>Líder</th>
-                      <th style={{ ...TH }}>Meta Recaudo</th>
-                      <th style={{ ...TH }}>Meta Honorarios</th>
+                      <th style={TH}>Agente</th>
+                      <th style={TH}>Cartera</th>
+                      <th style={TH}>Líder</th>
+                      <th style={TH}>Tipo de meta</th>
+                      <th style={TH}>Valor meta</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Estado</th>
-                      <th style={{ ...TH }}></th>
+                      <th style={TH}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -433,10 +452,7 @@ export function CargueMetasPage() {
                     ) : filasFiltradas.agente.map(f => (
                       <FilaAgente
                         key={f.agenteID}
-                        fila={f}
-                        año={data.año}
-                        mes={data.mes}
-                        onGuardado={refrescar}
+                        fila={f} año={data.año} mes={data.mes} onGuardado={refrescar}
                       />
                     ))}
                   </tbody>
@@ -445,7 +461,6 @@ export function CargueMetasPage() {
             </div>
           )}
 
-          {/* Nota informativa */}
           <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>
             Las metas solo pueden establecerse para el ciclo activo (<strong>{labelMes}</strong>).
             Los campos con fondo naranja aún no tienen meta asignada para este mes.

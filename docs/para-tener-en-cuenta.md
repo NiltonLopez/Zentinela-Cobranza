@@ -39,7 +39,7 @@ Hallazgos de la revisión general del proyecto (2026-04-20).
   ```
   En producción solo cambia config, no código.
 
-- [ ] **`AsNoTracking()` inconsistente en `CargueMetasService`**
+- [ ] **`AsNoTracking()` inconsistente en `AsignacionMetasService`**
   Todos los queries de solo lectura deberían tenerlo. Revisar `ObtenerEstadoMesActualAsync` y derivados.
 
 - [ ] **Validación de negocio en el controlador**
@@ -63,11 +63,11 @@ Hallazgos de la revisión general del proyecto (2026-04-20).
   Con 15+ registros en un método, cada módulo nuevo lo modifica. Escalar con extensiones por módulo:
   `services.AddInformesModule()`, `services.AddCargueModule()`, etc.
 
-- [ ] **`CargueMetasService` recibe dos `DbContext` directamente**
+- [ ] **`AsignacionMetasService` recibe dos `DbContext` directamente**
   Viola DIP. Considerar `IAgenteLookupService` para encapsular el acceso a RRHH. Cuando cambie la fuente de nombres, hoy hay que tocar el servicio de metas.
 
 - [ ] **Lógica de período duplicada**
-  `diasDelMes`, `diasTranscurridos` y mes/año actual se calculan por separado en `InformesRecaudoService` y `CargueMetasService`. Candidato a value object `PeriodoMesActual` en Application layer.
+  `diasDelMes`, `diasTranscurridos` y mes/año actual se calculan por separado en `InformesRecaudoService` y `AsignacionMetasService`. Candidato a value object `PeriodoMesActual` en Application layer.
 
 - [ ] **Join en memoria sin documentar en `ObtenerFilasAgenteAsync`**
   El patrón carga en batch y hace join en memoria (correcto, sin N+1), pero sin un comentario que lo explique el próximo dev lo va a "optimizar" rompiéndolo.

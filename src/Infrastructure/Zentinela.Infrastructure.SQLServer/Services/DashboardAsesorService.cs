@@ -210,7 +210,7 @@ public class DashboardAsesorService : IDashboardAsesorService
             FechaActualizacion   = fechaActualizacion,
             TotalRecaudo         = totales?.Recaudo    ?? 0,
             TotalHonorarios      = totales?.Honorarios ?? 0,
-            MetaHonorarios       = meta?.MetaHonorarios ?? 0,
+            MetaHonorarios       = meta?.TipoMeta == 1 ? meta.ValorMeta : 0,
             PorcentajeEfectividad = totalGestiones > 0
                 ? Math.Round((decimal)acuerdosAbonos / totalGestiones, 4)
                 : 0,

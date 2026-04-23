@@ -10,13 +10,16 @@ import { CargandoSpiral } from '../../components/CargandoSpiral';
 type Etapa = 'inicial' | 'preview' | 'resultado';
 
 function colorEstado(estado: EstadoValidacion): string {
-  if (estado === 'NoExiste')   return '#dc2626';
+  if (estado === 'Error')      return '#dc2626';
   if (estado === 'YaAsignado') return '#d97706';
+  if (estado === 'Nuevo')      return '#7c3aed';
   return 'var(--z-text-primary)';
 }
 
 function etiquetaEstado(estado: EstadoValidacion, razon: string | null): string {
-  if (estado === 'Ok') return 'Listo';
+  if (estado === 'Ok')    return 'Listo';
+  if (estado === 'Nuevo') return 'Titular nuevo';
+  if (estado === 'Error') return razon ?? 'Error de validación';
   return razon ?? estado;
 }
 
@@ -30,6 +33,7 @@ export function GestionAsignacionesPage() {
   const [archivoNombre, setArchivoNombre] = useState('');
   const [preview,       setPreview]       = useState<PreviewAsignacionDto | null>(null);
   const [mensajeFinal,  setMensajeFinal]  = useState('');
+  const [carteraLabel,  setCarteraLabel]  = useState('');
   const [errorMensaje,  setErrorMensaje]  = useState('');
 
   // Dropdown opciones Cartera+Líder (reutiliza calificador)
@@ -57,12 +61,15 @@ export function GestionAsignacionesPage() {
     mutationFn: () => {
       const [carteraIDStr, liderIDStr] = seleccion.split('_');
       return confirmarCargue({
-        carteraID:  Number(carteraIDStr),
-        liderID:    Number(liderIDStr),
-        titularIDs: preview!.titularIDsValidos,
+        carteraID:       Number(carteraIDStr),
+        liderID:         Number(liderIDStr),
+        titularIDs:      preview!.titularIDsValidos,
+        nuevosTitulares: preview!.nuevosTitulares,
       });
     },
     onSuccess: (data) => {
+      const opcion = opciones.find(o => `${o.carteraID}_${o.liderID}` === seleccion);
+      setCarteraLabel(opcion?.etiqueta ?? '');
       setMensajeFinal(data.mensaje);
       setEtapa('resultado');
     },
@@ -86,6 +93,7 @@ export function GestionAsignacionesPage() {
     setPreview(null);
     setArchivoNombre('');
     setMensajeFinal('');
+    setCarteraLabel('');
     setErrorMensaje('');
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
   };
@@ -157,10 +165,10 @@ export function GestionAsignacionesPage() {
                 fontSize: '13px', fontWeight: 600, cursor: 'pointer', width: 'fit-content',
               }}
             >
-              Generar plantilla .xlsx
+              Generar Plantilla
             </button>
             <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Llena la columna <strong>NumeroDocumento</strong> con las cédulas de los titulares a asignar.
+              Llena <strong>NumeroDocumento</strong> con la cédula y <strong>Nombre</strong> con el nombre completo. Los titulares que no existan en BD se crearán automáticamente.
             </p>
           </div>
 
@@ -212,6 +220,7 @@ export function GestionAsignacionesPage() {
 
           {/* Conteos */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Verde — existen en BD, listos */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               background: '#f0fdf4', border: '0.5px solid #86efac',
@@ -222,16 +231,32 @@ export function GestionAsignacionesPage() {
               </span>
               <span style={{ fontSize: '13px', color: '#15803d' }}>listos para asignar</span>
             </div>
-            {preview.totalInvalidos > 0 && (
+
+            {/* Amarillo — titulares nuevos que se crearán */}
+            {preview.totalNuevos > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                background: '#fefce8', border: '0.5px solid #fde68a',
+                borderRadius: '8px', padding: '12px 18px',
+              }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: '#b45309' }}>
+                  {preview.totalNuevos}
+                </span>
+                <span style={{ fontSize: '13px', color: '#92400e' }}>nuevos en base de datos</span>
+              </div>
+            )}
+
+            {/* Rojo — errores de validación */}
+            {preview.totalErrores > 0 && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 background: '#fef2f2', border: '0.5px solid #fca5a5',
                 borderRadius: '8px', padding: '12px 18px',
               }}>
                 <span style={{ fontSize: '22px', fontWeight: 700, color: '#dc2626' }}>
-                  {preview.totalInvalidos}
+                  {preview.totalErrores}
                 </span>
-                <span style={{ fontSize: '13px', color: '#b91c1c' }}>con error (no se asignarán)</span>
+                <span style={{ fontSize: '13px', color: '#b91c1c' }}>errores (no se cargarán)</span>
               </div>
             )}
           </div>
@@ -296,16 +321,16 @@ export function GestionAsignacionesPage() {
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
               onClick={() => mutConfirmar.mutate()}
-              disabled={preview.totalValidos === 0}
+              disabled={preview.titularIDsValidos.length === 0}
               style={{
                 padding: '9px 20px', borderRadius: '6px',
-                border: 'none', background: preview.totalValidos > 0 ? 'var(--z-brand)' : 'var(--z-border)',
-                color: preview.totalValidos > 0 ? '#fff' : 'var(--z-text-muted)',
+                border: 'none', background: preview.titularIDsValidos.length > 0 ? 'var(--z-brand)' : 'var(--z-border)',
+                color: preview.titularIDsValidos.length > 0 ? '#fff' : 'var(--z-text-muted)',
                 fontSize: '13px', fontWeight: 600,
-                cursor: preview.totalValidos > 0 ? 'pointer' : 'not-allowed',
+                cursor: preview.titularIDsValidos.length > 0 ? 'pointer' : 'not-allowed',
               }}
             >
-              Reemplazar con {preview.totalValidos} asignacion{preview.totalValidos !== 1 ? 'es' : ''}
+              {(() => { const n = preview.titularIDsValidos.length; return `Reemplazar con ${n} asignacion${n !== 1 ? 'es' : ''}`; })()}
             </button>
             <button
               onClick={handleNuevaCarga}
@@ -335,6 +360,13 @@ export function GestionAsignacionesPage() {
           <p style={{ fontSize: '15px', fontWeight: 600, color: '#15803d' }}>
             Cargue completado
           </p>
+          {carteraLabel && (
+            <p style={{ fontSize: '12px', color: '#15803d', fontWeight: 600,
+              background: '#dcfce7', borderRadius: '6px', padding: '6px 10px',
+              width: 'fit-content' }}>
+              {carteraLabel}
+            </p>
+          )}
           <p style={{ fontSize: '13px', color: '#166534' }}>{mensajeFinal}</p>
           <button
             onClick={handleNuevaCarga}

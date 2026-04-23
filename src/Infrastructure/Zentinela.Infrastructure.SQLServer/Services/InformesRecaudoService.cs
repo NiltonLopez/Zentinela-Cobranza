@@ -54,8 +54,8 @@ public class InformesRecaudoService : IInformesRecaudoService
             .Where(m => m.Año == año && m.Mes == mes && agenteIDs.Contains(m.AgenteID))
             .AsNoTracking()
             .ToListAsync();
-        var metas           = metasRaw.ToDictionary(m => m.AgenteID, m => m.MetaRecaudo);
-        var metasHonorarios = metasRaw.ToDictionary(m => m.AgenteID, m => m.MetaHonorarios);
+        var metas           = metasRaw.ToDictionary(m => m.AgenteID, m => m.TipoMeta == 0 ? m.ValorMeta : 0m);
+        var metasHonorarios = metasRaw.ToDictionary(m => m.AgenteID, m => m.TipoMeta == 1 ? m.ValorMeta : 0m);
 
         // Líder y cartera asociados a cada agente (se toma el mínimo de Cartera_Agente)
         var asignaciones = await _callCenter.CarteraAgentes
@@ -199,8 +199,8 @@ public class InformesRecaudoService : IInformesRecaudoService
 
             var recaudo        = pago?.Recaudo       ?? 0m;
             var honorarios     = pago?.Honorarios    ?? 0m;
-            var metaV          = meta?.MetaRecaudo   ?? 0m;
-            var metaHonorarios = meta?.MetaHonorarios ?? 0m;
+            var metaV          = meta?.TipoMeta == 0 ? meta.ValorMeta : 0m;
+            var metaHonorarios = meta?.TipoMeta == 1 ? meta.ValorMeta : 0m;
             var capacidad      = cap?.Capacidad ?? 0;
 
             var deberiaHoy = diasHabilesDelMes > 0
@@ -369,7 +369,7 @@ public class InformesRecaudoService : IInformesRecaudoService
     ];
 
     private static bool EsDiaHabil(DateOnly d) =>
-        d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday &&
+        d.DayOfWeek is not DayOfWeek.Sunday &&
         !_festivosColombia.Contains(d);
 
     private static (int DiasHabilesDelMes, int DiasHabilesTranscurridos) CalcularDiasHabiles(int año, int mes)

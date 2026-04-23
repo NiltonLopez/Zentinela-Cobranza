@@ -31,21 +31,8 @@ DeberiaHoy = Meta × (diasHabilesTranscurridos / diasHabilesDelMes)
 ```
 
 ### Qué cuenta como día hábil
-- Lunes a viernes
+- Lunes a sábado
 - Que no sea festivo oficial colombiano
-
-### Festivos hardcodeados
-Se hardcodearon los festivos 2024–2027 en `_festivosColombia` (HashSet<DateOnly>) dentro de
-`InformesRecaudoService`. Incluye:
-
-| Tipo | Ejemplos |
-|---|---|
-| Fijos | Año Nuevo, Día del Trabajo, Independencia (Jul 20), Boyacá, Inmaculada, Navidad |
-| Ley Emiliani (traslado al lunes siguiente) | Reyes Magos, San José, San Pedro y San Pablo, Asunción, Día de la Raza, Todos los Santos, Independencia de Cartagena |
-| Semana Santa | Jueves Santo, Viernes Santo |
-| Móviles de Pascua (traslado al lunes siguiente) | Ascensión (+39), Corpus Christi (+60), Sagrado Corazón (+68) |
-
-Fechas de Pascua usadas: 2024-03-31 · 2025-04-20 · 2026-04-05 · 2027-03-28
 
 ### Qué NO cambió
 `ProyeccionCierre` sigue usando días calendario porque es una proyección de la tasa de

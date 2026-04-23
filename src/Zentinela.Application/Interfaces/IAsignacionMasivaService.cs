@@ -12,11 +12,11 @@ public interface IAsignacionMasivaService
         Stream excelStream, int carteraID, int liderID);
 
     /// <summary>
-    /// Inserta los titularIDs en Titular_CarteraAuxiliar y ejecuta
-    /// sp_ProcesarAsignacionCartera para transferirlos a Titular_Cartera.
+    /// Crea los titulares nuevos en Titular, luego inserta todos los IDs en
+    /// Titular_CarteraAuxiliar y ejecuta sp_ProcesarAsignacionCartera.
     /// </summary>
     Task<ResultadoCargueDto> ConfirmarCargueAsync(
-        int carteraID, int liderID, List<long> titularIDs);
+        int carteraID, int liderID, List<long> titularIDs, List<NuevoTitularDto> nuevosTitulares);
 
     /// <summary>Genera la plantilla Excel vacía lista para que el admin la rellene.</summary>
     byte[] GenerarPlantilla();

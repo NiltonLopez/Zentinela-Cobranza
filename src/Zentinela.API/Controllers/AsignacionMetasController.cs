@@ -9,11 +9,11 @@ namespace Zentinela.API.Controllers;
 [ApiController]
 [Route("api/metas")]
 [Authorize(Roles = Roles.Admin)]
-public class CargueMetasController : ControllerBase
+public class AsignacionMetasController : ControllerBase
 {
-    private readonly ICargueMetasService _service;
+    private readonly IAsignacionMetasService _service;
 
-    public CargueMetasController(ICargueMetasService service)
+    public AsignacionMetasController(IAsignacionMetasService service)
     {
         _service = service;
     }
@@ -33,8 +33,8 @@ public class CargueMetasController : ControllerBase
     [HttpPost("guardar-lider")]
     public async Task<IActionResult> GuardarLider([FromBody] GuardarMetaLiderRequest request)
     {
-        if (request.MetaRecaudo <= 0 || request.MetaHonorarios <= 0)
-            return BadRequest(new { mensaje = "MetaRecaudo y MetaHonorarios deben ser mayores a cero." });
+        if (request.Valor <= 0)
+            return BadRequest(new { mensaje = "El valor de la meta debe ser mayor a cero." });
 
         var resultado = await _service.GuardarMetaLiderAsync(request);
         return Ok(resultado);
@@ -44,8 +44,8 @@ public class CargueMetasController : ControllerBase
     [HttpPost("guardar-agente")]
     public async Task<IActionResult> GuardarAgente([FromBody] GuardarMetaAgenteRequest request)
     {
-        if (request.MetaRecaudo <= 0 || request.MetaHonorarios <= 0)
-            return BadRequest(new { mensaje = "MetaRecaudo y MetaHonorarios deben ser mayores a cero." });
+        if (request.Valor <= 0)
+            return BadRequest(new { mensaje = "El valor de la meta debe ser mayor a cero." });
 
         var resultado = await _service.GuardarMetaAgenteAsync(request);
         return Ok(resultado);

@@ -48,12 +48,12 @@ POST /api/metas/guardar-lider       → GuardarMetaLiderRequest → ResultadoMet
 POST /api/metas/guardar-agente      → GuardarMetaAgenteRequest → ResultadoMetaDto
 ```
 
-`CargueMetasService` consulta tres fuentes para construir `EstadoMetasMesDto`:
+`AsignacionMetasService` consulta tres fuentes para construir `EstadoMetasMesDto`:
 - `CallCenterDbContext`: `LiderCarteras`, `CarteraAgentes`, `TitularCarteras`, `MetaAgentesMes`, `MetaLiderCarteraMes`
 - `RecursosHumanosDbContext`: `Empleados` (para nombre completo del agente vía `NumeroDocumento == AgenteID`)
 
 ### Frontend
-- `CargueMetasPage.tsx`: tabla inline con `useQuery` para carga inicial y `useMutation` por fila para guardado.
+- `AsignacionMetasPage.tsx`: tabla inline con `useQuery` para carga inicial y `useMutation` por fila para guardado.
 - Cada `FilaLider` / `FilaAgente` maneja su propio estado local (inputs) desacoplado del query global.
 - `onGuardado` llama `queryClient.invalidateQueries` para refrescar el estado tras guardar.
 

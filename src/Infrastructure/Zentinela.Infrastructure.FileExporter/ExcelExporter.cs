@@ -72,12 +72,12 @@ public class ExcelExporter : IExcelExporter
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("Plantilla");
 
-        // ── Encabezados ───────────────────────────────────────────────────────
-        var encabezados = new[] { ("NumeroDocumento", "Número de documento *"), ("Nombre", "Nombre (referencia)") };
+        // ── Encabezados — nombres exactos de las columnas de BD ──────────────
+        var encabezados = new[] { "NumeroDocumento", "Nombre" };
         for (var i = 0; i < encabezados.Length; i++)
         {
             var celda = ws.Cell(1, i + 1);
-            celda.Value = encabezados[i].Item2;
+            celda.Value = encabezados[i];
             celda.Style.Font.Bold            = true;
             celda.Style.Font.FontColor       = XLColor.White;
             celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
@@ -386,18 +386,20 @@ public class ExcelExporter : IExcelExporter
         return null;
     }
 
-    public List<long> ParsearNumerosDocumento(Stream stream)
+    public List<(long NumeroDocumento, string Nombre)> ParsearFilasAsignacion(Stream stream)
     {
         using var workbook = new XLWorkbook(stream);
         var ws     = workbook.Worksheet(1);
-        var result = new List<long>();
+        var result = new List<(long, string)>();
 
         foreach (var fila in ws.RowsUsed().Skip(1)) // fila 1 = encabezados
         {
             var texto = fila.Cell(1).GetString().Trim();
             if (string.IsNullOrEmpty(texto)) continue;
-            if (long.TryParse(texto, out var numDoc))
-                result.Add(numDoc);
+            if (!long.TryParse(texto, out var numDoc)) continue;
+
+            var nombre = fila.Cell(2).GetString().Trim();
+            result.Add((numDoc, nombre));
         }
 
         return result;

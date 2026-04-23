@@ -2,14 +2,15 @@ export type EstadoFilaReporte =
   | 'Ok'
   | 'NuevoTitular'
   | 'SinNombreParaCrear'
-  | 'AgenteIDInvalido';
+  | 'UsuarioControlNextInvalido';
 
 export interface FilaReporteRaw {
-  titularID?:          number | null;
-  nombre?:             string | null;
-  carteraID?:          number | null; // inyectado desde la UI
-  agenteID?:           number | null;
-  ultimoPerfil?:       string | null;
+  titularID?:            number | null;
+  nombre?:               string | null;
+  carteraID?:            number | null; // inyectado desde la UI
+  usuarioControlNext?:   string | null; // leído del Excel
+  agenteID?:             number | null; // resuelto por lookup
+  ultimoPerfil?:         string | null;
   mejorPerfil?:        string | null;
   fechaMejorPerfil?:   string | null;
   saldoTotal?:         number | null;
@@ -23,11 +24,11 @@ export interface FilaReporteRaw {
 }
 
 export interface FilaValidacionReporteDto {
-  titularID: string;
-  nombre:    string | null;
-  agenteID:  string;
-  estado:    EstadoFilaReporte;
-  razon:     string | null;
+  titularID:          string;
+  nombre:             string | null;
+  usuarioControlNext: string;
+  estado:             EstadoFilaReporte;
+  razon:              string | null;
 }
 
 export interface PreviewReporteDto {

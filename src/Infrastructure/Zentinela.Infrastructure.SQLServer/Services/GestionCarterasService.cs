@@ -137,6 +137,12 @@ public class GestionCarterasService : IGestionCarterasService
             .FirstOrDefaultAsync(lc => lc.LiderID == liderID && lc.CarteraID == carteraID)
             ?? throw new InvalidOperationException("La relación no existe.");
 
+        // Eliminar primero los Titular_Cartera de esta combinación (FK lo exige)
+        // y luego el Lider_Cartera, todo en una sola transacción.
+        await _context.TitularCarteras
+            .Where(tc => tc.LiderID == liderID && tc.CarteraID == carteraID)
+            .ExecuteDeleteAsync();
+
         _context.LiderCarteras.Remove(relacion);
         await _context.SaveChangesAsync();
     }

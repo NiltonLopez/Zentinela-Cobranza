@@ -14,7 +14,7 @@ public class MetaAgenteMesMapping : IEntityTypeConfiguration<MetaAgenteMes>
         builder.Property(m => m.AgenteID).IsRequired();
         builder.Property(m => m.Año).HasColumnName("Anio").IsRequired();
         builder.Property(m => m.Mes).IsRequired();
-        builder.Property(m => m.MetaRecaudo).HasColumnType("decimal(18,2)").IsRequired();
-        builder.Property(m => m.MetaHonorarios).HasColumnType("decimal(18,2)").IsRequired();
+        builder.Property(m => m.TipoMeta).IsRequired();
+        builder.Property(m => m.ValorMeta).HasColumnType("decimal(18,2)").IsRequired();
     }
 }
