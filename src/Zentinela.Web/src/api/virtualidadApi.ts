@@ -9,9 +9,20 @@ import type {
 
 // ── Mensajería ────────────────────────────────────────────────────────────────
 
-export const validarMensajeria = async (archivo: File): Promise<ValidarMensajeriaResponse> => {
+export const generarPlantillaMensajeria = async (): Promise<void> => {
+  const { data } = await api.get('/api/virtualidad/mensajeria/plantilla', { responseType: 'blob' });
+  const url  = URL.createObjectURL(data as Blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = 'plantilla_mensajeria.xlsx';
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+export const validarMensajeria = async (archivo: File, carteraID: number): Promise<ValidarMensajeriaResponse> => {
   const fd = new FormData();
   fd.append('archivo', archivo);
+  fd.append('carteraID', String(carteraID));
   const { data } = await api.post<ValidarMensajeriaResponse>('/api/virtualidad/mensajeria/validar', fd);
   return data;
 };

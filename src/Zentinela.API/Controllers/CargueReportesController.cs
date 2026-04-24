@@ -49,8 +49,8 @@ public class CargueReportesController : ControllerBase
             return BadRequest(new { mensaje = "El archivo no puede estar vacío." });
 
         var ext = Path.GetExtension(archivo.FileName).ToLowerInvariant();
-        if (ext != ".csv" && ext != ".xlsx")
-            return BadRequest(new { mensaje = "El archivo debe ser .csv o .xlsx." });
+        if (ext != ".xlsx")
+            return BadRequest(new { mensaje = "El archivo debe ser .xlsx." });
 
         if (carteraID <= 0)
             return BadRequest(new { mensaje = "Debe seleccionar una cartera." });

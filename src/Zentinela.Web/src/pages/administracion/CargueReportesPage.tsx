@@ -424,7 +424,7 @@ export function CargueReportesPage() {
               }}
             >
               <p style={{ fontSize: '13px', color: archivoNombre ? 'var(--z-brand)' : 'var(--z-text-muted)', marginBottom: '4px' }}>
-                {archivoNombre || 'Haz clic para seleccionar un archivo .csv o .xlsx'}
+                {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
               </p>
               {archivoNombre
                 ? <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>{archivoKB.toFixed(1)} KB</p>
@@ -436,7 +436,7 @@ export function CargueReportesPage() {
             <input
               ref={inputArchivoRef}
               type="file"
-              accept=".csv,.xlsx"
+              accept=".xlsx"
               disabled={carteraID === 0}
               onChange={handleSeleccionarArchivo}
               style={{ display: 'none' }}

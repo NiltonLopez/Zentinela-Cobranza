@@ -8,15 +8,15 @@ public class MensajeriaEnviadaMapping : IEntityTypeConfiguration<MensajeriaEnvia
 {
     public void Configure(EntityTypeBuilder<MensajeriaEnviada> builder)
     {
-        builder.ToTable("MensajeriaEnviada", t => t.ExcludeFromMigrations());
+        builder.ToTable("MensajesEnviados", t => t.ExcludeFromMigrations());
+        builder.HasNoKey();
 
-        builder.HasKey(m => m.MensajeriaID);
-        builder.Property(m => m.MensajeriaID).UseIdentityColumn();
         builder.Property(m => m.NumeroDocumento).IsRequired();
         builder.Property(m => m.NumeroTelefono).HasMaxLength(20).IsRequired();
-        builder.Property(m => m.NombreCartera).HasMaxLength(100).IsRequired();
         builder.Property(m => m.CarteraID);
+        builder.Property(m => m.NombreCartera).HasMaxLength(100).IsRequired();
         builder.Property(m => m.FechaEnvio).HasColumnType("date").IsRequired();
+        builder.Property(m => m.Canal).HasMaxLength(20).IsRequired();
         builder.Property(m => m.FechaCargue)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("GETDATE()")

@@ -14,54 +14,94 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
 
     public VirtualidadMensajeriaService(CallCenterDbContext db) => _db = db;
 
+    // ── Plantilla ─────────────────────────────────────────────────────────────
+
+    public byte[] GenerarPlantilla()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Mensajería");
+
+        // La cartera ya no va en el archivo — se selecciona en la UI
+        var columnas = new[] { "NumeroDocumento", "NumeroTelefono", "FechaEnvio" };
+
+        for (int i = 0; i < columnas.Length; i++)
+        {
+            var c = ws.Cell(1, i + 1);
+            c.Value = columnas[i];
+            c.Style.Font.Bold            = true;
+            c.Style.Font.FontColor       = XLColor.White;
+            c.Style.Fill.BackgroundColor = XLColor.FromHtml("#7c3aed");
+            c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        var ej = new object[] { 1020304050L, "3001234567", "2026-04-24" };
+        for (int i = 0; i < ej.Length; i++)
+        {
+            var c = ws.Cell(2, i + 1);
+            c.Value = ej[i].ToString();
+            c.Style.Font.FontColor = XLColor.Gray;
+        }
+
+        ws.Columns().AdjustToContents();
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
     // ── Validación ────────────────────────────────────────────────────────────
 
-    public async Task<ValidarMensajeriaResponse> ValidarExcelAsync(Stream excelStream)
+    public async Task<ValidarMensajeriaResponse> ValidarExcelAsync(Stream excelStream, int carteraID)
     {
+        // Resolver nombre de cartera desde el ID seleccionado en la UI
+        var cartera = await _db.Carteras
+            .Where(c => c.ID == carteraID)
+            .Select(c => new { c.ID, c.NombreCartera })
+            .FirstOrDefaultAsync();
+
+        if (cartera is null)
+            return new ValidarMensajeriaResponse
+            {
+                TotalErrores = 1,
+                Preview = [new FilaMensajeriaDto
+                {
+                    EsValida = false,
+                    ErrorMensaje = $"La cartera seleccionada (ID {carteraID}) no existe en el sistema.",
+                }],
+            };
+
         var filas = ParsearExcel(excelStream);
         if (filas.Count == 0)
             return new ValidarMensajeriaResponse();
 
-        // Resolver CarteraID por NombreCartera (batch)
-        var nombres = filas.Select(f => f.NombreCartera.Trim()).Distinct().ToList();
-        var carteras = await _db.Carteras
-            .Where(c => nombres.Contains(c.NombreCartera))
-            .Select(c => new { c.NombreCartera, c.ID })
-            .ToDictionaryAsync(c => c.NombreCartera, c => c.ID, StringComparer.OrdinalIgnoreCase);
-
+        // Inyectar cartera en todas las filas (viene del selector de la UI)
         foreach (var f in filas)
         {
-            if (carteras.TryGetValue(f.NombreCartera.Trim(), out var id))
-                f.CarteraID = id;
-            else
-            {
-                f.EsValida = false;
-                f.ErrorMensaje = $"Cartera '{f.NombreCartera}' no encontrada en el sistema.";
-            }
+            f.CarteraID    = cartera.ID;
+            f.NombreCartera = cartera.NombreCartera;
         }
 
         var validas = filas.Where(f => f.EsValida).ToList();
 
-        // Alertas: >4 mensajes a la misma línea en esta carga + histórico
+        // Alertas: >4 mensajes a la misma línea en esta carga + histórico de la cartera
         var telefonos = validas.Select(f => f.NumeroTelefono).Distinct().ToList();
         var historico = await _db.MensajeriaEnviadas
-            .Where(m => telefonos.Contains(m.NumeroTelefono))
-            .GroupBy(m => new { m.NumeroTelefono, m.NombreCartera })
-            .Select(g => new { g.Key.NumeroTelefono, g.Key.NombreCartera, Total = g.Count() })
+            .Where(m => m.CarteraID == carteraID && telefonos.Contains(m.NumeroTelefono))
+            .GroupBy(m => m.NumeroTelefono)
+            .Select(g => new { NumeroTelefono = g.Key, Total = g.Count() })
             .ToListAsync();
 
         var conteoActual = validas
-            .GroupBy(f => new { f.NumeroTelefono, f.NombreCartera })
-            .Select(g => new { g.Key.NumeroTelefono, g.Key.NombreCartera, Total = g.Count() })
+            .GroupBy(f => f.NumeroTelefono)
+            .Select(g => new { NumeroTelefono = g.Key, Total = g.Count() })
             .ToList();
 
         var alertas = conteoActual
             .Select(c => new AlertaMensajeriaDto
             {
                 NumeroTelefono = c.NumeroTelefono,
-                NombreCartera  = c.NombreCartera,
+                NombreCartera  = cartera.NombreCartera,
                 TotalMensajes  = c.Total + (historico
-                    .FirstOrDefault(h => h.NumeroTelefono == c.NumeroTelefono && h.NombreCartera == c.NombreCartera)
+                    .FirstOrDefault(h => h.NumeroTelefono == c.NumeroTelefono)
                     ?.Total ?? 0),
             })
             .Where(a => a.TotalMensajes > 4)
@@ -86,9 +126,10 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
         {
             NumeroDocumento = f.NumeroDocumento,
             NumeroTelefono  = f.NumeroTelefono,
-            NombreCartera   = f.NombreCartera,
             CarteraID       = f.CarteraID,
+            NombreCartera   = f.NombreCartera,
             FechaEnvio      = f.FechaEnvio,
+            Canal           = "SMS",
         }).ToList();
 
         _db.MensajeriaEnviadas.AddRange(entidades);
@@ -156,10 +197,10 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
             return 0;
         }
 
+        // NombreCartera ya no va en el archivo — se inyecta desde el selector de la UI
         int iDoc   = Get("numerodocumento", "documento", "cedula", "identificacion", "titularid");
         int iTel   = Get("numerotelefono", "telefono", "celular");
-        int iCart  = Get("nombrecartera", "cartera", "nombredecartera");
-        int iFecha = Get("fechaenvio", "fecha", "fechadeenvio", "fechaenvio");
+        int iFecha = Get("fechaenvio", "fecha", "fechadeenvio");
 
         foreach (var fila in todasFilas.Skip(1))
         {
@@ -178,7 +219,6 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
             else dto.NumeroDocumento = doc;
 
             dto.NumeroTelefono = Cel(iTel);
-            dto.NombreCartera  = Cel(iCart);
 
             if (!DateOnly.TryParse(Cel(iFecha), CultureInfo.InvariantCulture, out var fecha)
                 && !DateOnly.TryParseExact(Cel(iFecha), "dd/MM/yyyy", null, DateTimeStyles.None, out fecha))
@@ -189,7 +229,6 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
             else dto.FechaEnvio = fecha;
 
             if (string.IsNullOrWhiteSpace(dto.NumeroTelefono)) { dto.EsValida = false; dto.ErrorMensaje ??= "NumeroTelefono vacío."; }
-            if (string.IsNullOrWhiteSpace(dto.NombreCartera))  { dto.EsValida = false; dto.ErrorMensaje ??= "NombreCartera vacío."; }
 
             resultado.Add(dto);
         }

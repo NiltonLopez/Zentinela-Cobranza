@@ -4,7 +4,9 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, CartesianGrid,
 } from 'recharts';
+import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
 import {
+  generarPlantillaMensajeria,
   validarMensajeria, confirmarMensajeria, getInformeMensajeria,
   validarIVRPreEnvio, confirmarIVRPreEnvio,
   validarIVRPostEnvio, confirmarIVRPostEnvio, getInformeIVR,
@@ -302,13 +304,37 @@ function BtnSecondary({ children, onClick }: { children: React.ReactNode; onClic
 // ── Tab Mensajería ────────────────────────────────────────────────────────────
 
 function TabMensajeria() {
-  const [etapa,   setEtapa]   = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [preview, setPreview] = useState<ValidarMensajeriaResponse | null>(null);
-  const [desde,   setDesde]   = useState(HACE30);
-  const [hasta,   setHasta]   = useState(HOY);
+  const [etapa,              setEtapa]              = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [seleccion,          setSeleccion]          = useState('');   // "carteraID_liderID"
+  const [archivoNombre,      setArchivoNombre]      = useState('');
+  const [archivoKB,          setArchivoKB]          = useState(0);
+  const [preview,            setPreview]            = useState<ValidarMensajeriaResponse | null>(null);
+  const [desde,              setDesde]              = useState(HACE30);
+  const [hasta,              setHasta]              = useState(HOY);
+  const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const validar   = useMutation({ mutationFn: validarMensajeria,                                       onSuccess: r => { setPreview(r); setEtapa('preview'); } });
+  const carteraID = seleccion ? Number(seleccion.split('_')[0]) : 0;
+
+  const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
+    queryKey: ['calificador-opciones'],
+    queryFn:  obtenerOpcionesCalificador,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const validar   = useMutation({
+    mutationFn: (archivo: File) => validarMensajeria(archivo, carteraID),
+    onSuccess: r => { setPreview(r); setEtapa('preview'); },
+  });
   const confirmar = useMutation({ mutationFn: (f: FilaMensajeria[]) => confirmarMensajeria(f),          onSuccess: () => setEtapa('exito') });
+
+  const reiniciar = () => {
+    setEtapa('carga');
+    setPreview(null);
+    setArchivoNombre('');
+    setArchivoKB(0);
+    if (inputRef.current) inputRef.current.value = '';
+  };
 
   const { data: informe, refetch } = useQuery({
     queryKey: ['informe-mensajeria', desde, hasta],
@@ -330,9 +356,125 @@ function TabMensajeria() {
 
       {etapa === 'carga' && (
         <>
-          <DropZone onFile={f => validar.mutate(f)} label="Subir Excel de mensajería (.xlsx)" />
-          {validar.isPending && <LoadingRow label="Validando archivo…" />}
-          {validar.isError   && <ErrorPanel mensaje="Error al validar el archivo." />}
+          {/* Paso 1 — Seleccionar cartera */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Paso 1 — Selecciona la cartera
+            </p>
+            {cargandoOpciones ? (
+              <p style={{ fontSize: 13, color: C.gray }}>Cargando carteras…</p>
+            ) : (
+              <select
+                value={seleccion}
+                onChange={e => { setSeleccion(e.target.value); setArchivoNombre(''); setArchivoKB(0); }}
+                style={{
+                  padding: '8px 10px', fontSize: 13, borderRadius: 7,
+                  border: '1px solid var(--z-border)', background: 'var(--z-bg-page)',
+                  color: seleccion ? 'var(--z-text-primary)' : C.gray,
+                  outline: 'none', cursor: 'pointer', maxWidth: 420,
+                }}
+              >
+                <option value="">— Selecciona cartera y líder —</option>
+                {opciones.map(o => (
+                  <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
+                    {o.etiqueta}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Paso 2 — Plantilla */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Paso 2 — Descarga la plantilla
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                onClick={async () => { setGenerandoPlantilla(true); await generarPlantillaMensajeria(); setGenerandoPlantilla(false); }}
+                disabled={generandoPlantilla}
+                style={{
+                  padding: '8px 16px', borderRadius: 7,
+                  border: `1px solid ${C.mensajes}`,
+                  background: generandoPlantilla ? 'var(--z-border)' : 'transparent',
+                  color: generandoPlantilla ? C.gray : C.mensajes,
+                  fontSize: 13, fontWeight: 600,
+                  cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {generandoPlantilla ? 'Generando…' : 'Generar Plantilla'}
+              </button>
+              <span style={{ fontSize: 12, color: C.gray }}>
+                Columnas: <strong>NumeroDocumento</strong>, <strong>NumeroTelefono</strong>, <strong>FechaEnvio</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Paso 3 — Subir archivo */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Paso 3 — Sube el archivo completado
+            </p>
+            <div
+              onClick={() => seleccion && inputRef.current?.click()}
+              style={{
+                border: `1.5px dashed ${archivoNombre ? C.mensajes : 'var(--z-border)'}`,
+                borderRadius: 10, padding: '28px 32px', textAlign: 'center',
+                cursor: seleccion ? 'pointer' : 'not-allowed',
+                background: archivoNombre ? '#f5f3ff' : 'transparent',
+                opacity: seleccion ? 1 : 0.5,
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.6 }}>↑</div>
+              <p style={{ fontSize: 13, color: archivoNombre ? C.mensajes : C.gray, fontWeight: 600, marginBottom: 4 }}>
+                {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
+              </p>
+              {archivoNombre
+                ? <p style={{ fontSize: 11, color: C.gray }}>{archivoKB.toFixed(1)} KB</p>
+                : <p style={{ fontSize: 11, color: C.gray, opacity: 0.7 }}>Máximo 50 MB</p>
+              }
+            </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".xlsx"
+              disabled={!seleccion}
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setArchivoNombre(f.name);
+                setArchivoKB(f.size / 1024);
+              }}
+            />
+            {archivoNombre && (
+              <button
+                onClick={() => { setArchivoNombre(''); setArchivoKB(0); if (inputRef.current) inputRef.current.value = ''; }}
+                style={{ background: 'none', border: 'none', fontSize: 11, color: C.gray, cursor: 'pointer', padding: 0, width: 'fit-content' }}
+              >
+                × Quitar archivo
+              </button>
+            )}
+            {!seleccion && (
+              <p style={{ fontSize: 12, color: C.gray }}>Selecciona primero la cartera para habilitar la carga.</p>
+            )}
+          </div>
+
+          {validar.isError && <ErrorPanel mensaje="Error al validar el archivo." />}
+
+          <div>
+            <BtnPrimary
+              color={C.mensajes}
+              disabled={!seleccion || !archivoNombre || validar.isPending}
+              onClick={() => {
+                const f = inputRef.current?.files?.[0];
+                if (f) validar.mutate(f);
+              }}
+            >
+              {validar.isPending ? 'Validando…' : 'Validar archivo'}
+            </BtnPrimary>
+          </div>
         </>
       )}
 
@@ -382,14 +524,13 @@ function TabMensajeria() {
               onClick={() => confirmar.mutate(preview.filasValidas)}>
               Confirmar {preview.totalValidas} registro(s)
             </BtnPrimary>
-            <BtnSecondary onClick={() => setEtapa('carga')}>Cancelar</BtnSecondary>
+            <BtnSecondary onClick={reiniciar}>Cancelar</BtnSecondary>
           </div>
         </>
       )}
 
       {etapa === 'exito' && (
-        <SuccessBanner mensaje="Mensajes registrados correctamente."
-          onNuevaCarga={() => { setEtapa('carga'); setPreview(null); }} />
+        <SuccessBanner mensaje="Mensajes registrados correctamente." onNuevaCarga={reiniciar} />
       )}
 
       {/* Sección informe */}

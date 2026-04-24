@@ -4,7 +4,8 @@ namespace Zentinela.Application.Interfaces;
 
 public interface IVirtualidadMensajeriaService
 {
-    Task<ValidarMensajeriaResponse> ValidarExcelAsync(Stream excelStream);
+    byte[]                          GenerarPlantilla();
+    Task<ValidarMensajeriaResponse> ValidarExcelAsync(Stream excelStream, int carteraID);
     Task<int>                       ConfirmarAsync(List<FilaMensajeriaDto> filas);
     Task<InformeMensajeriaDto>      GetInformeAsync(DateOnly desde, DateOnly hasta);
 }
