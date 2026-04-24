@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02  
+> Generado: 2026-04-02 — Actualizado: 2026-04-24  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 76 | Vistas: 32 | Stored Procedures: 21
@@ -94,45 +94,48 @@ Codeudores vinculados a titulares.
 | TitularRelacionado | bigint | SI | — | Titular |
 
 ### UltimoEstadoTitular
-Estado actual de cada titular por cartera (snapshot más reciente de gestión).
+Estado actual de cada titular por cartera (snapshot más reciente de gestión).  
+**PK real:** `(TitularID, CarteraID)` — AgenteID es campo actualizable, no parte de la clave.  
+Poblada por Zentinela vía `CargueReporteService` (SqlBulkCopy + MERGE). Ver ADR-011.  
+⚠️ `FechaMejorPerfil` eliminada el 2026-04-24 (campo sin valor operativo — ver ADR-011).
 
-| Columna | Tipo | Nullable | PK | FK → Tabla |
-|---------|------|----------|----|------------|
-| TitularID | bigint | NO | SI | — |
-| CarteraID | int | NO | SI | — |
-| AgenteID | int | NO | — | — |
-| UltimoPerfil | varchar(50) | SI | — | — |
-| MejorPerfil | varchar(50) | SI | — | — |
-| FechaMejorPerfil | date | SI | — | — |
-| SaldoTotal | money | SI | — | — |
-| NumeroMarcado | varchar(10) | SI | — | — |
-| Rotacion | int | SI | — | — |
-| FechaUltimaGestion | date | SI | — | — |
-| FechaPromesa | date | SI | — | — |
-| ValorPromesa | money | SI | — | — |
-| MotivoNoPago | varchar(100) | SI | — | — |
-| FechaActualizacion | datetime | NO | — | — |
+| Columna | Tipo | Nullable | PK | Notas |
+|---------|------|----------|----|-------|
+| TitularID | bigint | NO | SI | FK → Titular |
+| CarteraID | int | NO | SI | FK → Cartera |
+| AgenteID | int | NO | — | Actualizable via MERGE |
+| UltimoPerfil | varchar(50) | SI | — | |
+| MejorPerfil | varchar(50) | SI | — | |
+| SaldoTotal | money | SI | — | |
+| NumeroMarcado | varchar(10) | SI | — | Solo celulares colombianos (10 dígitos, inicia en 3) |
+| Rotacion | int | SI | — | Contador de gestiones |
+| FechaUltimaGestion | date | SI | — | |
+| FechaPromesa | date | SI | — | |
+| ValorPromesa | money | SI | — | |
+| MotivoNoPago | varchar(100) | SI | — | |
+| FechaActualizacion | datetime | NO | — | Timestamp del último cargue en Zentinela (DateTime.Now) |
 
 ### HistoricoEstadoTitular
-Historial completo de estados y gestiones por titular.
+Historial de estados de gestión por titular, acumulado con cada cargue de reportes.  
+**Clave semántica:** `(TitularID, CarteraID, AgenteID, Rotacion)` — una fila por gestión única. Ver ADR-012.  
+⚠️ `FechaMejorPerfil` eliminada el 2026-04-24.  
+✅ `FechaActualizacion` añadida el 2026-04-24 (requiere `ALTER TABLE ... ADD FechaActualizacion DATETIME NOT NULL DEFAULT GETDATE()`).
 
-> **Estado (Abril 2026):** Tabla vacía — el ETL aún no la ha poblado. Todos los servicios de métricas utilizan `UltimoEstadoTitular` como fuente real de gestiones hasta que el ETL comience a escribir en esta tabla.
-
-| Columna | Tipo | Nullable | PK | FK → Tabla |
-|---------|------|----------|----|------------|
-| TitularID | bigint | NO | — | — |
-| CarteraID | int | NO | — | — |
-| AgenteID | int | NO | — | — |
-| UltimoPerfil | varchar(50) | SI | — | — |
-| MejorPerfil | varchar(50) | SI | — | — |
-| FechaMejorPerfil | date | SI | — | — |
-| SaldoTotal | money | SI | — | — |
-| NumeroMarcado | varchar(10) | SI | — | — |
-| Rotacion | int | SI | — | — |
-| FechaUltimaGestion | date | SI | — | — |
-| FechaPromesa | date | SI | — | — |
-| ValorPromesa | money | SI | — | — |
-| MotivoNoPago | varchar(100) | SI | — | — |
+| Columna | Tipo | Nullable | PK | Notas |
+|---------|------|----------|----|-------|
+| TitularID | bigint | NO | — | |
+| CarteraID | int | NO | — | |
+| AgenteID | int | NO | — | |
+| UltimoPerfil | varchar(50) | SI | — | |
+| MejorPerfil | varchar(50) | SI | — | |
+| SaldoTotal | money | SI | — | |
+| NumeroMarcado | varchar(10) | SI | — | |
+| Rotacion | int | SI | — | Discriminador de unicidad histórica |
+| FechaUltimaGestion | date | SI | — | |
+| FechaPromesa | date | SI | — | |
+| ValorPromesa | money | SI | — | |
+| MotivoNoPago | varchar(100) | SI | — | |
+| FechaActualizacion | datetime | NO | — | Timestamp del cargue en Zentinela — UPDATE si misma Rotacion, INSERT si nueva |
 
 ### PORTAFOLIO
 Tabla de portafolio completo con datos de cliente, financiacion y contacto (importada desde fuente externa).
