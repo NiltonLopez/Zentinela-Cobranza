@@ -5,5 +5,5 @@ namespace Zentinela.Application.Interfaces;
 public interface IDashboardAsesorService
 {
     Task<DashboardAsesorDto>    ObtenerDashboardAsync(long numeroDocumento);
-    Task<List<PagoAsesorDto>>   ObtenerPagosDetalleAsync(int agenteID);
+    Task<List<PagoAsesorDto>>   ObtenerPagosDetalleAsync(int agenteID, DateOnly? fechaDesde, DateOnly? fechaHasta);
 }

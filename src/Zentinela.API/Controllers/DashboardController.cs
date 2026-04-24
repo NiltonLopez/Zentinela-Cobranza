@@ -45,11 +45,13 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// Detalle completo de pagos confirmados del asesor autenticado.
+    /// Detalle de pagos confirmados del asesor autenticado, con filtro de fechas opcional.
     /// </summary>
     [HttpGet("asesor/pagos")]
     [Authorize(Roles = Roles.Asesor)]
-    public async Task<IActionResult> ObtenerPagosAsesor()
+    public async Task<IActionResult> ObtenerPagosAsesor(
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta)
     {
         var numDocClaim = User.FindFirst("numeroDocumento")?.Value;
         if (!long.TryParse(numDocClaim, out var numeroDocumento) || numeroDocumento == 0)
@@ -57,7 +59,7 @@ public class DashboardController : ControllerBase
 
         try
         {
-            var resultado = await _asesorService.ObtenerPagosDetalleAsync((int)numeroDocumento);
+            var resultado = await _asesorService.ObtenerPagosDetalleAsync((int)numeroDocumento, fechaDesde, fechaHasta);
             return Ok(resultado);
         }
         catch (Exception ex)
@@ -107,5 +109,27 @@ public class DashboardController : ControllerBase
     {
         var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta);
         return Ok(resultado);
+    }
+
+    /// <summary>
+    /// Detalle de todos los pagos confirmados en la empresa con filtros opcionales.
+    /// </summary>
+    [HttpGet("director/pagos")]
+    [Authorize(Roles = $"{Roles.Director},{Roles.Admin}")]
+    public async Task<IActionResult> ObtenerPagosDirector(
+        [FromQuery] int?      liderID,
+        [FromQuery] int?      carteraID,
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta)
+    {
+        try
+        {
+            var resultado = await _directorService.ObtenerPagosAsync(liderID, carteraID, fechaDesde, fechaHasta);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { mensaje = $"Error al cargar los pagos: {ex.Message}" });
+        }
     }
 }

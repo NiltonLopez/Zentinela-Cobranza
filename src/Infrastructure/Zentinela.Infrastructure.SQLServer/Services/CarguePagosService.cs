@@ -174,6 +174,13 @@ public class CarguePagosService : ICarguePagosService
         return pagos.Count;
     }
 
+    // ── Última actualización ──────────────────────────────────────────────────
+
+    public async Task<DateTime?> ObtenerUltimaActualizacionAsync(int carteraID) =>
+        await _context.Pagos
+            .Where(p => p.CarteraID == carteraID)
+            .MaxAsync(p => (DateTime?)p.FechaRegistro);
+
     // ── Plantilla ─────────────────────────────────────────────────────────────
 
     public byte[] GenerarPlantilla()

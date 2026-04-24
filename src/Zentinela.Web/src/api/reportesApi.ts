@@ -30,3 +30,10 @@ export const confirmarCargueReporte = async (
   const response = await api.post<ResultadoReporteDto>('/api/reportes/confirmar', request);
   return response.data;
 };
+
+export const obtenerUltimaActualizacion = async (
+  carteraID: number,
+): Promise<{ fechaActualizacion: string | null }> => {
+  const response = await api.get(`/api/reportes/ultima-actualizacion/${carteraID}`);
+  return response.data;
+};

@@ -12,11 +12,18 @@ public interface ICargueReporteService
     Task<PreviewReporteDto> ValidarArchivoAsync(Stream archivoStream, int carteraID, string extension);
 
     /// <summary>
-    /// Carga las filas válidas en ReporteEstadoAuxiliar y ejecuta:
-    /// sp_ProcesarUltimoEstado (titular nuevo + UPSERT) y sp_ProcesarHistoricoEstado (INSERT append).
+    /// SqlBulkCopy a tabla temporal → MERGE a UltimoEstadoTitular (UPSERT)
+    /// + INSERT a HistoricoEstadoTitular (append donde no exista la PK).
+    /// Todo en una transacción. Soporta 900K+ filas.
     /// </summary>
     Task<ResultadoReporteDto> ConfirmarCargueAsync(List<FilaReporteRaw> filasValidas);
 
     /// <summary>Genera la plantilla Excel con los campos del reporte (sin CarteraID — viene de la UI).</summary>
     byte[] GenerarPlantilla();
+
+    /// <summary>
+    /// Devuelve la fecha del último registro procesado en UltimoEstadoTitular para la cartera.
+    /// Null si la cartera no tiene registros aún.
+    /// </summary>
+    Task<DateTime?> ObtenerUltimaActualizacionAsync(int carteraID);
 }

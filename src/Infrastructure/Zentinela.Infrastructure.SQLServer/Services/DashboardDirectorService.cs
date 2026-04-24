@@ -267,4 +267,53 @@ public class DashboardDirectorService : IDashboardDirectorService
             .OrderByDescending(f => f.TotalGestiones)
             .ToList();
     }
+
+    // ── Pagos confirmados (vista director) ────────────────────────────────────
+
+    public async Task<List<PagoDirectorDto>> ObtenerPagosAsync(
+        int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta)
+    {
+        var query = _callCenter.Pagos.AsQueryable();
+
+        if (liderID.HasValue)    query = query.Where(p => p.LiderID   == liderID.Value);
+        if (carteraID.HasValue)  query = query.Where(p => p.CarteraID == carteraID.Value);
+        if (fechaDesde.HasValue) query = query.Where(p => p.FechaPago >= fechaDesde.Value);
+        if (fechaHasta.HasValue) query = query.Where(p => p.FechaPago <= fechaHasta.Value);
+
+        var pagos = await query
+            .Join(_callCenter.Carteras,
+                  p => p.CarteraID, c => c.ID,
+                  (p, c) => new { p, NombreCartera = c.NombreCartera })
+            .Join(_callCenter.Lideres,
+                  x => x.p.LiderID, l => l.ID,
+                  (x, l) => new { x.p, x.NombreCartera, NombreLider = l.Nombre })
+            .OrderByDescending(x => x.p.FechaRegistro)
+            .AsNoTracking()
+            .ToListAsync();
+
+        // Nombres de asesores desde DBRecursosHumanos
+        var agenteIDs = pagos.Select(x => x.p.AgenteControlID).Distinct().ToList();
+        var empleados = await _rrhh.Empleados
+            .Where(e => agenteIDs.Contains(e.NumeroDocumento))
+            .AsNoTracking()
+            .ToListAsync();
+        var nombrePorAgente = empleados.ToDictionary(
+            e => e.NumeroDocumento,
+            e => $"{e.Nombre} {e.Apellidos}".Trim());
+
+        return pagos.Select(x => new PagoDirectorDto
+        {
+            PagoID        = x.p.PagoID,
+            CedulaTitular = x.p.CedulaTitular,
+            NombreCliente = x.p.NombreCliente,
+            ValorPagado   = x.p.ValorPagado,
+            FechaPago     = x.p.FechaPago,
+            Honorarios    = x.p.Honorarios,
+            NombreCartera = x.NombreCartera,
+            NombreLider   = x.NombreLider,
+            NombreAsesor  = nombrePorAgente.TryGetValue(x.p.AgenteControlID, out var nombre)
+                            ? nombre : $"Agente {x.p.AgenteControlID}",
+            FechaRegistro = x.p.FechaRegistro,
+        }).ToList();
+    }
 }

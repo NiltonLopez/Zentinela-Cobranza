@@ -5,6 +5,7 @@ import type {
   DashboardDirectorDto,
   LiderDropdownDto,
   CarteraDropdownDto,
+  PagoDirectorDto,
 } from '../types/dashboard';
 
 // ── Asesor ────────────────────────────────────────────────────────────────────
@@ -14,8 +15,14 @@ export const obtenerDashboardAsesor = async (): Promise<DashboardAsesorDto> => {
   return response.data;
 };
 
-export const obtenerPagosAsesor = async (): Promise<PagoAsesorDto[]> => {
-  const response = await api.get<PagoAsesorDto[]>('/api/dashboard/asesor/pagos');
+export const obtenerPagosAsesor = async (
+  fechaDesde?: string,
+  fechaHasta?: string,
+): Promise<PagoAsesorDto[]> => {
+  const params: Record<string, string> = {};
+  if (fechaDesde) params.fechaDesde = fechaDesde;
+  if (fechaHasta) params.fechaHasta = fechaHasta;
+  const response = await api.get<PagoAsesorDto[]>('/api/dashboard/asesor/pagos', { params });
   return response.data;
 };
 
@@ -43,5 +50,20 @@ export const obtenerDashboardDirector = async (
   if (fechaDesde)         params.fechaDesde = fechaDesde;
   if (fechaHasta)         params.fechaHasta = fechaHasta;
   const response = await api.get<DashboardDirectorDto>('/api/dashboard/director', { params });
+  return response.data;
+};
+
+export const obtenerPagosDirector = async (
+  liderID?: number | null,
+  carteraID?: number | null,
+  fechaDesde?: string,
+  fechaHasta?: string,
+): Promise<PagoDirectorDto[]> => {
+  const params: Record<string, string> = {};
+  if (liderID != null)    params.liderID    = String(liderID);
+  if (carteraID != null)  params.carteraID  = String(carteraID);
+  if (fechaDesde)         params.fechaDesde = fechaDesde;
+  if (fechaHasta)         params.fechaHasta = fechaHasta;
+  const response = await api.get<PagoDirectorDto[]>('/api/dashboard/director/pagos', { params });
   return response.data;
 };

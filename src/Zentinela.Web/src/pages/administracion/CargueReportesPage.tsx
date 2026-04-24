@@ -1,40 +1,278 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { generarPlantillaReporte, validarArchivoReporte, confirmarCargueReporte } from '../../api/reportesApi';
+import { generarPlantillaReporte, validarArchivoReporte, confirmarCargueReporte, obtenerUltimaActualizacion } from '../../api/reportesApi';
 import { obtenerCarteras } from '../../api/carterasApi';
-import type { PreviewReporteDto, EstadoFilaReporte } from '../../types/reportes';
+import { LeyendaUltimaActualizacion } from '../../components/LeyendaUltimaActualizacion';
+import type { FilaValidacionReporteDto, EstadoFilaReporte, PreviewReporteDto } from '../../types/reportes';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 type Etapa = 'inicial' | 'preview' | 'resultado';
 
 function colorEstado(estado: EstadoFilaReporte): string {
-  switch (estado) {
-    case 'Ok':               return 'var(--z-text-primary)';
-    case 'NuevoTitular':     return '#1d4ed8'; // azul — se creará
-    default:                 return '#dc2626'; // rojo — error
-  }
+  if (estado === 'Ok')           return '#16a34a';
+  if (estado === 'NuevoTitular') return '#1d4ed8';
+  return '#dc2626';
 }
 
 function etiquetaEstado(estado: EstadoFilaReporte, razon: string | null): string {
-  if (estado === 'Ok')           return 'Listo';
-  if (estado === 'NuevoTitular') return razon ?? 'Titular nuevo — se creará';
+  if (estado === 'Ok')                return 'Listo';
+  if (estado === 'NuevoTitular')      return 'Titular nuevo — se creará';
+  if (estado === 'SinNombreParaCrear') return 'Sin nombre — no se puede crear el titular';
+  if (estado === 'AgenteNoEncontrado') return razon ?? 'Usuario Control no encontrado';
   return razon ?? estado;
 }
 
-// ── Componente ───────────────────────────────────────────────────────────────
+// ── Badge de estado ───────────────────────────────────────────────────────────
+
+function BadgeEstado({ estado, razon }: { estado: EstadoFilaReporte; razon: string | null }) {
+  if (estado === 'Ok') {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+        fontSize: 11, fontWeight: 600,
+        background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac',
+      }}>
+        Listo
+      </span>
+    );
+  }
+  if (estado === 'NuevoTitular') {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+        fontSize: 11, fontWeight: 600,
+        background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd',
+      }}>
+        Titular nuevo
+      </span>
+    );
+  }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+      fontSize: 11, fontWeight: 600,
+      background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5',
+    }}>
+      Error
+    </span>
+  );
+}
+
+// ── Campos opcionales a mostrar en el preview ────────────────────────────────
+
+const CAMPOS_OPCIONALES: { key: string; label: string }[] = [
+  { key: 'nombre',            label: 'Nombre'      },
+  { key: 'ultimoPerfil',      label: 'Perfil'      },
+  { key: 'mejorPerfil',       label: 'Mejor perf.' },
+
+  { key: 'saldoTotal',        label: 'Saldo'       },
+  { key: 'numeroMarcado',     label: 'Celular'     },
+  { key: 'rotacion',          label: 'Rotación'    },
+  { key: 'fechaUltimaGestion', label: 'F. gestión' },
+  { key: 'fechaPromesa',      label: 'F. promesa'  },
+  { key: 'valorPromesa',      label: 'V. promesa'  },
+  { key: 'motivoNoPago',      label: 'Motivo'      },
+  { key: 'fechaActualizacion', label: 'F. actualiz.' },
+];
+
+// ── Tabla de validación (válidos + nuevos) ────────────────────────────────────
+
+function TablaPreview({ filas, columnasEncontradas }: {
+  filas: FilaValidacionReporteDto[];
+  columnasEncontradas: string[];
+}) {
+  if (filas.length === 0) return null;
+
+  const encontradas = new Set(columnasEncontradas);
+
+  const TH: React.CSSProperties = {
+    padding: '8px 10px', textAlign: 'center',
+    fontSize: '11px', fontWeight: 600,
+    borderBottom: '0.5px solid var(--z-border)',
+    letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+  };
+  const TD: React.CSSProperties = {
+    padding: '8px 10px', fontSize: '13px',
+    borderBottom: '0.5px solid var(--z-border)',
+    textAlign: 'center', whiteSpace: 'nowrap',
+  };
+
+  return (
+    <div style={{
+      background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+      borderRadius: '8px', overflow: 'hidden',
+    }}>
+      <p style={{
+        padding: '10px 16px', fontSize: '12px', color: 'var(--z-text-muted)',
+        borderBottom: '0.5px solid var(--z-border)', margin: 0,
+      }}>
+        Muestra — primeros {filas.length} registros válidos
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'var(--z-bg-page)' }}>
+              <th style={{ ...TH, textAlign: 'left', paddingLeft: 14, color: 'var(--z-text-muted)' }}>#</th>
+              <th style={{ ...TH, textAlign: 'left', color: 'var(--z-text-muted)' }}>TitularID</th>
+              <th style={{ ...TH, textAlign: 'left', color: 'var(--z-text-muted)' }}>Asesor</th>
+              <th style={{ ...TH, textAlign: 'left', color: 'var(--z-text-muted)' }}>Estado</th>
+              {CAMPOS_OPCIONALES.map(c => {
+                const ok = encontradas.has(c.key);
+                return (
+                  <th key={c.key} style={{ ...TH, color: ok ? 'var(--z-text-primary)' : 'var(--z-text-muted)' }}>
+                    {c.label}&nbsp;
+                    <span style={{ fontSize: 11, color: ok ? '#16a34a' : '#dc2626' }}>
+                      {ok ? '✓' : '✗'}
+                    </span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((fila, idx) => {
+              const mapeados = new Set(fila.camposMapeados);
+              return (
+                <tr key={idx} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+                  <td style={{ ...TD, textAlign: 'left', paddingLeft: 14, color: 'var(--z-text-muted)' }}>
+                    {idx + 1}
+                  </td>
+                  <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>
+                    {fila.titularID}
+                  </td>
+                  <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>
+                    {fila.usuarioControl || '—'}
+                  </td>
+                  <td style={{ ...TD, textAlign: 'left' }}>
+                    <BadgeEstado estado={fila.estado} razon={fila.razon} />
+                  </td>
+                  {CAMPOS_OPCIONALES.map(c => (
+                    <td key={c.key} style={TD}>
+                      {!encontradas.has(c.key)
+                        ? <span style={{ color: 'var(--z-border)', fontSize: 12 }}>—</span>
+                        : mapeados.has(c.key)
+                          ? <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 13 }}>✓</span>
+                          : <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>—</span>
+                      }
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Panel de errores ──────────────────────────────────────────────────────────
+
+function PanelErrores({ filas, totalInvalidos }: { filas: FilaValidacionReporteDto[]; totalInvalidos: number }) {
+  if (filas.length === 0) return null;
+  const hayMas = totalInvalidos > filas.length;
+  return (
+    <div style={{
+      background: '#fef2f2', border: '1px solid #fca5a5',
+      borderRadius: '8px', overflow: 'hidden',
+    }}>
+      {/* Cabecera */}
+      <div style={{
+        padding: '12px 16px', borderBottom: '1px solid #fca5a5',
+        display: 'flex', alignItems: 'center', gap: '10px',
+      }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 24, height: 24, borderRadius: '50%',
+          background: '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, flexShrink: 0,
+        }}>
+          {totalInvalidos}
+        </span>
+        <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#b91c1c' }}>
+          {totalInvalidos === 1
+            ? '1 registro con error — no se cargará'
+            : `${totalInvalidos} registros con error — no se cargarán`}
+          {hayMas && <span style={{ fontWeight: 400, marginLeft: 6 }}>(mostrando primeros {filas.length})</span>}
+        </p>
+      </div>
+
+      {/* Lista de errores */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#fef2f2' }}>
+              {['#', 'TitularID', 'Nombre', 'Usuario Control', 'Motivo del error'].map((col, i) => (
+                <th key={i} style={{
+                  padding: '8px 14px', textAlign: 'left',
+                  fontSize: '11px', fontWeight: 600, color: '#b91c1c',
+                  borderBottom: '1px solid #fca5a5',
+                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((fila, idx) => (
+              <tr key={idx} style={{ borderBottom: '0.5px solid #fecaca' }}>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
+                  {idx + 1}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontWeight: 600 }}>
+                  {fila.titularID || '—'}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontStyle: fila.nombre ? 'normal' : 'italic' }}>
+                  {fila.nombre ?? '—'}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c' }}>
+                  {fila.usuarioControl || '—'}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
+                  {etiquetaEstado(fila.estado, fila.razon)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Chips de conteo ───────────────────────────────────────────────────────────
+
+function ChipConteo({ numero, label, bg, border, colorNum, colorLabel }: {
+  numero: number; label: string;
+  bg: string; border: string; colorNum: string; colorLabel: string;
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '8px',
+      background: bg, border: `0.5px solid ${border}`,
+      borderRadius: '8px', padding: '12px 18px',
+    }}>
+      <span style={{ fontSize: '22px', fontWeight: 700, color: colorNum }}>{numero}</span>
+      <span style={{ fontSize: '13px', color: colorLabel }}>{label}</span>
+    </div>
+  );
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
 
 export function CargueReportesPage() {
   const inputArchivoRef = useRef<HTMLInputElement>(null);
 
-  const [etapa,          setEtapa]          = useState<Etapa>('inicial');
+  const [etapa,              setEtapa]              = useState<Etapa>('inicial');
   const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
-  const [carteraID,      setCarteraID]      = useState<number>(0);
-  const [archivoNombre,  setArchivoNombre]  = useState('');
-  const [preview,        setPreview]        = useState<PreviewReporteDto | null>(null);
-  const [mensajeFinal,   setMensajeFinal]   = useState('');
-  const [errorMensaje,   setErrorMensaje]   = useState('');
+  const [carteraID,          setCarteraID]          = useState<number>(0);
+  const [archivoNombre,      setArchivoNombre]      = useState('');
+  const [archivoKB,          setArchivoKB]          = useState(0);
+  const [preview,            setPreview]            = useState<PreviewReporteDto | null>(null);
+  const [resultado,          setResultado]          = useState<import('../../types/reportes').ResultadoReporteDto | null>(null);
+  const [errorMensaje,       setErrorMensaje]       = useState('');
 
   const { data: carteras = [] } = useQuery({
     queryKey: ['carteras'],
@@ -47,14 +285,15 @@ export function CargueReportesPage() {
     onSuccess: (data) => {
       setPreview(data);
       setEtapa('preview');
+      setErrorMensaje('');
     },
-    onError: () => setErrorMensaje('No se pudo validar el archivo. Verifica el formato.'),
+    onError: () => setErrorMensaje('No se pudo validar el archivo. Verifica que el formato sea correcto.'),
   });
 
   const mutConfirmar = useMutation({
     mutationFn: () => confirmarCargueReporte({ filasValidas: preview!.filasValidasRaw }),
     onSuccess: (data) => {
-      setMensajeFinal(data.mensaje);
+      setResultado(data);
       setEtapa('resultado');
     },
     onError: () => setErrorMensaje('Ocurrió un error al confirmar el cargue.'),
@@ -68,6 +307,7 @@ export function CargueReportesPage() {
       return;
     }
     setArchivoNombre(archivo.name);
+    setArchivoKB(archivo.size / 1024);
     setErrorMensaje('');
     mutValidar.mutate({ archivo, cid: carteraID });
   };
@@ -76,7 +316,8 @@ export function CargueReportesPage() {
     setEtapa('inicial');
     setPreview(null);
     setArchivoNombre('');
-    setMensajeFinal('');
+    setArchivoKB(0);
+    setResultado(null);
     setErrorMensaje('');
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
   };
@@ -84,7 +325,7 @@ export function CargueReportesPage() {
   const esCargando = mutValidar.isPending || mutConfirmar.isPending;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '900px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '960px' }}>
 
       {/* Encabezado */}
       <div>
@@ -92,8 +333,8 @@ export function CargueReportesPage() {
           Cargue de Reportes
         </h1>
         <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
-          Actualiza <strong>UltimoEstadoTitular</strong> (UPSERT) y enriquece <strong>HistoricoEstadoTitular</strong> (append) desde archivo CSV o XLSX.
-          Compatible con carga manual y con SSIS.
+          Actualiza <strong>UltimoEstadoTitular</strong> (UPSERT) y enriquece <strong>HistoricoEstadoTitular</strong> (append)
+          desde archivo CSV o XLSX.
         </p>
       </div>
 
@@ -109,28 +350,35 @@ export function CargueReportesPage() {
           borderRadius: '8px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px',
         }}>
 
-          {/* Selector de cartera */}
+          {/* Paso 1 — Cartera */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Paso 1 — Selecciona la cartera
             </p>
-            <select
-              value={carteraID}
-              onChange={(e) => setCarteraID(Number(e.target.value))}
-              style={{
-                padding: '7px 10px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
-                fontSize: '13px', width: '280px', cursor: 'pointer',
-              }}
-            >
-              <option value={0}>— Seleccionar cartera —</option>
-              {carteras.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <select
+                value={carteraID}
+                onChange={e => setCarteraID(Number(e.target.value))}
+                style={{
+                  padding: '7px 10px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
+                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  fontSize: '13px', width: '280px', cursor: 'pointer', outline: 'none',
+                }}
+              >
+                <option value={0}>— Seleccionar cartera —</option>
+                {carteras.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombreCartera}</option>
+                ))}
+              </select>
+              <LeyendaUltimaActualizacion
+                carteraID={carteraID}
+                queryKey="reporte-ultima-actualizacion"
+                queryFn={obtenerUltimaActualizacion}
+              />
+            </div>
           </div>
 
-          {/* Generar plantilla */}
+          {/* Paso 2 — Plantilla */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Paso 2 — Descarga la plantilla
@@ -153,33 +401,39 @@ export function CargueReportesPage() {
               {generandoPlantilla ? 'Generando...' : 'Generar Plantilla'}
             </button>
             <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Campos obligatorios: <strong>TitularID</strong>, <strong>AgenteID</strong>.
+              Campos obligatorios: <strong>TitularID</strong>, <strong>UsuarioControl</strong>.
               Si el TitularID es nuevo, agrega <strong>Nombre</strong> para crearlo.
-              La cartera se asigna automáticamente desde el selector.
+              La cartera se asigna automáticamente desde el selector de arriba.
             </p>
           </div>
 
-          {/* Subir archivo */}
+          {/* Paso 3 — Subir archivo */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Paso 3 — Sube el archivo completado
             </p>
-            <label
-              htmlFor="archivo-reporte"
+            <div
+              onClick={() => carteraID !== 0 && inputArchivoRef.current?.click()}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '8px 16px', borderRadius: '6px',
-                border: '0.5px dashed var(--z-border)', background: 'var(--z-bg-page)',
-                color: carteraID === 0 ? 'var(--z-text-muted)' : 'var(--z-text-primary)',
-                fontSize: '13px', fontWeight: 500,
-                cursor: carteraID === 0 ? 'not-allowed' : 'pointer', width: 'fit-content',
-                opacity: carteraID === 0 ? 0.6 : 1,
+                border: `1.5px dashed ${archivoNombre ? 'var(--z-brand)' : 'var(--z-border)'}`,
+                borderRadius: '8px', padding: '24px', textAlign: 'center',
+                cursor: carteraID === 0 ? 'not-allowed' : 'pointer',
+                background: archivoNombre ? '#eff6ff' : 'transparent',
+                opacity: carteraID === 0 ? 0.5 : 1,
+                transition: 'border-color 0.15s, background 0.15s',
               }}
             >
-              {archivoNombre || 'Seleccionar archivo .csv o .xlsx'}
-            </label>
+              <p style={{ fontSize: '13px', color: archivoNombre ? 'var(--z-brand)' : 'var(--z-text-muted)', marginBottom: '4px' }}>
+                {archivoNombre || 'Haz clic para seleccionar un archivo .csv o .xlsx'}
+              </p>
+              {archivoNombre
+                ? <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>{archivoKB.toFixed(1)} KB</p>
+                : <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>
+                    Campos obligatorios: TitularID (o Cédula) y AgenteID (o UsuarioControl)
+                  </p>
+              }
+            </div>
             <input
-              id="archivo-reporte"
               ref={inputArchivoRef}
               type="file"
               accept=".csv,.xlsx"
@@ -187,10 +441,29 @@ export function CargueReportesPage() {
               onChange={handleSeleccionarArchivo}
               style={{ display: 'none' }}
             />
+            {archivoNombre && (
+              <button
+                onClick={() => { setArchivoNombre(''); setArchivoKB(0); if (inputArchivoRef.current) inputArchivoRef.current.value = ''; }}
+                style={{ background: 'none', border: 'none', fontSize: '11px', color: 'var(--z-text-muted)', cursor: 'pointer', padding: 0, width: 'fit-content' }}
+              >
+                × Quitar archivo
+              </button>
+            )}
+            {carteraID === 0 && (
+              <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
+                Selecciona primero la cartera para habilitar la carga.
+              </p>
+            )}
           </div>
 
           {errorMensaje && (
-            <p style={{ fontSize: '13px', color: '#dc2626' }}>{errorMensaje}</p>
+            <div style={{
+              background: '#fef2f2', border: '0.5px solid #fca5a5',
+              borderRadius: '6px', padding: '10px 14px',
+              fontSize: '13px', color: '#dc2626',
+            }}>
+              {errorMensaje}
+            </div>
           )}
         </div>
       )}
@@ -199,95 +472,43 @@ export function CargueReportesPage() {
       {!esCargando && etapa === 'preview' && preview && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* Conteos */}
+          {/* Chips de conteo */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              background: '#f0fdf4', border: '0.5px solid #86efac',
-              borderRadius: '8px', padding: '12px 18px',
-            }}>
-              <span style={{ fontSize: '22px', fontWeight: 700, color: '#16a34a' }}>
-                {preview.totalValidos}
-              </span>
-              <span style={{ fontSize: '13px', color: '#15803d' }}>registros válidos</span>
-            </div>
+            <ChipConteo
+              numero={preview.totalUnicos}
+              label="registros únicos válidos"
+              bg="#f0fdf4" border="#86efac" colorNum="#16a34a" colorLabel="#15803d"
+            />
+            {preview.totalDuplicados > 0 && (
+              <ChipConteo
+                numero={preview.totalDuplicados}
+                label="duplicados — se quedará el más reciente"
+                bg="#fefce8" border="#fde68a" colorNum="#b45309" colorLabel="#92400e"
+              />
+            )}
             {preview.totalNuevos > 0 && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: '#eff6ff', border: '0.5px solid #93c5fd',
-                borderRadius: '8px', padding: '12px 18px',
-              }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: '#1d4ed8' }}>
-                  {preview.totalNuevos}
-                </span>
-                <span style={{ fontSize: '13px', color: '#1e40af' }}>titulares nuevos</span>
-              </div>
+              <ChipConteo
+                numero={preview.totalNuevos}
+                label="titulares nuevos"
+                bg="#eff6ff" border="#93c5fd" colorNum="#1d4ed8" colorLabel="#1e40af"
+              />
             )}
             {preview.totalInvalidos > 0 && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: '#fef2f2', border: '0.5px solid #fca5a5',
-                borderRadius: '8px', padding: '12px 18px',
-              }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: '#dc2626' }}>
-                  {preview.totalInvalidos}
-                </span>
-                <span style={{ fontSize: '13px', color: '#b91c1c' }}>con error (se omitirán)</span>
-              </div>
+              <ChipConteo
+                numero={preview.totalInvalidos}
+                label="con error — no se cargarán"
+                bg="#fef2f2" border="#fca5a5" colorNum="#dc2626" colorLabel="#b91c1c"
+              />
             )}
           </div>
 
-          {/* Tabla de validación */}
-          <div style={{
-            background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
-            borderRadius: '8px', overflow: 'hidden',
-          }}>
-            <p style={{
-              padding: '12px 16px', fontSize: '12px', color: 'var(--z-text-muted)',
-              borderBottom: '0.5px solid var(--z-border)', margin: 0,
-            }}>
-              Vista previa — primeros {preview.filas.length} registros del archivo
-            </p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--z-bg-page)' }}>
-                    {['#', 'TitularID', 'Nombre', 'AgenteID', 'Estado'].map((col, i) => (
-                      <th key={i} style={{
-                        padding: '9px 14px', textAlign: 'left',
-                        fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
-                        borderBottom: '0.5px solid var(--z-border)',
-                        letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
-                      }}>
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.filas.map((fila, idx) => (
-                    <tr key={idx} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-                        {idx + 1}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
-                        {fila.titularID}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)', fontStyle: fila.nombre ? 'normal' : 'italic' }}>
-                        {fila.nombre ?? '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)' }}>
-                        {fila.agenteID}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', color: colorEstado(fila.estado) }}>
-                        {etiquetaEstado(fila.estado, fila.razon)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* Panel de errores (primeros 10, con contador del total) */}
+          <PanelErrores filas={preview.filasConError} totalInvalidos={preview.totalInvalidos} />
+
+          {/* Tabla de válidos (primeros 10) */}
+          {preview.filas.length > 0 && (
+            <TablaPreview filas={preview.filas} columnasEncontradas={preview.columnasEncontradas} />
+          )}
 
           {/* Aviso de comportamiento */}
           <div style={{
@@ -295,29 +516,30 @@ export function CargueReportesPage() {
             borderRadius: '8px', padding: '12px 16px',
             fontSize: '13px', color: '#1e40af',
           }}>
-            <strong>UltimoEstadoTitular:</strong> los {preview.totalValidos} registros válidos se actualizarán por UPSERT (si existen, se modifican; si no, se crean).
+            <strong>UltimoEstadoTitular:</strong> los {preview.totalValidos} registros válidos se actualizarán
+            por UPSERT (si existen, se modifican; si no, se crean).
             {preview.totalNuevos > 0 && (
               <> <strong>{preview.totalNuevos}</strong> titular(es) nuevo(s) se crearán en la tabla <strong>Titular</strong>.</>
             )}
             <br />
-            <strong>HistoricoEstadoTitular:</strong> se agregarán solo los registros cuya combinación TitularID+CarteraID+AgenteID no exista aún.
+            <strong>HistoricoEstadoTitular:</strong> se agregarán solo los registros cuya combinación
+            TitularID+CarteraID+AgenteID no exista aún.
           </div>
 
           {/* Acciones */}
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
               onClick={() => mutConfirmar.mutate()}
-              disabled={preview.totalValidos === 0}
+              disabled={preview.totalUnicos === 0}
               style={{
-                padding: '9px 20px', borderRadius: '6px',
-                border: 'none',
-                background: preview.totalValidos > 0 ? 'var(--z-brand)' : 'var(--z-border)',
-                color: preview.totalValidos > 0 ? '#fff' : 'var(--z-text-muted)',
+                padding: '9px 20px', borderRadius: '6px', border: 'none',
+                background: preview.totalUnicos > 0 ? 'var(--z-brand)' : 'var(--z-border)',
+                color: preview.totalUnicos > 0 ? '#fff' : 'var(--z-text-muted)',
                 fontSize: '13px', fontWeight: 600,
-                cursor: preview.totalValidos > 0 ? 'pointer' : 'not-allowed',
+                cursor: preview.totalUnicos > 0 ? 'pointer' : 'not-allowed',
               }}
             >
-              Confirmar {preview.totalValidos} registro{preview.totalValidos !== 1 ? 's' : ''}
+              Confirmar {preview.totalUnicos} registro{preview.totalUnicos !== 1 ? 's' : ''} único{preview.totalUnicos !== 1 ? 's' : ''}
             </button>
             <button
               onClick={handleNuevaCarga}
@@ -329,25 +551,78 @@ export function CargueReportesPage() {
             >
               Cancelar
             </button>
+            {preview.totalInvalidos > 0 && preview.totalUnicos === 0 && (
+              <p style={{ fontSize: '13px', color: '#dc2626', margin: 0 }}>
+                No hay registros válidos. Corrige los errores y vuelve a subir el archivo.
+              </p>
+            )}
           </div>
 
           {errorMensaje && (
-            <p style={{ fontSize: '13px', color: '#dc2626' }}>{errorMensaje}</p>
+            <div style={{
+              background: '#fef2f2', border: '0.5px solid #fca5a5',
+              borderRadius: '6px', padding: '10px 14px',
+              fontSize: '13px', color: '#dc2626',
+            }}>
+              {errorMensaje}
+            </div>
           )}
         </div>
       )}
 
       {/* ── Etapa: resultado ── */}
-      {!esCargando && etapa === 'resultado' && (
+      {!esCargando && etapa === 'resultado' && resultado && (
         <div style={{
           background: '#f0fdf4', border: '0.5px solid #86efac',
           borderRadius: '8px', padding: '24px',
           display: 'flex', flexDirection: 'column', gap: '16px',
         }}>
-          <p style={{ fontSize: '15px', fontWeight: 600, color: '#15803d' }}>
+          <p style={{ fontSize: '15px', fontWeight: 600, color: '#15803d', margin: 0 }}>
             Cargue completado
           </p>
-          <p style={{ fontSize: '13px', color: '#166534' }}>{mensajeFinal}</p>
+
+          {/* Métricas del resultado */}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{
+              background: '#dcfce7', border: '0.5px solid #86efac',
+              borderRadius: '8px', padding: '12px 18px',
+              display: 'flex', alignItems: 'center', gap: '8px',
+            }}>
+              <span style={{ fontSize: '22px', fontWeight: 700, color: '#15803d' }}>
+                {resultado.procesados.toLocaleString('es-CO')}
+              </span>
+              <span style={{ fontSize: '13px', color: '#166534' }}>registros únicos procesados</span>
+            </div>
+
+            {resultado.duplicados > 0 && (
+              <div style={{
+                background: '#fefce8', border: '0.5px solid #fde68a',
+                borderRadius: '8px', padding: '12px 18px',
+                display: 'flex', alignItems: 'center', gap: '8px',
+              }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: '#b45309' }}>
+                  {resultado.duplicados.toLocaleString('es-CO')}
+                </span>
+                <span style={{ fontSize: '13px', color: '#92400e' }}>duplicados eliminados</span>
+              </div>
+            )}
+
+            {resultado.titularesNuevos > 0 && (
+              <div style={{
+                background: '#eff6ff', border: '0.5px solid #93c5fd',
+                borderRadius: '8px', padding: '12px 18px',
+                display: 'flex', alignItems: 'center', gap: '8px',
+              }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, color: '#1d4ed8' }}>
+                  {resultado.titularesNuevos.toLocaleString('es-CO')}
+                </span>
+                <span style={{ fontSize: '13px', color: '#1e40af' }}>titulares nuevos creados</span>
+              </div>
+            )}
+          </div>
+
+          <p style={{ fontSize: '13px', color: '#166534', margin: 0 }}>{resultado.mensaje}</p>
+
           <button
             onClick={handleNuevaCarga}
             style={{

@@ -20,7 +20,7 @@ public class FilaReporteRaw
     public long?     AgenteID           { get; set; }
     public string?   UltimoPerfil       { get; set; }
     public string?   MejorPerfil        { get; set; }
-    public DateOnly? FechaMejorPerfil   { get; set; }
+
     public decimal?  SaldoTotal         { get; set; }
     public string?   NumeroMarcado      { get; set; }
     public int?      Rotacion           { get; set; }
@@ -38,21 +38,37 @@ public class FilaValidacionReporteDto
     public string? Nombre         { get; set; }
     public string  UsuarioControl { get; set; } = string.Empty;
     public EstadoFilaReporte Estado { get; set; }
-    public string? Razon     { get; set; }
+    public string? Razon          { get; set; }
+    /// <summary>
+    /// Campos opcionales que tienen valor en esta fila (non-null en el archivo).
+    /// El frontend muestra ✓ para los presentes y ✗ para los ausentes.
+    /// </summary>
+    public string[] CamposMapeados { get; set; } = [];
 }
 
 /// <summary>
 /// Vista previa devuelta tras validar el Excel.
-/// Filas contiene hasta 10 registros (muestra); FilasValidasRaw contiene la lista
-/// completa de filas válidas (Ok + NuevoTitular) para el confirm.
+/// Filas: primeros 10 registros válidos (muestra).
+/// FilasConError: TODAS las filas inválidas (sin límite) para mostrarlas todas al usuario.
+/// FilasValidasRaw: lista completa de filas válidas para el confirm.
 /// </summary>
 public class PreviewReporteDto
 {
-    public List<FilaValidacionReporteDto> Filas          { get; set; } = [];
-    public int                            TotalValidos    { get; set; }
-    public int                            TotalNuevos     { get; set; } // subconjunto de válidos
-    public int                            TotalInvalidos  { get; set; }
-    public List<FilaReporteRaw>           FilasValidasRaw { get; set; } = [];
+    public List<FilaValidacionReporteDto> Filas               { get; set; } = [];
+    public List<FilaValidacionReporteDto> FilasConError        { get; set; } = [];
+    public int                            TotalValidos          { get; set; }
+    public int                            TotalNuevos           { get; set; } // subconjunto de válidos
+    public int                            TotalInvalidos        { get; set; }
+    public List<FilaReporteRaw>           FilasValidasRaw       { get; set; } = [];
+    /// <summary>
+    /// Columnas opcionales cuyo encabezado fue reconocido en el archivo.
+    /// Igual para todas las filas — el frontend muestra ✓/✗ en el header de cada columna.
+    /// </summary>
+    public string[]                       ColumnasEncontradas   { get; set; } = [];
+    /// <summary>Filas válidas con clave (TitularID, CarteraID) única — las que realmente se procesarán.</summary>
+    public int                            TotalUnicos           { get; set; }
+    /// <summary>Filas válidas descartadas por ser duplicados de la misma clave (TitularID, CarteraID).</summary>
+    public int                            TotalDuplicados       { get; set; }
 }
 
 /// <summary>Body del endpoint de confirmación.</summary>
@@ -66,5 +82,6 @@ public class ResultadoReporteDto
 {
     public int    Procesados      { get; set; }
     public int    TitularesNuevos { get; set; }
+    public int    Duplicados      { get; set; }
     public string Mensaje         { get; set; } = string.Empty;
 }

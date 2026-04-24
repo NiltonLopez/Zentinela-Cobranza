@@ -1,5 +1,18 @@
 // ── Director ──────────────────────────────────────────────────────────────────
 
+export interface PagoDirectorDto {
+  pagoID: number;
+  cedulaTitular: number;
+  nombreCliente: string;
+  valorPagado: number;
+  fechaPago: string;      // ISO date "YYYY-MM-DD"
+  honorarios: number;
+  nombreCartera: string;
+  nombreLider: string;
+  nombreAsesor: string;
+  fechaRegistro: string;  // ISO datetime
+}
+
 export interface LiderDropdownDto {
   id: number;
   nombre: string;

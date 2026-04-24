@@ -3,6 +3,7 @@
 -- 1. Inserta titulares nuevos que no existan en Titular.
 -- 2. UPSERT desde ReporteEstadoAuxiliar → UltimoEstadoTitular.
 -- Ejecutar en: DBCallCenter
+-- NOTA: FechaMejorPerfil eliminado (campo sin valor operativo).
 -- ============================================================
 CREATE OR ALTER PROCEDURE sp_ProcesarUltimoEstado
 AS
@@ -24,7 +25,7 @@ BEGIN
     MERGE UltimoEstadoTitular AS tgt
     USING (
         SELECT TitularID, CarteraID, AgenteID,
-               UltimoPerfil, MejorPerfil, FechaMejorPerfil,
+               UltimoPerfil, MejorPerfil,
                SaldoTotal, NumeroMarcado, Rotacion,
                FechaUltimaGestion, FechaPromesa, ValorPromesa,
                MotivoNoPago,
@@ -41,7 +42,6 @@ BEGIN
         UPDATE SET
             tgt.UltimoPerfil       = src.UltimoPerfil,
             tgt.MejorPerfil        = src.MejorPerfil,
-            tgt.FechaMejorPerfil   = src.FechaMejorPerfil,
             tgt.SaldoTotal         = src.SaldoTotal,
             tgt.NumeroMarcado      = src.NumeroMarcado,
             tgt.Rotacion           = src.Rotacion,
@@ -52,12 +52,12 @@ BEGIN
             tgt.FechaActualizacion = src.FechaActualizacion
     WHEN NOT MATCHED THEN
         INSERT (TitularID, CarteraID, AgenteID,
-                UltimoPerfil, MejorPerfil, FechaMejorPerfil,
+                UltimoPerfil, MejorPerfil,
                 SaldoTotal, NumeroMarcado, Rotacion,
                 FechaUltimaGestion, FechaPromesa, ValorPromesa,
                 MotivoNoPago, FechaActualizacion)
         VALUES (src.TitularID, src.CarteraID, src.AgenteID,
-                src.UltimoPerfil, src.MejorPerfil, src.FechaMejorPerfil,
+                src.UltimoPerfil, src.MejorPerfil,
                 src.SaldoTotal, src.NumeroMarcado, src.Rotacion,
                 src.FechaUltimaGestion, src.FechaPromesa, src.ValorPromesa,
                 src.MotivoNoPago, src.FechaActualizacion);

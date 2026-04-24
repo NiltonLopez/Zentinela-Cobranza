@@ -24,4 +24,7 @@ public interface ICarguePagosService
 
     /// <summary>Genera la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
     byte[] GenerarPlantilla();
+
+    /// <summary>Fecha del último pago registrado (FechaRegistro) para la cartera. Null si no hay pagos aún.</summary>
+    Task<DateTime?> ObtenerUltimaActualizacionAsync(int carteraID);
 }

@@ -67,12 +67,21 @@ function ToggleTipo({ value, onChange }: { value: TipoMeta; onChange: (v: TipoMe
 // ── Input numérico en tabla ───────────────────────────────────────────────────
 
 function InputMeta({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const display = value === '' ? '' : Number(value).toLocaleString('es-CO');
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const soloDigitos = e.target.value.replace(/\D/g, '');
+    if (soloDigitos === '') { onChange(''); return; }
+    const n = parseInt(soloDigitos, 10);
+    onChange(isNaN(n) ? '' : String(n));
+  };
+
   return (
     <input
-      type="number"
-      min={0}
-      value={value}
-      onChange={e => onChange(e.target.value)}
+      type="text"
+      inputMode="numeric"
+      value={display}
+      onChange={handleChange}
       placeholder="0"
       style={{
         width: 130, padding: '5px 8px', borderRadius: 6,

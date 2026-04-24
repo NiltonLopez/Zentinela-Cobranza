@@ -3,6 +3,7 @@
 -- Usada tanto por la UI (Zentinela) como por SSIS.
 -- Sin PKs ni FKs — landing zone sin restricciones.
 -- Ejecutar en: DBCallCenter
+-- NOTA: FechaMejorPerfil eliminado (campo sin valor operativo).
 -- ============================================================
 IF OBJECT_ID('ReporteEstadoAuxiliar', 'U') IS NULL
 BEGIN
@@ -13,7 +14,6 @@ BEGIN
         AgenteID           int          NULL,
         UltimoPerfil       varchar(50)  NULL,
         MejorPerfil        varchar(50)  NULL,
-        FechaMejorPerfil   date         NULL,
         SaldoTotal         money        NULL,
         NumeroMarcado      varchar(10)  NULL,
         Rotacion           int          NULL,

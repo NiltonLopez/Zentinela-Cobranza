@@ -107,7 +107,6 @@ public class ExcelExporter : IExcelExporter
         ("Nombre",             "Nombre"),
         ("UltimoPerfil",       "UltimoPerfil"),
         ("MejorPerfil",        "MejorPerfil"),
-        ("FechaMejorPerfil",   "FechaMejorPerfil"),
         ("SaldoTotal",         "SaldoTotal"),
         ("NumeroMarcado",      "NumeroMarcado"),
         ("Rotacion",           "Rotacion"),
@@ -154,7 +153,7 @@ public class ExcelExporter : IExcelExporter
 
     private record IndicesExcel(
         int TitularID, int AgenteID, int Nombre, int UltimoPerfil, int MejorPerfil,
-        int FechaMejorPerfil, int SaldoTotal, int NumeroMarcado, int Rotacion,
+        int SaldoTotal, int NumeroMarcado, int Rotacion,
         int FechaUltimaGestion, int FechaPromesa, int ValorPromesa, int MotivoNoPago,
         int FechaActualizacion);
 
@@ -181,9 +180,6 @@ public class ExcelExporter : IExcelExporter
         ["perfil"]               = "ultimoperfil",
         // MejorPerfil
         ["mejorperfil"]          = "mejorperfil",
-        // FechaMejorPerfil
-        ["fechamejorperfil"]     = "fechamejorperfil",
-        ["fechamejor"]           = "fechamejorperfil",
         // SaldoTotal
         ["saldototal"]           = "saldototal",
         ["saldo"]                = "saldototal",
@@ -258,7 +254,6 @@ public class ExcelExporter : IExcelExporter
             Nombre:             Get("nombre"),
             UltimoPerfil:       Get("ultimoperfil"),
             MejorPerfil:        Get("mejorperfil"),
-            FechaMejorPerfil:   Get("fechamejorperfil"),
             SaldoTotal:         Get("saldototal"),
             NumeroMarcado:      Get("numeromarcado"),
             Rotacion:           Get("rotacion"),
@@ -362,7 +357,6 @@ public class ExcelExporter : IExcelExporter
             Nombre             = NullIfEmpty(col(idx.Nombre)),
             UltimoPerfil       = NullIfEmpty(col(idx.UltimoPerfil)),
             MejorPerfil        = NullIfEmpty(col(idx.MejorPerfil)),
-            FechaMejorPerfil   = ParseDate(col(idx.FechaMejorPerfil)),
             SaldoTotal         = decimal.TryParse(col(idx.SaldoTotal),      out var sal) ? sal : null,
             NumeroMarcado      = NullIfEmpty(col(idx.NumeroMarcado)),
             Rotacion           = int.TryParse(col(idx.Rotacion),            out var rot) ? rot : null,

@@ -16,5 +16,6 @@ public class HistoricoEstadoTitularMapping : IEntityTypeConfiguration<HistoricoE
         builder.Property(h => h.MotivoNoPago).HasMaxLength(100);
         builder.Property(h => h.SaldoTotal).HasColumnType("money");
         builder.Property(h => h.ValorPromesa).HasColumnType("money");
+        builder.Property(h => h.FechaActualizacion).IsRequired();
     }
 }

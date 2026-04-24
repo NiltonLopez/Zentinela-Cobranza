@@ -29,6 +29,13 @@ export const validarCsvPagos = async (
   return res.data;
 };
 
+export const obtenerUltimaActualizacionPagos = async (
+  carteraID: number,
+): Promise<{ fechaActualizacion: string | null }> => {
+  const res = await api.get(`/api/pagos/ultima-actualizacion/${carteraID}`);
+  return res.data;
+};
+
 export const confirmarCarguePagos = async (
   carteraID: number,
   filasValidas: PagoFila[],

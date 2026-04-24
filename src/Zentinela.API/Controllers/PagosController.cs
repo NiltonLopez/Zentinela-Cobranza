@@ -26,6 +26,14 @@ public class PagosController : ControllerBase
         _gestionCarteras = gestionCarteras;
     }
 
+    /// <summary>Fecha del último pago registrado (FechaRegistro) para la cartera.</summary>
+    [HttpGet("ultima-actualizacion/{carteraID:int}")]
+    public async Task<IActionResult> ObtenerUltimaActualizacion(int carteraID)
+    {
+        var fecha = await _service.ObtenerUltimaActualizacionAsync(carteraID);
+        return Ok(new { fechaActualizacion = fecha });
+    }
+
     /// <summary>Descarga la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
     [HttpGet("plantilla")]
     public IActionResult DescargarPlantilla()

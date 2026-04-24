@@ -18,6 +18,14 @@ public class CargueReportesController : ControllerBase
         _service = service;
     }
 
+    /// <summary>Fecha del último registro procesado en UltimoEstadoTitular para la cartera.</summary>
+    [HttpGet("ultima-actualizacion/{carteraID:int}")]
+    public async Task<IActionResult> ObtenerUltimaActualizacion(int carteraID)
+    {
+        var fecha = await _service.ObtenerUltimaActualizacionAsync(carteraID);
+        return Ok(new { fechaActualizacion = fecha });
+    }
+
     /// <summary>Descarga la plantilla Excel con los 14 campos del reporte.</summary>
     [HttpGet("plantilla")]
     public IActionResult DescargarPlantilla()

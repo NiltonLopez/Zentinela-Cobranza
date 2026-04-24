@@ -145,94 +145,94 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.Cartera_Agente WHERE AgenteID = v.a AND Lide
 --   Patrón Ilocalizado/Buzón (resto)        → Contactabilidad=67%,  Efectividad=50%
 
 INSERT INTO dbo.UltimoEstadoTitular
-       (TitularID,CarteraID,AgenteID,UltimoPerfil,MejorPerfil,FechaMejorPerfil,
+       (TitularID,CarteraID,AgenteID,UltimoPerfil,MejorPerfil,
         SaldoTotal,NumeroMarcado,Rotacion,FechaUltimaGestion,FechaPromesa,ValorPromesa,MotivoNoPago,FechaActualizacion)
 SELECT v.tid,v.cid,v.aid,v.up,v.mp,
-       CONVERT(date,v.fmp,23),v.saldo,v.tel,v.rot,
+       v.saldo,v.tel,v.rot,
        CONVERT(date,'2026-04-17',23),CONVERT(date,v.fp,23),v.vp,v.motivo,
        CONVERT(datetime2,'2026-04-17 08:00:00',120)
 FROM (VALUES
 -- ── Asesor 1 · Cartera 9001 · Incumplido ──────────────────────────────────────
-(70000001,9001,90000001,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',5400000,'3001234001',3,'2026-04-25',1800000.00,NULL),
-(70000002,9001,90000001,'No hubo acuerdo','No hubo acuerdo','2026-04-17',5400000,'3001234001',3,NULL,NULL,NULL),
-(70000003,9001,90000001,'Incumplido','No hubo acuerdo','2026-04-10',5400000,'3001234001',3,NULL,NULL,NULL),
+(70000001,9001,90000001,'Acuerdo de pago abono','Acuerdo de pago abono',5400000,'3001234001',3,'2026-04-25',1800000.00,NULL),
+(70000002,9001,90000001,'No hubo acuerdo','No hubo acuerdo',5400000,'3001234001',3,NULL,NULL,NULL),
+(70000003,9001,90000001,'Incumplido','No hubo acuerdo',5400000,'3001234001',3,NULL,NULL,NULL),
 -- ── Asesor 2 · Cartera 9001 · Ilocalizado ─────────────────────────────────────
-(70000004,9001,90000002,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',7500000,'3001234002',5,'2026-04-30',2500000.00,NULL),
-(70000005,9001,90000002,'Renuente','Renuente','2026-04-17',7500000,'3001234002',5,NULL,NULL,NULL),
-(70000006,9001,90000002,'Ilocalizado',NULL,NULL,7500000,'3001234002',5,NULL,NULL,'Sin número de contacto'),
+(70000004,9001,90000002,'Acuerdo de pago total','Acuerdo de pago total',7500000,'3001234002',5,'2026-04-30',2500000.00,NULL),
+(70000005,9001,90000002,'Renuente','Renuente',7500000,'3001234002',5,NULL,NULL,NULL),
+(70000006,9001,90000002,'Ilocalizado',NULL,7500000,'3001234002',5,NULL,NULL,'Sin número de contacto'),
 -- ── Asesor 3 · Cartera 9001 · Mensaje en buzón ────────────────────────────────
-(70000007,9001,90000003,'Realizo abono','Realizo abono','2026-04-17',2850000,'3001234003',2,'2026-05-05',950000.00,NULL),
-(70000008,9001,90000003,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2850000,'3001234003',2,NULL,NULL,NULL),
-(70000009,9001,90000003,'Mensaje en buzón',NULL,NULL,2850000,'3001234003',2,NULL,NULL,'Buzón de voz activo'),
+(70000007,9001,90000003,'Realizo abono','Realizo abono',2850000,'3001234003',2,'2026-05-05',950000.00,NULL),
+(70000008,9001,90000003,'Potencial acuerdo','Potencial acuerdo',2850000,'3001234003',2,NULL,NULL,NULL),
+(70000009,9001,90000003,'Mensaje en buzón',NULL,2850000,'3001234003',2,NULL,NULL,'Buzón de voz activo'),
 -- ── Asesor 4 · Cartera 9001 · Incumplido ──────────────────────────────────────
-(70000010,9001,90000004,'Paz y salvo','Paz y salvo','2026-04-17',9600000,'3001234004',4,'2026-04-22',3200000.00,NULL),
-(70000011,9001,90000004,'No hubo acuerdo','No hubo acuerdo','2026-04-17',9600000,'3001234004',4,NULL,NULL,NULL),
-(70000012,9001,90000004,'Incumplido','No hubo acuerdo','2026-04-10',9600000,'3001234004',4,NULL,NULL,NULL),
+(70000010,9001,90000004,'Paz y salvo','Paz y salvo',9600000,'3001234004',4,'2026-04-22',3200000.00,NULL),
+(70000011,9001,90000004,'No hubo acuerdo','No hubo acuerdo',9600000,'3001234004',4,NULL,NULL,NULL),
+(70000012,9001,90000004,'Incumplido','No hubo acuerdo',9600000,'3001234004',4,NULL,NULL,NULL),
 -- ── Asesor 5 · Cartera 9001 · Ilocalizado ─────────────────────────────────────
-(70000013,9001,90000005,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',4500000,'3001234005',6,'2026-05-10',1500000.00,NULL),
-(70000014,9001,90000005,'No hubo acuerdo','No hubo acuerdo','2026-04-17',4500000,'3001234005',6,NULL,NULL,NULL),
-(70000015,9001,90000005,'Ilocalizado',NULL,NULL,4500000,'3001234005',6,NULL,NULL,'Sin número de contacto'),
+(70000013,9001,90000005,'Acuerdo de pago abono','Acuerdo de pago abono',4500000,'3001234005',6,'2026-05-10',1500000.00,NULL),
+(70000014,9001,90000005,'No hubo acuerdo','No hubo acuerdo',4500000,'3001234005',6,NULL,NULL,NULL),
+(70000015,9001,90000005,'Ilocalizado',NULL,4500000,'3001234005',6,NULL,NULL,'Sin número de contacto'),
 -- ── Asesor 6 · Cartera 9001 · Mensaje en buzón ────────────────────────────────
-(70000016,9001,90000006,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',12300000,'3001234006',3,'2026-04-27',4100000.00,NULL),
-(70000017,9001,90000006,'Renuente','Renuente','2026-04-17',12300000,'3001234006',3,NULL,NULL,NULL),
-(70000018,9001,90000006,'Mensaje en buzón',NULL,NULL,12300000,'3001234006',3,NULL,NULL,'Buzón de voz activo'),
+(70000016,9001,90000006,'Acuerdo de pago total','Acuerdo de pago total',12300000,'3001234006',3,'2026-04-27',4100000.00,NULL),
+(70000017,9001,90000006,'Renuente','Renuente',12300000,'3001234006',3,NULL,NULL,NULL),
+(70000018,9001,90000006,'Mensaje en buzón',NULL,12300000,'3001234006',3,NULL,NULL,'Buzón de voz activo'),
 -- ── Asesor 7 · Cartera 9001 · Incumplido ──────────────────────────────────────
-(70000019,9001,90000007,'Realizo abono','Realizo abono','2026-04-17',2340000,'3001234007',7,'2026-05-03',780000.00,NULL),
-(70000020,9001,90000007,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2340000,'3001234007',7,NULL,NULL,NULL),
-(70000021,9001,90000007,'Incumplido','Potencial acuerdo','2026-04-10',2340000,'3001234007',7,NULL,NULL,NULL),
+(70000019,9001,90000007,'Realizo abono','Realizo abono',2340000,'3001234007',7,'2026-05-03',780000.00,NULL),
+(70000020,9001,90000007,'Potencial acuerdo','Potencial acuerdo',2340000,'3001234007',7,NULL,NULL,NULL),
+(70000021,9001,90000007,'Incumplido','Potencial acuerdo',2340000,'3001234007',7,NULL,NULL,NULL),
 -- ── Asesor 8 · Cartera 9002 · Ilocalizado ─────────────────────────────────────
-(70000022,9002,90000008,'Paz y salvo','Paz y salvo','2026-04-17',8400000,'3001234008',4,'2026-04-24',2800000.00,NULL),
-(70000023,9002,90000008,'No hubo acuerdo','No hubo acuerdo','2026-04-17',8400000,'3001234008',4,NULL,NULL,NULL),
-(70000024,9002,90000008,'Ilocalizado',NULL,NULL,8400000,'3001234008',4,NULL,NULL,'Sin número de contacto'),
+(70000022,9002,90000008,'Paz y salvo','Paz y salvo',8400000,'3001234008',4,'2026-04-24',2800000.00,NULL),
+(70000023,9002,90000008,'No hubo acuerdo','No hubo acuerdo',8400000,'3001234008',4,NULL,NULL,NULL),
+(70000024,9002,90000008,'Ilocalizado',NULL,8400000,'3001234008',4,NULL,NULL,'Sin número de contacto'),
 -- ── Asesor 9 · Cartera 9002 · Mensaje en buzón ────────────────────────────────
-(70000025,9002,90000009,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',3750000,'3001234009',2,'2026-04-29',1250000.00,NULL),
-(70000026,9002,90000009,'No hubo acuerdo','No hubo acuerdo','2026-04-17',3750000,'3001234009',2,NULL,NULL,NULL),
-(70000027,9002,90000009,'Mensaje en buzón',NULL,NULL,3750000,'3001234009',2,NULL,NULL,'Buzón de voz activo'),
+(70000025,9002,90000009,'Acuerdo de pago abono','Acuerdo de pago abono',3750000,'3001234009',2,'2026-04-29',1250000.00,NULL),
+(70000026,9002,90000009,'No hubo acuerdo','No hubo acuerdo',3750000,'3001234009',2,NULL,NULL,NULL),
+(70000027,9002,90000009,'Mensaje en buzón',NULL,3750000,'3001234009',2,NULL,NULL,'Buzón de voz activo'),
 -- ── Asesor 10 · Cartera 9002 · Incumplido ─────────────────────────────────────
-(70000028,9002,90000010,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',10800000,'3001234010',5,'2026-05-08',3600000.00,NULL),
-(70000029,9002,90000010,'Renuente','Renuente','2026-04-17',10800000,'3001234010',5,NULL,NULL,NULL),
-(70000030,9002,90000010,'Incumplido','Renuente','2026-04-10',10800000,'3001234010',5,NULL,NULL,NULL),
+(70000028,9002,90000010,'Acuerdo de pago total','Acuerdo de pago total',10800000,'3001234010',5,'2026-05-08',3600000.00,NULL),
+(70000029,9002,90000010,'Renuente','Renuente',10800000,'3001234010',5,NULL,NULL,NULL),
+(70000030,9002,90000010,'Incumplido','Renuente',10800000,'3001234010',5,NULL,NULL,NULL),
 -- ── Asesor 11 · Cartera 9002 · Ilocalizado ────────────────────────────────────
-(70000031,9002,90000011,'Realizo abono','Realizo abono','2026-04-17',2010000,'3001234011',3,'2026-04-21',670000.00,NULL),
-(70000032,9002,90000011,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2010000,'3001234011',3,NULL,NULL,NULL),
-(70000033,9002,90000011,'Ilocalizado',NULL,NULL,2010000,'3001234011',3,NULL,NULL,'Sin número de contacto'),
+(70000031,9002,90000011,'Realizo abono','Realizo abono',2010000,'3001234011',3,'2026-04-21',670000.00,NULL),
+(70000032,9002,90000011,'Potencial acuerdo','Potencial acuerdo',2010000,'3001234011',3,NULL,NULL,NULL),
+(70000033,9002,90000011,'Ilocalizado',NULL,2010000,'3001234011',3,NULL,NULL,'Sin número de contacto'),
 -- ── Asesor 12 · Cartera 9002 · Mensaje en buzón ───────────────────────────────
-(70000034,9002,90000012,'Paz y salvo','Paz y salvo','2026-04-17',14700000,'3001234012',6,'2026-05-01',4900000.00,NULL),
-(70000035,9002,90000012,'No hubo acuerdo','No hubo acuerdo','2026-04-17',14700000,'3001234012',6,NULL,NULL,NULL),
-(70000036,9002,90000012,'Mensaje en buzón',NULL,NULL,14700000,'3001234012',6,NULL,NULL,'Buzón de voz activo'),
+(70000034,9002,90000012,'Paz y salvo','Paz y salvo',14700000,'3001234012',6,'2026-05-01',4900000.00,NULL),
+(70000035,9002,90000012,'No hubo acuerdo','No hubo acuerdo',14700000,'3001234012',6,NULL,NULL,NULL),
+(70000036,9002,90000012,'Mensaje en buzón',NULL,14700000,'3001234012',6,NULL,NULL,'Buzón de voz activo'),
 -- ── Asesor 13 · Cartera 9002 · Incumplido ─────────────────────────────────────
-(70000037,9002,90000013,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',5850000,'3001234013',4,'2026-04-26',1950000.00,NULL),
-(70000038,9002,90000013,'No hubo acuerdo','No hubo acuerdo','2026-04-17',5850000,'3001234013',4,NULL,NULL,NULL),
-(70000039,9002,90000013,'Incumplido','No hubo acuerdo','2026-04-10',5850000,'3001234013',4,NULL,NULL,NULL),
+(70000037,9002,90000013,'Acuerdo de pago abono','Acuerdo de pago abono',5850000,'3001234013',4,'2026-04-26',1950000.00,NULL),
+(70000038,9002,90000013,'No hubo acuerdo','No hubo acuerdo',5850000,'3001234013',4,NULL,NULL,NULL),
+(70000039,9002,90000013,'Incumplido','No hubo acuerdo',5850000,'3001234013',4,NULL,NULL,NULL),
 -- ── Asesor 14 · Cartera 9002 · Ilocalizado ────────────────────────────────────
-(70000040,9002,90000014,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',6900000,'3001234014',3,'2026-04-28',2300000.00,NULL),
-(70000041,9002,90000014,'Renuente','Renuente','2026-04-17',6900000,'3001234014',3,NULL,NULL,NULL),
-(70000042,9002,90000014,'Ilocalizado',NULL,NULL,6900000,'3001234014',3,NULL,NULL,'Sin número de contacto'),
+(70000040,9002,90000014,'Acuerdo de pago total','Acuerdo de pago total',6900000,'3001234014',3,'2026-04-28',2300000.00,NULL),
+(70000041,9002,90000014,'Renuente','Renuente',6900000,'3001234014',3,NULL,NULL,NULL),
+(70000042,9002,90000014,'Ilocalizado',NULL,6900000,'3001234014',3,NULL,NULL,'Sin número de contacto'),
 -- ── Asesor 15 · Cartera 9003 · Mensaje en buzón ───────────────────────────────
-(70000043,9003,90000015,'Realizo abono','Realizo abono','2026-04-17',2460000,'3001234015',5,'2026-05-06',820000.00,NULL),
-(70000044,9003,90000015,'Potencial acuerdo','Potencial acuerdo','2026-04-17',2460000,'3001234015',5,NULL,NULL,NULL),
-(70000045,9003,90000015,'Mensaje en buzón',NULL,NULL,2460000,'3001234015',5,NULL,NULL,'Buzón de voz activo'),
+(70000043,9003,90000015,'Realizo abono','Realizo abono',2460000,'3001234015',5,'2026-05-06',820000.00,NULL),
+(70000044,9003,90000015,'Potencial acuerdo','Potencial acuerdo',2460000,'3001234015',5,NULL,NULL,NULL),
+(70000045,9003,90000015,'Mensaje en buzón',NULL,2460000,'3001234015',5,NULL,NULL,'Buzón de voz activo'),
 -- ── Asesor 16 · Cartera 9003 · Incumplido ─────────────────────────────────────
-(70000046,9003,90000016,'Paz y salvo','Paz y salvo','2026-04-17',11400000,'3001234016',2,'2026-04-23',3800000.00,NULL),
-(70000047,9003,90000016,'No hubo acuerdo','No hubo acuerdo','2026-04-17',11400000,'3001234016',2,NULL,NULL,NULL),
-(70000048,9003,90000016,'Incumplido','No hubo acuerdo','2026-04-10',11400000,'3001234016',2,NULL,NULL,NULL),
+(70000046,9003,90000016,'Paz y salvo','Paz y salvo',11400000,'3001234016',2,'2026-04-23',3800000.00,NULL),
+(70000047,9003,90000016,'No hubo acuerdo','No hubo acuerdo',11400000,'3001234016',2,NULL,NULL,NULL),
+(70000048,9003,90000016,'Incumplido','No hubo acuerdo',11400000,'3001234016',2,NULL,NULL,NULL),
 -- ── Asesor 17 · Cartera 9003 · Ilocalizado ────────────────────────────────────
-(70000049,9003,90000017,'Acuerdo de pago abono','Acuerdo de pago abono','2026-04-17',4200000,'3001234017',7,'2026-05-09',1400000.00,NULL),
-(70000050,9003,90000017,'No hubo acuerdo','No hubo acuerdo','2026-04-17',4200000,'3001234017',7,NULL,NULL,NULL),
-(70000051,9003,90000017,'Ilocalizado',NULL,NULL,4200000,'3001234017',7,NULL,NULL,'Sin número de contacto'),
+(70000049,9003,90000017,'Acuerdo de pago abono','Acuerdo de pago abono',4200000,'3001234017',7,'2026-05-09',1400000.00,NULL),
+(70000050,9003,90000017,'No hubo acuerdo','No hubo acuerdo',4200000,'3001234017',7,NULL,NULL,NULL),
+(70000051,9003,90000017,'Ilocalizado',NULL,4200000,'3001234017',7,NULL,NULL,'Sin número de contacto'),
 -- ── Asesor 18 · Cartera 9003 · Mensaje en buzón ───────────────────────────────
-(70000052,9003,90000018,'Acuerdo de pago total','Acuerdo de pago total','2026-04-17',8100000,'3001234018',4,'2026-04-30',2700000.00,NULL),
-(70000053,9003,90000018,'Renuente','Renuente','2026-04-17',8100000,'3001234018',4,NULL,NULL,NULL),
-(70000054,9003,90000018,'Mensaje en buzón',NULL,NULL,8100000,'3001234018',4,NULL,NULL,'Buzón de voz activo'),
+(70000052,9003,90000018,'Acuerdo de pago total','Acuerdo de pago total',8100000,'3001234018',4,'2026-04-30',2700000.00,NULL),
+(70000053,9003,90000018,'Renuente','Renuente',8100000,'3001234018',4,NULL,NULL,NULL),
+(70000054,9003,90000018,'Mensaje en buzón',NULL,8100000,'3001234018',4,NULL,NULL,'Buzón de voz activo'),
 -- ── Asesor 19 · Cartera 9003 · Incumplido ─────────────────────────────────────
-(70000055,9003,90000019,'Realizo abono','Realizo abono','2026-04-17',1890000,'3001234019',3,'2026-04-21',630000.00,NULL),
-(70000056,9003,90000019,'Potencial acuerdo','Potencial acuerdo','2026-04-17',1890000,'3001234019',3,NULL,NULL,NULL),
-(70000057,9003,90000019,'Incumplido','Potencial acuerdo','2026-04-10',1890000,'3001234019',3,NULL,NULL,NULL),
+(70000055,9003,90000019,'Realizo abono','Realizo abono',1890000,'3001234019',3,'2026-04-21',630000.00,NULL),
+(70000056,9003,90000019,'Potencial acuerdo','Potencial acuerdo',1890000,'3001234019',3,NULL,NULL,NULL),
+(70000057,9003,90000019,'Incumplido','Potencial acuerdo',1890000,'3001234019',3,NULL,NULL,NULL),
 -- ── Asesor 20 · Cartera 9003 · Ilocalizado ────────────────────────────────────
-(70000058,9003,90000020,'Paz y salvo','Paz y salvo','2026-04-17',12900000,'3001234020',6,'2026-05-04',4300000.00,NULL),
-(70000059,9003,90000020,'No hubo acuerdo','No hubo acuerdo','2026-04-17',12900000,'3001234020',6,NULL,NULL,NULL),
-(70000060,9003,90000020,'Ilocalizado',NULL,NULL,12900000,'3001234020',6,NULL,NULL,'Sin número de contacto')
-) AS v(tid,cid,aid,up,mp,fmp,saldo,tel,rot,fp,vp,motivo)
+(70000058,9003,90000020,'Paz y salvo','Paz y salvo',12900000,'3001234020',6,'2026-05-04',4300000.00,NULL),
+(70000059,9003,90000020,'No hubo acuerdo','No hubo acuerdo',12900000,'3001234020',6,NULL,NULL,NULL),
+(70000060,9003,90000020,'Ilocalizado',NULL,12900000,'3001234020',6,NULL,NULL,'Sin número de contacto')
+) AS v(tid,cid,aid,up,mp,saldo,tel,rot,fp,vp,motivo)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.UltimoEstadoTitular
     WHERE TitularID = v.tid AND CarteraID = v.cid AND AgenteID = v.aid

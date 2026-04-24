@@ -31,6 +31,7 @@ export function GestionAsignacionesPage() {
   const [etapa,         setEtapa]         = useState<Etapa>('inicial');
   const [seleccion,     setSeleccion]     = useState('');        // "carteraID_liderID"
   const [archivoNombre, setArchivoNombre] = useState('');
+  const [archivoKB,     setArchivoKB]     = useState(0);
   const [preview,       setPreview]       = useState<PreviewAsignacionDto | null>(null);
   const [mensajeFinal,  setMensajeFinal]  = useState('');
   const [carteraLabel,  setCarteraLabel]  = useState('');
@@ -80,6 +81,7 @@ export function GestionAsignacionesPage() {
     const archivo = e.target.files?.[0];
     if (!archivo) return;
     setArchivoNombre(archivo.name);
+    setArchivoKB(archivo.size / 1024);
     setErrorMensaje('');
     if (!seleccion) {
       setErrorMensaje('Selecciona primero la cartera y el líder.');
@@ -92,6 +94,7 @@ export function GestionAsignacionesPage() {
     setEtapa('inicial');
     setPreview(null);
     setArchivoNombre('');
+    setArchivoKB(0);
     setMensajeFinal('');
     setCarteraLabel('');
     setErrorMensaje('');
@@ -177,22 +180,28 @@ export function GestionAsignacionesPage() {
             <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Paso 2 — Sube el archivo completado
             </p>
-            <label
-              htmlFor="archivo-asignacion"
+            <div
+              onClick={() => seleccion && inputArchivoRef.current?.click()}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '8px 16px', borderRadius: '6px',
-                border: '0.5px dashed var(--z-border)', background: 'var(--z-bg-page)',
-                color: seleccion ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-                fontSize: '13px', fontWeight: 500,
+                border: `1.5px dashed ${archivoNombre ? 'var(--z-brand)' : 'var(--z-border)'}`,
+                borderRadius: '8px', padding: '24px', textAlign: 'center',
                 cursor: seleccion ? 'pointer' : 'not-allowed',
-                width: 'fit-content',
+                background: archivoNombre ? '#eff6ff' : 'transparent',
+                opacity: seleccion ? 1 : 0.5,
+                transition: 'border-color 0.15s, background 0.15s',
               }}
             >
-              {archivoNombre || 'Seleccionar archivo .xlsx'}
-            </label>
+              <p style={{ fontSize: '13px', color: archivoNombre ? 'var(--z-brand)' : 'var(--z-text-muted)', marginBottom: '4px' }}>
+                {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
+              </p>
+              {archivoNombre
+                ? <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>{archivoKB.toFixed(1)} KB</p>
+                : <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>
+                    Columnas requeridas: NumeroDocumento, Nombre
+                  </p>
+              }
+            </div>
             <input
-              id="archivo-asignacion"
               ref={inputArchivoRef}
               type="file"
               accept=".xlsx"
@@ -200,6 +209,14 @@ export function GestionAsignacionesPage() {
               onChange={handleSeleccionarArchivo}
               style={{ display: 'none' }}
             />
+            {archivoNombre && (
+              <button
+                onClick={() => { setArchivoNombre(''); setArchivoKB(0); if (inputArchivoRef.current) inputArchivoRef.current.value = ''; }}
+                style={{ background: 'none', border: 'none', fontSize: '11px', color: 'var(--z-text-muted)', cursor: 'pointer', padding: 0, width: 'fit-content' }}
+              >
+                × Quitar archivo
+              </button>
+            )}
             {!seleccion && (
               <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
                 Selecciona primero la cartera y el líder para habilitar la carga.

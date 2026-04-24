@@ -11,12 +11,13 @@ public class HistoricoEstadoTitular
     public int AgenteID { get; set; }
     public string? UltimoPerfil { get; set; }
     public string? MejorPerfil { get; set; }
-    public DateOnly? FechaMejorPerfil { get; set; }
+
     public decimal? SaldoTotal { get; set; }
     public string? NumeroMarcado { get; set; }
     public int? Rotacion { get; set; }
     public DateOnly? FechaUltimaGestion { get; set; }
     public DateOnly? FechaPromesa { get; set; }
     public decimal? ValorPromesa { get; set; }
-    public string? MotivoNoPago { get; set; }
+    public string?   MotivoNoPago       { get; set; }
+    public DateTime  FechaActualizacion { get; set; }
 }

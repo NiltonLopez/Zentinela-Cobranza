@@ -137,10 +137,15 @@ public class DashboardAsesorService : IDashboardAsesorService
     }
 
     // ── Detalle de pagos (sub-módulo) ─────────────────────────────────────────
-    public async Task<List<PagoAsesorDto>> ObtenerPagosDetalleAsync(int agenteID)
+    public async Task<List<PagoAsesorDto>> ObtenerPagosDetalleAsync(
+        int agenteID, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
-        return await _callCenter.Pagos
-            .Where(p => p.AgenteControlID == agenteID)
+        var query = _callCenter.Pagos.Where(p => p.AgenteControlID == agenteID);
+
+        if (fechaDesde.HasValue) query = query.Where(p => p.FechaPago >= fechaDesde.Value);
+        if (fechaHasta.HasValue) query = query.Where(p => p.FechaPago <= fechaHasta.Value);
+
+        return await query
             .Join(_callCenter.Carteras,
                   p => p.CarteraID,
                   c => c.ID,
