@@ -80,7 +80,7 @@ function formatearFechaHora(iso: string | null): string {
 // ── Constantes de presets ─────────────────────────────────────────────────────
 
 const PRESETS: { valor: Preset; label: string }[] = [
-  { valor: 'ultimo',     label: 'Último ciclo' },
+  { valor: 'ultimo',     label: 'Hasta cierre' },
   { valor: 'hoy',        label: 'Hoy' },
   { valor: 'ciclo',      label: 'Este mes' },
   { valor: 'mes-pasado', label: 'Mes pasado' },

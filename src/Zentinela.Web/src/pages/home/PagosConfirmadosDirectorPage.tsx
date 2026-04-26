@@ -8,13 +8,49 @@ import {
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import type { PagoDirectorDto } from '../../types/dashboard';
 
-function primerDiaMes(): string {
-  const hoy = new Date();
-  return new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
+type Preset = 'hoy' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
+
+interface Rango { desde: string; hasta: string; }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isoHoy(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
+function isoFecha(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function calcularRango(preset: Preset, customDesde: string, customHasta: string): Rango {
+  const hoy = new Date();
+  switch (preset) {
+    case 'hoy':
+      return { desde: isoHoy(), hasta: isoHoy() };
+    case 'ciclo': {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return { desde: isoFecha(inicio), hasta: isoHoy() };
+    }
+    case 'mes-pasado': {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      const fin    = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+      return { desde: isoFecha(inicio), hasta: isoFecha(fin) };
+    }
+    case '7d': {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - 6);
+      return { desde: isoFecha(inicio), hasta: isoHoy() };
+    }
+    case '30d': {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - 29);
+      return { desde: isoFecha(inicio), hasta: isoHoy() };
+    }
+    case 'custom':
+      return { desde: customDesde || isoHoy(), hasta: customHasta || isoHoy() };
+  }
 }
 
 function formatearMoneda(valor: number): string {
@@ -35,6 +71,17 @@ function formatearFechaHora(iso: string): string {
     hour: '2-digit', minute: '2-digit',
   });
 }
+
+// ── Constantes de presets ─────────────────────────────────────────────────────
+
+const PRESETS: { valor: Preset; label: string }[] = [
+  { valor: 'hoy',        label: 'Hoy' },
+  { valor: 'ciclo',      label: 'Este mes' },
+  { valor: 'mes-pasado', label: 'Mes pasado' },
+  { valor: '7d',         label: 'Últimos 7 días' },
+  { valor: '30d',        label: 'Últimos 30 días' },
+  { valor: 'custom',     label: 'Personalizado' },
+];
 
 // ── Ordenamiento ──────────────────────────────────────────────────────────────
 
@@ -159,8 +206,13 @@ export function PagosConfirmadosDirectorPage() {
   const [liderID,     setLiderID]     = useState<number | null>(null);
   const [liderNombre, setLiderNombre] = useState<string>('');
   const [carteraID,   setCarteraID]   = useState<number | null>(null);
-  const [fechaDesde,  setFechaDesde]  = useState(primerDiaMes);
-  const [fechaHasta,  setFechaHasta]  = useState(hoyISO);
+
+  // Selector de período
+  const [preset,      setPreset]      = useState<Preset>('ciclo');
+  const [customDesde, setCustomDesde] = useState<string>('');
+  const [customHasta, setCustomHasta] = useState<string>('');
+
+  const rango = calcularRango(preset, customDesde, customHasta);
 
   // Dropdowns
   const { data: lideres = [] } = useQuery({
@@ -176,10 +228,9 @@ export function PagosConfirmadosDirectorPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Pagos
   const { data: pagos = [], isLoading, isError } = useQuery({
-    queryKey: ['director-pagos', liderID, carteraID, fechaDesde, fechaHasta],
-    queryFn: () => obtenerPagosDirector(liderID, carteraID, fechaDesde || undefined, fechaHasta || undefined),
+    queryKey: ['director-pagos', liderID, carteraID, rango.desde, rango.hasta],
+    queryFn: () => obtenerPagosDirector(liderID, carteraID, rango.desde, rango.hasta),
     staleTime: 3 * 60 * 1000,
   });
 
@@ -221,11 +272,12 @@ export function PagosConfirmadosDirectorPage() {
     setLiderID(null);
     setLiderNombre('');
     setCarteraID(null);
-    setFechaDesde('');
-    setFechaHasta('');
+    setPreset('ciclo');
+    setCustomDesde('');
+    setCustomHasta('');
   };
 
-  const hayFiltrosActivos = liderID !== null || carteraID !== null || fechaDesde || fechaHasta;
+  const hayFiltrosActivos = liderID !== null || carteraID !== null || preset !== 'ciclo';
 
   const selectStyle: React.CSSProperties = {
     padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
@@ -237,6 +289,18 @@ export function PagosConfirmadosDirectorPage() {
     fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
     textTransform: 'uppercase', letterSpacing: '0.04em',
   };
+
+  const estiloBtnPreset = (activo: boolean): React.CSSProperties => ({
+    padding: '5px 12px',
+    borderRadius: '20px',
+    border: '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
+    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    fontSize: '12px',
+    fontWeight: activo ? 600 : 400,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1200px' }}>
@@ -298,16 +362,53 @@ export function PagosConfirmadosDirectorPage() {
           )}
         </div>
 
-        {/* Fila 2: Fechas */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={labelStyle}>Fecha desde</label>
-            <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={selectStyle} />
+        {/* Fila 2: Selector de período */}
+        <div>
+          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+            Período
+          </p>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {PRESETS.map(p => (
+              <button
+                key={p.valor}
+                onClick={() => setPreset(p.valor)}
+                style={estiloBtnPreset(preset === p.valor)}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={labelStyle}>Fecha hasta</label>
-            <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={selectStyle} />
-          </div>
+
+          {preset === 'custom' && (
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Desde</label>
+                <input
+                  type="date"
+                  value={customDesde}
+                  onChange={e => setCustomDesde(e.target.value)}
+                  style={{
+                    padding: '6px 10px', fontSize: '13px', borderRadius: '6px',
+                    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                    color: 'var(--z-text-primary)', outline: 'none',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Hasta</label>
+                <input
+                  type="date"
+                  value={customHasta}
+                  onChange={e => setCustomHasta(e.target.value)}
+                  style={{
+                    padding: '6px 10px', fontSize: '13px', borderRadius: '6px',
+                    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                    color: 'var(--z-text-primary)', outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -349,14 +450,14 @@ export function PagosConfirmadosDirectorPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
                 <tr style={{ background: 'var(--z-bg-page)' }}>
-                  {th('Cliente',      'nombreCliente')}
-                  {th('Asesor',       'nombreAsesor')}
-                  {th('Líder',        'nombreLider')}
-                  {th('Cartera',      'nombreCartera')}
+                  {th('Cliente',       'nombreCliente')}
+                  {th('Asesor',        'nombreAsesor')}
+                  {th('Líder',         'nombreLider')}
+                  {th('Cartera',       'nombreCartera')}
                   {th('Fecha de pago', 'fechaPago')}
-                  {th('Valor pagado', 'valorPagado',  'right')}
-                  {th('Honorarios',   'honorarios',   'right')}
-                  {th('Registrado',   'fechaRegistro')}
+                  {th('Valor pagado',  'valorPagado',  'right')}
+                  {th('Honorarios',    'honorarios',   'right')}
+                  {th('Registrado',    'fechaRegistro')}
                 </tr>
               </thead>
               <tbody>
