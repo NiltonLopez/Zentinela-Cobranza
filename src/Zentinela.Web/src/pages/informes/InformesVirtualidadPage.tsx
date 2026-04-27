@@ -2,14 +2,13 @@ import { useState, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, CartesianGrid,
+  Cell, Legend, CartesianGrid,
 } from 'recharts';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
 import {
   generarPlantillaMensajeria,
   validarMensajeria, confirmarMensajeria, getInformeMensajeria,
-  validarIVRPreEnvio, confirmarIVRPreEnvio,
-  validarIVRPostEnvio, confirmarIVRPostEnvio, getInformeIVR,
+  generarPlantillaIVR, validarIVR, confirmarIVR, getInformeIVR,
   validarLlamadasPerdidas, confirmarLlamadasPerdidas, getInformeLlamadasPerdidas,
   validarLlamadasEntrantes, confirmarLlamadasEntrantes, getInformeEntrantes,
   getInformePagosImpacto,
@@ -54,6 +53,11 @@ const PRESETS_PERIODO: { valor: Preset; label: string }[] = [
 
 function isoFecha(d: Date) { return d.toISOString().slice(0, 10); }
 function isoHoy()           { return isoFecha(new Date()); }
+function formatoDDMMYYYY(iso: string) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
 
 const HOY    = isoHoy();
 const HACE30 = (() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoFecha(d); })();
@@ -75,7 +79,7 @@ function calcularRangoPeriodo(preset: Preset, cd: string, ch: string): { desde: 
 
 // ── Componentes base ──────────────────────────────────────────────────────────
 
-function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string) => void }) {
+function SelectorPeriodo({ onChange, color = C.brand }: { onChange: (desde: string, hasta: string) => void; color?: string }) {
   const [preset,      setPreset]      = useState<Preset>('30d');
   const [customDesde, setCustomDesde] = useState('');
   const [customHasta, setCustomHasta] = useState('');
@@ -83,9 +87,9 @@ function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string
   const chip = (activo: boolean): React.CSSProperties => ({
     padding: '5px 14px',
     borderRadius: 20,
-    border: activo ? `1.5px solid ${C.brand}` : '1px solid var(--z-border)',
-    background: activo ? C.brand : 'var(--z-bg-card)',
-    color:      activo ? '#fff'   : 'var(--z-text-muted)',
+    border: activo ? `1.5px solid ${color}` : '1px solid var(--z-border)',
+    background: activo ? color : 'var(--z-bg-card)',
+    color:      activo ? '#fff' : 'var(--z-text-muted)',
     fontSize: 12,
     fontWeight: activo ? 600 : 400,
     cursor: 'pointer',
@@ -122,7 +126,7 @@ function SelectorPeriodo({ onChange }: { onChange: (desde: string, hasta: string
               style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
           </div>
           <button onClick={() => aplicar('custom')}
-            style={{ padding: '8px 18px', borderRadius: 7, border: 'none', background: C.brand, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ padding: '8px 18px', borderRadius: 7, border: 'none', background: color, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             Aplicar
           </button>
         </div>
@@ -311,10 +315,13 @@ function TabMensajeria() {
   const [preview,            setPreview]            = useState<ValidarMensajeriaResponse | null>(null);
   const [desde,              setDesde]              = useState(HACE30);
   const [hasta,              setHasta]              = useState(HOY);
+  const [filtroLider,        setFiltroLider]        = useState(0);   // 0 = todos
+  const [filtroCartera,      setFiltroCartera]      = useState(0);   // 0 = todas
   const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const carteraID = seleccion ? Number(seleccion.split('_')[0]) : 0;
+  const liderID   = seleccion ? Number(seleccion.split('_')[1]) : 0;
 
   const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
     queryKey: ['calificador-opciones'],
@@ -324,7 +331,13 @@ function TabMensajeria() {
 
   const validar   = useMutation({
     mutationFn: (archivo: File) => validarMensajeria(archivo, carteraID),
-    onSuccess: r => { setPreview(r); setEtapa('preview'); },
+    onSuccess: r => {
+      // El back devuelve filas con CarteraID/NombreCartera ya inyectados;
+      // aquí completamos LiderID que viene del selector.
+      r.filasValidas = r.filasValidas.map(f => ({ ...f, liderID }));
+      setPreview(r);
+      setEtapa('preview');
+    },
   });
   const confirmar = useMutation({ mutationFn: (f: FilaMensajeria[]) => confirmarMensajeria(f),          onSuccess: () => setEtapa('exito') });
 
@@ -336,11 +349,28 @@ function TabMensajeria() {
     if (inputRef.current) inputRef.current.value = '';
   };
 
-  const { data: informe, refetch } = useQuery({
-    queryKey: ['informe-mensajeria', desde, hasta],
-    queryFn:  () => getInformeMensajeria(desde, hasta),
+  const { data: informe, refetch, isFetching: cargandoInforme } = useQuery({
+    queryKey: ['informe-mensajeria', desde, hasta, filtroLider, filtroCartera],
+    queryFn:  () => getInformeMensajeria(
+      desde, hasta,
+      filtroLider   > 0 ? filtroLider   : undefined,
+      filtroCartera > 0 ? filtroCartera : undefined,
+    ),
     enabled:  false,
   });
+
+  // Listas de líderes y carteras únicas (derivadas de la etiqueta "Cartera — Líder")
+  const lideresUnicos = Array.from(
+    new Map(opciones.map(o => [o.liderID, { id: o.liderID, nombre: o.etiqueta.split(' — ')[1] ?? `Líder ${o.liderID}` }])).values()
+  ).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+
+  const carterasFiltradas = Array.from(
+    new Map(
+      opciones
+        .filter(o => filtroLider === 0 || o.liderID === filtroLider)
+        .map(o => [o.carteraID, { id: o.carteraID, nombre: o.etiqueta.split(' — ')[0] ?? `Cartera ${o.carteraID}` }])
+    ).values()
+  ).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -535,25 +565,84 @@ function TabMensajeria() {
 
       {/* Sección informe */}
       <SectionDivider title="Informe de mensajería enviada" color={C.mensajes} />
-      <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
+      <SelectorPeriodo color={C.mensajes} onChange={(d, h) => { setDesde(d); setHasta(h); }} />
+
+      {/* Filtros líder + cartera */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
+          <select
+            value={filtroLider}
+            onChange={e => { setFiltroLider(Number(e.target.value)); setFiltroCartera(0); }}
+            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
+          >
+            <option value={0}>Todos</option>
+            {lideresUnicos.map(l => (
+              <option key={l.id} value={l.id}>{l.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
+          <select
+            value={filtroCartera}
+            onChange={e => setFiltroCartera(Number(e.target.value))}
+            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
+          >
+            <option value={0}>Todas</option>
+            {carterasFiltradas.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <BtnPrimary color={C.mensajes} disabled={cargandoInforme} onClick={() => refetch()}>
+          {cargandoInforme ? 'Generando…' : 'Generar informe'}
+        </BtnPrimary>
+        <span style={{ fontSize: 12, color: C.gray }}>
+          Período: <strong>{formatoDDMMYYYY(desde)}</strong> → <strong>{formatoDDMMYYYY(hasta)}</strong>
+        </span>
+      </div>
+
+      {cargandoInforme && <LoadingRow label="Calculando informe del período…" />}
 
       {informe && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Total mensajes" value={informe.totalMensajes} color={C.mensajes} />
+            <KpiCard label="Total mensajes"   value={informe.totalMensajes}             color={C.mensajes} />
+            <KpiCard label="Combinaciones"    value={informe.porLiderCartera.length}    color={C.gray}     />
           </div>
-          <div style={{ height: 230, marginTop: 4 }}>
-            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Mensajes por cartera</p>
+          <div style={{ height: Math.max(230, informe.porLiderCartera.length * 30 + 60), marginTop: 4 }}>
+            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Mensajes por líder y cartera</p>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={informe.porCartera} layout="vertical">
+              <BarChart
+                data={informe.porLiderCartera.map(p => ({ ...p, etiqueta: `${p.nombreLider} — ${p.nombreCartera}` }))}
+                layout="vertical"
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="nombreCartera" type="category" width={130} tick={{ fontSize: 11 }} />
+                <YAxis dataKey="etiqueta" type="category" width={220} tick={{ fontSize: 11 }} />
                 <Tooltip {...tooltipStyle} />
                 <Bar dataKey="total" fill={C.mensajes} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Tabla de detalle */}
+          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>{['Líder', 'Cartera', 'Total mensajes'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+            </thead>
+            <tbody>{informe.porLiderCartera.map((p, i) => (
+              <tr key={`${p.liderID}_${p.carteraID}`} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                <td style={tdStyle}>{p.nombreLider}</td>
+                <td style={tdStyle}>{p.nombreCartera}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: C.mensajes }}>{p.total}</td>
+              </tr>
+            ))}</tbody>
+          </table>
           {informe.alertas.length > 0 && (
             <AlertPanel title={`Alertas en el período — líneas con >4 mensajes`}>
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
@@ -577,198 +666,351 @@ function TabMensajeria() {
 // ── Tab IVR ───────────────────────────────────────────────────────────────────
 
 function TabIVR() {
-  const [subTab,      setSubTab]      = useState<'pre' | 'post' | 'informe'>('pre');
-  const [previewPre,  setPreviewPre]  = useState<ValidarIVRResponse | null>(null);
-  const [previewPost, setPreviewPost] = useState<ValidarIVRResponse | null>(null);
-  const [etapaPre,    setEtapaPre]    = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [etapaPost,   setEtapaPost]   = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [desde,       setDesde]       = useState(HACE30);
-  const [hasta,       setHasta]       = useState(HOY);
+  const [etapa,              setEtapa]              = useState<'carga' | 'preview' | 'exito'>('carga');
+  const [seleccion,          setSeleccion]          = useState('');   // "carteraID_liderID"
+  const [archivoNombre,      setArchivoNombre]      = useState('');
+  const [archivoKB,          setArchivoKB]          = useState(0);
+  const [preview,            setPreview]            = useState<ValidarIVRResponse | null>(null);
+  const [desde,              setDesde]              = useState(HACE30);
+  const [hasta,              setHasta]              = useState(HOY);
+  const [filtroLider,        setFiltroLider]        = useState(0);
+  const [filtroCartera,      setFiltroCartera]      = useState(0);
+  const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const validarPre    = useMutation({ mutationFn: validarIVRPreEnvio,                                    onSuccess: r => { setPreviewPre(r);  setEtapaPre('preview');  } });
-  const confirmarPre  = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVRPreEnvio(f),             onSuccess: () => setEtapaPre('exito')  });
-  const validarPost   = useMutation({ mutationFn: validarIVRPostEnvio,                                   onSuccess: r => { setPreviewPost(r); setEtapaPost('preview'); } });
-  const confirmarPost = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVRPostEnvio(f),            onSuccess: () => setEtapaPost('exito') });
+  const carteraID = seleccion ? Number(seleccion.split('_')[0]) : 0;
+  const liderID   = seleccion ? Number(seleccion.split('_')[1]) : 0;
 
-  const { data: informe, refetch } = useQuery({
-    queryKey: ['informe-ivr', desde, hasta],
-    queryFn:  () => getInformeIVR(desde, hasta),
+  const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
+    queryKey: ['calificador-opciones'],
+    queryFn:  obtenerOpcionesCalificador,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const validar = useMutation({
+    mutationFn: (archivo: File) => validarIVR(archivo, carteraID),
+    onSuccess: r => {
+      // inyectar liderID en filas válidas (el back ya inyecta cartera/nombre)
+      r.filasValidas = r.filasValidas.map(f => ({ ...f, liderID }));
+      setPreview(r);
+      setEtapa('preview');
+    },
+  });
+  const confirmar = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVR(f), onSuccess: () => setEtapa('exito') });
+
+  const reiniciar = () => {
+    setEtapa('carga');
+    setPreview(null);
+    setArchivoNombre('');
+    setArchivoKB(0);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const { data: informe, refetch, isFetching: cargandoInforme } = useQuery({
+    queryKey: ['informe-ivr', desde, hasta, filtroLider, filtroCartera],
+    queryFn:  () => getInformeIVR(
+      desde, hasta,
+      filtroLider   > 0 ? filtroLider   : undefined,
+      filtroCartera > 0 ? filtroCartera : undefined,
+    ),
     enabled:  false,
   });
 
-  const PIES       = [{ name: 'Contestaron', value: informe?.totalContestaron ?? 0 }, { name: 'No contestaron', value: informe?.totalNoContestaron ?? 0 }];
-  const PIE_COLORS = [C.success, C.danger];
+  const lideresUnicos = Array.from(
+    new Map(opciones.map(o => [o.liderID, { id: o.liderID, nombre: o.etiqueta.split(' — ')[1] ?? `Líder ${o.liderID}` }])).values()
+  ).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
-  const subTabLabels: Record<'pre' | 'post' | 'informe', string> = { pre: 'Pre-envío', post: 'Post-envío', informe: 'Informe' };
+  const carterasFiltradas = Array.from(
+    new Map(
+      opciones
+        .filter(o => filtroLider === 0 || o.liderID === filtroLider)
+        .map(o => [o.carteraID, { id: o.carteraID, nombre: o.etiqueta.split(' — ')[0] ?? `Cartera ${o.carteraID}` }])
+    ).values()
+  ).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+      {/* Cabecera del tab */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
         <div style={{ width: 4, height: 32, borderRadius: 2, background: C.ivr }} />
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>IVR</h3>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Envío automatizado de voz — carga pre-envío, actualización de resultados e informe</p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Carga y seguimiento de envíos IVR (voz automatizada) a titulares</p>
         </div>
       </div>
 
-      {/* Sub-tabs IVR */}
-      <div style={{ display: 'flex', gap: 0, borderRadius: 8, border: '1px solid var(--z-border)', overflow: 'hidden', width: 'fit-content' }}>
-        {(['pre', 'post', 'informe'] as const).map((t, idx) => (
-          <button key={t} onClick={() => setSubTab(t)}
-            style={{
-              padding: '8px 20px',
-              border: 'none',
-              borderRight: idx < 2 ? '1px solid var(--z-border)' : 'none',
-              cursor: 'pointer',
-              fontSize: 13,
-              background: subTab === t ? C.ivr : 'var(--z-bg-card)',
-              color:      subTab === t ? '#fff' : C.gray,
-              fontWeight: subTab === t ? 600 : 400,
-            }}>
-            {subTabLabels[t]}
-          </button>
-        ))}
+      {etapa === 'carga' && (
+        <>
+          {/* Paso 1 — Seleccionar cartera */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Paso 1 — Selecciona la cartera
+            </p>
+            {cargandoOpciones ? (
+              <p style={{ fontSize: 13, color: C.gray }}>Cargando carteras…</p>
+            ) : (
+              <select
+                value={seleccion}
+                onChange={e => { setSeleccion(e.target.value); setArchivoNombre(''); setArchivoKB(0); }}
+                style={{
+                  padding: '8px 10px', fontSize: 13, borderRadius: 7,
+                  border: '1px solid var(--z-border)', background: 'var(--z-bg-page)',
+                  color: seleccion ? 'var(--z-text-primary)' : C.gray,
+                  outline: 'none', cursor: 'pointer', maxWidth: 420,
+                }}
+              >
+                <option value="">— Selecciona cartera y líder —</option>
+                {opciones.map(o => (
+                  <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
+                    {o.etiqueta}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Paso 2 — Plantilla */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Paso 2 — Descarga la plantilla
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                onClick={async () => { setGenerandoPlantilla(true); await generarPlantillaIVR(); setGenerandoPlantilla(false); }}
+                disabled={generandoPlantilla}
+                style={{
+                  padding: '8px 16px', borderRadius: 7,
+                  border: `1px solid ${C.ivr}`,
+                  background: generandoPlantilla ? 'var(--z-border)' : 'transparent',
+                  color: generandoPlantilla ? C.gray : C.ivr,
+                  fontSize: 13, fontWeight: 600,
+                  cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {generandoPlantilla ? 'Generando…' : 'Generar Plantilla'}
+              </button>
+              <span style={{ fontSize: 12, color: C.gray }}>
+                Columnas: <strong>NumeroDocumento</strong>, <strong>NumeroTelefono</strong>, <strong>FechaEnvio</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Paso 3 — Subir archivo */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Paso 3 — Sube el archivo completado
+            </p>
+            <div
+              onClick={() => seleccion && inputRef.current?.click()}
+              style={{
+                border: `1.5px dashed ${archivoNombre ? C.ivr : 'var(--z-border)'}`,
+                borderRadius: 10, padding: '28px 32px', textAlign: 'center',
+                cursor: seleccion ? 'pointer' : 'not-allowed',
+                background: archivoNombre ? '#ecfeff' : 'transparent',
+                opacity: seleccion ? 1 : 0.5,
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.6 }}>↑</div>
+              <p style={{ fontSize: 13, color: archivoNombre ? C.ivr : C.gray, fontWeight: 600, marginBottom: 4 }}>
+                {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
+              </p>
+              {archivoNombre
+                ? <p style={{ fontSize: 11, color: C.gray }}>{archivoKB.toFixed(1)} KB</p>
+                : <p style={{ fontSize: 11, color: C.gray, opacity: 0.7 }}>Máximo 50 MB</p>
+              }
+            </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".xlsx"
+              disabled={!seleccion}
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setArchivoNombre(f.name);
+                setArchivoKB(f.size / 1024);
+              }}
+            />
+            {archivoNombre && (
+              <button
+                onClick={() => { setArchivoNombre(''); setArchivoKB(0); if (inputRef.current) inputRef.current.value = ''; }}
+                style={{ background: 'none', border: 'none', fontSize: 11, color: C.gray, cursor: 'pointer', padding: 0, width: 'fit-content' }}
+              >
+                × Quitar archivo
+              </button>
+            )}
+            {!seleccion && (
+              <p style={{ fontSize: 12, color: C.gray }}>Selecciona primero la cartera para habilitar la carga.</p>
+            )}
+          </div>
+
+          {validar.isError && <ErrorPanel mensaje="Error al validar el archivo." />}
+
+          <div>
+            <BtnPrimary
+              color={C.ivr}
+              disabled={!seleccion || !archivoNombre || validar.isPending}
+              onClick={() => {
+                const f = inputRef.current?.files?.[0];
+                if (f) validar.mutate(f);
+              }}
+            >
+              {validar.isPending ? 'Validando…' : 'Validar archivo'}
+            </BtnPrimary>
+          </div>
+        </>
+      )}
+
+      {etapa === 'preview' && preview && (
+        <>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <KpiCard label="Total filas"  value={preview.totalFilas}     color={C.ivr}     />
+            <KpiCard label="Válidas"      value={preview.totalValidas}   color={C.success} />
+            <KpiCard label="Con errores"  value={preview.totalErrores}   color={C.danger}  />
+            <KpiCard label="Alertas >5"   value={preview.alertas.length} color={C.warning} />
+          </div>
+
+          {preview.alertas.length > 0 && (
+            <AlertPanel title="Líneas con más de 5 IVR en esta carga">
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Teléfono</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
+                <tbody>{preview.alertas.map((a, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                    <td style={tdStyle}>{a.numeroTelefono}</td>
+                    <td style={tdStyle}>{a.nombreCartera}</td>
+                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalIVR}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </AlertPanel>
+          )}
+
+          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>{['Documento', 'Teléfono', 'Cartera', 'Fecha', 'Estado'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+            </thead>
+            <tbody>{preview.preview.map((f, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                <td style={tdStyle}>{f.numeroDocumento}</td>
+                <td style={tdStyle}>{f.numeroTelefono}</td>
+                <td style={tdStyle}>{f.nombreCartera}</td>
+                <td style={tdStyle}>{f.fechaEnvio}</td>
+                <td style={{ ...tdStyle, color: f.esValida ? C.success : C.danger, fontWeight: 500 }}>
+                  {f.esValida ? '✓ Válida' : f.errorMensaje}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <BtnPrimary color={C.ivr} disabled={preview.totalValidas === 0 || confirmar.isPending}
+              onClick={() => confirmar.mutate(preview.filasValidas)}>
+              Confirmar {preview.totalValidas} registro(s)
+            </BtnPrimary>
+            <BtnSecondary onClick={reiniciar}>Cancelar</BtnSecondary>
+          </div>
+        </>
+      )}
+
+      {etapa === 'exito' && (
+        <SuccessBanner mensaje="Envíos IVR registrados correctamente." onNuevaCarga={reiniciar} />
+      )}
+
+      {/* Sección informe */}
+      <SectionDivider title="Informe de IVR enviado" color={C.ivr} />
+      <SelectorPeriodo color={C.ivr} onChange={(d, h) => { setDesde(d); setHasta(h); }} />
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
+          <select
+            value={filtroLider}
+            onChange={e => { setFiltroLider(Number(e.target.value)); setFiltroCartera(0); }}
+            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
+          >
+            <option value={0}>Todos</option>
+            {lideresUnicos.map(l => (
+              <option key={l.id} value={l.id}>{l.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
+          <select
+            value={filtroCartera}
+            onChange={e => setFiltroCartera(Number(e.target.value))}
+            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
+          >
+            <option value={0}>Todas</option>
+            {carterasFiltradas.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Pre-envío */}
-      {subTab === 'pre' && (
-        <>
-          {etapaPre === 'carga' && (
-            <>
-              <DropZone onFile={f => validarPre.mutate(f)} label="Subir Excel pre-envío IVR (.xlsx)" />
-              {validarPre.isPending && <LoadingRow label="Validando archivo…" />}
-            </>
-          )}
-          {etapaPre === 'preview' && previewPre && (
-            <>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <KpiCard label="Total"    value={previewPre.totalFilas}   color={C.ivr}     />
-                <KpiCard label="Válidas"  value={previewPre.totalValidas} color={C.success} />
-                <KpiCard label="Errores"  value={previewPre.totalErrores} color={C.danger}  />
-              </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <BtnPrimary color={C.ivr} disabled={previewPre.totalValidas === 0 || confirmarPre.isPending}
-                  onClick={() => confirmarPre.mutate(previewPre.filasValidas)}>
-                  Confirmar {previewPre.totalValidas} pre-envío(s)
-                </BtnPrimary>
-                <BtnSecondary onClick={() => setEtapaPre('carga')}>Cancelar</BtnSecondary>
-              </div>
-            </>
-          )}
-          {etapaPre === 'exito' && (
-            <SuccessBanner mensaje="Pre-envíos IVR registrados correctamente."
-              onNuevaCarga={() => { setEtapaPre('carga'); setPreviewPre(null); }} labelBtn="Nuevo" />
-          )}
-        </>
-      )}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <BtnPrimary color={C.ivr} disabled={cargandoInforme} onClick={() => refetch()}>
+          {cargandoInforme ? 'Generando…' : 'Generar informe'}
+        </BtnPrimary>
+        <span style={{ fontSize: 12, color: C.gray }}>
+          Período: <strong>{formatoDDMMYYYY(desde)}</strong> → <strong>{formatoDDMMYYYY(hasta)}</strong>
+        </span>
+      </div>
 
-      {/* Post-envío */}
-      {subTab === 'post' && (
-        <>
-          {etapaPost === 'carga' && (
-            <>
-              <DropZone onFile={f => validarPost.mutate(f)} label="Subir Excel post-envío con resultados (.xlsx)" />
-              {validarPost.isPending && <LoadingRow label="Validando archivo…" />}
-            </>
-          )}
-          {etapaPost === 'preview' && previewPost && (
-            <>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <KpiCard label="Total"        value={previewPost.totalFilas}   color={C.ivr}     />
-                <KpiCard label="Actualizará"  value={previewPost.totalValidas} color={C.success} />
-                <KpiCard label="Sin match"    value={previewPost.totalErrores} color={C.danger}  />
-              </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <BtnPrimary color={C.ivr} disabled={previewPost.totalValidas === 0 || confirmarPost.isPending}
-                  onClick={() => confirmarPost.mutate(previewPost.filasValidas)}>
-                  Confirmar {previewPost.totalValidas} resultado(s)
-                </BtnPrimary>
-                <BtnSecondary onClick={() => setEtapaPost('carga')}>Cancelar</BtnSecondary>
-              </div>
-            </>
-          )}
-          {etapaPost === 'exito' && (
-            <SuccessBanner mensaje="Resultados IVR actualizados correctamente."
-              onNuevaCarga={() => { setEtapaPost('carga'); setPreviewPost(null); }} labelBtn="Nuevo" />
-          )}
-        </>
-      )}
+      {cargandoInforme && <LoadingRow label="Calculando informe del período…" />}
 
-      {/* Informe IVR */}
-      {subTab === 'informe' && (
+      {informe && (
         <>
-          <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
-          {informe && (
-            <>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <KpiCard label="Solicitados"    value={informe.totalSolicitados}                                      color={C.ivr}     />
-                <KpiCard label="Contestaron"    value={`${informe.totalContestaron} (${informe.pctContesto}%)`}       color={C.success} />
-                <KpiCard label="No contestaron" value={`${informe.totalNoContestaron} (${informe.pctNoContesto}%)`}  color={C.danger}  />
-              </div>
-              <div style={{ display: 'flex', gap: 20, marginTop: 4, flexWrap: 'wrap' }}>
-                <div style={{ flex: 2, minWidth: 260, height: 210 }}>
-                  <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>IVR por semana</p>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={informe.porSemana}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" vertical={false} />
-                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip {...tooltipStyle} />
-                      <Bar dataKey="total"      fill={C.ivr}     name="Solicitados" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="contestaron" fill={C.success} name="Contestaron" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <div style={{ flex: 1, minWidth: 200, height: 210 }}>
-                  <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>Resultado global</p>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={PIES} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        labelLine={false}>
-                        {PIES.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
-                      </Pie>
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              {informe.alertas.length > 0 && (
-                <AlertPanel title="Líneas con más de 5 IVR">
-                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={thStyle}>Celular</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
-                    <tbody>{informe.alertas.map((a, i) => (
-                      <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                        <td style={tdStyle}>{a.celular}</td>
-                        <td style={tdStyle}>{a.nombreCartera}</td>
-                        <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalIVR}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </AlertPanel>
-              )}
-              {informe.vsGestion.length > 0 && (
-                <>
-                  <SectionDivider title="IVR Contestado vs Gestión" color={C.ivr} />
-                  <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-                    <thead>
-                      <tr>{['TitularID', 'Celular', 'Resultado', 'Último Perfil', 'Últ. Gestión', 'Promesa'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-                    </thead>
-                    <tbody>{informe.vsGestion.map((r, i) => (
-                      <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                        <td style={tdStyle}>{r.titularID}</td>
-                        <td style={tdStyle}>{r.celular}</td>
-                        <td style={{ ...tdStyle, color: C.success, fontWeight: 500 }}>{r.resultado}</td>
-                        <td style={tdStyle}>{r.ultimoPerfil ?? '—'}</td>
-                        <td style={tdStyle}>{r.fechaUltimaGestion ?? '—'}</td>
-                        <td style={tdStyle}>{r.fechaPromesa ?? '—'}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </>
-              )}
-            </>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <KpiCard label="Total IVR"     value={informe.totalIVR}                color={C.ivr}  />
+            <KpiCard label="Combinaciones" value={informe.porLiderCartera.length}  color={C.gray} />
+          </div>
+          <div style={{ height: Math.max(230, informe.porLiderCartera.length * 30 + 60), marginTop: 4 }}>
+            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>IVR por líder y cartera</p>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={informe.porLiderCartera.map(p => ({ ...p, etiqueta: `${p.nombreLider} — ${p.nombreCartera}` }))}
+                layout="vertical"
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis dataKey="etiqueta" type="category" width={220} tick={{ fontSize: 11 }} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="total" fill={C.ivr} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>{['Líder', 'Cartera', 'Total IVR'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
+            </thead>
+            <tbody>{informe.porLiderCartera.map((p, i) => (
+              <tr key={`${p.liderID}_${p.carteraID}`} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                <td style={tdStyle}>{p.nombreLider}</td>
+                <td style={tdStyle}>{p.nombreCartera}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: C.ivr }}>{p.total}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+
+          {informe.alertas.length > 0 && (
+            <AlertPanel title="Alertas en el período — líneas con >5 IVR">
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Teléfono</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
+                <tbody>{informe.alertas.map((a, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
+                    <td style={tdStyle}>{a.numeroTelefono}</td>
+                    <td style={tdStyle}>{a.nombreCartera}</td>
+                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalIVR}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </AlertPanel>
           )}
         </>
       )}
@@ -1007,7 +1249,7 @@ function TabPagosImpacto() {
         </div>
       </div>
 
-      <SelectorPeriodo onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
+      <SelectorPeriodo color={C.brand} onChange={(d, h) => { setDesde(d); setHasta(h); refetch(); }} />
 
       {isFetching && <LoadingRow label="Calculando relación pagos vs canales…" />}
 

@@ -14,18 +14,95 @@ public class VirtualidadIVRService : IVirtualidadIVRService
 
     public VirtualidadIVRService(CallCenterDbContext db) => _db = db;
 
-    // ── Pre-envío ─────────────────────────────────────────────────────────────
+    // ── Plantilla ─────────────────────────────────────────────────────────────
 
-    public async Task<ValidarIVRResponse> ValidarPreEnvioAsync(Stream excelStream)
+    public byte[] GenerarPlantilla()
     {
-        var filas = ParsearExcel(excelStream);
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("IVR");
 
-        // Resolver CarteraID si viene NombreCartera en el archivo
-        var nombres = filas
-            .Where(f => f.CarteraID == null && !string.IsNullOrWhiteSpace(f.Campana))
-            .Select(f => f.Campana!.Trim()).Distinct().ToList();
+        var columnas = new[] { "NumeroDocumento", "NumeroTelefono", "FechaEnvio" };
+
+        for (int i = 0; i < columnas.Length; i++)
+        {
+            var c = ws.Cell(1, i + 1);
+            c.Value = columnas[i];
+            c.Style.Font.Bold            = true;
+            c.Style.Font.FontColor       = XLColor.White;
+            c.Style.Fill.BackgroundColor = XLColor.FromHtml("#0891b2");
+            c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        var ej = new object[] { 1020304050L, "3001234567", "2026-04-24" };
+        for (int i = 0; i < ej.Length; i++)
+        {
+            var c = ws.Cell(2, i + 1);
+            c.Value = ej[i].ToString();
+            c.Style.Font.FontColor = XLColor.Gray;
+        }
+
+        ws.Columns().AdjustToContents();
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    // ── Validación ────────────────────────────────────────────────────────────
+
+    public async Task<ValidarIVRResponse> ValidarExcelAsync(Stream excelStream, int carteraID)
+    {
+        var cartera = await _db.Carteras
+            .Where(c => c.ID == carteraID)
+            .Select(c => new { c.ID, c.NombreCartera })
+            .FirstOrDefaultAsync();
+
+        if (cartera is null)
+            return new ValidarIVRResponse
+            {
+                TotalErrores = 1,
+                Preview = [new FilaIVRDto
+                {
+                    EsValida = false,
+                    ErrorMensaje = $"La cartera seleccionada (ID {carteraID}) no existe en el sistema.",
+                }],
+            };
+
+        var filas = ParsearExcel(excelStream);
+        if (filas.Count == 0)
+            return new ValidarIVRResponse();
+
+        foreach (var f in filas)
+        {
+            f.CarteraID    = cartera.ID;
+            f.NombreCartera = cartera.NombreCartera;
+        }
 
         var validas = filas.Where(f => f.EsValida).ToList();
+
+        // Alertas: >5 IVR a la misma línea en esta carga + histórico de la cartera
+        var telefonos = validas.Select(f => f.NumeroTelefono).Distinct().ToList();
+        var historico = await _db.IVREnviados
+            .Where(i => i.CarteraID == carteraID && telefonos.Contains(i.NumeroTelefono))
+            .GroupBy(i => i.NumeroTelefono)
+            .Select(g => new { NumeroTelefono = g.Key, Total = g.Count() })
+            .ToListAsync();
+
+        var conteoActual = validas
+            .GroupBy(f => f.NumeroTelefono)
+            .Select(g => new { NumeroTelefono = g.Key, Total = g.Count() })
+            .ToList();
+
+        var alertas = conteoActual
+            .Select(c => new AlertaIVRDto
+            {
+                NumeroTelefono = c.NumeroTelefono,
+                NombreCartera  = cartera.NombreCartera,
+                TotalIVR       = c.Total + (historico
+                    .FirstOrDefault(h => h.NumeroTelefono == c.NumeroTelefono)
+                    ?.Total ?? 0),
+            })
+            .Where(a => a.TotalIVR > 5)
+            .ToList();
 
         return new ValidarIVRResponse
         {
@@ -34,178 +111,80 @@ public class VirtualidadIVRService : IVirtualidadIVRService
             TotalErrores = filas.Count - validas.Count,
             Preview      = filas.Take(10).ToList(),
             FilasValidas = validas,
+            Alertas      = alertas,
         };
     }
 
-    public async Task<int> ConfirmarPreEnvioAsync(List<FilaIVRDto> filas)
+    // ── Confirmación ──────────────────────────────────────────────────────────
+
+    public async Task<int> ConfirmarAsync(List<FilaIVRDto> filas)
     {
-        var entidades = filas.Select(f => new IVREnvio
+        var entidades = filas.Select(f => new IVREnviado
         {
-            TitularID  = f.TitularID,
-            Celular    = f.Celular,
-            Campana    = f.Campana,
-            CarteraID  = f.CarteraID,
-            FechaEnvio = f.FechaEnvio,
-            Resultado  = null,
+            NumeroDocumento = f.NumeroDocumento,
+            NumeroTelefono  = f.NumeroTelefono,
+            LiderID         = f.LiderID,
+            CarteraID       = f.CarteraID,
+            FechaEnvio      = f.FechaEnvio,
+            Canal           = "IVR",
         }).ToList();
 
-        _db.IVREnvios.AddRange(entidades);
+        _db.IVREnviados.AddRange(entidades);
         await _db.SaveChangesAsync();
         return entidades.Count;
     }
 
-    // ── Post-envío ────────────────────────────────────────────────────────────
-
-    public async Task<ValidarIVRResponse> ValidarPostEnvioAsync(Stream excelStream)
-    {
-        var filas = ParsearExcel(excelStream);
-        var validas = filas.Where(f => f.EsValida && !string.IsNullOrWhiteSpace(f.Resultado)).ToList();
-
-        // Verificar que exista el pre-envío correspondiente
-        foreach (var f in validas)
-        {
-            var existe = await _db.IVREnvios.AnyAsync(i =>
-                i.TitularID == f.TitularID &&
-                i.Celular   == f.Celular   &&
-                i.Campana   == f.Campana   &&
-                i.Resultado == null);
-
-            if (!existe)
-            {
-                f.EsValida = false;
-                f.ErrorMensaje = "No se encontró pre-envío pendiente para TitularID+Celular+Campaña.";
-            }
-        }
-
-        var finales = validas.Where(f => f.EsValida).ToList();
-
-        return new ValidarIVRResponse
-        {
-            TotalFilas   = filas.Count,
-            TotalValidas = finales.Count,
-            TotalErrores = filas.Count - finales.Count,
-            Preview      = filas.Take(10).ToList(),
-            FilasValidas = finales,
-        };
-    }
-
-    public async Task<int> ConfirmarPostEnvioAsync(List<FilaIVRDto> filas)
-    {
-        var actualizados = 0;
-        var ahora = DateTime.UtcNow;
-
-        foreach (var f in filas)
-        {
-            var registro = await _db.IVREnvios
-                .Where(i =>
-                    i.TitularID == f.TitularID &&
-                    i.Celular   == f.Celular   &&
-                    i.Campana   == f.Campana   &&
-                    i.Resultado == null)
-                .FirstOrDefaultAsync();
-
-            if (registro == null) continue;
-
-            registro.Resultado      = f.Resultado;
-            registro.FechaResultado = ahora;
-            actualizados++;
-        }
-
-        await _db.SaveChangesAsync();
-        return actualizados;
-    }
-
     // ── Informe ───────────────────────────────────────────────────────────────
 
-    public async Task<InformeIVRDto> GetInformeAsync(int? carteraID, DateOnly desde, DateOnly hasta)
+    public async Task<InformeIVRDto> GetInformeAsync(
+        DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
     {
-        var query = _db.IVREnvios
-            .Where(i => i.FechaEnvio >= desde && i.FechaEnvio <= hasta);
-
-        if (carteraID.HasValue)
-            query = query.Where(i => i.CarteraID == carteraID.Value);
-
-        var total       = await query.CountAsync();
-        var contestaron = await query.CountAsync(i => i.Resultado != null && i.Resultado != "No Contesto");
-        var noContesto  = await query.CountAsync(i => i.Resultado == "No Contesto");
-
-        var porSemana = await query
-            .GroupBy(i => new
+        var queryEnriquecida =
+            from i in _db.IVREnviados
+            where i.FechaEnvio >= desde && i.FechaEnvio <= hasta
+                && (!liderID.HasValue   || i.LiderID   == liderID.Value)
+                && (!carteraID.HasValue || i.CarteraID == carteraID.Value)
+            join c in _db.Carteras on i.CarteraID equals c.ID
+            join l in _db.Lideres  on i.LiderID   equals l.ID
+            select new
             {
-                Anio   = i.FechaEnvio.Year,
-                Semana = EF.Functions.DateDiffDay(new DateOnly(i.FechaEnvio.Year, 1, 1), i.FechaEnvio) / 7 + 1,
-            })
-            .Select(g => new IVRPorSemana
+                i.LiderID,
+                NombreLider   = l.Nombre,
+                i.CarteraID,
+                c.NombreCartera,
+                i.NumeroTelefono,
+            };
+
+        var porLiderCartera = await queryEnriquecida
+            .GroupBy(x => new { x.LiderID, x.NombreLider, x.CarteraID, x.NombreCartera })
+            .Select(g => new IVRPorLiderCartera
             {
-                Anio         = g.Key.Anio,
-                Semana       = g.Key.Semana,
-                Total        = g.Count(),
-                Contestaron  = g.Count(i => i.Resultado != null && i.Resultado != "No Contesto"),
-                NoContestaron= g.Count(i => i.Resultado == "No Contesto"),
+                LiderID       = g.Key.LiderID,
+                NombreLider   = g.Key.NombreLider,
+                CarteraID     = g.Key.CarteraID,
+                NombreCartera = g.Key.NombreCartera,
+                Total         = g.Count(),
             })
-            .OrderBy(s => s.Anio).ThenBy(s => s.Semana)
+            .OrderByDescending(g => g.Total)
             .ToListAsync();
 
-        var alertas = await query
-            .GroupBy(i => new { i.Celular, i.CarteraID })
+        var alertas = await queryEnriquecida
+            .GroupBy(x => new { x.NumeroTelefono, x.NombreCartera })
             .Where(g => g.Count() > 5)
             .Select(g => new AlertaIVRDto
             {
-                Celular   = g.Key.Celular,
-                CarteraID = g.Key.CarteraID,
-                TotalIVR  = g.Count(),
+                NumeroTelefono = g.Key.NumeroTelefono,
+                NombreCartera  = g.Key.NombreCartera,
+                TotalIVR       = g.Count(),
             })
+            .OrderByDescending(a => a.TotalIVR)
             .ToListAsync();
-
-        // Enriquecer alertas con nombre de cartera
-        var carteraIDs = alertas.Where(a => a.CarteraID.HasValue).Select(a => a.CarteraID!.Value).Distinct().ToList();
-        var nombresCarteras = await _db.Carteras
-            .Where(c => carteraIDs.Contains(c.ID))
-            .ToDictionaryAsync(c => c.ID, c => c.NombreCartera);
-        foreach (var a in alertas)
-            if (a.CarteraID.HasValue && nombresCarteras.TryGetValue(a.CarteraID.Value, out var nombre))
-                a.NombreCartera = nombre;
-
-        // IVR contestados vs gestión en UltimoEstadoTitular
-        var idsContestaron = await query
-            .Where(i => i.Resultado != null && i.Resultado != "No Contesto")
-            .Select(i => new { i.TitularID, i.Celular, i.Resultado, i.FechaEnvio })
-            .Take(200)
-            .ToListAsync();
-
-        var titularIDs = idsContestaron.Select(i => i.TitularID).Distinct().ToList();
-        var estadosTitulares = await _db.UltimosEstadosTitular
-            .Where(u => titularIDs.Contains(u.TitularID))
-            .Select(u => new { u.TitularID, u.UltimoPerfil, u.FechaUltimaGestion, u.FechaPromesa })
-            .ToListAsync();
-
-        var estadoMap = estadosTitulares.ToDictionary(u => u.TitularID);
-
-        var vsGestion = idsContestaron.Select(i =>
-        {
-            estadoMap.TryGetValue(i.TitularID, out var est);
-            return new IVRVsGestionDto
-            {
-                TitularID          = i.TitularID,
-                Celular            = i.Celular,
-                Resultado          = i.Resultado,
-                UltimoPerfil       = est?.UltimoPerfil,
-                FechaUltimaGestion = est?.FechaUltimaGestion,
-                FechaPromesa       = est?.FechaPromesa,
-                FechaEnvioIVR      = i.FechaEnvio,
-            };
-        }).ToList();
 
         return new InformeIVRDto
         {
-            TotalSolicitados   = total,
-            TotalContestaron   = contestaron,
-            TotalNoContestaron = noContesto,
-            PctContesto        = total > 0 ? Math.Round(contestaron * 100.0 / total, 1) : 0,
-            PctNoContesto      = total > 0 ? Math.Round(noContesto * 100.0 / total, 1) : 0,
-            PorSemana          = porSemana,
-            Alertas            = alertas,
-            VsGestion          = vsGestion,
+            TotalIVR        = porLiderCartera.Sum(p => p.Total),
+            PorLiderCartera = porLiderCartera,
+            Alertas         = alertas,
         };
     }
 
@@ -230,45 +209,42 @@ public class VirtualidadIVRService : IVirtualidadIVRService
 
         int Get(params string[] aliases)
         {
-            foreach (var a in aliases) if (headers.TryGetValue(a, out var col)) return col;
+            foreach (var a in aliases)
+                if (headers.TryGetValue(a, out var col)) return col;
             return 0;
         }
 
-        int iTitular  = Get("titularid", "titular", "numerodocumento", "cedula", "identificacion");
-        int iCelular  = Get("celular", "telefono", "numerotelefono");
-        int iCampana  = Get("campana", "campaign", "nombre");
-        int iCartera  = Get("carteraid", "cartera");
-        int iFecha    = Get("fechaenvio", "fecha");
-        int iResultado= Get("resultado", "result");
+        int iDoc   = Get("numerodocumento", "documento", "cedula", "identificacion", "titularid");
+        int iTel   = Get("numerotelefono", "telefono", "celular");
+        int iFecha = Get("fechaenvio", "fecha", "fechadeenvio");
 
         foreach (var fila in todasFilas.Skip(1))
         {
             string Cel(int idx) => idx > 0 ? fila.Cell(idx).GetString().Trim() : string.Empty;
 
-            if (string.IsNullOrWhiteSpace(Cel(iTitular)) && string.IsNullOrWhiteSpace(Cel(iCelular)))
+            if (string.IsNullOrWhiteSpace(Cel(iDoc)) && string.IsNullOrWhiteSpace(Cel(iTel)))
                 continue;
 
             var dto = new FilaIVRDto { EsValida = true };
 
-            if (!long.TryParse(Cel(iTitular), out var tid))
-            { dto.EsValida = false; dto.ErrorMensaje = "TitularID inválido."; }
-            else dto.TitularID = tid;
+            if (!long.TryParse(Cel(iDoc), out var doc))
+            {
+                dto.EsValida = false;
+                dto.ErrorMensaje = "NumeroDocumento inválido.";
+            }
+            else dto.NumeroDocumento = doc;
 
-            dto.Celular   = Cel(iCelular);
-            dto.Campana   = string.IsNullOrWhiteSpace(Cel(iCampana)) ? null : Cel(iCampana);
-            dto.Resultado = string.IsNullOrWhiteSpace(Cel(iResultado)) ? null : Cel(iResultado);
-
-            if (int.TryParse(Cel(iCartera), out var cid)) dto.CarteraID = cid;
+            dto.NumeroTelefono = Cel(iTel);
 
             if (!DateOnly.TryParse(Cel(iFecha), CultureInfo.InvariantCulture, out var fecha)
                 && !DateOnly.TryParseExact(Cel(iFecha), "dd/MM/yyyy", null, DateTimeStyles.None, out fecha))
             {
-                // Fecha opcional — usar hoy si no viene
-                fecha = DateOnly.FromDateTime(DateTime.Today);
+                dto.EsValida = false;
+                dto.ErrorMensaje ??= "FechaEnvío inválida.";
             }
-            dto.FechaEnvio = fecha;
+            else dto.FechaEnvio = fecha;
 
-            if (string.IsNullOrWhiteSpace(dto.Celular)) { dto.EsValida = false; dto.ErrorMensaje ??= "Celular vacío."; }
+            if (string.IsNullOrWhiteSpace(dto.NumeroTelefono)) { dto.EsValida = false; dto.ErrorMensaje ??= "NumeroTelefono vacío."; }
 
             resultado.Add(dto);
         }

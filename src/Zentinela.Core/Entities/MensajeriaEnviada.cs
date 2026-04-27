@@ -9,8 +9,8 @@ public class MensajeriaEnviada
 {
     public long     NumeroDocumento { get; set; }
     public string   NumeroTelefono  { get; set; } = string.Empty;
-    public int?     CarteraID       { get; set; }
-    public string   NombreCartera   { get; set; } = string.Empty;
+    public int      LiderID         { get; set; }
+    public int      CarteraID       { get; set; }
     public DateOnly FechaEnvio      { get; set; }
     public string   Canal           { get; set; } = "SMS";
     public DateTime FechaCargue     { get; set; }

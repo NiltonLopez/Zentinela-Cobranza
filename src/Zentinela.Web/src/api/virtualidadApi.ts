@@ -32,39 +32,52 @@ export const confirmarMensajeria = async (filasValidas: FilaMensajeria[]): Promi
   return data;
 };
 
-export const getInformeMensajeria = async (desde: string, hasta: string): Promise<InformeMensajeria> => {
-  const { data } = await api.get<InformeMensajeria>('/api/virtualidad/mensajeria/informe', { params: { desde, hasta } });
+export const getInformeMensajeria = async (
+  desde: string,
+  hasta: string,
+  liderID?: number,
+  carteraID?: number,
+): Promise<InformeMensajeria> => {
+  const { data } = await api.get<InformeMensajeria>('/api/virtualidad/mensajeria/informe', {
+    params: { desde, hasta, liderID, carteraID },
+  });
   return data;
 };
 
 // ── IVR ───────────────────────────────────────────────────────────────────────
 
-export const validarIVRPreEnvio = async (archivo: File): Promise<ValidarIVRResponse> => {
+export const generarPlantillaIVR = async (): Promise<void> => {
+  const { data } = await api.get('/api/virtualidad/ivr/plantilla', { responseType: 'blob' });
+  const url  = URL.createObjectURL(data as Blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = 'plantilla_ivr.xlsx';
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+export const validarIVR = async (archivo: File, carteraID: number): Promise<ValidarIVRResponse> => {
   const fd = new FormData();
   fd.append('archivo', archivo);
-  const { data } = await api.post<ValidarIVRResponse>('/api/virtualidad/ivr/pre-envio/validar', fd);
+  fd.append('carteraID', String(carteraID));
+  const { data } = await api.post<ValidarIVRResponse>('/api/virtualidad/ivr/validar', fd);
   return data;
 };
 
-export const confirmarIVRPreEnvio = async (filasValidas: FilaIVR[]): Promise<{ insertados: number; mensaje: string }> => {
-  const { data } = await api.post('/api/virtualidad/ivr/pre-envio/confirmar', { filasValidas });
+export const confirmarIVR = async (filasValidas: FilaIVR[]): Promise<{ insertados: number; mensaje: string }> => {
+  const { data } = await api.post('/api/virtualidad/ivr/confirmar', { filasValidas });
   return data;
 };
 
-export const validarIVRPostEnvio = async (archivo: File): Promise<ValidarIVRResponse> => {
-  const fd = new FormData();
-  fd.append('archivo', archivo);
-  const { data } = await api.post<ValidarIVRResponse>('/api/virtualidad/ivr/post-envio/validar', fd);
-  return data;
-};
-
-export const confirmarIVRPostEnvio = async (filasValidas: FilaIVR[]): Promise<{ actualizados: number; mensaje: string }> => {
-  const { data } = await api.post('/api/virtualidad/ivr/post-envio/confirmar', { filasValidas });
-  return data;
-};
-
-export const getInformeIVR = async (desde: string, hasta: string, carteraID?: number): Promise<InformeIVR> => {
-  const { data } = await api.get<InformeIVR>('/api/virtualidad/ivr/informe', { params: { desde, hasta, carteraID } });
+export const getInformeIVR = async (
+  desde: string,
+  hasta: string,
+  liderID?: number,
+  carteraID?: number,
+): Promise<InformeIVR> => {
+  const { data } = await api.get<InformeIVR>('/api/virtualidad/ivr/informe', {
+    params: { desde, hasta, liderID, carteraID },
+  });
   return data;
 };
 

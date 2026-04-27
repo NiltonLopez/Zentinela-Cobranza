@@ -52,9 +52,13 @@ public class VirtualidadMensajeriaController : ControllerBase
     }
 
     [HttpGet("informe")]
-    public async Task<IActionResult> GetInforme([FromQuery] DateOnly desde, [FromQuery] DateOnly hasta)
+    public async Task<IActionResult> GetInforme(
+        [FromQuery] DateOnly desde,
+        [FromQuery] DateOnly hasta,
+        [FromQuery] int? liderID,
+        [FromQuery] int? carteraID)
     {
-        var resultado = await _service.GetInformeAsync(desde, hasta);
+        var resultado = await _service.GetInformeAsync(desde, hasta, liderID, carteraID);
         return Ok(resultado);
     }
 }

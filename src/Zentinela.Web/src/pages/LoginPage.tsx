@@ -3,14 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { login } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 import { ZButton } from '../components/ZButton';
-
-function ShieldIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
+import ZentinelaLogo from '../components/ZentinelaLogo';
 
 export function LoginPage() {
   const [usuario, setUsuario] = useState('');
@@ -66,14 +59,7 @@ export function LoginPage() {
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '28px' }}>
-          <div style={{
-            width: '40px', height: '40px',
-            background: 'var(--z-brand)',
-            borderRadius: '10px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <ShieldIcon />
-          </div>
+          <ZentinelaLogo size={40} />
           <div>
             <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1.2 }}>Zentinela</p>
             <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>Gestión de cobranza</p>

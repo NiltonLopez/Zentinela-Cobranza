@@ -13,9 +13,10 @@ export function Sidebar({ moduloActivo }: Props) {
   const { usuario } = useAuth();
 
   const modulo = MODULOS.find((m) => m.key === moduloActivo);
-  const subModulos = (modulo?.subModulos ?? []).filter(
-    (s) => !s.rolesPermitidos || s.rolesPermitidos.includes(usuario?.rol as Rol)
-  );
+  const subModulos = (modulo?.subModulos ?? [])
+    .filter((s) => !s.rolesPermitidos || s.rolesPermitidos.includes(usuario?.rol as Rol))
+    .slice()
+    .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
 
   return (
     <aside style={{

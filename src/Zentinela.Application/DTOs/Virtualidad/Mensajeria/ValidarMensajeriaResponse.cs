@@ -14,8 +14,11 @@ public class FilaMensajeriaDto
 {
     public long     NumeroDocumento { get; set; }
     public string   NumeroTelefono  { get; set; } = string.Empty;
+    // NombreCartera se mantiene en el DTO de preview/UI (resuelto desde el selector
+    // o por JOIN), pero NO se persiste — la BD lo obtiene siempre con JOIN a Cartera.
     public string   NombreCartera   { get; set; } = string.Empty;
-    public int?     CarteraID       { get; set; }
+    public int      LiderID         { get; set; }
+    public int      CarteraID       { get; set; }
     public DateOnly FechaEnvio      { get; set; }
     public bool     EsValida        { get; set; }
     public string?  ErrorMensaje    { get; set; }

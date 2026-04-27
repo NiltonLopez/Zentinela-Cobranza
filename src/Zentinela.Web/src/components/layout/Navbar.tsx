@@ -2,18 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { MODULOS, type ModuloKey } from '../../config/navigation';
 import type { Rol } from '../../types/auth';
+import ZentinelaLogo from '../ZentinelaLogo';
 
 interface Props {
   moduloActivo: ModuloKey;
   onModuloChange: (modulo: ModuloKey) => void;
-}
-
-function ShieldIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
 }
 
 function getInitials(name: string): string {
@@ -55,15 +48,7 @@ export function Navbar({ moduloActivo, onModuloChange }: Props) {
     }}>
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '160px' }}>
-        <div style={{
-          width: '32px', height: '32px',
-          background: 'var(--z-brand)',
-          borderRadius: '8px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
-          <ShieldIcon />
-        </div>
+        <ZentinelaLogo size={28} />
         <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--z-text-primary)' }}>
           Zentinela
         </span>

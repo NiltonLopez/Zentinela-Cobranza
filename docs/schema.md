@@ -797,12 +797,40 @@ Numeros de telefono a los que se envio IVR.
 | NumeroTelefono | varchar(10) | SI | — | — |
 
 ### MensajesEnviados
-Mensajes enviados a titulares.
+Mensajes enviados a titulares. Carga alimentada desde el módulo de Mensajería seleccionando Líder + Cartera.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| TitularID | varchar(150) | SI | — | — |
-| NumeroTelefono | varchar(10) | SI | — | — |
+| NumeroDocumento | bigint | NO | — | — |
+| NumeroTelefono | nvarchar(20) | NO | — | — |
+| LiderID | int | NO | — | Lider_Cartera |
+| CarteraID | int | NO | — | Lider_Cartera |
+| FechaEnvio | date | NO | — | — |
+| Canal | nvarchar(20) | NO | — | — (default 'SMS') |
+| FechaCargue | datetime2 | NO | — | — (default GETDATE()) |
+
+**FK compuesta:** `(LiderID, CarteraID) → Lider_Cartera (LiderID, CarteraID)` — `ON DELETE RESTRICT`.
+**Sin PK surrogate** — `HasNoKey()` en EF Core, solo inserción y consultas agregadas.
+**NombreCartera no se almacena** — se obtiene siempre con `JOIN dbo.Cartera ON Cartera.ID = MensajesEnviados.CarteraID` para evitar inconsistencias si se renombra la cartera.
+**Script:** `docs/sql/create_MensajesEnviados.sql`
+
+### IVREnviados
+Envíos IVR (voz automatizada) a titulares. Espejo de `MensajesEnviados`. Carga alimentada desde el módulo de Virtualidad → IVR seleccionando Líder + Cartera.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| NumeroDocumento | bigint | NO | — | — |
+| NumeroTelefono | nvarchar(20) | NO | — | — |
+| LiderID | int | NO | — | Lider_Cartera |
+| CarteraID | int | NO | — | Lider_Cartera |
+| FechaEnvio | date | NO | — | — |
+| Canal | nvarchar(20) | NO | — | — (default 'IVR') |
+| FechaCargue | datetime2 | NO | — | — (default GETDATE()) |
+
+**FK compuesta:** `(LiderID, CarteraID) → Lider_Cartera (LiderID, CarteraID)` — `ON DELETE RESTRICT`.
+**Sin PK surrogate** — `HasNoKey()` en EF Core, solo inserción y consultas agregadas.
+**NombreCartera no se almacena** — se obtiene con JOIN a `dbo.Cartera`.
+**Script:** `docs/sql/create_IVREnviados.sql` (drop también la tabla legacy `dbo.IVREnvio`).
 
 ### ListaNegraCorreos
 Correos marcados como erroneos / invalidos.

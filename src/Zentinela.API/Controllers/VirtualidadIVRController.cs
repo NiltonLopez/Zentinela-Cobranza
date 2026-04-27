@@ -16,58 +16,49 @@ public class VirtualidadIVRController : ControllerBase
     public VirtualidadIVRController(IVirtualidadIVRService service)
         => _service = service;
 
-    [HttpPost("pre-envio/validar")]
+    [HttpGet("plantilla")]
+    public IActionResult DescargarPlantilla()
+    {
+        var bytes = _service.GenerarPlantilla();
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_ivr.xlsx");
+    }
+
+    [HttpPost("validar")]
     [RequestSizeLimit(50 * 1024 * 1024)]
-    public async Task<IActionResult> ValidarPreEnvio([FromForm] IFormFile archivo)
+    public async Task<IActionResult> Validar([FromForm] IFormFile archivo, [FromForm] int carteraID)
     {
         if (archivo is null || archivo.Length == 0)
             return BadRequest(new { mensaje = "Debe adjuntar un archivo Excel (.xlsx)." });
         if (!archivo.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { mensaje = "Solo se aceptan archivos .xlsx." });
+        if (carteraID <= 0)
+            return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
 
         using var stream = archivo.OpenReadStream();
-        return Ok(await _service.ValidarPreEnvioAsync(stream));
+        var resultado    = await _service.ValidarExcelAsync(stream, carteraID);
+        return Ok(resultado);
     }
 
-    [HttpPost("pre-envio/confirmar")]
-    public async Task<IActionResult> ConfirmarPreEnvio([FromBody] ConfirmarIVRRequest request)
+    [HttpPost("confirmar")]
+    public async Task<IActionResult> Confirmar([FromBody] ConfirmarIVRRequest request)
     {
         if (request.FilasValidas.Count == 0)
             return BadRequest(new { mensaje = "No hay filas válidas para confirmar." });
 
-        var insertados = await _service.ConfirmarPreEnvioAsync(request.FilasValidas);
-        return Ok(new { insertados, mensaje = $"Se registraron {insertados} IVR pre-envío." });
-    }
-
-    [HttpPost("post-envio/validar")]
-    [RequestSizeLimit(50 * 1024 * 1024)]
-    public async Task<IActionResult> ValidarPostEnvio([FromForm] IFormFile archivo)
-    {
-        if (archivo is null || archivo.Length == 0)
-            return BadRequest(new { mensaje = "Debe adjuntar un archivo Excel (.xlsx)." });
-        if (!archivo.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { mensaje = "Solo se aceptan archivos .xlsx." });
-
-        using var stream = archivo.OpenReadStream();
-        return Ok(await _service.ValidarPostEnvioAsync(stream));
-    }
-
-    [HttpPost("post-envio/confirmar")]
-    public async Task<IActionResult> ConfirmarPostEnvio([FromBody] ConfirmarIVRRequest request)
-    {
-        if (request.FilasValidas.Count == 0)
-            return BadRequest(new { mensaje = "No hay filas válidas para confirmar." });
-
-        var actualizados = await _service.ConfirmarPostEnvioAsync(request.FilasValidas);
-        return Ok(new { actualizados, mensaje = $"Se actualizaron {actualizados} registros con resultado." });
+        var insertados = await _service.ConfirmarAsync(request.FilasValidas);
+        return Ok(new { insertados, mensaje = $"Se registraron {insertados} envíos IVR correctamente." });
     }
 
     [HttpGet("informe")]
     public async Task<IActionResult> GetInforme(
-        [FromQuery] int?     carteraID,
         [FromQuery] DateOnly desde,
-        [FromQuery] DateOnly hasta)
+        [FromQuery] DateOnly hasta,
+        [FromQuery] int? liderID,
+        [FromQuery] int? carteraID)
     {
-        return Ok(await _service.GetInformeAsync(carteraID, desde, hasta));
+        var resultado = await _service.GetInformeAsync(desde, hasta, liderID, carteraID);
+        return Ok(resultado);
     }
 }

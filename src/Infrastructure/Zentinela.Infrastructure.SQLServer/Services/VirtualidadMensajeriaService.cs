@@ -126,8 +126,8 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
         {
             NumeroDocumento = f.NumeroDocumento,
             NumeroTelefono  = f.NumeroTelefono,
+            LiderID         = f.LiderID,
             CarteraID       = f.CarteraID,
-            NombreCartera   = f.NombreCartera,
             FechaEnvio      = f.FechaEnvio,
             Canal           = "SMS",
         }).ToList();
@@ -139,19 +139,42 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
 
     // ── Informe ───────────────────────────────────────────────────────────────
 
-    public async Task<InformeMensajeriaDto> GetInformeAsync(DateOnly desde, DateOnly hasta)
+    public async Task<InformeMensajeriaDto> GetInformeAsync(
+        DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
     {
-        var query = _db.MensajeriaEnviadas
-            .Where(m => m.FechaEnvio >= desde && m.FechaEnvio <= hasta);
+        // JOIN explícito con dbo.Cartera y dbo.Lider — los nombres no se almacenan
+        // en MensajesEnviados. Filtros opcionales por líder y/o cartera.
+        var queryEnriquecida =
+            from m in _db.MensajeriaEnviadas
+            where m.FechaEnvio >= desde && m.FechaEnvio <= hasta
+                && (!liderID.HasValue   || m.LiderID   == liderID.Value)
+                && (!carteraID.HasValue || m.CarteraID == carteraID.Value)
+            join c in _db.Carteras on m.CarteraID equals c.ID
+            join l in _db.Lideres  on m.LiderID   equals l.ID
+            select new
+            {
+                m.LiderID,
+                NombreLider   = l.Nombre,
+                m.CarteraID,
+                c.NombreCartera,
+                m.NumeroTelefono,
+            };
 
-        var porCartera = await query
-            .GroupBy(m => m.NombreCartera)
-            .Select(g => new MensajesPorCartera { NombreCartera = g.Key, Total = g.Count() })
+        var porLiderCartera = await queryEnriquecida
+            .GroupBy(x => new { x.LiderID, x.NombreLider, x.CarteraID, x.NombreCartera })
+            .Select(g => new MensajesPorLiderCartera
+            {
+                LiderID       = g.Key.LiderID,
+                NombreLider   = g.Key.NombreLider,
+                CarteraID     = g.Key.CarteraID,
+                NombreCartera = g.Key.NombreCartera,
+                Total         = g.Count(),
+            })
             .OrderByDescending(g => g.Total)
             .ToListAsync();
 
-        var alertas = await query
-            .GroupBy(m => new { m.NumeroTelefono, m.NombreCartera })
+        var alertas = await queryEnriquecida
+            .GroupBy(x => new { x.NumeroTelefono, x.NombreCartera })
             .Where(g => g.Count() > 4)
             .Select(g => new AlertaMensajeriaDto
             {
@@ -164,9 +187,9 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
 
         return new InformeMensajeriaDto
         {
-            TotalMensajes = porCartera.Sum(p => p.Total),
-            PorCartera    = porCartera,
-            Alertas       = alertas,
+            TotalMensajes   = porLiderCartera.Sum(p => p.Total),
+            PorLiderCartera = porLiderCartera,
+            Alertas         = alertas,
         };
     }
 

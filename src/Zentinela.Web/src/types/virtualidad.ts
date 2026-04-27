@@ -4,7 +4,8 @@ export interface FilaMensajeria {
   numeroDocumento: number;
   numeroTelefono:  string;
   nombreCartera:   string;
-  carteraID:       number | null;
+  liderID:         number;
+  carteraID:       number;
   fechaEnvio:      string;
   esValida:        boolean;
   errorMensaje:    string | null;
@@ -25,25 +26,37 @@ export interface ValidarMensajeriaResponse {
   alertas:      AlertaMensajeria[];
 }
 
-export interface MensajesPorCartera { nombreCartera: string; total: number; }
+export interface MensajesPorLiderCartera {
+  liderID:       number;
+  nombreLider:   string;
+  carteraID:     number;
+  nombreCartera: string;
+  total:         number;
+}
 
 export interface InformeMensajeria {
-  totalMensajes: number;
-  porCartera:    MensajesPorCartera[];
-  alertas:       AlertaMensajeria[];
+  totalMensajes:   number;
+  porLiderCartera: MensajesPorLiderCartera[];
+  alertas:         AlertaMensajeria[];
 }
 
 // ── IVR ───────────────────────────────────────────────────────────────────────
 
 export interface FilaIVR {
-  titularID:   number;
-  celular:     string;
-  campana:     string | null;
-  carteraID:   number | null;
-  fechaEnvio:  string;
-  resultado:   string | null;
-  esValida:    boolean;
-  errorMensaje:string | null;
+  numeroDocumento: number;
+  numeroTelefono:  string;
+  nombreCartera:   string;
+  liderID:         number;
+  carteraID:       number;
+  fechaEnvio:      string;
+  esValida:        boolean;
+  errorMensaje:    string | null;
+}
+
+export interface AlertaIVR {
+  numeroTelefono: string;
+  nombreCartera:  string;
+  totalIVR:       number;
 }
 
 export interface ValidarIVRResponse {
@@ -52,30 +65,21 @@ export interface ValidarIVRResponse {
   totalErrores: number;
   preview:      FilaIVR[];
   filasValidas: FilaIVR[];
+  alertas:      AlertaIVR[];
 }
 
-export interface IVRPorSemana {
-  anio: number; semana: number;
-  total: number; contestaron: number; noContestaron: number;
-}
-
-export interface AlertaIVR { celular: string; carteraID: number | null; nombreCartera: string; totalIVR: number; }
-
-export interface IVRVsGestion {
-  titularID: number; celular: string; resultado: string | null;
-  ultimoPerfil: string | null; fechaUltimaGestion: string | null;
-  fechaPromesa: string | null; fechaEnvioIVR: string;
+export interface IVRPorLiderCartera {
+  liderID:       number;
+  nombreLider:   string;
+  carteraID:     number;
+  nombreCartera: string;
+  total:         number;
 }
 
 export interface InformeIVR {
-  totalSolicitados:   number;
-  totalContestaron:   number;
-  totalNoContestaron: number;
-  pctContesto:        number;
-  pctNoContesto:      number;
-  porSemana:          IVRPorSemana[];
-  alertas:            AlertaIVR[];
-  vsGestion:          IVRVsGestion[];
+  totalIVR:        number;
+  porLiderCartera: IVRPorLiderCartera[];
+  alertas:         AlertaIVR[];
 }
 
 // ── Llamadas perdidas ─────────────────────────────────────────────────────────
