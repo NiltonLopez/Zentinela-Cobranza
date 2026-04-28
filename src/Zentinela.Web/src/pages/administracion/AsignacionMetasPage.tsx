@@ -303,8 +303,8 @@ export function AsignacionMetasPage() {
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 16, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
-            Metas del mes
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Asignación de Metas
           </h1>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
             Gestión de metas de recaudo y honorarios para el ciclo actual.
@@ -343,7 +343,7 @@ export function AsignacionMetasPage() {
                   color: tab === id ? 'var(--z-brand)' : 'var(--z-text-muted)',
                   background: 'none', border: 'none',
                   borderBottom: `2px solid ${tab === id ? 'var(--z-brand)' : 'transparent'}`,
-                  cursor: 'pointer', marginBottom: -1,
+                  cursor: 'pointer', marginBottom: -1, transition: 'color 0.15s',
                 }}
               >
                 {label}

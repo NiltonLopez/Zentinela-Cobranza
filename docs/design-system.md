@@ -400,3 +400,83 @@ Separador de sección con línea horizontal + barra vertical de color + título 
 5. **Nombrado**: componentes en PascalCase, funciones/variables en camelCase, rutas en kebab-case.
 6. **Estado del servidor**: TanStack Query para todas las llamadas al API. No se usa `useState` + `fetch` directo para datos del servidor.
 7. **Autenticación**: gestionada mediante `AuthContext` y el hook `useAuth()`. El token JWT se almacena en contexto de React.
+
+---
+
+## Estándar de cabecera de sub-módulo
+
+**Referencia canónica:** `InformesRecaudoPage.tsx`
+
+Todos los sub-módulos del aplicativo deben usar exactamente este patrón para su cabecera de página. No se usan `<h2>`, `<h3>` ni otros niveles — solo `<h1>`.
+
+### Estructura JSX
+
+```tsx
+{/* Encabezado */}
+<div style={{
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  flexWrap: 'wrap',
+  gap: 12,
+}}>
+  <div>
+    <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+      Nombre del Sub-módulo
+    </h1>
+    <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
+      Descripción breve del propósito del sub-módulo.
+    </p>
+  </div>
+  {/* Opcional: control a la derecha (selector de período, badge, botón de acción) */}
+</div>
+```
+
+### Reglas
+
+| Elemento | Valor |
+|---|---|
+| Título (`h1`) | `fontSize: 20`, `fontWeight: 600`, `color: var(--z-text-primary)`, `margin: 0` |
+| Descripción (`p`) | `fontSize: 13`, `color: var(--z-text-muted)`, `margin: '4px 0 0'` |
+| Wrapper externo | `display: flex`, `justifyContent: space-between`, `alignItems: flex-start`, `flexWrap: wrap`, `gap: 12` |
+| Inner wrapper | `<div>` sin estilos — contiene h1 + p |
+| Padding propio | **Prohibido** — el padding viene de `AppLayout` (`padding: 28px 32px`) |
+| Elemento derecho | Opcional: controles de filtro global, badge de estado, botón CTA |
+
+### Estándar de tabs (navegación interna)
+
+Cuando un sub-módulo tiene pestañas internas, usar este patrón (igual que `InformesRecaudoPage`):
+
+```tsx
+{/* Tabs */}
+<div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
+  {TABS.map(t => (
+    <button
+      key={t.id}
+      onClick={() => setTabActiva(t.id)}
+      style={{
+        padding: '9px 20px',
+        fontSize: 13,
+        fontWeight: tabActiva === t.id ? 600 : 400,
+        color: tabActiva === t.id ? 'var(--z-brand)' : 'var(--z-text-muted)',
+        background: 'none',
+        border: 'none',
+        borderBottom: `2px solid ${tabActiva === t.id ? 'var(--z-brand)' : 'transparent'}`,
+        cursor: 'pointer',
+        marginBottom: -1,
+        transition: 'color 0.15s',
+      }}
+    >
+      {t.label}
+    </button>
+  ))}
+</div>
+```
+
+### Lo que NO se permite
+
+- `<h2>` o `<h3>` como título principal del sub-módulo
+- `fontSize` distinto de `20` en el título principal
+- `fontWeight` distinto de `600` en el título principal
+- `padding` propio en el div raíz del sub-módulo
+- Tabs con `borderRadius`, colores por tab individuales o estilo de "pestaña levantada"

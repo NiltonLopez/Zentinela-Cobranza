@@ -264,13 +264,15 @@ export function ConsultaIntegradaPage() {
     <div style={{ maxWidth: '900px' }}>
 
       {/* Encabezado */}
-      <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '4px' }}>
-          Consulta Integrada
-        </h2>
-        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
-          Busca información de un titular en todas las fuentes disponibles.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Consulta Integrada
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
+            Busca información de un titular en todas las fuentes disponibles.
+          </p>
+        </div>
       </div>
 
       {/* Buscador */}

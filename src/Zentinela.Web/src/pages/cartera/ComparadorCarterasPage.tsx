@@ -246,14 +246,20 @@ export function ComparadorCarterasPage() {
   });
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1300, margin: '0 auto' }}>
-      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
-        Comparador de Carteras
-      </h2>
-      <p style={{ fontSize: 13, color: 'var(--z-text-muted)', marginBottom: 24 }}>
-        Identifica titulares sin gestión en la cartera seleccionada que ya tienen
-        contacto positivo o pago en otra cartera.
-      </p>
+    <div style={{ maxWidth: 1300, margin: '0 auto' }}>
+
+      {/* Encabezado */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Comparador de Carteras
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
+            Identifica titulares sin gestión en la cartera seleccionada que ya tienen
+            contacto positivo o pago en otra cartera.
+          </p>
+        </div>
+      </div>
 
       {/* Selector */}
       <div style={{ marginBottom: 28 }}>

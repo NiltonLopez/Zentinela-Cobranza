@@ -295,13 +295,15 @@ export function DashboardLiderPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
 
       {/* Encabezado */}
-      <div>
-        <h1 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '4px' }}>
-          Dashboard Líder
-        </h1>
-        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
-          Rendimiento del equipo &mdash; <span style={{ fontWeight: 500, color: 'var(--z-text-primary)' }}>{tituloFiltro}</span>
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Dashboard Líder
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
+            Rendimiento del equipo &mdash; <span style={{ fontWeight: 500, color: 'var(--z-text-primary)' }}>{tituloFiltro}</span>
+          </p>
+        </div>
       </div>
 
       {/* Filtros */}

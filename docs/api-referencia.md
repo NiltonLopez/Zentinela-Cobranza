@@ -289,6 +289,65 @@ curl -X GET http://localhost:5153/api/dashboard/asesor \
 
 ---
 
+## GET /api/dashboard/lider/carteras
+
+Devuelve las carteras propias del líder autenticado para el dropdown de filtros.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Líder`
+
+### Response body — 200 OK
+
+```json
+[
+  { "id": 3, "nombreCartera": "Cartera Bogotá Norte" }
+]
+```
+
+---
+
+## GET /api/dashboard/lider
+
+Dashboard del líder autenticado. El `liderID` se extrae del JWT — el líder solo ve sus propias carteras.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Líder`
+
+### Query params
+
+| Param | Tipo | Descripción |
+|---|---|---|
+| `carteraID` | `int?` | Filtra por una cartera específica |
+| `fechaDesde` | `DateOnly?` | Inicio del período (`YYYY-MM-DD`). Sin valor → último ciclo |
+| `fechaHasta` | `DateOnly?` | Fin del período (`YYYY-MM-DD`). Sin valor → último ciclo |
+
+### Response body — 200 OK
+
+Misma estructura que `GET /api/dashboard/director`. `FilasLider` siempre vacío; `FilasAsesor` contiene el desglose de los asesores del líder incluyendo `proyeccionPromesas`.
+
+---
+
+## GET /api/dashboard/lider/pagos
+
+Pagos confirmados de las carteras del líder autenticado.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Líder`
+
+### Query params
+
+| Param | Tipo | Descripción |
+|---|---|---|
+| `carteraID` | `int?` | Filtra por cartera |
+| `fechaDesde` | `DateOnly?` | Fecha de pago desde |
+| `fechaHasta` | `DateOnly?` | Fecha de pago hasta |
+
+### Response body — 200 OK
+
+Array de `PagoDirectorDto` (mismo esquema que `GET /api/dashboard/director/pagos`) pero restringido a las carteras del líder autenticado. El campo `nombreLider` siempre corresponde al líder del JWT.
+
+---
+
 ## GET /api/carteras
 
 Devuelve las carteras del usuario autenticado filtradas por rol.
@@ -1010,7 +1069,7 @@ Procesa las filas válidas devueltas por `/validar`:
 ## GET /api/informes/recaudo/agentes
 
 Retorna el consolidado de recaudo del mes por agente, ordenado de menor a mayor.  
-Incluye meta (si existe), cumplimiento y proyección diaria.
+Incluye meta unificada (`valorMeta` + `tipoMeta`), cumplimiento y proyección diaria.
 
 ### Query params
 
@@ -1032,10 +1091,12 @@ Incluye meta (si existe), cumplimiento y proyección diaria.
       "agenteID": 1020304050,
       "nombreAgente": "Juan Pérez García",
       "nombreLider": "María López",
+      "nombreCartera": "Cartera Bogotá Norte",
       "gestionado": 18,
       "recaudo": 1200000,
       "honorarios": 120000,
-      "meta": 3000000,
+      "valorMeta": 3000000,
+      "tipoMeta": "Honorarios",
       "tieneMeta": true,
       "deberiaLlevarHoy": 1850000,
       "faltaParaMeta": 1800000,
@@ -1044,6 +1105,8 @@ Incluye meta (si existe), cumplimiento y proyección diaria.
   ]
 }
 ```
+
+> **`tipoMeta`**: `"Recaudo"` o `"Honorarios"`. Determina contra qué métrica se compara `valorMeta` para calcular cumplimiento y semáforo.
 
 ### Códigos HTTP
 
@@ -1078,9 +1141,10 @@ Retorna una fila por combinación líder-cartera con meta, capacity (titulares a
       "nombreLider": "María López",
       "carteraID": 2,
       "nombreCartera": "Cartera A",
-      "metaCartera": 5000000,
+      "valorMeta": 5000000,
+      "tipoMeta": "Recaudo",
       "tieneMeta": true,
-      "capacidad": 320,
+      "asignaciones": 320,
       "recaudo": 3200000,
       "honorarios": 320000,
       "deberiaLlevarHoy": 2750000,
@@ -1091,8 +1155,9 @@ Retorna una fila por combinación líder-cartera con meta, capacity (titulares a
 ```
 
 **Cálculos:**
-- `deberiaLlevarHoy` = `metaCartera × (díaActual / díasDelMes)`; si el mes ya pasó, usa el mes completo.
+- `deberiaLlevarHoy` = `valorMeta × (díaActual / díasDelMes)`; si el mes ya pasó, usa el mes completo.
 - `proyeccionCierre` = `(recaudo / díasTranscurridos) × díasDelMes`; 0 si el mes no ha comenzado.
+- `asignaciones`: titulares asignados en `Titular_Cartera` para esa combinación líder-cartera (antes llamado `capacidad`).
 
 ### Códigos HTTP
 

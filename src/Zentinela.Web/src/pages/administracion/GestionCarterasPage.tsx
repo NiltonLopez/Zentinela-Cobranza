@@ -459,12 +459,12 @@ export function GestionCarterasPage() {
   return (
     <div style={{ maxWidth: '1000px' }}>
       {/* Encabezado */}
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '4px' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
             Gestión de Líderes y Carteras
-          </h2>
-          <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
             Administra las relaciones entre líderes y carteras. Haz clic en una tarjeta para activar su edición.
           </p>
         </div>

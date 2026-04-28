@@ -134,13 +134,15 @@ export function CalificadorCarteraPage() {
   return (
     <div style={{ maxWidth: 1200 }}>
       {/* Encabezado */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 4 }}>
-          Calificador de Cartera
-        </h2>
-        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
-          Analiza el perfil de una cartera: volumen, saldos, contactabilidad, tipificación y localización.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+            Calificador de Cartera
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
+            Analiza el perfil de una cartera: volumen, saldos, contactabilidad, tipificación y localización.
+          </p>
+        </div>
       </div>
 
       {/* Selector */}

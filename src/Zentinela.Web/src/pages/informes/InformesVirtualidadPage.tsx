@@ -1321,47 +1321,33 @@ export function InformesVirtualidadPage() {
   const [tab, setTab] = useState<Tab>('mensajeria');
 
   return (
-    <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Cabecera de página */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+      {/* Encabezado */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Informes de Virtualidad</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: C.gray }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)' }}>Informes de Virtualidad</h1>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--z-text-muted)' }}>
             Gestión de canales digitales — Mensajería, IVR, Llamadas y análisis de impacto en pagos
           </p>
-        </div>
-        <div style={{
-          background: C.brandLight,
-          border: `1px solid ${C.brand}30`,
-          borderLeft: `3px solid ${C.brand}`,
-          borderRadius: 7,
-          padding: '7px 14px',
-          fontSize: 12,
-          color: C.brand,
-          fontWeight: 600,
-        }}>
-          Módulo de Virtualidad
         </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '2px solid var(--z-border)' }}>
+      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{
-              padding: '9px 18px',
-              borderRadius: '8px 8px 0 0',
-              border: '1px solid var(--z-border)',
-              borderBottom: tab === t.key ? '2px solid var(--z-bg-card)' : '1px solid var(--z-border)',
-              cursor: 'pointer',
+              padding: '9px 20px',
               fontSize: 13,
-              background:  tab === t.key ? 'var(--z-bg-card)' : 'var(--z-bg-page)',
-              color:       tab === t.key ? t.color            : C.gray,
-              fontWeight:  tab === t.key ? 700 : 400,
-              borderTop:   tab === t.key ? `3px solid ${t.color}` : '3px solid transparent',
-              marginBottom: tab === t.key ? '-2px' : 0,
-              position: 'relative',
+              fontWeight: tab === t.key ? 600 : 400,
+              color: tab === t.key ? 'var(--z-brand)' : 'var(--z-text-muted)',
+              background: 'none',
+              border: 'none',
+              borderBottom: `2px solid ${tab === t.key ? 'var(--z-brand)' : 'transparent'}`,
+              cursor: 'pointer',
+              marginBottom: -1,
+              transition: 'color 0.15s',
             }}>
             {t.label}
           </button>
@@ -1369,7 +1355,7 @@ export function InformesVirtualidadPage() {
       </div>
 
       {/* Contenido del tab activo */}
-      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: '0 10px 10px 10px', padding: 28 }}>
+      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: 28 }}>
         {tab === 'mensajeria'         && <TabMensajeria />}
         {tab === 'ivr'                && <TabIVR />}
         {tab === 'llamadas-perdidas'  && <TabLlamadasPerdidas />}

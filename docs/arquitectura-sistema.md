@@ -107,16 +107,23 @@ Flujo sin autenticación previa (auto-registro):
 |---|---|---|---|
 | Autenticación | Login / cambio de contraseña | ✅ Completo | Todos |
 | Autenticación | Registro de usuario | ✅ Completo | Público |
-| Home | Dashboard (Asesor / Líder / Director) | ✅ Completo | Todos |
+| Home | Dashboard Asesor | ✅ Completo | Asesor |
+| Home | Dashboard Líder | ✅ Completo | Líder |
+| Home | Dashboard Director | ✅ Completo | Director, Admin |
+| Home | Pagos Confirmados (Asesor) | ✅ Completo | Asesor |
+| Home | Pagos Confirmados (Líder) | ✅ Completo | Líder |
+| Home | Pagos Confirmados (Director) | ✅ Completo | Director, Admin |
 | Cartera | Creador Zentinela (Generador de Bases Excel) | ✅ Completo | Admin, Líder, Director |
 | Cartera | Calificador de Cartera | ✅ Completo | Admin, Líder, Director |
+| Cartera | Comparador de Carteras | ✅ Completo | Admin, Líder, Director |
 | Informes | Informes de Virtualidad | ✅ Completo | Admin, Líder, Director |
-| Informes | Informes de Recaudo | 🚧 Placeholder | Admin, Líder, Director |
+| Informes | Informes de Recaudo | ✅ Completo | Admin, Líder, Director |
 | Administración | Gestión de Asignaciones | ✅ Completo | Admin |
 | Administración | Gestión de Líderes y Carteras | ✅ Completo | Admin |
 | Administración | Gestión de Personal | ✅ Completo | Admin |
 | Administración | Cargue de Reportes | ✅ Completo | Admin |
 | Administración | Cargue de Pagos | ✅ Completo | Admin |
+| Administración | Asignación de Metas | ✅ Completo | Admin |
 | Consulta Integrada | — | ✅ Completo | Todos |
 
 ---
@@ -178,6 +185,32 @@ Definidas como constantes en `Application.Tipificaciones`:
 - Sin `liderID`: métricas globales + `FilasLider` (desglose por líder)
 - Con `liderID`: métricas del líder + `FilasAsesor` (desglose por asesor, nombres de `DBRecursosHumanos`)
 - Con `liderID + carteraID`: métricas de la cartera + `FilasAsesor`
+
+Cada fila incluye `ProyeccionPromesas`: suma de `ValorPromesa` de las gestiones con `UltimoPerfil` en `Tipificaciones.AcuerdoAbono` dentro del período seleccionado.
+
+---
+
+## Dashboard Líder — detalles de implementación
+
+El Dashboard Líder reutiliza `DashboardDirectorService.ObtenerDashboardAsync(liderID, ...)` con el `liderID` extraído del claim JWT, por lo que el scope es automáticamente limitado a sus propias carteras.
+
+### Endpoints exclusivos para Líder
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/dashboard/lider/carteras` | Carteras propias del líder autenticado |
+| `GET /api/dashboard/lider` | Dashboard del período con desglose por asesor |
+| `GET /api/dashboard/lider/pagos` | Pagos confirmados de sus carteras |
+
+El `liderID` se extrae del claim `"liderID"` del JWT — el Líder no puede consultar datos de otros líderes.
+
+### Diferencias con Dashboard Director
+
+| Aspecto | Director | Líder |
+|---|---|---|
+| Filtro de Líder | Dropdown seleccionable | Implícito (JWT) |
+| Desglose | Líderes **o** Asesores (según filtro) | Solo Asesores |
+| Pagos | Todos los pagos de la empresa | Solo sus carteras |
 
 ---
 
