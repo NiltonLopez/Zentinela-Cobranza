@@ -27,9 +27,15 @@ export function Navbar({ moduloActivo, onModuloChange }: Props) {
     m.rolesPermitidos.includes(usuario?.rol as Rol)
   );
 
-  const handleModuloClick = (key: ModuloKey, defaultPath: string) => {
+  const handleModuloClick = (key: ModuloKey) => {
+    const modulo = MODULOS.find(m => m.key === key);
+    const primero = (modulo?.subModulos ?? [])
+      .filter(s => !s.rolesPermitidos || s.rolesPermitidos.includes(usuario?.rol as Rol))
+      .slice()
+      .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+      [0];
     onModuloChange(key);
-    navigate(defaultPath);
+    navigate(primero?.path ?? modulo?.defaultPath ?? '/');
   };
 
   const initials = usuario ? getInitials(usuario.nombreCompleto) : '?';
@@ -69,7 +75,7 @@ export function Navbar({ moduloActivo, onModuloChange }: Props) {
           return (
             <button
               key={modulo.key}
-              onClick={() => handleModuloClick(modulo.key, modulo.defaultPath)}
+              onClick={() => handleModuloClick(modulo.key)}
               style={{
                 height: '100%',
                 padding: '0 14px',

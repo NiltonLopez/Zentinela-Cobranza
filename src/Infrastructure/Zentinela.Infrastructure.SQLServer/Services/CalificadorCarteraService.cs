@@ -113,25 +113,45 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             .Sum(b => decimal.Parse(b.ValorPromesa!, NumberStyles.Any, CultureInfo.InvariantCulture));
 
         // ── Bloque 3: rotación ───────────────────────────────────────────────
-        var rotaciones = filas
-            .Where(b => int.TryParse(b.Rotacion, out var r) && r > 0)
-            .Select(b => int.Parse(b.Rotacion!))
+        // Todos los titulares; sin dato o valor no numérico se trata como 0 gestiones
+        var rotacionesTodos = filas
+            .Select(b => int.TryParse(b.Rotacion, out var r) ? r : 0)
             .ToList();
 
-        var rotacionPromedio = rotaciones.Count > 0
-            ? Math.Round((decimal)rotaciones.Average(), 1)
+        // Promedio sobre el total de titulares (los de 0 gestiones bajan el promedio real)
+        var rotacionPromedio = rotacionesTodos.Count > 0
+            ? Math.Round((decimal)rotacionesTodos.Average(), 1)
             : (decimal?)null;
 
-        var desgloseRotacion = rotaciones
-            .GroupBy(r => r)
+        static string RangoRotacion(int r) => r switch
+        {
+            0      => "0",
+            <= 5   => "1-5",
+            <= 10  => "6-10",
+            <= 20  => "11-20",
+            _      => "+20",
+        };
+
+        static int OrdenRango(string etiqueta) => etiqueta switch
+        {
+            "0"    => 0,
+            "1-5"  => 1,
+            "6-10" => 2,
+            "11-20"=> 3,
+            "+20"  => 4,
+            _      => 99,
+        };
+
+        var desgloseRotacion = rotacionesTodos
+            .GroupBy(RangoRotacion)
             .Select(g => new DesglosePar
             {
-                Etiqueta   = g.Key.ToString(),
+                Etiqueta   = g.Key,
                 Cantidad   = g.Count(),
                 Porcentaje = total > 0
                     ? Math.Round((decimal)g.Count() / total * 100, 1) : 0,
             })
-            .OrderBy(d => int.Parse(d.Etiqueta))
+            .OrderBy(d => OrdenRango(d.Etiqueta))
             .ToList();
 
         // ── Bloque 4: tipificación último perfil ──────────────────────────────

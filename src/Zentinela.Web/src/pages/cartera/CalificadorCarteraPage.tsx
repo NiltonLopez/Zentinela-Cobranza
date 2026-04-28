@@ -37,8 +37,8 @@ function Tarjeta({
   return (
     <div style={{
       background: 'var(--z-bg-card)',
-      border: '1px solid var(--z-border)',
-      borderRadius: 10,
+      border: '0.5px solid var(--z-border)',
+      borderRadius: 8,
       padding: '20px 24px',
       ...style,
     }}>
@@ -132,19 +132,22 @@ export function CalificadorCarteraPage() {
   });
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1200 }}>
-      {/* Encabezado + Selector */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        alignItems: 'center',
-        gap: 24,
-        marginBottom: 28,
-      }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>
+    <div style={{ maxWidth: 1200 }}>
+      {/* Encabezado */}
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 4 }}>
           Calificador de Cartera
-        </h1>
+        </h2>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
+          Analiza el perfil de una cartera: volumen, saldos, contactabilidad, tipificación y localización.
+        </p>
+      </div>
 
+      {/* Selector */}
+      <div style={{ marginBottom: 28 }}>
+        <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: 6, color: 'var(--z-text-primary)' }}>
+          Cartera a analizar
+        </label>
         {cargandoOpciones ? (
           <CargandoSpiral />
         ) : (
@@ -152,16 +155,17 @@ export function CalificadorCarteraPage() {
             value={seleccion}
             onChange={(e) => setSeleccion(e.target.value)}
             style={{
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--z-border)',
+              padding: '8px 12px',
+              borderRadius: 6,
+              border: '0.5px solid var(--z-border)',
               background: 'var(--z-bg-card)',
-              fontSize: 14,
-              width: '100%',
+              color: 'var(--z-text-primary)',
+              fontSize: '13px',
+              minWidth: 320,
               cursor: 'pointer',
             }}
           >
-            <option value="">Selecciona una cartera...</option>
+            <option value="">— Selecciona una cartera —</option>
             {opciones?.map((o) => (
               <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
                 {o.etiqueta}
@@ -177,7 +181,7 @@ export function CalificadorCarteraPage() {
           textAlign: 'center',
           padding: '64px 0',
           color: 'var(--z-text-muted)',
-          fontSize: 14,
+          fontSize: '13px',
         }}>
           Selecciona una cartera para ver su calificación.
         </div>
@@ -193,11 +197,12 @@ export function CalificadorCarteraPage() {
       {/* Error */}
       {isError && (
         <div style={{
-          padding: '14px 18px',
-          background: '#FEE2E2',
+          background: '#fff5f5',
+          border: '0.5px solid #fecaca',
           borderRadius: 8,
-          color: '#991B1B',
-          fontSize: 14,
+          padding: '14px 16px',
+          fontSize: '13px',
+          color: '#dc2626',
         }}>
           No se pudo cargar la información. Intenta de nuevo.
         </div>

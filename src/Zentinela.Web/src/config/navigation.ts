@@ -26,6 +26,7 @@ export const MODULOS: Modulo[] = [
     subModulos: [
       { key: 'dashboard',                 label: 'Dashboard',          path: '/home' },
       { key: 'pagos-confirmados',         label: 'Pagos confirmados',  path: '/home/pagos',          rolesPermitidos: ['Asesor'] },
+      { key: 'pagos-confirmados-lider',   label: 'Pagos confirmados',  path: '/home/pagos-lider',    rolesPermitidos: ['Líder'] },
       { key: 'pagos-confirmados-director', label: 'Pagos confirmados', path: '/home/pagos-director', rolesPermitidos: ['Director', 'Admin'] },
     ],
   },
@@ -36,7 +37,8 @@ export const MODULOS: Modulo[] = [
     defaultPath: '/cartera/creador',
     subModulos: [
       { key: 'creador', label: 'Creador Zentinela', path: '/cartera/creador' },
-      { key: 'calificador', label: 'Calificador de Cartera', path: '/cartera/calificador' },
+      { key: 'calificador', label: 'Calificador de Cartera',  path: '/cartera/calificador' },
+      { key: 'comparador',  label: 'Comparador de Carteras', path: '/cartera/comparador'  },
     ],
   },
   {

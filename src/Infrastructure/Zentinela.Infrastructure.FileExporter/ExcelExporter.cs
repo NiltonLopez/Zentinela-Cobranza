@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using ClosedXML.Excel;
+using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.DTOs.CreadorZentinela;
 using Zentinela.Application.DTOs.Reportes;
 using Zentinela.Application.Interfaces;
@@ -397,6 +398,170 @@ public class ExcelExporter : IExcelExporter
         }
 
         return result;
+    }
+
+    public byte[] GenerarComparativoCartera(
+        IEnumerable<TitularComparativoDto> titulares,
+        string nombreCarteraSeleccionada,
+        string nombreOtraCartera)
+    {
+        var lista = titulares.ToList();
+
+        using var workbook = new XLWorkbook();
+        var nombreHoja = nombreOtraCartera.Length > 31
+            ? nombreOtraCartera[..31]
+            : nombreOtraCartera;
+        var ws = workbook.Worksheets.Add(nombreHoja);
+
+        // ── Encabezados ───────────────────────────────────────────────────────
+        var encabezados = new[]
+        {
+            "Número Documento", "Nombre",
+            $"Perfil en {nombreCarteraSeleccionada}",
+            $"Perfil en {nombreOtraCartera}",
+            $"Teléfono ({nombreCarteraSeleccionada})",
+            $"Teléfono ({nombreOtraCartera})",
+            "Saldo Total", "Fecha Última Gestión", "Valor Promesa",
+        };
+
+        for (var i = 0; i < encabezados.Length; i++)
+        {
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = encabezados[i];
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        // ── Datos ─────────────────────────────────────────────────────────────
+        for (var row = 0; row < lista.Count; row++)
+        {
+            var t = lista[row];
+            var r = row + 2;
+
+            ws.Cell(r, 1).Value = t.NumeroDocumento;
+            ws.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+            ws.Cell(r, 2).Value = t.Nombre;
+            ws.Cell(r, 3).Value = t.PerfilSeleccionada        ?? "";
+            ws.Cell(r, 4).Value = t.PerfilOtraCartera          ?? "";
+            ws.Cell(r, 5).Value = t.NumeroMarcadoSeleccionada  ?? "";
+            ws.Cell(r, 6).Value = t.NumeroMarcadoOtra          ?? "";
+
+            if (t.SaldoTotal.HasValue)
+            {
+                ws.Cell(r, 7).Value = t.SaldoTotal.Value;
+                ws.Cell(r, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            }
+
+            if (t.FechaUltimaGestion.HasValue)
+            {
+                ws.Cell(r, 8).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(r, 8).Style.NumberFormat.Format = "DD/MM/YYYY";
+            }
+
+            if (t.ValorPromesa.HasValue)
+            {
+                ws.Cell(r, 9).Value = t.ValorPromesa.Value;
+                ws.Cell(r, 9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            }
+        }
+
+        // ── Formato final ─────────────────────────────────────────────────────
+        var rango = ws.RangeUsed();
+        if (rango != null)
+        {
+            rango.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            rango.Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    public byte[] GenerarComparativoCompleto(
+        IEnumerable<TitularComparativoDto> titulares,
+        string nombreCarteraSeleccionada)
+    {
+        var lista = titulares.ToList();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Comparativo Completo");
+
+        // ── Encabezados ───────────────────────────────────────────────────────
+        var encabezados = new[]
+        {
+            "Cartera de referencia", "Número Documento", "Nombre",
+            $"Perfil en {nombreCarteraSeleccionada}",
+            "Perfil en cartera de referencia",
+            $"Teléfono ({nombreCarteraSeleccionada})",
+            "Teléfono (cartera de referencia)",
+            "Saldo Total", "Fecha Última Gestión", "Valor Promesa",
+        };
+
+        for (var i = 0; i < encabezados.Length; i++)
+        {
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = encabezados[i];
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        // ── Datos ─────────────────────────────────────────────────────────────
+        for (var row = 0; row < lista.Count; row++)
+        {
+            var t = lista[row];
+            var r = row + 2;
+
+            ws.Cell(r, 1).Value = t.NombreOtraCartera;
+
+            ws.Cell(r, 2).Value = t.NumeroDocumento;
+            ws.Cell(r, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+            ws.Cell(r, 3).Value = t.Nombre;
+            ws.Cell(r, 4).Value = t.PerfilSeleccionada        ?? "";
+            ws.Cell(r, 5).Value = t.PerfilOtraCartera          ?? "";
+            ws.Cell(r, 6).Value = t.NumeroMarcadoSeleccionada  ?? "";
+            ws.Cell(r, 7).Value = t.NumeroMarcadoOtra          ?? "";
+
+            if (t.SaldoTotal.HasValue)
+            {
+                ws.Cell(r, 8).Value = t.SaldoTotal.Value;
+                ws.Cell(r, 8).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            }
+
+            if (t.FechaUltimaGestion.HasValue)
+            {
+                ws.Cell(r, 9).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(r, 9).Style.NumberFormat.Format = "DD/MM/YYYY";
+            }
+
+            if (t.ValorPromesa.HasValue)
+            {
+                ws.Cell(r, 10).Value = t.ValorPromesa.Value;
+                ws.Cell(r, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            }
+        }
+
+        // ── Formato final ─────────────────────────────────────────────────────
+        var rango = ws.RangeUsed();
+        if (rango != null)
+        {
+            rango.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            rango.Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
     }
 
     private static void EstablecerValor(IXLCell celda, object? valor, TipoColumna tipo)

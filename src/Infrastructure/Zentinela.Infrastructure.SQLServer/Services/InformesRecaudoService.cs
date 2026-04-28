@@ -54,8 +54,8 @@ public class InformesRecaudoService : IInformesRecaudoService
             .Where(m => m.Año == año && m.Mes == mes && agenteIDs.Contains(m.AgenteID))
             .AsNoTracking()
             .ToListAsync();
-        var metas           = metasRaw.ToDictionary(m => m.AgenteID, m => m.TipoMeta == 0 ? m.ValorMeta : 0m);
-        var metasHonorarios = metasRaw.ToDictionary(m => m.AgenteID, m => m.TipoMeta == 1 ? m.ValorMeta : 0m);
+        var metasValores = metasRaw.ToDictionary(m => m.AgenteID, m => m.ValorMeta);
+        var metasTipo    = metasRaw.ToDictionary(m => m.AgenteID, m => m.TipoMeta == 1 ? "Honorarios" : "Recaudo");
 
         // Líder y cartera asociados a cada agente (se toma el mínimo de Cartera_Agente)
         var asignaciones = await _callCenter.CarteraAgentes
@@ -101,16 +101,17 @@ public class InformesRecaudoService : IInformesRecaudoService
                 var honorarios = g.Sum(p => p.Honorarios);
                 var gestionado = g.Select(p => p.CedulaTitular).Distinct().Count();
                 var diasConPago = g.Select(p => p.FechaPago).Distinct().Count();
-                var meta           = metas.TryGetValue(agenteID, out var m) ? m : 0m;
-                var metaHonorarios = metasHonorarios.TryGetValue(agenteID, out var mh) ? mh : 0m;
-                var tieneMeta      = metas.ContainsKey(agenteID);
-                var liderID        = liderPorAgente.TryGetValue(agenteID, out var lid) ? lid : 0;
+                var tieneMeta  = metasValores.ContainsKey(agenteID);
+                var valorMeta  = metasValores.TryGetValue(agenteID, out var mv) ? mv : 0m;
+                var tipoMeta   = metasTipo.TryGetValue(agenteID, out var mt) ? mt : null;
+                var liderID    = liderPorAgente.TryGetValue(agenteID, out var lid) ? lid : 0;
 
                 var deberiaHoy = diasHabilesDelMes > 0
-                    ? metaHonorarios * diasHabilesTransc / diasHabilesDelMes
+                    ? valorMeta * diasHabilesTransc / diasHabilesDelMes
                     : 0m;
 
-                var carteraID    = carteraPorAgente.TryGetValue(agenteID, out var cid) ? cid : 0;
+                var metricaVsMeta = tipoMeta == "Honorarios" ? honorarios : recaudo;
+                var carteraID     = carteraPorAgente.TryGetValue(agenteID, out var cid) ? cid : 0;
 
                 return new InformeAgenteMesDto
                 {
@@ -122,11 +123,11 @@ public class InformesRecaudoService : IInformesRecaudoService
                     Gestionado       = gestionado,
                     Recaudo          = recaudo,
                     Honorarios       = honorarios,
-                    Meta             = meta,
-                    MetaHonorarios   = metaHonorarios,
+                    ValorMeta        = valorMeta,
+                    TipoMeta         = tipoMeta,
                     TieneMeta        = tieneMeta,
                     DeberiaLlevarHoy = deberiaHoy,
-                    FaltaParaMeta    = Math.Max(0m, metaHonorarios - honorarios),
+                    FaltaParaMeta    = Math.Max(0m, valorMeta - metricaVsMeta),
                     PromedioPagoDia  = diasConPago > 0 ? recaudo / diasConPago : 0m,
                 };
             })
@@ -197,14 +198,14 @@ public class InformesRecaudoService : IInformesRecaudoService
             var meta = metas.FirstOrDefault(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID);
             var cap  = capacidades.FirstOrDefault(c => c.LiderID == lc.LiderID && c.CarteraID == lc.CarteraID);
 
-            var recaudo        = pago?.Recaudo       ?? 0m;
-            var honorarios     = pago?.Honorarios    ?? 0m;
-            var metaV          = meta?.TipoMeta == 0 ? meta.ValorMeta : 0m;
-            var metaHonorarios = meta?.TipoMeta == 1 ? meta.ValorMeta : 0m;
-            var capacidad      = cap?.Capacidad ?? 0;
+            var recaudo    = pago?.Recaudo    ?? 0m;
+            var honorarios = pago?.Honorarios ?? 0m;
+            var valorMeta  = meta?.ValorMeta  ?? 0m;
+            var tipoMeta   = meta == null ? null : (meta.TipoMeta == 1 ? "Honorarios" : "Recaudo");
+            var capacidad  = cap?.Capacidad   ?? 0;
 
             var deberiaHoy = diasHabilesDelMes > 0
-                ? metaHonorarios * diasHabilesTransc / diasHabilesDelMes
+                ? valorMeta * diasHabilesTransc / diasHabilesDelMes
                 : 0m;
 
             var proyeccion = diasTranscurridos > 0
@@ -218,8 +219,8 @@ public class InformesRecaudoService : IInformesRecaudoService
                 CarteraID        = lc.CarteraID,
                 NombreCartera    = lc.Cartera.NombreCartera,
                 TotalAsesores    = asesoresPorLiderCartera.FirstOrDefault(x => x.LiderID == lc.LiderID && x.CarteraID == lc.CarteraID)?.Total ?? 0,
-                MetaCartera      = metaV,
-                MetaHonorarios   = metaHonorarios,
+                ValorMeta        = valorMeta,
+                TipoMeta         = tipoMeta,
                 TieneMeta        = meta != null,
                 Capacidad        = capacidad,
                 Recaudo          = recaudo,
@@ -235,7 +236,7 @@ public class InformesRecaudoService : IInformesRecaudoService
         return new InformeLideresResponse
         {
             TotalRecaudo = filas.Sum(f => f.Recaudo),
-            TotalMeta    = filas.Sum(f => f.MetaCartera),
+            TotalMeta    = filas.Sum(f => f.ValorMeta),
             TotalLideres = filas.Select(f => f.LiderID).Distinct().Count(),
             LiderCarteras = filas,
         };

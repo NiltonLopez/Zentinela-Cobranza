@@ -41,6 +41,7 @@ export interface FilaLiderDto {
   totalGestiones: number;
   tasaContactabilidad: number;
   tasaEfectividad: number;
+  proyeccionPromesas: number;
 }
 
 export interface FilaAsesorDto {
@@ -49,6 +50,7 @@ export interface FilaAsesorDto {
   totalGestiones: number;
   tasaContactabilidad: number;
   tasaEfectividad: number;
+  proyeccionPromesas: number;
 }
 
 export interface DashboardDirectorDto {

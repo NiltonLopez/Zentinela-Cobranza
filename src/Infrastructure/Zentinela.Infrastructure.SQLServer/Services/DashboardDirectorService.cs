@@ -120,13 +120,13 @@ public class DashboardDirectorService : IDashboardDirectorService
         if (!liderID.HasValue)
         {
             filasLider = await ConstruirFilasLiderAsync(registros
-                .Select(r => (r.CarteraID, r.AgenteID, r.UltimoPerfil))
+                .Select(r => (r.CarteraID, r.AgenteID, r.UltimoPerfil, r.ValorPromesa))
                 .ToList());
         }
         else
         {
             filasAsesor = await ConstruirFilasAsesorAsync(registros
-                .Select(r => (r.AgenteID, r.UltimoPerfil))
+                .Select(r => (r.AgenteID, r.UltimoPerfil, r.ValorPromesa))
                 .ToList());
         }
 
@@ -187,7 +187,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     }
 
     private async Task<List<FilaLiderDto>> ConstruirFilasLiderAsync(
-        List<(int CarteraID, int AgenteID, string? UltimoPerfil)> registros)
+        List<(int CarteraID, int AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
     {
         // Mapear CarteraID → LiderID usando LiderCartera
         var liderCarteras = await _callCenter.LiderCarteras
@@ -208,10 +208,13 @@ public class DashboardDirectorService : IDashboardDirectorService
         return porLider
             .Select(grp =>
             {
-                var lc      = carteraALider.Values.First(x => x.LiderID == grp.Key);
-                var total   = grp.Count();
+                var lc        = carteraALider.Values.First(x => x.LiderID == grp.Key);
+                var total     = grp.Count();
                 var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
+                var proyeccion = grp
+                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+                    .Sum(r => r.ValorPromesa ?? 0m);
 
                 return new FilaLiderDto
                 {
@@ -222,6 +225,7 @@ public class DashboardDirectorService : IDashboardDirectorService
                         ? Math.Round((decimal)contactos / total, 4) : 0,
                     TasaEfectividad     = contactos > 0
                         ? Math.Round((decimal)acuerdos / contactos, 4) : 0,
+                    ProyeccionPromesas  = Math.Round(proyeccion, 0),
                 };
             })
             .OrderByDescending(f => f.TotalGestiones)
@@ -229,7 +233,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     }
 
     private async Task<List<FilaAsesorDto>> ConstruirFilasAsesorAsync(
-        List<(int AgenteID, string? UltimoPerfil)> registros)
+        List<(int AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
     {
         // Obtener nombres desde DBRecursosHumanos
         var agenteIDs = registros.Select(r => (long)r.AgenteID).Distinct().ToList();
@@ -247,9 +251,12 @@ public class DashboardDirectorService : IDashboardDirectorService
             .GroupBy(r => r.AgenteID)
             .Select(grp =>
             {
-                var total    = grp.Count();
+                var total     = grp.Count();
                 var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
+                var proyeccion = grp
+                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+                    .Sum(r => r.ValorPromesa ?? 0m);
 
                 nombrePorAgente.TryGetValue(grp.Key, out var nombre);
 
@@ -262,6 +269,7 @@ public class DashboardDirectorService : IDashboardDirectorService
                         ? Math.Round((decimal)contactos / total, 4) : 0,
                     TasaEfectividad     = contactos > 0
                         ? Math.Round((decimal)acuerdos / contactos, 4) : 0,
+                    ProyeccionPromesas  = Math.Round(proyeccion, 0),
                 };
             })
             .OrderByDescending(f => f.TotalGestiones)

@@ -190,10 +190,10 @@ function TablaLideres({ filas, onSeleccionar }: {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: 'var(--z-bg-page)' }}>
-          {['Líder', 'Gestiones', 'Contactabilidad', 'Efectividad', ''].map((col, i) => (
+          {['Líder', 'Gestiones', 'Contactabilidad', 'Efectividad', 'Proyección', ''].map((col, i) => (
             <th key={i} style={{
               padding: '10px 14px',
-              textAlign: i === 0 ? 'left' : i === 4 ? 'center' : 'right',
+              textAlign: i === 0 ? 'left' : i === 5 ? 'center' : 'right',
               fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
               borderBottom: '0.5px solid var(--z-border)',
               letterSpacing: '0.04em', textTransform: 'uppercase',
@@ -217,6 +217,9 @@ function TablaLideres({ filas, onSeleccionar }: {
             </td>
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
               {pct(f.tasaEfectividad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+              {formatearPesos(f.proyeccionPromesas)}
             </td>
             <td style={{ padding: '11px 14px', textAlign: 'center' }}>
               <button
@@ -250,7 +253,7 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: 'var(--z-bg-page)' }}>
-          {['Asesor', 'Gestiones', 'Contactabilidad', 'Efectividad'].map((col, i) => (
+          {['Asesor', 'Gestiones', 'Contactabilidad', 'Efectividad', 'Proyección'].map((col, i) => (
             <th key={i} style={{
               padding: '10px 14px',
               textAlign: i === 0 ? 'left' : 'right',
@@ -280,6 +283,9 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
             </td>
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
               {pct(f.tasaEfectividad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+              {formatearPesos(f.proyeccionPromesas)}
             </td>
           </tr>
         ))}

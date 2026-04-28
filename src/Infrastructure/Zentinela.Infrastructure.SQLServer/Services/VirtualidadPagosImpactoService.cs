@@ -37,9 +37,9 @@ public class VirtualidadPagosImpactoService : IVirtualidadPagosImpactoService
             .ToListAsync();
 
         // IVR enviado antes del pago
-        var ivr = await _db.IVREnvios
-            .Where(i => cedulas.Contains(i.TitularID) && i.FechaEnvio < fechaMax)
-            .Select(i => new { TitularID = i.TitularID, i.FechaEnvio })
+        var ivr = await _db.IVREnviados
+            .Where(i => cedulas.Contains(i.NumeroDocumento) && i.FechaEnvio < fechaMax)
+            .Select(i => new { TitularID = i.NumeroDocumento, i.FechaEnvio })
             .ToListAsync();
 
         // Llamadas perdidas registradas antes del pago

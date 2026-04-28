@@ -22,8 +22,12 @@ public class InformeLiderCarteraDto
     public string  NombreCartera    { get; set; } = string.Empty;
 
     public int     TotalAsesores    { get; set; }
-    public decimal MetaCartera      { get; set; }
-    public decimal MetaHonorarios   { get; set; }
+    /// <summary>Valor único de la meta asignada al líder-cartera para el mes.</summary>
+    public decimal ValorMeta        { get; set; }
+
+    /// <summary>"Recaudo" u "Honorarios" según el tipo de meta asignada. Null si no tiene meta.</summary>
+    public string? TipoMeta         { get; set; }
+
     public bool    TieneMeta        { get; set; }
 
     /// <summary>Titulares activos asignados a este líder en esta cartera.</summary>

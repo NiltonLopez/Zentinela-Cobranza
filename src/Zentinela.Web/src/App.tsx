@@ -13,11 +13,13 @@ import { SinPermisoPage } from './pages/SinPermisoPage';
 // Home
 import { HomeDashboardPage } from './pages/home/HomeDashboardPage';
 import { PagosConfirmadosAsesorPage } from './pages/home/PagosConfirmadosAsesorPage';
+import { PagosConfirmadosLiderPage } from './pages/home/PagosConfirmadosLiderPage';
 import { PagosConfirmadosDirectorPage } from './pages/home/PagosConfirmadosDirectorPage';
 
 // Cartera
 import { CreadorZentinelaPage } from './pages/cartera/CreadorZentinelaPage';
 import { CalificadorCarteraPage } from './pages/cartera/CalificadorCarteraPage';
+import { ComparadorCarterasPage } from './pages/cartera/ComparadorCarterasPage';
 
 // Informes
 import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPage';
@@ -78,6 +80,14 @@ function App() {
                 }
               />
               <Route
+                path="/home/pagos-lider"
+                element={
+                  <RutaProtegida rolesPermitidos={['Líder']}>
+                    <PagosConfirmadosLiderPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
                 path="/home/pagos-director"
                 element={
                   <RutaProtegida rolesPermitidos={['Director', 'Admin']}>
@@ -100,6 +110,15 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
                     <CalificadorCarteraPage />
+                  </RutaProtegida>
+                }
+              />
+
+              <Route
+                path="/cartera/comparador"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                    <ComparadorCarterasPage />
                   </RutaProtegida>
                 }
               />

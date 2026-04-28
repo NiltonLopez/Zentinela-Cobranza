@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Zentinela.Application;
@@ -60,6 +61,63 @@ public class DashboardController : ControllerBase
         try
         {
             var resultado = await _asesorService.ObtenerPagosDetalleAsync((int)numeroDocumento, fechaDesde, fechaHasta);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { mensaje = $"Error al cargar los pagos: {ex.Message}" });
+        }
+    }
+
+    // ── Líder ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Carteras propias del líder autenticado para el dropdown de filtros.
+    /// </summary>
+    [HttpGet("lider/carteras")]
+    [Authorize(Roles = Roles.Lider)]
+    public async Task<IActionResult> ObtenerCarterasLiderPropio()
+    {
+        if (!int.TryParse(User.FindFirstValue("liderID"), out var liderID))
+            return Forbid();
+
+        var carteras = await _directorService.ObtenerCarterasLiderAsync(liderID);
+        return Ok(carteras);
+    }
+
+    /// <summary>
+    /// Dashboard del líder autenticado, opcionalmente filtrado por cartera y fechas.
+    /// </summary>
+    [HttpGet("lider")]
+    [Authorize(Roles = Roles.Lider)]
+    public async Task<IActionResult> ObtenerDashboardLider(
+        [FromQuery] int?      carteraID,
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta)
+    {
+        if (!int.TryParse(User.FindFirstValue("liderID"), out var liderID))
+            return Forbid();
+
+        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta);
+        return Ok(resultado);
+    }
+
+    /// <summary>
+    /// Pagos confirmados de las carteras del líder autenticado.
+    /// </summary>
+    [HttpGet("lider/pagos")]
+    [Authorize(Roles = Roles.Lider)]
+    public async Task<IActionResult> ObtenerPagosLider(
+        [FromQuery] int?      carteraID,
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta)
+    {
+        if (!int.TryParse(User.FindFirstValue("liderID"), out var liderID))
+            return Forbid();
+
+        try
+        {
+            var resultado = await _directorService.ObtenerPagosAsync(liderID, carteraID, fechaDesde, fechaHasta);
             return Ok(resultado);
         }
         catch (Exception ex)

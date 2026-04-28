@@ -28,14 +28,18 @@ public class InformeAgenteMesDto
     public decimal Recaudo           { get; set; }
     public decimal Honorarios        { get; set; }
 
-    public decimal Meta              { get; set; }
-    public decimal MetaHonorarios    { get; set; }
+    /// <summary>Valor único de la meta asignada al agente para el mes.</summary>
+    public decimal ValorMeta         { get; set; }
+
+    /// <summary>"Recaudo" u "Honorarios" según el tipo de meta asignada. Null si no tiene meta.</summary>
+    public string? TipoMeta          { get; set; }
+
     public bool    TieneMeta         { get; set; }
 
-    /// <summary>MetaHonorarios proporcional a los días transcurridos del mes.</summary>
+    /// <summary>ValorMeta proporcional a los días hábiles transcurridos del mes.</summary>
     public decimal DeberiaLlevarHoy  { get; set; }
 
-    /// <summary>Máximo entre 0 y (MetaHonorarios − Honorarios).</summary>
+    /// <summary>Máximo entre 0 y (ValorMeta − métrica correspondiente).</summary>
     public decimal FaltaParaMeta     { get; set; }
 
     /// <summary>Recaudo / días del mes con al menos un pago.</summary>

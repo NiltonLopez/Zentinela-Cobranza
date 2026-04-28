@@ -23,6 +23,8 @@ public class FilaLiderDto
     public int     TotalGestiones      { get; set; }
     public decimal TasaContactabilidad { get; set; }
     public decimal TasaEfectividad     { get; set; }
+    /// <summary>Suma de ValorPromesa donde UltimoPerfil es acuerdo o abono.</summary>
+    public decimal ProyeccionPromesas  { get; set; }
 }
 
 public class FilaAsesorDto
@@ -32,6 +34,8 @@ public class FilaAsesorDto
     public int     TotalGestiones      { get; set; }
     public decimal TasaContactabilidad { get; set; }
     public decimal TasaEfectividad     { get; set; }
+    /// <summary>Suma de ValorPromesa donde UltimoPerfil es acuerdo o abono.</summary>
+    public decimal ProyeccionPromesas  { get; set; }
 }
 
 public class LiderDropdownDto

@@ -9,8 +9,8 @@ export interface InformeAgenteMes {
   gestionado: number;
   recaudo: number;
   honorarios: number;
-  meta: number;
-  metaHonorarios: number;
+  valorMeta: number;
+  tipoMeta: 'Recaudo' | 'Honorarios' | null;
   tieneMeta: boolean;
   deberiaLlevarHoy: number;
   faltaParaMeta: number;
@@ -33,8 +33,8 @@ export interface InformeLiderCartera {
   carteraID: number;
   nombreCartera: string;
   totalAsesores: number;
-  metaCartera: number;
-  metaHonorarios: number;
+  valorMeta: number;
+  tipoMeta: 'Recaudo' | 'Honorarios' | null;
   tieneMeta: boolean;
   capacidad: number;
   recaudo: number;
