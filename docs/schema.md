@@ -1238,6 +1238,29 @@ Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en 
 | `[Celular Tigo]`, `[Email Tigo]` | `CelularTigo`, `EmailTigo` | Tigo |
 | `[Celular SOS]` | `CelularSOS` | SOS |
 
+#### Estado operativo de las fuentes (visual en Calificador)
+
+Indicador junto al nombre de cada fuente en la tabla de localización (`CalificadorCarteraPage → ESTADO_FUENTE`). Refleja si la tabla origen recibe actualizaciones en producción. **Es metadato visual** — no participa de cálculos ni filtros, y se mantiene a mano cuando el equipo de datos confirma cambios de cadencia.
+
+| Fuente | Estado | Notas |
+|--------|--------|-------|
+| Cajacopi | Funcional | — |
+| Cámara | Intermitente | — |
+| Salud Total | Funcional | — |
+| Fosyga | Intermitente | — |
+| Compensados | Intermitente | — |
+| Positiva | Funcional | — |
+| Tigo | Inactivo | — |
+| SOS | Funcional | — |
+| Claro | Inactivo | — |
+| Sura (ARL) | Funcional | Solo aporta nombre de empresa, no contactabilidad |
+| Positiva Emp. | Funcional | — |
+| RUES | Funcional | — |
+| SIMIT | Funcional | — |
+| RGM | Funcional | — |
+
+Colores fijos: `#16A34A` (Funcional), `#CA8A04` (Intermitente), `#DC2626` (Inactivo). Para agregar/cambiar un estado: editar `ESTADO_FUENTE` en `src/Zentinela.Web/src/pages/cartera/CalificadorCarteraPage.tsx`.
+
 Índice adicional en `Titular_Cartera` para filtros del Calificador por líder/cartera:
 
 ```sql
