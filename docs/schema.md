@@ -832,6 +832,12 @@ Envíos IVR (voz automatizada) a titulares. Espejo de `MensajesEnviados`. Carga 
 **NombreCartera no se almacena** — se obtiene con JOIN a `dbo.Cartera`.
 **Script:** `docs/sql/create_IVREnviados.sql` (drop también la tabla legacy `dbo.IVREnvio`).
 
+### Tablas consultadas por el módulo "Rastreo de Líneas"
+
+El sub-módulo `/consultas/rastreo` (ver `ADR-015`) busca un celular **solo en las tablas de Localización** que tienen columna de teléfono, vía un único `UNION ALL` parametrizado en `RastreoLineasService`:
+
+`Cajacopi`, `Camara`, `Positiva`, `SaludTotal`, `SOS`, `Tigo`. Resuelve nombre del titular con `LEFT JOIN dbo.Titular`. NO consulta otras tablas con teléfono que no sean de localización (auditorías, listas negras, directorios, logs salientes), tampoco `*Auxiliar`, `*_bak`, `Staging_*`, `DatosExternos`, `CamaraEmpresa` ni vistas `vw_*`.
+
 ### ListaNegraCorreos
 Correos marcados como erroneos / invalidos.
 

@@ -33,8 +33,9 @@ import { GestionPersonalPage } from './pages/administracion/GestionPersonalPage'
 import { CarguePagosPage } from './pages/administracion/CarguePagosPage';
 import { AsignacionMetasPage } from './pages/administracion/AsignacionMetasPage';
 
-// Consulta
-import { ConsultaIntegradaPage } from './pages/consulta/ConsultaIntegradaPage';
+// Consultas
+import { ConsultaIntegradaPage } from './pages/consultas/ConsultaIntegradaPage';
+import { RastreoLineasPage } from './pages/consultas/RastreoLineasPage';
 
 const queryClient = new QueryClient();
 
@@ -193,15 +194,25 @@ function App() {
                 }
               />
 
-              {/* Consulta Integrada */}
+              {/* Consultas */}
               <Route
-                path="/consulta"
+                path="/consultas/integrada"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor']}>
                     <ConsultaIntegradaPage />
                   </RutaProtegida>
                 }
               />
+              <Route
+                path="/consultas/rastreo"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor']}>
+                    <RastreoLineasPage />
+                  </RutaProtegida>
+                }
+              />
+              {/* Compatibilidad con la ruta antigua */}
+              <Route path="/consulta" element={<Navigate to="/consultas/integrada" replace />} />
 
             </Route>
 

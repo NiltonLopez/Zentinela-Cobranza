@@ -95,6 +95,7 @@ public static class DependencyInjection
         services.AddScoped<IVirtualidadLlamadasService, VirtualidadLlamadasService>();
         services.AddScoped<IVirtualidadEntrantesService, VirtualidadEntrantesService>();
         services.AddScoped<IVirtualidadPagosImpactoService, VirtualidadPagosImpactoService>();
+        services.AddScoped<IRastreoLineasService, RastreoLineasService>();
 
         return services;
     }

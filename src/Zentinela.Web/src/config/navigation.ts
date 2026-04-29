@@ -1,6 +1,6 @@
 import type { Rol } from '../types/auth';
 
-export type ModuloKey = 'home' | 'cartera' | 'informes' | 'administracion' | 'consulta';
+export type ModuloKey = 'home' | 'cartera' | 'informes' | 'administracion' | 'consultas';
 
 export interface SubModulo {
   key: string;
@@ -66,12 +66,13 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
-    key: 'consulta',
-    label: 'Consulta Integrada',
+    key: 'consultas',
+    label: 'Consultas',
     rolesPermitidos: ['Admin', 'Líder', 'Director', 'Asesor'],
-    defaultPath: '/consulta',
+    defaultPath: '/consultas/integrada',
     subModulos: [
-      { key: 'consulta', label: 'Consulta Integrada', path: '/consulta' },
+      { key: 'integrada', label: 'Consulta Integrada', path: '/consultas/integrada' },
+      { key: 'rastreo',   label: 'Rastreo de Líneas',  path: '/consultas/rastreo'   },
     ],
   },
 ];
@@ -81,6 +82,7 @@ export function pathToModulo(pathname: string): ModuloKey {
   if (pathname.startsWith('/cartera')) return 'cartera';
   if (pathname.startsWith('/informes')) return 'informes';
   if (pathname.startsWith('/administracion')) return 'administracion';
-  if (pathname.startsWith('/consulta')) return 'consulta';
+  // /consultas/* (nuevo) y /consulta (legacy redirect) caen al mismo módulo
+  if (pathname.startsWith('/consulta')) return 'consultas';
   return 'home';
 }
