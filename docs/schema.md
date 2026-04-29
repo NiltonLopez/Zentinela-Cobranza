@@ -1211,7 +1211,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | Cajacopi | `IX_Cajacopi_TitularID_Fecha` |
 | Camara | `IX_Camara_TitularID_Fecha` |
 | Compensados | `IX_Compensados_TitularID_Fecha` |
-| DatosClaro | (pendiente — la tabla usa `FechaInsercion`, considerar `IX_DatosClaro_TitularID_FechaInsercion`) |
+| DatosClaro | `IX_DatosClaro_TitularID_FechaInsercion` (sobre `TitularID, FechaInsercion DESC`) |
 | Fosyga | `IX_Fosyga_TitularID_Fecha` |
 | Positiva | `IX_Positiva_TitularID_Fecha` |
 | PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
