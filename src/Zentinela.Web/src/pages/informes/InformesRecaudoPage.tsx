@@ -530,6 +530,11 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
     ...l, cumplimiento: l.valorMeta > 0 ? l.honorarios / l.valorMeta : 0,
   }));
 
+  const lideresConMeta = lideres.filter(l => l.tieneMeta);
+  const avgCumplimiento = lideresConMeta.length > 0
+    ? lideresConMeta.reduce((s, l) => s + l.cumplimiento, 0) / lideresConMeta.length
+    : null;
+
   const campoOrdenL = criterio === 'valor' ? metrica : criterio === 'proyeccion' ? 'proyeccionCierre' : 'valorMeta';
 
   const chartData = [...lideres]
@@ -555,8 +560,8 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
         <KpiCard label="Líderes Activos" value={String(data.totalLideres)} />
         <KpiCard
           label="% vs Meta Global"
-          value={data.totalMeta > 0 ? `${((data.totalRecaudo / data.totalMeta) * 100).toFixed(1)}%` : '—'}
-          color={data.totalRecaudo >= data.totalMeta ? C.verde : C.naranja}
+          value={avgCumplimiento !== null ? `${(avgCumplimiento * 100).toFixed(1)}%` : '—'}
+          color={avgCumplimiento !== null && avgCumplimiento >= 1 ? C.verde : C.naranja}
         />
       </div>
 
