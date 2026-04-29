@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ReferenceLine,
 } from 'recharts';
 import {
@@ -992,79 +991,6 @@ function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-// ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║  TAB — CARTERAS (mes pasado vs este mes)                                    ║
-// ╚══════════════════════════════════════════════════════════════════════════════╝
-function TabCarteras() {
-  const [añoA, setAñoA] = useState(AÑO_ANTERIOR);
-  const [mesA,  setMesA]  = useState(MES_ANTERIOR);
-  const [añoB, setAñoB] = useState(AÑO_ACTUAL);
-  const [mesB,  setMesB]  = useState(MES_ACTUAL);
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['inf-carteras', añoA, mesA, añoB, mesB],
-    queryFn:  () => getInformeCarteras(añoA, mesA, añoB, mesB),
-  });
-
-  const labelA = data?.periodoA.nombre ?? `${MESES[mesA - 1]} ${añoA}`;
-  const labelB = data?.periodoB.nombre ?? `${MESES[mesB - 1]} ${añoB}`;
-
-  const chartData = (data?.carteras ?? []).map(c => ({
-    nombre:   c.nombreCartera.length > 14 ? c.nombreCartera.slice(0, 14) + '…' : c.nombreCartera,
-    [labelA]: c.recaudoA,
-    [labelB]: c.recaudoB,
-  }));
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-      {/* Selectores */}
-      <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '14px 20px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SelectorPeriodo año={añoA} mes={mesA} onAño={setAñoA} onMes={setMesA} label="Período A:" />
-        <span style={{ color: 'var(--z-text-muted)', fontSize: 18 }}>vs</span>
-        <SelectorPeriodo año={añoB} mes={mesB} onAño={setAñoB} onMes={setMesB} label="Período B:" />
-      </div>
-
-      {isLoading && <Cargando />}
-      {isError   && <ErrorMsg />}
-
-      {data && (
-        <>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label={`Recaudo ${labelA}`} value={cop(data.totalRecaudoA)} color={C.mesA} />
-            <KpiCard label={`Recaudo ${labelB}`} value={cop(data.totalRecaudoB)} color={C.mesB} />
-            <KpiCard
-              label="Variación"
-              value={cop(Math.abs(data.variacionTotal))}
-              sub={data.variacionTotal >= 0 ? '▲ Creció' : '▼ Cayó'}
-              color={data.variacionTotal >= 0 ? C.verde : C.rojo}
-            />
-          </div>
-
-          <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, padding: '20px 16px' }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 16 }}>
-              Recaudo por cartera — {labelA} vs {labelB}
-            </p>
-            <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 60)}>
-              <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 50 }}>
-                <CartesianGrid vertical={false} stroke="var(--z-border)" />
-                <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} angle={-30} textAnchor="end" interval={0} />
-                <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
-                <Tooltip content={<TooltipCOP />} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey={labelA} fill={C.mesA} radius={[4, 4, 0, 0]} />
-                <Bar dataKey={labelB} fill={C.mesB} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <TablaComparativo filas={data.carteras.map(c => ({ carteraID: c.carteraID, nombre: c.nombreCartera, valA: c.recaudoA, honA: c.honorariosA, valB: c.recaudoB, honB: c.honorariosB, valC: 0, honC: 0 }))} labelA={labelA} labelB={labelB} labelC={null} />
-        </>
-      )}
     </div>
   );
 }

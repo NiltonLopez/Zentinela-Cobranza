@@ -21,9 +21,6 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-const cop = (v: number) =>
-  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v);
-
 type TabMeta = 'lider' | 'agente';
 
 // ── Estilos base ──────────────────────────────────────────────────────────────

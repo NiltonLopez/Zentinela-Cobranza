@@ -10,12 +10,6 @@ import { CargandoSpiral } from '../../components/CargandoSpiral';
 
 type Etapa = 'inicial' | 'preview' | 'resultado';
 
-function colorEstado(estado: EstadoFilaReporte): string {
-  if (estado === 'Ok')           return '#16a34a';
-  if (estado === 'NuevoTitular') return '#1d4ed8';
-  return '#dc2626';
-}
-
 function etiquetaEstado(estado: EstadoFilaReporte, razon: string | null): string {
   if (estado === 'Ok')                return 'Listo';
   if (estado === 'NuevoTitular')      return 'Titular nuevo — se creará';
@@ -26,7 +20,7 @@ function etiquetaEstado(estado: EstadoFilaReporte, razon: string | null): string
 
 // ── Badge de estado ───────────────────────────────────────────────────────────
 
-function BadgeEstado({ estado, razon }: { estado: EstadoFilaReporte; razon: string | null }) {
+function BadgeEstado({ estado }: { estado: EstadoFilaReporte }) {
   if (estado === 'Ok') {
     return (
       <span style={{
@@ -146,7 +140,7 @@ function TablaPreview({ filas, columnasEncontradas }: {
                     {fila.usuarioControl || '—'}
                   </td>
                   <td style={{ ...TD, textAlign: 'left' }}>
-                    <BadgeEstado estado={fila.estado} razon={fila.razon} />
+                    <BadgeEstado estado={fila.estado} />
                   </td>
                   {CAMPOS_OPCIONALES.map(c => (
                     <td key={c.key} style={TD}>
