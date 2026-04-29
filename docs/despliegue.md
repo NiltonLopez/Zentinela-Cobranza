@@ -31,6 +31,30 @@ Vive en `src/Zentinela.API/Properties/PublishProfiles/ZentinelaAPI Profile - Pro
 - Con IIS no se configura puerto en Kestrel: el puerto está en el binding del sitio. ASPNETCORE_HTTPS_PORT y similares no aplican.
 - Variable de entorno `ASPNETCORE_ENVIRONMENT=Production` se inyecta vía `web.config` que el SDK genera automáticamente al publicar.
 
+### CORS — política `ZentinelaPolicy`
+`Program.cs` aplica globalmente la política **`ZentinelaPolicy`** que permite origen `http://zentinela`, cualquier header/método y credentials. Es la política activa en producción y debe coincidir con el host real desde donde se sirva la SPA.
+
+```csharp
+options.AddPolicy("ZentinelaPolicy", policy =>
+    policy.WithOrigins("http://zentinela")
+          .AllowAnyHeader()
+          .AllowAnyMethod()
+          .AllowCredentials());
+```
+
+Pipeline:
+```
+app.UseRouting();
+app.UseCors("ZentinelaPolicy");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+```
+
+> Si la SPA cambia de host (otro dominio interno, IP directa, etc.), actualizar `WithOrigins(...)` o agregar más orígenes a la lista — `AllowCredentials()` es incompatible con `AllowAnyOrigin()`, los orígenes deben enumerarse explícitamente.
+>
+> La política `FrontendPolicy` (localhost 5173/5174) sigue registrada pero ya no se aplica globalmente; queda disponible para activarla condicionalmente en Development si se requiere.
+
 ### Flujo de publicación
 1. VS 2022 → Solution Explorer → click derecho `Zentinela.API` → **Publish**.
 2. Seleccionar perfil `ZentinelaAPI Profile - Production`.

@@ -27,6 +27,12 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
+
+    options.AddPolicy("ZentinelaPolicy", policy =>
+        policy.WithOrigins("http://zentinela")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials());
 });
 
 builder.Services.AddControllers()
@@ -43,9 +49,8 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-// CORS antes de autenticación y endpoints — sin UseRouting() explícito
-// En ASP.NET Core 9 el routing es implícito; llamarlo explícito rompe CORS con endpoint routing
-app.UseCors("FrontendPolicy");
+app.UseRouting();
+app.UseCors("ZentinelaPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
