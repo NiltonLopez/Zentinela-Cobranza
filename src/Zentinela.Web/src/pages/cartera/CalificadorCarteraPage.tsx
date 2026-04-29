@@ -216,6 +216,26 @@ export function CalificadorCarteraPage() {
   );
 }
 
+// Estado operativo de cada fuente de localización (visual, no afecta lógica).
+// 'Funcional' = se actualiza con regularidad; 'Intermitente' = irregular;
+// 'Inactivo' = sin actualizaciones recientes.
+const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: string }> = {
+  'Cajacopi':         { etiqueta: 'Funcional',    color: '#16A34A' },
+  'Cámara':           { etiqueta: 'Intermitente', color: '#CA8A04' },
+  'Salud Total':      { etiqueta: 'Funcional',    color: '#16A34A' },
+  'Fosyga':           { etiqueta: 'Intermitente', color: '#CA8A04' },
+  'Compensados':      { etiqueta: 'Intermitente', color: '#CA8A04' },
+  'Positiva':         { etiqueta: 'Funcional',    color: '#16A34A' },
+  'Tigo':             { etiqueta: 'Inactivo',     color: '#DC2626' },
+  'SOS':              { etiqueta: 'Funcional',    color: '#16A34A' },
+  'Claro':            { etiqueta: 'Inactivo',     color: '#DC2626' },
+  'Sura (ARL)':       { etiqueta: 'Funcional',    color: '#16A34A', nota: 'solo nombre de empresa' },
+  'Positiva Emp.':    { etiqueta: 'Funcional',    color: '#16A34A' },
+  'RUES':             { etiqueta: 'Funcional',    color: '#16A34A' },
+  'SIMIT':            { etiqueta: 'Funcional',    color: '#16A34A' },
+  'RGM':              { etiqueta: 'Funcional',    color: '#16A34A' },
+};
+
 function TablaLocalizacion({
   filas,
   total,
@@ -258,7 +278,22 @@ function TablaLocalizacion({
                 key={f.fuente}
                 style={{ borderBottom: '1px solid var(--z-border)' }}
               >
-                <td style={{ padding: '8px 10px', fontWeight: 600 }}>{f.fuente}</td>
+                <td style={{ padding: '8px 10px', fontWeight: 600 }}>
+                  {f.fuente}
+                  {ESTADO_FUENTE[f.fuente] && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 10,
+                        fontWeight: 500,
+                        color: ESTADO_FUENTE[f.fuente].color,
+                      }}
+                    >
+                      ({ESTADO_FUENTE[f.fuente].etiqueta}
+                      {ESTADO_FUENTE[f.fuente].nota ? `, ${ESTADO_FUENTE[f.fuente].nota}` : ''})
+                    </span>
+                  )}
+                </td>
 
                 <td style={{ padding: '8px 10px', textAlign: 'center', color: '#15803D' }}>
                   {fmt(f.encontrados)}
