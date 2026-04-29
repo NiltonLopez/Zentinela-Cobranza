@@ -1154,10 +1154,21 @@ Retorna una fila por combinación líder-cartera con meta, capacity (titulares a
 }
 ```
 
-**Cálculos:**
+**Cálculos (backend):**
 - `deberiaLlevarHoy` = `valorMeta × (díaActual / díasDelMes)`; si el mes ya pasó, usa el mes completo.
 - `proyeccionCierre` = `(recaudo / díasTranscurridos) × díasDelMes`; 0 si el mes no ha comenzado.
 - `asignaciones`: titulares asignados en `Titular_Cartera` para esa combinación líder-cartera (antes llamado `capacidad`).
+
+**Cálculo frontend — KPI "% vs Meta Global" (Tab Líderes):**
+
+Los líderes se agregan por `liderID` sumando sus carteras. El KPI global **no** usa `totalRecaudo / totalMeta` (eso sesgaría a favor de las carteras con mayor valor monetario absoluto). En su lugar se calcula el **promedio aritmético de los cumplimientos individuales** de los líderes que tienen meta:
+
+```
+avgCumplimiento = Σ(cumplimiento_i) / N_con_meta
+cumplimiento_i  = (honorarios_i | recaudo_i) / valorMeta_i
+```
+
+Solo participan en el promedio los líderes con `tieneMeta = true`. Si ninguno tiene meta, se muestra `—`.
 
 ### Códigos HTTP
 
