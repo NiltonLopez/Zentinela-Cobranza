@@ -1,9 +1,9 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-04-24  
+> Generado: 2026-04-02 — Actualizado: 2026-04-29  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
-> Total tablas: 76 | Vistas: 32 | Stored Procedures: 21
+> Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
 
 ---
 
@@ -282,7 +282,7 @@ Datos de compensacion laboral (cajas de compensacion) por titular.
 | FechaConsulta | date | NO | — | — |
 
 ### DatosClaro
-Datos de contacto obtenidos de Claro.
+Contactabilidad telefónica y email obtenida del operador Claro. Cardinalidad ~955k filas (~775k titulares únicos, varios registros por titular). Se consume vía `vw_BaseMadre` con TOP 1 por `FechaInsercion DESC`. Tabla espejo `DatosClaroAuxiliar` (staging) y vista `vw_DatosClaro` (concatenado legacy) **no se usan en código**.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -290,6 +290,8 @@ Datos de contacto obtenidos de Claro.
 | NumeroTelefono | varchar(10) | SI | — | — |
 | Email | varchar(100) | SI | — | — |
 | FechaInsercion | date | SI | — | — |
+
+> **Diferencia con el resto:** las demás fuentes ordenan por `FechaConsulta DESC`; DatosClaro usa `FechaInsercion DESC` (la tabla no tiene `FechaConsulta`). La fecha también se expone en la vista como `[Ultima Insercion Claro]` para medir vigencia de los datos.
 
 ### DatosExternos
 Datos de contacto de fuentes externas genericas.
@@ -1209,6 +1211,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | Cajacopi | `IX_Cajacopi_TitularID_Fecha` |
 | Camara | `IX_Camara_TitularID_Fecha` |
 | Compensados | `IX_Compensados_TitularID_Fecha` |
+| DatosClaro | (pendiente — la tabla usa `FechaInsercion`, considerar `IX_DatosClaro_TitularID_FechaInsercion`) |
 | Fosyga | `IX_Fosyga_TitularID_Fecha` |
 | Positiva | `IX_Positiva_TitularID_Fecha` |
 | PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
@@ -1219,6 +1222,21 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | SIMIT | `IX_SIMIT_TitularID_Fecha` |
 | SOS | `IX_SOS_TitularID_Fecha` |
 | Tigo | `IX_Tigo_TitularID_Fecha` |
+
+#### Columnas expuestas por `vw_BaseMadre` (alias en SQL)
+
+Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en `BaseMadreRowMapping.cs`. Bloque de contactabilidad:
+
+| Alias en vista | Propiedad C# | Fuente |
+|----------------|--------------|--------|
+| `[Celular Cajacopi]`, `[Email CajaCopi]` | `CelularCajacopi`, `EmailCajacopi` | Cajacopi |
+| `[Celular Camara]`, `[Email Camara]` | `CelularCamara`, `EmailCamara` | Camara |
+| `[Celular Salud Total]`, `[Email Salud Total]` | `CelularSaludTotal`, `EmailSaludTotal` | SaludTotal |
+| `[Celular Datos Externos]`, `[Email Datos Externos]` | (no mapeadas — DatosExternos ignorado) | DatosExternos |
+| `[Celular Claro]`, `[Email Claro]`, `[Ultima Insercion Claro]` | `CelularClaro`, `EmailClaro`, `UltimaInsercionClaro` | DatosClaro |
+| `[Celular Positiva]`, `[Email Positiva]` | `CelularPositiva`, `EmailPositiva` | Positiva |
+| `[Celular Tigo]`, `[Email Tigo]` | `CelularTigo`, `EmailTigo` | Tigo |
+| `[Celular SOS]` | `CelularSOS` | SOS |
 
 Índice adicional en `Titular_Cartera` para filtros del Calificador por líder/cartera:
 

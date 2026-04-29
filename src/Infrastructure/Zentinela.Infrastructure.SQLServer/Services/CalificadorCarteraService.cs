@@ -15,7 +15,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 public class CalificadorCarteraService : ICalificadorCarteraService
 {
     private static readonly string[] FuentesCelular =
-        ["Cajacopi", "Camara", "SaludTotal", "Positiva", "Tigo", "SOS"];
+        ["Cajacopi", "Camara", "SaludTotal", "Positiva", "Tigo", "SOS", "Claro"];
 
     private readonly CallCenterDbContext _db;
 
@@ -267,7 +267,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         TieneCelularFuente(b, "SaludTotal") ||
         TieneCelularFuente(b, "Positiva")   ||
         TieneCelularFuente(b, "Tigo")       ||
-        TieneCelularFuente(b, "SOS");
+        TieneCelularFuente(b, "SOS")        ||
+        TieneCelularFuente(b, "Claro");
 
     private static bool TieneCelularFuente(BaseMadreRow b, string fuente) => fuente switch
     {
@@ -277,6 +278,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         "Positiva"      => !string.IsNullOrEmpty(b.CelularPositiva)      && b.CelularPositiva      != "0",
         "Tigo"          => !string.IsNullOrEmpty(b.CelularTigo)          && b.CelularTigo          != "0",
         "SOS"           => !string.IsNullOrEmpty(b.CelularSOS)           && b.CelularSOS           != "0",
+        "Claro"         => !string.IsNullOrEmpty(b.CelularClaro)         && b.CelularClaro         != "0",
         _               => false,
     };
 
@@ -285,7 +287,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         (!string.IsNullOrEmpty(b.EmailCamara)        && b.EmailCamara        != "0") ||
         (!string.IsNullOrEmpty(b.EmailSaludTotal)    && b.EmailSaludTotal    != "0") ||
         (!string.IsNullOrEmpty(b.EmailPositiva)      && b.EmailPositiva      != "0") ||
-        (!string.IsNullOrEmpty(b.EmailTigo)          && b.EmailTigo          != "0");
+        (!string.IsNullOrEmpty(b.EmailTigo)          && b.EmailTigo          != "0") ||
+        (!string.IsNullOrEmpty(b.EmailClaro)         && b.EmailClaro         != "0");
 
     /// <summary>Agrupa por etiqueta, calcula cantidad y % sobre total.</summary>
     private static List<DesglosePar> Desglosar(
@@ -395,6 +398,14 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmpresaSOS,''), '0') IS NULL
                           AND b.EnSOS = 1
                          THEN 1 ELSE 0 END) AS SosNoEnc,
+                -- Claro
+                SUM(CASE WHEN NULLIF(NULLIF(b.CelularClaro,''),'0') IS NOT NULL
+                           OR NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NOT NULL
+                         THEN 1 ELSE 0 END) AS ClaroEnc,
+                SUM(CASE WHEN NULLIF(NULLIF(b.CelularClaro,''),'0') IS NULL
+                          AND NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NULL
+                          AND b.EnClaro = 1
+                         THEN 1 ELSE 0 END) AS ClaroNoEnc,
                 -- Sura (ARL)
                 SUM(CASE WHEN (b.NITSura IS NOT NULL AND b.NITSura != 0)
                            OR NULLIF(NULLIF(b.EmpresaSura,''), '0') IS NOT NULL
@@ -459,6 +470,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     v.[Celular SOS]               AS CelularSOS,
                     v.[Nit Sos]                   AS NitSOS,
                     v.[Empresa SOS]               AS EmpresaSOS,
+                    v.[Celular Claro]             AS CelularClaro,
+                    v.[Email Claro]               AS EmailClaro,
                     v.[NIT Sura]                  AS NITSura,
                     v.[Empresa Sura]              AS EmpresaSura,
                     v.[NIT Positiva]              AS NITPositiva,
@@ -478,6 +491,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     CASE WHEN p.TitularID  IS NOT NULL THEN 1 ELSE 0 END AS EnPositiva,
                     CASE WHEN ti.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnTigo,
                     CASE WHEN s.TitularID  IS NOT NULL THEN 1 ELSE 0 END AS EnSOS,
+                    CASE WHEN dc.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnClaro,
                     CASE WHEN ar.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSura,
                     CASE WHEN pe.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnPosEmp,
                     CASE WHEN ru.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRUES,
@@ -492,6 +506,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Positiva)         p  ON p.TitularID  = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = TRY_CAST(v.[Numero Documento] AS bigint)
+                LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM PositivaEmpresas) pe ON pe.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM RUES)             ru ON ru.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
@@ -513,6 +528,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Fuente("Positiva",       r.PositivaEnc,    r.PositivaNoEnc,    total),
             Fuente("Tigo",           r.TigoEnc,        r.TigoNoEnc,        total),
             Fuente("SOS",            r.SosEnc,         r.SosNoEnc,         total),
+            Fuente("Claro",          r.ClaroEnc,       r.ClaroNoEnc,       total),
             Fuente("Sura (ARL)",     r.SuraEnc,        r.SuraNoEnc,        total),
             Fuente("Positiva Emp.",  r.PosEmpEnc,      r.PosEmpNoEnc,      total),
             Fuente("RUES",           r.RuesEnc,        r.RuesNoEnc,        total),
@@ -540,6 +556,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         public int PositivaEnc    { get; set; } public int PositivaNoEnc    { get; set; }
         public int TigoEnc        { get; set; } public int TigoNoEnc        { get; set; }
         public int SosEnc         { get; set; } public int SosNoEnc         { get; set; }
+        public int ClaroEnc       { get; set; } public int ClaroNoEnc       { get; set; }
         public int SuraEnc        { get; set; } public int SuraNoEnc        { get; set; }
         public int PosEmpEnc      { get; set; } public int PosEmpNoEnc      { get; set; }
         public int RuesEnc        { get; set; } public int RuesNoEnc        { get; set; }

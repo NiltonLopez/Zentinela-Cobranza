@@ -154,6 +154,17 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        var claro = await _context.DatosClaros.FirstOrDefaultAsync(c => c.TitularId == titular.NumeroDocumento);
+        if (claro != null)
+        {
+            contactabilidad["Claro"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"] = claro.NumeroTelefono ?? "N/A",
+                ["Email"] = claro.Email ?? "N/A",
+                ["Última Inserción"] = FormatDateOnly(claro.FechaInsercion)
+            };
+        }
+
         if (contactabilidad.Any())
             resultado.Datos["Contactabilidad"] = contactabilidad;
     }

@@ -44,6 +44,9 @@ public class BaseMadreRow
     public string? CelularTigo              { get; set; }
     public string? EmailTigo                { get; set; }
     public string? CelularSOS               { get; set; }
+    public string? CelularClaro             { get; set; }
+    public string? EmailClaro               { get; set; }
+    public DateOnly? UltimaInsercionClaro   { get; set; }
     public long?   NITSura                  { get; set; }
     public string? EmpresaSura              { get; set; }
     public long?   NITPositiva              { get; set; }

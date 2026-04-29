@@ -12,9 +12,9 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// alineadas con el bloque Localización del Calificador de Cartera) y devuelve,
 /// agrupado por tabla, los titulares asociados.
 ///
-/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS. NO incluye
-/// auditorías, listas negras, directorios, ni logs salientes — esas no son
-/// fuentes de localización.
+/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro.
+/// NO incluye auditorías, listas negras, directorios, ni logs salientes — esas
+/// no son fuentes de localización.
 ///
 /// Estrategia: un único query SQL con UNION ALL, sin mapear cada tabla externa
 /// como entidad EF (la BD es del sistema de cobranza, propiedad de otro equipo).
@@ -95,7 +95,7 @@ public class RastreoLineasService : IRastreoLineasService
 
     // ── SQL: UNION ALL sobre las fuentes de Localización ─────────────────────
     // Solo tablas del bloque Localización del Calificador con columna de teléfono:
-    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS.
+    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro.
     // Cajacopi y Positiva tienen Celular y Fijo → 2 SELECTs cada una.
     // ISNULL en Nombre por si algún TitularID no existe en dbo.Titular (orphan).
     private const string SqlConsulta = """
@@ -161,6 +161,14 @@ public class RastreoLineasService : IRastreoLineasService
             SELECT 'Tigo', 'Tigo',
                    x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
               FROM dbo.Tigo x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroTelefono = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- Claro (DatosClaro)
+            SELECT 'Claro', 'Claro',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.DatosClaro x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
              WHERE x.NumeroTelefono = @numero
              GROUP BY x.TitularID, t.Nombre

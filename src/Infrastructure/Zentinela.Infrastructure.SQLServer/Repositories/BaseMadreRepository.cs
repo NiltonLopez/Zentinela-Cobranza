@@ -27,6 +27,7 @@ public class BaseMadreRepository : IBaseMadreRepository
         "Positiva"      => b.CelularPositiva,
         "Tigo"          => b.CelularTigo,
         "SOS"           => b.CelularSOS,
+        "Claro"         => b.CelularClaro,
         _               => null,
     };
 
@@ -37,6 +38,7 @@ public class BaseMadreRepository : IBaseMadreRepository
         "SaludTotal"    => b.EmailSaludTotal,
         "Positiva"      => b.EmailPositiva,
         "Tigo"          => b.EmailTigo,
+        "Claro"         => b.EmailClaro,
         _               => null,
     };
 

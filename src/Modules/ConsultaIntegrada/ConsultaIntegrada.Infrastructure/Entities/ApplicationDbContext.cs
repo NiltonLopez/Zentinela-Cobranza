@@ -26,6 +26,7 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<Simit> Simits { get; set; }
     public virtual DbSet<So> Sos { get; set; }
     public virtual DbSet<Tigo> Tigos { get; set; }
+    public virtual DbSet<DatosClaro> DatosClaros { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,7 @@ public partial class ApplicationDbContext : DbContext
         modelBuilder.Entity<Simit>().HasNoKey().ToTable("SIMIT");
         modelBuilder.Entity<So>().HasNoKey().ToTable("SOS");
         modelBuilder.Entity<Tigo>().HasNoKey().ToTable("Tigo");
+        modelBuilder.Entity<DatosClaro>().HasNoKey().ToTable("DatosClaro");
 
         OnModelCreatingPartial(modelBuilder);
     }

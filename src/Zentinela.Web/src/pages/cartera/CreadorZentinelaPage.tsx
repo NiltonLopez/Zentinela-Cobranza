@@ -21,6 +21,7 @@ const FUENTES_EMAIL = [
   { key: 'SaludTotal',    label: 'Salud Total'    },
   { key: 'Positiva',      label: 'Positiva'       },
   { key: 'Tigo',          label: 'Tigo'           },
+  { key: 'Claro',         label: 'Claro'          },
 ];
 
 const FUENTES_CELULAR = [
@@ -30,6 +31,7 @@ const FUENTES_CELULAR = [
   { key: 'Positiva',      label: 'Positiva'       },
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'SOS',           label: 'SOS'            },
+  { key: 'Claro',         label: 'Claro'          },
 ];
 
 const inputStyle: React.CSSProperties = {
