@@ -50,7 +50,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
-app.UseCors("ZentinelaPolicy");
+app.UseCors(app.Environment.IsDevelopment() ? "FrontendPolicy" : "ZentinelaPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
