@@ -1241,10 +1241,14 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export function InformesRecaudoPage() {
+  const { usuario } = useAuth();
+  const esLider = usuario?.rol === 'Líder';
+
   const [tabActiva, setTabActiva] = useState<Tab>('agentes');
   const [año, setAño] = useState(AÑO_ACTUAL);
   const [mes, setMes] = useState(MES_ACTUAL);
 
+  const tabsVisibles = esLider ? TABS.filter(t => t.id === 'agentes') : TABS;
   const usaPeriodoGlobal = tabActiva === 'agentes' || tabActiva === 'lideres' || tabActiva === 'carteras';
 
   return (
@@ -1268,7 +1272,7 @@ export function InformesRecaudoPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
-        {TABS.map(t => (
+        {tabsVisibles.map(t => (
           <button
             key={t.id}
             onClick={() => setTabActiva(t.id)}
