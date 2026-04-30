@@ -92,8 +92,10 @@ public class GestionCarterasService : IGestionCarterasService
             if (nombreDuplicado)
                 throw new InvalidOperationException($"Ya existe una cartera con el nombre '{dto.NombreCartera}'.");
 
+            var nextID = (await _context.Carteras.MaxAsync(c => (int?)c.ID) ?? 0) + 1;
             var nuevaCartera = new Cartera
             {
+                ID            = nextID,
                 NombreCartera = dto.NombreCartera.Trim(),
                 Activa        = true,
             };
