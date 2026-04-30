@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import {
   ResponsiveContainer,
@@ -259,7 +260,9 @@ function FiltroSelect({ label, value, onChange, options, placeholder }: {
 // ║  TAB — AGENTES                                                              ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 function TabAgentes({ año, mes }: { año: number; mes: number }) {
-  const [filtroLider,   setFiltroLider]   = useState('');
+  const { usuario } = useAuth();
+  const esLider = usuario?.rol === 'Líder';
+  const [filtroLider,   setFiltroLider]   = useState(() => esLider ? String(usuario?.liderID ?? '') : '');
   const [filtroCartera, setFiltroCartera] = useState('');
   const [busqueda,      setBusqueda]      = useState('');
 
@@ -331,13 +334,15 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
             ]} />
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <FiltroSelect
-              label="Líder:"
-              value={filtroLider}
-              onChange={v => { setFiltroLider(v); setFiltroCartera(''); }}
-              options={optsLider}
-              placeholder="Todos los líderes"
-            />
+            {!esLider && (
+              <FiltroSelect
+                label="Líder:"
+                value={filtroLider}
+                onChange={v => { setFiltroLider(v); setFiltroCartera(''); }}
+                options={optsLider}
+                placeholder="Todos los líderes"
+              />
+            )}
             <FiltroSelect
               label="Cartera:"
               value={filtroCartera}
@@ -381,12 +386,12 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
       </div>
 
       {/* Tabla */}
-      <TablaAgentes agentes={agentesVisibles} />
+      <TablaAgentes agentes={agentesVisibles} esLider={esLider} />
     </div>
   );
 }
 
-function TablaAgentes({ agentes }: { agentes: InformeAgenteMes[] }) {
+function TablaAgentes({ agentes, esLider }: { agentes: InformeAgenteMes[]; esLider: boolean }) {
   type Row = InformeAgenteMes & { cumplimiento: number };
   const rows: Row[] = agentes.map(a => {
     const valorActual = a.tipoMeta === 'Honorarios' ? a.honorarios : a.recaudo;
@@ -406,7 +411,7 @@ function TablaAgentes({ agentes }: { agentes: InformeAgenteMes[] }) {
             <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
               <th style={{ ...TH, textAlign: 'center' }}>#</th>
               {th('Agente',       'nombreAgente',    'left')}
-              {th('Líder',        'nombreLider',     'left')}
+              {!esLider && th('Líder',  'nombreLider', 'left')}
               {th('Cartera',      'nombreCartera',   'left')}
               {th('Gestionado',  'gestionado',      'center')}
               {th('Recaudo',     'recaudo')}
@@ -420,7 +425,7 @@ function TablaAgentes({ agentes }: { agentes: InformeAgenteMes[] }) {
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as Row[]).map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} />)}
+            {(sorted as unknown as Row[]).map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} esLider={esLider} />)}
           </tbody>
         </table>
       </div>
@@ -428,12 +433,12 @@ function TablaAgentes({ agentes }: { agentes: InformeAgenteMes[] }) {
   );
 }
 
-function FilaAgente({ a, pos }: { a: InformeAgenteMes; pos: number }) {
+function FilaAgente({ a, pos, esLider }: { a: InformeAgenteMes; pos: number; esLider: boolean }) {
   return (
     <tr>
       <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{pos}</td>
       <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{a.nombreAgente}</td>
-      <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{a.nombreLider}</td>
+      {!esLider && <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{a.nombreLider}</td>}
       <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{a.nombreCartera}</td>
       <td style={{ ...TD, textAlign: 'center' }}>{a.gestionado}</td>
       <td style={{ ...TD, textAlign: 'right', color: C.brand, fontWeight: 600 }}>{cop(a.recaudo)}</td>
@@ -704,10 +709,12 @@ interface CarteraAgregada {
 }
 
 function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
+  const { usuario } = useAuth();
+  const esLider = usuario?.rol === 'Líder';
   const [vista, setVista] = useState<VistaCarteras>('lider-cartera');
   const [metricaC,  setMetricaC]  = useState<'honorarios' | 'recaudo'>('honorarios');
   const [criterioC, setCriterioC] = useState<'valor' | 'proyeccion' | 'meta'>('valor');
-  const [filtroLider, setFiltroLider] = useState('');
+  const [filtroLider, setFiltroLider] = useState(() => esLider ? String(usuario?.liderID ?? '') : '');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-lideres', año, mes],
@@ -825,13 +832,15 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
               })}
             </div>
 
-            <FiltroSelect
-              label="Líder:"
-              value={filtroLider}
-              onChange={setFiltroLider}
-              options={optsLider}
-              placeholder="Todos los líderes"
-            />
+            {!esLider && (
+              <FiltroSelect
+                label="Líder:"
+                value={filtroLider}
+                onChange={setFiltroLider}
+                options={optsLider}
+                placeholder="Todos los líderes"
+              />
+            )}
 
             <LeyendaGrafico items={[
               { color: metricaC === 'honorarios' ? C.honorarios : C.brand, label: metricaC === 'honorarios' ? 'Honorarios' : 'Recaudo' },
@@ -886,14 +895,14 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
 
       {/* Tabla */}
       {vista === 'lider-cartera'
-        ? <TablaCarterasLiderCartera filas={filasPorLiderCartera} />
+        ? <TablaCarterasLiderCartera filas={filasPorLiderCartera} esLider={esLider} />
         : <TablaCarterasAgrupada     filas={filasCartera} />
       }
     </div>
   );
 }
 
-function TablaCarterasLiderCartera({ filas }: { filas: (InformeLiderCartera & { cumplimiento: number })[] }) {
+function TablaCarterasLiderCartera({ filas, esLider }: { filas: (InformeLiderCartera & { cumplimiento: number })[]; esLider: boolean }) {
   const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
     <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
@@ -904,7 +913,7 @@ function TablaCarterasLiderCartera({ filas }: { filas: (InformeLiderCartera & { 
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
-              {th('Líder',             'nombreLider',     'left')}
+              {!esLider && th('Líder',  'nombreLider',     'left')}
               {th('Cartera',           'nombreCartera',   'left')}
               {th('Asesores',          'totalAsesores',   'center')}
               {th('Centro de costos',  'centroCostos')}
@@ -921,7 +930,7 @@ function TablaCarterasLiderCartera({ filas }: { filas: (InformeLiderCartera & { 
           <tbody>
             {(sorted as unknown as (InformeLiderCartera & { cumplimiento: number; centroCostos: number })[]).map(f => (
               <tr key={`${f.liderID}-${f.carteraID}`}>
-                <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>
+                {!esLider && <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>}
                 <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{f.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{f.totalAsesores}</td>
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(f.centroCostos)}</td>

@@ -45,9 +45,9 @@ export const MODULOS: Modulo[] = [
     key: 'informes',
     label: 'Informes',
     rolesPermitidos: ['Admin', 'Líder', 'Director'],
-    defaultPath: '/informes/virtualidad',
+    defaultPath: '/informes/recaudo',
     subModulos: [
-      { key: 'virtualidad', label: 'Informes de Virtualidad', path: '/informes/virtualidad' },
+      { key: 'virtualidad', label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Director'] },
       { key: 'recaudo',    label: 'Informes de Recaudo',     path: '/informes/recaudo'     },
     ],
   },
