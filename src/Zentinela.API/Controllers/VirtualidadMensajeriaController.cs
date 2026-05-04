@@ -8,7 +8,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/virtualidad/mensajeria")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class VirtualidadMensajeriaController : ControllerBase
 {
     private readonly IVirtualidadMensajeriaService _service;

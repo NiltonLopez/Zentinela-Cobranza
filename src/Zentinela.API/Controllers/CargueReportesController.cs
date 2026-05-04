@@ -8,7 +8,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/reportes")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class CargueReportesController : ControllerBase
 {
     private readonly ICargueReporteService _service;

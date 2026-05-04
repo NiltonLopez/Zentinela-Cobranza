@@ -8,7 +8,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;

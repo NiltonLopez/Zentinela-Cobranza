@@ -9,7 +9,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/virtualidad/llamadas")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class VirtualidadLlamadasController : ControllerBase
 {
     private readonly IVirtualidadLlamadasService  _perdidas;

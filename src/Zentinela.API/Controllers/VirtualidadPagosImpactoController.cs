@@ -7,7 +7,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/virtualidad/pagos-impacto")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class VirtualidadPagosImpactoController : ControllerBase
 {
     private readonly IVirtualidadPagosImpactoService _service;

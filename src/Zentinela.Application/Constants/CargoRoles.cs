@@ -12,6 +12,7 @@ public static class CargoRoles
         { 2, Roles.Lider },
         { 3, Roles.Admin },
         { 8, Roles.Director },
+        { 19, Roles.AuxiliarSistemas },
     };
 
     /// <summary>

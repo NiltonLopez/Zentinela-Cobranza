@@ -14,7 +14,7 @@ namespace Zentinela.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/pagos")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class PagosController : ControllerBase
 {
     private readonly ICarguePagosService _service;

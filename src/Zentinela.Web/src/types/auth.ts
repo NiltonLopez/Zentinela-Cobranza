@@ -22,4 +22,4 @@ export interface Usuario {
 }
 
 // Roles alineados con Application.Roles (backend)
-export type Rol = 'Admin' | 'Líder' | 'Director' | 'Asesor';
+export type Rol = 'Admin' | 'Líder' | 'Director' | 'Asesor' | 'Auxiliar de Sistemas';

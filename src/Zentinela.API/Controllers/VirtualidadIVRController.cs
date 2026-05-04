@@ -8,7 +8,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/virtualidad/ivr")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class VirtualidadIVRController : ControllerBase
 {
     private readonly IVirtualidadIVRService _service;

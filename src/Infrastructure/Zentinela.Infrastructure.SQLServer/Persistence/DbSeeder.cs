@@ -13,7 +13,7 @@ public static class DbSeeder
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
 
         // Roles definidos como constantes en Application — fuente única de verdad
-        string[] roles = [Roles.Admin, Roles.Lider, Roles.Director, Roles.Asesor];
+        string[] roles = [Roles.Admin, Roles.Lider, Roles.Director, Roles.Asesor, Roles.AuxiliarSistemas];
         foreach (var rol in roles)
         {
             if (!await roleManager.RoleExistsAsync(rol))

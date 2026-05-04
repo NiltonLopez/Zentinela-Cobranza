@@ -8,7 +8,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/asignaciones")]
-[Authorize(Roles = Roles.Admin)]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
 public class AsignacionesController : ControllerBase
 {
     private readonly IAsignacionMasivaService _service;

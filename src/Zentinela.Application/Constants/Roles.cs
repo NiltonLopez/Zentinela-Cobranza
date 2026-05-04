@@ -10,4 +10,5 @@ public static class Roles
     public const string Lider = "Líder";
     public const string Director = "Director";
     public const string Asesor = "Asesor";
+    public const string AuxiliarSistemas = "Auxiliar de Sistemas";
 }

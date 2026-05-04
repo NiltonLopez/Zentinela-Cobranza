@@ -143,11 +143,11 @@ function App() {
                 }
               />
 
-              {/* Asignaciones — solo Admin */}
+              {/* Administración — Admin + Auxiliar de Sistemas (excepto Metas) */}
               <Route
                 path="/administracion/gestion"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <GestionAsignacionesPage />
                   </RutaProtegida>
                 }
@@ -155,7 +155,7 @@ function App() {
               <Route
                 path="/administracion/reportes"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <CargueReportesPage />
                   </RutaProtegida>
                 }
@@ -163,7 +163,7 @@ function App() {
               <Route
                 path="/administracion/carteras"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <GestionCarterasPage />
                   </RutaProtegida>
                 }
@@ -171,7 +171,7 @@ function App() {
               <Route
                 path="/administracion/personal"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <GestionPersonalPage />
                   </RutaProtegida>
                 }
@@ -180,7 +180,7 @@ function App() {
               <Route
                 path="/administracion/pagos"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <CarguePagosPage />
                   </RutaProtegida>
                 }
@@ -198,7 +198,7 @@ function App() {
               <Route
                 path="/administracion/fuentes-datos"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <CargueFuentesDatosPage />
                   </RutaProtegida>
                 }

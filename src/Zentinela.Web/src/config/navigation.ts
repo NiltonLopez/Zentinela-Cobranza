@@ -54,7 +54,7 @@ export const MODULOS: Modulo[] = [
   {
     key: 'administracion',
     label: 'Administración',
-    rolesPermitidos: ['Admin'],
+    rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'],
     defaultPath: '/administracion/gestion',
     subModulos: [
       { key: 'gestion',  label: 'Gestión de Asignaciones',       path: '/administracion/gestion' },
@@ -63,7 +63,7 @@ export const MODULOS: Modulo[] = [
       { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes' },
       { key: 'pagos',    label: 'Cargue de Pagos',               path: '/administracion/pagos' },
       { key: 'fuentes-datos', label: 'Cargue de Fuentes de Datos', path: '/administracion/fuentes-datos' },
-      { key: 'metas',    label: 'Asignación de Metas',            path: '/administracion/metas' },
+      { key: 'metas',    label: 'Asignación de Metas',            path: '/administracion/metas',  rolesPermitidos: ['Admin'] },
     ],
   },
   {
