@@ -499,7 +499,9 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     CASE WHEN ru.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRUES,
                     CASE WHEN si.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSIMIT,
                     CASE WHEN rg.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRGM
-                FROM vw_BaseMadre v
+                -- Misma optimización que CalificarAsync: el TVF ya devuelve la
+                -- cartera filtrada con las CTEs Ultimo* pre-restringidas.
+                FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderID}) v
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Cajacopi)         cj ON cj.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Camara)           cm ON cm.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM SaludTotal)       st ON st.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
@@ -514,7 +516,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 LEFT JOIN (SELECT DISTINCT TitularID FROM RUES)             ru ON ru.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM SIMIT)            si ON si.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM RGM)              rg ON rg.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                WHERE v.CarteraID = {carteraID} AND v.LiderID = {liderID}
             ) b
             """).FirstOrDefaultAsync();
 
