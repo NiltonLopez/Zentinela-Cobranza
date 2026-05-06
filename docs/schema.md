@@ -1111,6 +1111,16 @@ Diagramas de base de datos (sistema SQL Server Management Studio).
 
 ---
 
+## Funciones (Functions)
+
+### Inline Table-Valued Functions
+
+| Función | Descripcion |
+|---------|-------------|
+| dbo.fn_BaseMadrePorCartera(@CarteraID int, @LiderID int = NULL) | Replica funcional de `vw_BaseMadre` filtrada por `(CarteraID, LiderID)` con pre-restricción del dominio en cada CTE Ultimo*. Acepta `@LiderID = NULL` para admin/director sin restricción. Mejora medida P90 ~3×, P99 ~17× vs llamar a la vista directa. Aplicada 2026-05-06 (ver `docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql`). Consumida por `CalificadorCarteraService` y `BaseMadreRepository`. |
+
+---
+
 ## Stored Procedures
 
 ### Stored Procedures de negocio — Procesamiento de datos auxiliares

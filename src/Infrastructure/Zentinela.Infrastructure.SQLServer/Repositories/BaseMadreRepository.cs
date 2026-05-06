@@ -58,13 +58,15 @@ public class BaseMadreRepository : IBaseMadreRepository
         List<string> coincidenciasEmail,
         int?         limite)
     {
-        // vw_BaseMadre ya expone CarteraID y LiderID directamente
+        // Lectura via dbo.fn_BaseMadrePorCartera (iTVF, ver migración
+        // docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql).
+        // El TVF acepta @LiderID = NULL para admin/director sin restricción de líder
+        // y pre-restringe el dominio de las CTEs Ultimo*. Mejora medida vs vw_BaseMadre
+        // directa: ~3× P90, hasta ~17× P99. Cartera grande sin líder (admin) ~3.9s.
+        // Los filtros LINQ que siguen se componen como SELECT * FROM (TVF) WHERE …,
+        // preservando el ergonomic .Where() encadenado.
         var query = _context.BaseMadreRows
-            .Where(bm => bm.CarteraID == carteraID);
-
-        // Líder: solo sus titulares. Admin/Director: liderID null → sin restricción
-        if (liderID.HasValue)
-            query = query.Where(bm => bm.LiderID == liderID.Value);
+            .FromSql($"SELECT * FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderID})");
 
         // ── Filtros traducibles a SQL ─────────────────────────────────────────
 
