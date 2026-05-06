@@ -714,7 +714,7 @@ Reasigna el supervisor de un usuario. Actualiza `Empleado.IDSupervisor` en DBRec
 Inactiva un usuario: marca `EstadoEmpleado = false` en DBRecursosHumanos y elimina el `ApplicationUser` de Zentinela (incluye roles y claims por cascada de Identity).
 
 **Autenticación requerida:** Sí  
-**Roles permitidos:** `Admin`
+**Roles permitidos:** `Admin`, `Auxiliar de Sistemas`
 
 > Si el usuario no tiene registro en DBRecursosHumanos, solo se elimina de Zentinela.
 
@@ -722,6 +722,132 @@ Inactiva un usuario: marca `EstadoEmpleado = false` en DBRecursosHumanos y elimi
 
 ```json
 { "mensaje": "Usuario inactivado y eliminado de Zentinela correctamente." }
+```
+
+---
+
+## PATCH /api/admin/usuarios/{id}/usuario
+
+Cambia el `UserName` del `ApplicationUser`. Valida formato (3-50 chars, no vacío) y unicidad case-insensitive vía `UserManager.FindByNameAsync` antes de delegar a `UserManager.SetUserNameAsync` (Identity recalcula `NormalizedUserName`).
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`, `Auxiliar de Sistemas`
+
+### Request body
+
+```json
+{ "nuevoUsuario": "ana.lopez" }
+```
+
+### Response — 200 OK
+
+```json
+{ "mensaje": "Usuario actualizado correctamente." }
+```
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Cambio aplicado (o no-op si el username era idéntico) |
+| `400 Bad Request` | Username vacío, fuera de rango (3-50), ya en uso, o usuario no encontrado |
+
+---
+
+## GET /api/admin/agentes
+
+Lista los agentes del sistema. Solo aparecen usuarios con **rol `Asesor`** en Identity (perfil de "Agente" en Zentinela), que además tengan `Agente.Activo = true` en DBCallCenter y `Empleado.EstadoEmpleado = true` en DBRecursosHumanos. Devuelve además el supervisor, el líder resuelto y el conteo de carteras asignadas.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`, `Auxiliar de Sistemas`
+
+### Response — 200 OK
+
+```json
+[
+  {
+    "agenteID": 1020304050,
+    "nombreCompleto": "MARIA RODRIGUEZ",
+    "numeroDocumento": 1020304050,
+    "supervisorNombre": "JUAN PEREZ",
+    "esLiderSupervisor": true,
+    "liderID": 7,
+    "motivoNoAsignable": null,
+    "totalCarterasAsignadas": 2
+  }
+]
+```
+
+`motivoNoAsignable` se completa cuando no se puede gestionar carteras: `"Sin supervisor asignado"` o `"Supervisor no es líder activo"`. Para esos casos `liderID` es `null` y la UI deshabilita el botón "Gestionar carteras".
+
+`totalCarterasAsignadas` cuenta solo filas de `Cartera_Agente` con `LiderID = liderActual` (filas huérfanas con líderes anteriores se ignoran).
+
+---
+
+## GET /api/admin/agentes/{agenteID}/carteras
+
+Devuelve las carteras del **líder del supervisor del agente**, marcando cuáles ya están asignadas en `Cartera_Agente`.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`, `Auxiliar de Sistemas`
+
+### Response — 200 OK
+
+```json
+{
+  "liderID": 7,
+  "liderNombre": "JUAN PEREZ",
+  "motivoNoAsignable": null,
+  "carteras": [
+    { "carteraID": 1, "nombre": "Cartera Empresas Q1", "asignada": true },
+    { "carteraID": 5, "nombre": "Cartera VIP",          "asignada": false }
+  ]
+}
+```
+
+Si el agente no tiene supervisor o el supervisor no es líder activo, `liderID = null`, `carteras = []` y `motivoNoAsignable` describe la causa.
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Carteras devueltas (lista vacía cuando no hay líder o el líder no tiene carteras) |
+| `400 Bad Request` | Agente no encontrado o inactivo |
+
+---
+
+## POST /api/admin/agentes/{agenteID}/carteras/{carteraID}
+
+Asigna una cartera al agente. Inserta una fila en `Cartera_Agente` con `(AgenteID, LiderID, CarteraID)`. **El `LiderID` se resuelve server-side** desde el supervisor del agente; el cliente no lo envía. Idempotente: si la fila ya existe, no inserta y devuelve 200.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`, `Auxiliar de Sistemas`
+
+### Validaciones
+- Agente existe y activo en RRHH (`EstadoEmpleado = true`).
+- Tiene supervisor (`Empleado.IDSupervisor != null`).
+- El supervisor está registrado como `Lider` activo en DBCallCenter.
+- La FK compuesta `(LiderID, CarteraID) → Lider_Cartera` valida a nivel BD que la cartera pertenezca al líder. Si no, se traduce a `400 "La cartera no pertenece al líder del agente."`.
+
+### Response — 200 OK
+
+```json
+{ "asignada": true }
+```
+
+---
+
+## DELETE /api/admin/agentes/{agenteID}/carteras/{carteraID}
+
+Quita una cartera del agente. Idempotente: si la fila no existe, devuelve 200 sin error. Resuelve `LiderID` server-side igual que el POST.
+
+**Autenticación requerida:** Sí  
+**Roles permitidos:** `Admin`, `Auxiliar de Sistemas`
+
+### Response — 200 OK
+
+```json
+{ "asignada": false }
 ```
 
 ---

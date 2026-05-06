@@ -45,4 +45,37 @@ public interface IAdminService
     /// y elimina el ApplicationUser de Zentinela.
     /// </summary>
     Task InactivarUsuarioAsync(int usuarioID);
+
+    /// <summary>
+    /// Cambia el UserName del ApplicationUser. Valida formato, longitud y unicidad
+    /// (case-insensitive) antes de delegar a UserManager.SetUserNameAsync.
+    /// </summary>
+    Task CambiarUsuarioAsync(int usuarioID, string nuevoUsuario);
+
+    /// <summary>
+    /// Lista todos los agentes activos (Agente.Activo + Empleado.EstadoEmpleado),
+    /// con su supervisor, líder resuelto y conteo de carteras asignadas en Cartera_Agente.
+    /// Incluye agentes sin supervisor o cuyo supervisor no es líder activo,
+    /// con MotivoNoAsignable poblado para que la UI los muestre con badge.
+    /// </summary>
+    Task<IEnumerable<AgenteAdminDto>> ListarAgentesAsync();
+
+    /// <summary>
+    /// Devuelve las carteras del líder del supervisor del agente, marcando cuáles
+    /// ya están asignadas en Cartera_Agente. Si el agente no tiene supervisor
+    /// o el supervisor no es líder activo, MotivoNoAsignable se completa y Carteras es vacío.
+    /// </summary>
+    Task<CarterasDelAgenteDto> ObtenerCarterasDelAgenteAsync(long agenteID);
+
+    /// <summary>
+    /// Asigna una cartera al agente. Resuelve el LiderID server-side desde el
+    /// supervisor del agente. Idempotente: si la fila ya existe, no inserta.
+    /// </summary>
+    Task AsignarCarteraAgenteAsync(long agenteID, int carteraID);
+
+    /// <summary>
+    /// Quita una cartera del agente. Resuelve el LiderID server-side desde el
+    /// supervisor actual. Idempotente: si la fila no existe, no falla.
+    /// </summary>
+    Task DesasignarCarteraAgenteAsync(long agenteID, int carteraID);
 }

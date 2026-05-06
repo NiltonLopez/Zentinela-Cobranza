@@ -111,4 +111,84 @@ public class AdminController : ControllerBase
             return BadRequest(new { mensaje = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Cambia el UserName del usuario (ApplicationUser.UserName).
+    /// </summary>
+    [HttpPatch("usuarios/{id:int}/usuario")]
+    public async Task<IActionResult> CambiarUsuario(int id, [FromBody] CambiarUsuarioDto dto)
+    {
+        try
+        {
+            await _adminService.CambiarUsuarioAsync(id, dto.NuevoUsuario);
+            return Ok(new { mensaje = "Usuario actualizado correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Lista todos los agentes activos con su supervisor, líder resuelto y
+    /// conteo de carteras asignadas en Cartera_Agente.
+    /// </summary>
+    [HttpGet("agentes")]
+    public async Task<IActionResult> ListarAgentes()
+    {
+        var agentes = await _adminService.ListarAgentesAsync();
+        return Ok(agentes);
+    }
+
+    /// <summary>
+    /// Devuelve las carteras del líder del agente con flag de asignación.
+    /// </summary>
+    [HttpGet("agentes/{agenteID:long}/carteras")]
+    public async Task<IActionResult> ObtenerCarterasDelAgente(long agenteID)
+    {
+        try
+        {
+            var carteras = await _adminService.ObtenerCarterasDelAgenteAsync(agenteID);
+            return Ok(carteras);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Asigna una cartera al agente. El LiderID se resuelve server-side
+    /// desde el supervisor del agente. Idempotente.
+    /// </summary>
+    [HttpPost("agentes/{agenteID:long}/carteras/{carteraID:int}")]
+    public async Task<IActionResult> AsignarCarteraAgente(long agenteID, int carteraID)
+    {
+        try
+        {
+            await _adminService.AsignarCarteraAgenteAsync(agenteID, carteraID);
+            return Ok(new { asignada = true });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Quita una cartera del agente. Idempotente.
+    /// </summary>
+    [HttpDelete("agentes/{agenteID:long}/carteras/{carteraID:int}")]
+    public async Task<IActionResult> DesasignarCarteraAgente(long agenteID, int carteraID)
+    {
+        try
+        {
+            await _adminService.DesasignarCarteraAgenteAsync(agenteID, carteraID);
+            return Ok(new { asignada = false });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
 }

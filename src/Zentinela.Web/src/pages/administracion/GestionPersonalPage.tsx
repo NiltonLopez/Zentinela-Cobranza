@@ -1,7 +1,20 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual } from '../../api/adminApi';
+import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual, cambiarUsuario } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
+
+// Ícono lápiz minimalista (16×16 stroke). Usa currentColor para heredar color del padre.
+function IconoLapiz({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 16 16" fill="none"
+      stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" />
+    </svg>
+  );
+}
 
 const BADGE_COLORES: Record<string, { bg: string; color: string }> = {
   Admin:    { bg: '#FEF0EC', color: '#F54927' },
@@ -444,12 +457,139 @@ function ModalReasignar({
   );
 }
 
+function ModalEditarUsuario({
+  usuario,
+  cargando,
+  errorMensaje,
+  onConfirmar,
+  onCancelar,
+}: {
+  usuario: UsuarioAdmin;
+  cargando: boolean;
+  errorMensaje: string | null;
+  onConfirmar: (nuevoUsuario: string) => void;
+  onCancelar: () => void;
+}) {
+  const [valor, setValor] = useState(usuario.usuario);
+  const limpio = valor.trim();
+  const sinCambios = limpio === usuario.usuario.trim();
+  const valido = limpio.length >= 3 && limpio.length <= 50;
+  const puedeGuardar = valido && !sinCambios && !cargando;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '32px',
+        maxWidth: '420px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--z-text-primary)' }}>
+          Modificar usuario
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+          Cambia el nombre de usuario de{' '}
+          <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>.
+          Se usará para iniciar sesión en Zentinela.
+        </p>
+
+        <label style={{
+          display: 'block', fontSize: '11px', fontWeight: 600,
+          color: 'var(--z-text-muted)', textTransform: 'uppercase',
+          letterSpacing: '0.04em', marginBottom: 6,
+        }}>
+          Usuario
+        </label>
+        <input
+          type="text"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          autoFocus
+          disabled={cargando}
+          spellCheck={false}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            fontSize: '13px',
+            fontFamily: 'monospace',
+            border: '1px solid var(--z-border)',
+            borderRadius: '6px',
+            background: 'var(--z-bg-page)',
+            color: 'var(--z-text-primary)',
+            outline: 'none',
+            marginBottom: 6,
+            boxSizing: 'border-box',
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--z-brand)'; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--z-border)'; }}
+        />
+        <p style={{ fontSize: 11, color: 'var(--z-text-muted)', marginBottom: 16 }}>
+          Entre 3 y 50 caracteres. El cambio aplica de inmediato.
+        </p>
+
+        {errorMensaje && (
+          <div style={{
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontSize: '12px',
+            background: '#fff5f5',
+            border: '0.5px solid #fecaca',
+            color: '#dc2626',
+            marginBottom: '16px',
+          }}>
+            {errorMensaje}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancelar}
+            disabled={cargando}
+            style={{
+              padding: '8px 16px', borderRadius: '6px',
+              border: '1px solid var(--z-border)', background: 'transparent',
+              color: 'var(--z-text-muted)', fontSize: '13px',
+              cursor: cargando ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onConfirmar(limpio)}
+            disabled={!puedeGuardar}
+            style={{
+              padding: '8px 16px', borderRadius: '6px',
+              border: 'none', background: 'var(--z-brand)',
+              color: 'white', fontSize: '13px', fontWeight: 600,
+              cursor: puedeGuardar ? 'pointer' : 'not-allowed',
+              opacity: puedeGuardar ? 1 : 0.5,
+            }}
+          >
+            {cargando ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GestionPersonalPage() {
   const [busqueda,          setBusqueda]          = useState('');
   const [filtroSupervisor,  setFiltroSupervisor]  = useState('');
   const [usuarioParaReset, setUsuarioParaReset] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaReasignar, setUsuarioParaReasignar] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaInactivar, setUsuarioParaInactivar] = useState<UsuarioAdmin | null>(null);
+  const [usuarioParaEditarUsuario, setUsuarioParaEditarUsuario] = useState<UsuarioAdmin | null>(null);
+  const [errorEditarUsuario, setErrorEditarUsuario] = useState<string | null>(null);
+  const [filaHover, setFilaHover] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const queryClient = useQueryClient();
 
@@ -498,6 +638,22 @@ export function GestionPersonalPage() {
     onError: () => {
       setFeedback({ tipo: 'error', texto: 'No se pudo inactivar el usuario. Intenta de nuevo.' });
       setUsuarioParaInactivar(null);
+    },
+  });
+
+  const mutationCambiarUsuario = useMutation({
+    mutationFn: ({ id, nuevoUsuario }: { id: number; nuevoUsuario: string }) =>
+      cambiarUsuario(id, nuevoUsuario),
+    onSuccess: (_, { nuevoUsuario }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-usuarios'] });
+      setFeedback({ tipo: 'exito', texto: `Usuario actualizado a "${nuevoUsuario}".` });
+      setUsuarioParaEditarUsuario(null);
+      setErrorEditarUsuario(null);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { mensaje?: string } } })
+        ?.response?.data?.mensaje ?? 'No se pudo cambiar el usuario. Intenta de nuevo.';
+      setErrorEditarUsuario(msg);
     },
   });
 
@@ -656,6 +812,8 @@ export function GestionPersonalPage() {
         {usuariosFiltrados.map((u, i) => (
           <div
             key={u.id}
+            onMouseEnter={() => setFilaHover(u.id)}
+            onMouseLeave={() => setFilaHover(prev => prev === u.id ? null : prev)}
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 160px 120px 140px 320px',
@@ -674,8 +832,33 @@ export function GestionPersonalPage() {
               </p>
             </div>
 
-            <span style={{ fontSize: '12px', color: 'var(--z-text-muted)', fontFamily: 'monospace' }}>
-              {u.usuario}
+            {/* Usuario + lápiz que aparece en hover de la fila */}
+            <span style={{
+              fontSize: '12px', color: 'var(--z-text-muted)', fontFamily: 'monospace',
+              display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0,
+            }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {u.usuario}
+              </span>
+              <button
+                type="button"
+                aria-label={`Modificar usuario de ${u.nombreCompleto}`}
+                onClick={() => { setErrorEditarUsuario(null); setUsuarioParaEditarUsuario(u); }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 18, height: 18, padding: 0,
+                  border: 'none', background: 'transparent',
+                  color: 'var(--z-text-muted)',
+                  cursor: 'pointer',
+                  opacity: filaHover === u.id ? 1 : 0,
+                  transition: 'opacity 0.15s, color 0.15s',
+                  flexShrink: 0,
+                }}
+                onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--z-brand)'; }}
+                onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)'; }}
+              >
+                <IconoLapiz />
+              </button>
             </span>
 
             <BadgeRol rol={u.rol} />
@@ -784,6 +967,19 @@ export function GestionPersonalPage() {
           cargando={mutationInactivar.isPending}
           onConfirmar={() => mutationInactivar.mutate(usuarioParaInactivar.id)}
           onCancelar={() => setUsuarioParaInactivar(null)}
+        />
+      )}
+
+      {/* Modal editar usuario (UserName) */}
+      {usuarioParaEditarUsuario && (
+        <ModalEditarUsuario
+          usuario={usuarioParaEditarUsuario}
+          cargando={mutationCambiarUsuario.isPending}
+          errorMensaje={errorEditarUsuario}
+          onConfirmar={(nuevoUsuario) =>
+            mutationCambiarUsuario.mutate({ id: usuarioParaEditarUsuario.id, nuevoUsuario })
+          }
+          onCancelar={() => { setUsuarioParaEditarUsuario(null); setErrorEditarUsuario(null); }}
         />
       )}
 

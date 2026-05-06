@@ -1,5 +1,5 @@
 import api from './authApi';
-import type { UsuarioAdmin, Supervisor } from '../types/admin';
+import type { UsuarioAdmin, Supervisor, AgenteAdmin, CarterasDelAgente } from '../types/admin';
 
 export const listarUsuarios = async (): Promise<UsuarioAdmin[]> => {
   const response = await api.get<UsuarioAdmin[]>('/api/admin/usuarios');
@@ -31,4 +31,26 @@ export const reasignarSupervisor = async (usuarioId: number, nuevoSupervisorId: 
 
 export const inactivarUsuario = async (id: number): Promise<void> => {
   await api.delete(`/api/admin/usuarios/${id}`);
+};
+
+export const cambiarUsuario = async (id: number, nuevoUsuario: string): Promise<void> => {
+  await api.patch(`/api/admin/usuarios/${id}/usuario`, { nuevoUsuario });
+};
+
+export const listarAgentes = async (): Promise<AgenteAdmin[]> => {
+  const response = await api.get<AgenteAdmin[]>('/api/admin/agentes');
+  return response.data;
+};
+
+export const obtenerCarterasDelAgente = async (agenteID: number): Promise<CarterasDelAgente> => {
+  const response = await api.get<CarterasDelAgente>(`/api/admin/agentes/${agenteID}/carteras`);
+  return response.data;
+};
+
+export const asignarCarteraAgente = async (agenteID: number, carteraID: number): Promise<void> => {
+  await api.post(`/api/admin/agentes/${agenteID}/carteras/${carteraID}`);
+};
+
+export const desasignarCarteraAgente = async (agenteID: number, carteraID: number): Promise<void> => {
+  await api.delete(`/api/admin/agentes/${agenteID}/carteras/${carteraID}`);
 };

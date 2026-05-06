@@ -27,6 +27,7 @@ import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
 
 // Administración
 import { GestionAsignacionesPage } from './pages/administracion/GestionAsignacionesPage';
+import { GestionAgentesPage } from './pages/administracion/GestionAgentesPage';
 import { CargueReportesPage } from './pages/administracion/CargueReportesPage';
 import { GestionCarterasPage } from './pages/administracion/GestionCarterasPage';
 import { GestionPersonalPage } from './pages/administracion/GestionPersonalPage';
@@ -191,6 +192,15 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin']}>
                     <AsignacionMetasPage />
+                  </RutaProtegida>
+                }
+              />
+
+              <Route
+                path="/administracion/agentes"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
+                    <GestionAgentesPage />
                   </RutaProtegida>
                 }
               />

@@ -58,6 +58,7 @@ export const MODULOS: Modulo[] = [
     defaultPath: '/administracion/gestion',
     subModulos: [
       { key: 'gestion',  label: 'Gestión de Asignaciones',       path: '/administracion/gestion' },
+      { key: 'agentes',  label: 'Gestión de Agentes',            path: '/administracion/agentes' },
       { key: 'carteras', label: 'Gestión de Líderes y Carteras', path: '/administracion/carteras' },
       { key: 'personal', label: 'Gestión de Personal',           path: '/administracion/personal' },
       { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes' },
