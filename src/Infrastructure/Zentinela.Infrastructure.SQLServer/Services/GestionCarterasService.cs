@@ -139,8 +139,37 @@ public class GestionCarterasService : IGestionCarterasService
             .FirstOrDefaultAsync(lc => lc.LiderID == liderID && lc.CarteraID == carteraID)
             ?? throw new InvalidOperationException("La relación no existe.");
 
-        // Eliminar primero los Titular_Cartera de esta combinación (FK lo exige)
-        // y luego el Lider_Cartera, todo en una sola transacción.
+        // Pre-validación: Lider_Cartera tiene FK entrantes desde varias tablas.
+        // Si existe data dependiente (asesores, pagos, metas, mensajería, IVR), SQL
+        // rechaza el DELETE. Aquí lo detectamos antes y devolvemos un mensaje claro
+        // listando exactamente qué bloquea, en vez de un error genérico de FK.
+        var asesores       = await _context.CarteraAgentes
+                                .CountAsync(ca => ca.LiderID == liderID && ca.CarteraID == carteraID);
+        var pagos          = await _context.Pagos
+                                .CountAsync(p => p.LiderID == liderID && p.CarteraID == carteraID);
+        var metas          = await _context.MetaLiderCarteraMes
+                                .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
+        var mensajeria     = await _context.MensajeriaEnviadas
+                                .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
+        var ivr            = await _context.IVREnviados
+                                .CountAsync(i => i.LiderID == liderID && i.CarteraID == carteraID);
+
+        var bloqueantes = new List<string>();
+        if (asesores   > 0) bloqueantes.Add($"{asesores} asesor(es) asignado(s)");
+        if (pagos      > 0) bloqueantes.Add($"{pagos} pago(s) registrado(s)");
+        if (metas      > 0) bloqueantes.Add($"{metas} meta(s) mensual(es)");
+        if (mensajeria > 0) bloqueantes.Add($"{mensajeria} envío(s) de mensajería");
+        if (ivr        > 0) bloqueantes.Add($"{ivr} envío(s) de IVR");
+
+        if (bloqueantes.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"No se puede eliminar la relación porque tiene: {string.Join(", ", bloqueantes)}. " +
+                "Reasigna o elimina esos registros primero.");
+        }
+
+        // Sin dependientes bloqueantes — eliminamos Titular_Cartera (FK no bloqueante,
+        // siempre se limpia con la relación) y luego el Lider_Cartera.
         await _context.TitularCarteras
             .Where(tc => tc.LiderID == liderID && tc.CarteraID == carteraID)
             .ExecuteDeleteAsync();

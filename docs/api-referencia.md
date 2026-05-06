@@ -840,15 +840,37 @@ _o para cartera nueva:_
 
 ## DELETE /api/gestion-carteras/relaciones/{liderID}/{carteraID}
 
-Elimina una relación Líder_Cartera. **No elimina** los registros de `Titular_Cartera` asociados — deben reasignarse manualmente.
+Elimina una relación `Lider_Cartera` y, en cascada, los `Titular_Cartera` asociados a esa combinación.
 
 **Autenticación requerida:** Sí  
-**Roles permitidos:** `Admin`
+**Roles permitidos:** `Admin`, `AuxiliarSistemas`
 
-### Response — 200 OK
+### Pre-validación de dependientes
+
+`Lider_Cartera` tiene FK entrantes desde varias tablas. Antes de borrar, el servicio cuenta los dependientes y si hay alguno, **rechaza la operación con 400 y un mensaje detallado** (en vez de un error genérico de FK).
+
+| Tabla bloqueante | Significado |
+|---|---|
+| `Cartera_Agente` | Asesores asignados a la combinación líder+cartera |
+| `Pago` | Pagos cargados con esa combinación |
+| `Meta_Lider_Cartera_Mes` | Metas mensuales registradas |
+| `MensajeriaEnviada` | Envíos de mensajería (`ON DELETE RESTRICT`) |
+| `IVREnviado` | Envíos de IVR (`ON DELETE RESTRICT`) |
+
+Solo `Titular_Cartera` se limpia automáticamente.
+
+### Response — 200 OK (sin dependientes)
 
 ```json
 { "mensaje": "Relación eliminada correctamente." }
+```
+
+### Response — 400 Bad Request (con dependientes)
+
+```json
+{
+  "mensaje": "No se puede eliminar la relación porque tiene: 12 asesor(es) asignado(s), 230 pago(s) registrado(s), 3 meta(s) mensual(es). Reasigna o elimina esos registros primero."
+}
 ```
 
 ---
