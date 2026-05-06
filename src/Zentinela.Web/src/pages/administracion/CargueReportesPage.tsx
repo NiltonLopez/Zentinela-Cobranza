@@ -10,14 +10,6 @@ import { CargandoSpiral } from '../../components/CargandoSpiral';
 
 type Etapa = 'inicial' | 'preview' | 'resultado';
 
-function etiquetaEstado(estado: EstadoFilaReporte, razon: string | null): string {
-  if (estado === 'Ok')                return 'Listo';
-  if (estado === 'NuevoTitular')      return 'Titular nuevo — se creará';
-  if (estado === 'SinNombreParaCrear') return 'Sin nombre — no se puede crear el titular';
-  if (estado === 'AgenteNoEncontrado') return razon ?? 'Usuario Control no encontrado';
-  return razon ?? estado;
-}
-
 // ── Badge de estado ───────────────────────────────────────────────────────────
 
 function BadgeEstado({ estado }: { estado: EstadoFilaReporte }) {
@@ -164,14 +156,31 @@ function TablaPreview({ filas, columnasEncontradas }: {
 
 // ── Panel de errores ──────────────────────────────────────────────────────────
 
+/**
+ * Etiqueta canónica por estado para agrupar errores en el panel.
+ * No usa la `razon` directamente porque puede contener el UsuarioControl variable.
+ */
+function categoriaEstadoReporte(estado: EstadoFilaReporte): string {
+  if (estado === 'SinNombreParaCrear')  return 'TitularID no existe y no se proporcionó Nombre para crearlo';
+  if (estado === 'AgenteNoEncontrado')  return 'Usuario Control no encontrado en el sistema';
+  return 'Error de validación';
+}
+
 function PanelErrores({ filas }: { filas: FilaValidacionReporteDto[] }) {
   if (filas.length === 0) return null;
+
+  const grupos = new Map<string, number>();
+  for (const fila of filas) {
+    const cat = categoriaEstadoReporte(fila.estado);
+    grupos.set(cat, (grupos.get(cat) ?? 0) + 1);
+  }
+  const lista = [...grupos.entries()].sort((a, b) => b[1] - a[1]);
+
   return (
     <div style={{
       background: '#fef2f2', border: '1px solid #fca5a5',
       borderRadius: '8px', overflow: 'hidden',
     }}>
-      {/* Cabecera */}
       <div style={{
         padding: '12px 16px', borderBottom: '1px solid #fca5a5',
         display: 'flex', alignItems: 'center', gap: '10px',
@@ -189,47 +198,21 @@ function PanelErrores({ filas }: { filas: FilaValidacionReporteDto[] }) {
             : `${filas.length} registros con error — no se cargarán`}
         </p>
       </div>
-
-      {/* Lista de errores — scroll vertical para listas largas */}
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '420px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#fef2f2', position: 'sticky', top: 0, zIndex: 1 }}>
-              {['#', 'TitularID', 'Nombre', 'Usuario Control', 'Motivo del error'].map((col, i) => (
-                <th key={i} style={{
-                  padding: '8px 14px', textAlign: 'left',
-                  fontSize: '11px', fontWeight: 600, color: '#b91c1c',
-                  borderBottom: '1px solid #fca5a5',
-                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
-                }}>
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((fila, idx) => (
-              <tr key={idx} style={{ borderBottom: '0.5px solid #fecaca' }}>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
-                  {idx + 1}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontWeight: 600 }}>
-                  {fila.titularID || '—'}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontStyle: fila.nombre ? 'normal' : 'italic' }}>
-                  {fila.nombre ?? '—'}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c' }}>
-                  {fila.usuarioControl || '—'}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
-                  {etiquetaEstado(fila.estado, fila.razon)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ol style={{
+        margin: 0, padding: '12px 16px 12px 36px',
+        display: 'flex', flexDirection: 'column', gap: 6,
+      }}>
+        {lista.map(([categoria, cuenta]) => (
+          <li key={categoria} style={{ fontSize: 13, color: '#b91c1c' }}>
+            {categoria}
+            {cuenta > 1 && (
+              <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 6 }}>
+                ×{cuenta}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

@@ -93,8 +93,33 @@ function ChipConteo({
 
 // ── Panel de errores ──────────────────────────────────────────────────────────
 
+/**
+ * Normaliza un mensaje de error de Pagos para agrupar por tipo:
+ *  - Quita el prefijo "Línea N:".
+ *  - Quita valores entre comillas simples ('...').
+ *  - Quita números embebidos (cédulas, conteos de columnas).
+ *  - Capitaliza la primera letra y limpia puntuación final.
+ */
+function categoriaErrorPago(msg: string | undefined): string {
+  if (!msg) return 'Error de validación';
+  const sinPrefijo = msg.replace(/^Línea\s+\d+\s*:\s*/i, '');
+  const sinValores = sinPrefijo.replace(/'[^']*'/g, '');
+  const sinNumeros = sinValores.replace(/\b\d+\b/g, '');
+  const compacto   = sinNumeros.replace(/\s+/g, ' ').replace(/\s*\.\s*$/, '').trim();
+  if (!compacto) return 'Error de validación';
+  return compacto.charAt(0).toUpperCase() + compacto.slice(1);
+}
+
 function PanelErrores({ filas }: { filas: PagoFila[] }) {
   if (filas.length === 0) return null;
+
+  const grupos = new Map<string, number>();
+  for (const fila of filas) {
+    const cat = categoriaErrorPago(fila.errorMensaje);
+    grupos.set(cat, (grupos.get(cat) ?? 0) + 1);
+  }
+  const lista = [...grupos.entries()].sort((a, b) => b[1] - a[1]);
+
   return (
     <div style={{
       background: '#fef2f2', border: '1px solid #fca5a5',
@@ -117,42 +142,21 @@ function PanelErrores({ filas }: { filas: PagoFila[] }) {
             : `${filas.length} registros con error — no se cargarán`}
         </p>
       </div>
-      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '420px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#fef2f2', position: 'sticky', top: 0, zIndex: 1 }}>
-              {['#', 'Cédula', 'Nombre', 'Motivo del error'].map((col, i) => (
-                <th key={i} style={{
-                  padding: '8px 14px', textAlign: 'left',
-                  fontSize: '11px', fontWeight: 600, color: '#b91c1c',
-                  borderBottom: '1px solid #fca5a5',
-                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
-                }}>
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((fila, idx) => (
-              <tr key={idx} style={{ borderBottom: '0.5px solid #fecaca' }}>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
-                  {idx + 1}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontWeight: 600 }}>
-                  {fila.cedulaTitular || '—'}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c' }}>
-                  {fila.nombreCliente || '—'}
-                </td>
-                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
-                  {fila.errorMensaje ?? 'Error de validación'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ol style={{
+        margin: 0, padding: '12px 16px 12px 36px',
+        display: 'flex', flexDirection: 'column', gap: 6,
+      }}>
+        {lista.map(([categoria, cuenta]) => (
+          <li key={categoria} style={{ fontSize: 13, color: '#b91c1c' }}>
+            {categoria}
+            {cuenta > 1 && (
+              <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 6 }}>
+                ×{cuenta}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
