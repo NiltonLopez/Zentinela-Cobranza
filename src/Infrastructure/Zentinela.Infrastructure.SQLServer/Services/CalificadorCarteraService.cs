@@ -1,22 +1,21 @@
-using System.Globalization;
+using System.Data;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.Interfaces;
-using Zentinela.Core.Entities;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
-/// Calcula las métricas del Calificador de Cartera a partir de vw_BaseMadre.
-/// La mayor parte del cómputo se hace en memoria tras un único ToListAsync().
+/// Calcula las métricas del Calificador de Cartera. Toda la agregación vive en SQL:
+/// un único batch materializa la cartera filtrada en una temporal y emite 8 result
+/// sets (escalares + 7 desgloses). C# sólo hidrata el DTO. Reemplaza los 9 bloques
+/// C# en memoria que iteraban sobre 60-190k filas.
 /// </summary>
 public class CalificadorCarteraService : ICalificadorCarteraService
 {
-    private static readonly string[] FuentesCelular =
-        ["Cajacopi", "Camara", "SaludTotal", "Positiva", "Tigo", "SOS", "Claro"];
-
     private readonly CallCenterDbContext _db;
 
     public CalificadorCarteraService(CallCenterDbContext db)
@@ -70,261 +69,285 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
     // ── Métricas ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// SQL batch que materializa la cartera en #t (con columnas pre-parseadas) y
+    /// emite 8 result sets. Reemplaza los 9 bloques C# que iteraban filas en memoria.
+    /// Los nombres de columna y orden de filas replican exactamente lo que producía
+    /// el código C# (Cantidad DESC, OrdenRango para Rotación, top 10 + Otras para EPS).
+    /// </summary>
+    private const string SqlAgregados = """
+        SET NOCOUNT ON;
+
+        SELECT
+            [Saldo],
+            [Ultima Fecha Gestion]            AS UltimaFechaGestion,
+            [Fecha Promesa]                   AS FechaPromesa,
+            [Valor Promesa]                   AS ValorPromesa,
+            [Rotacion],
+            [Ultimo Perfil]                   AS UltimoPerfil,
+            [EPS], [Regimen],
+            [Tipo Afiliado]                   AS TipoAfiliado,
+            [Departamento],
+            [Celular Cajacopi]                AS CelCajacopi,
+            [Celular Camara]                  AS CelCamara,
+            [Celular Salud Total]             AS CelSaludTotal,
+            [Celular Positiva]                AS CelPositiva,
+            [Celular Tigo]                    AS CelTigo,
+            [Celular SOS]                     AS CelSOS,
+            [Celular Claro]                   AS CelClaro,
+            [Email CajaCopi]                  AS EmCajacopi,
+            [Email Camara]                    AS EmCamara,
+            [Email Salud Total]               AS EmSaludTotal,
+            [Email Positiva]                  AS EmPositiva,
+            [Email Tigo]                      AS EmTigo,
+            [Email Claro]                     AS EmClaro,
+            [Edad Registraduria]              AS EdadReg,
+            TRY_CAST([Saldo]                       AS decimal(18,2))  AS _Saldo,
+            TRY_CAST(NULLIF([Valor Promesa], '0')  AS decimal(18,2))  AS _ValorPromesa,
+            TRY_CAST([Rotacion]                    AS int)            AS _Rotacion,
+            TRY_CONVERT(date, [Fecha Promesa], 103)                   AS _FechaPromesa
+        INTO #t
+        FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID);
+
+        DECLARE @Total int  = (SELECT COUNT(*) FROM #t);
+        DECLARE @Hoy   date = CAST(GETDATE() AS date);
+
+        -- Result set 1: escalares
+        SELECT
+            @Total                                                                  AS Total,
+            CAST(CASE WHEN EXISTS (SELECT 1 FROM #t WHERE [Saldo] NOT IN ('','0'))
+                      THEN 1 ELSE 0 END AS bit)                                     AS GestionDisponible,
+            ISNULL((SELECT SUM(_Saldo) FROM #t), 0)                                 AS SaldoTotal,
+            ISNULL((SELECT AVG(_Saldo) FROM #t), 0)                                 AS SaldoPromedio,
+            (SELECT COUNT(*) FROM #t WHERE UltimaFechaGestion NOT IN ('','0'))      AS TitularesGestionados,
+            (SELECT COUNT(*) FROM #t WHERE _FechaPromesa >= @Hoy)                   AS TitularesConAcuerdoVigente,
+            ISNULL((SELECT SUM(_ValorPromesa) FROM #t), 0)                          AS ValorTotalPromesas,
+            CASE WHEN @Total > 0
+                 THEN (SELECT CAST(ROUND(AVG(CAST(ISNULL(_Rotacion, 0) AS decimal(18,4))), 1)
+                                   AS decimal(10,1)) FROM #t)
+                 ELSE NULL END                                                      AS RotacionPromedio,
+            (SELECT COUNT(*) FROM #t
+                WHERE EPS NOT IN ('','0') OR Regimen NOT IN ('','0')
+                   OR TipoAfiliado NOT IN ('','0'))                                 AS TitularesConFosyga,
+            (SELECT COUNT(*) FROM #t
+                WHERE CelCajacopi   NOT IN ('','0') OR CelCamara   NOT IN ('','0')
+                   OR CelSaludTotal NOT IN ('','0') OR CelPositiva NOT IN ('','0')
+                   OR CelTigo       NOT IN ('','0') OR CelSOS      NOT IN ('','0')
+                   OR CelClaro      NOT IN ('','0'))                                AS ConCelular,
+            (SELECT COUNT(*) FROM #t
+                WHERE EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
+                   OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
+                   OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0'))   AS ConEmail,
+            (SELECT COUNT(*) FROM #t
+                WHERE (CelCajacopi   NOT IN ('','0') OR CelCamara   NOT IN ('','0')
+                    OR CelSaludTotal NOT IN ('','0') OR CelPositiva NOT IN ('','0')
+                    OR CelTigo       NOT IN ('','0') OR CelSOS      NOT IN ('','0')
+                    OR CelClaro      NOT IN ('','0'))
+                  AND (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
+                    OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
+                    OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0'))) AS ConCelularYEmail,
+            (SELECT COUNT(*) FROM #t
+                WHERE NOT (CelCajacopi   NOT IN ('','0') OR CelCamara   NOT IN ('','0')
+                        OR CelSaludTotal NOT IN ('','0') OR CelPositiva NOT IN ('','0')
+                        OR CelTigo       NOT IN ('','0') OR CelSOS      NOT IN ('','0')
+                        OR CelClaro      NOT IN ('','0'))
+                  AND NOT (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
+                        OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
+                        OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0'))) AS SinContacto,
+            (SELECT COUNT(*) FROM #t WHERE EdadReg > 0)                             AS ConEdadRegistraduria,
+            CASE WHEN (SELECT COUNT(*) FROM #t WHERE EdadReg > 0) > 0
+                 THEN (SELECT CAST(ROUND(AVG(CAST(EdadReg AS decimal(18,4))), 1) AS decimal(10,1))
+                         FROM #t WHERE EdadReg > 0)
+                 ELSE NULL END                                                      AS EdadPromedioRegistraduria;
+
+        -- Result set 2: desgloseRotacion (orden por OrdenRango)
+        WITH R AS (
+            SELECT CASE
+                      WHEN ISNULL(_Rotacion, 0) = 0 THEN '0'
+                      WHEN ISNULL(_Rotacion, 0) <= 5 THEN '1-5'
+                      WHEN ISNULL(_Rotacion, 0) <= 10 THEN '6-10'
+                      WHEN ISNULL(_Rotacion, 0) <= 20 THEN '11-20'
+                      ELSE '+20'
+                   END AS Etiqueta
+            FROM #t
+        )
+        SELECT
+            Etiqueta,
+            COUNT(*)                                                                AS Cantidad,
+            CAST(ROUND(CAST(COUNT(*) AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1)
+                 AS decimal(10,1))                                                  AS Porcentaje
+        FROM R
+        GROUP BY Etiqueta
+        ORDER BY CASE Etiqueta WHEN '0' THEN 0 WHEN '1-5' THEN 1 WHEN '6-10' THEN 2
+                               WHEN '11-20' THEN 3 WHEN '+20' THEN 4 ELSE 99 END;
+
+        -- Result set 3: desglosePerfil
+        SELECT UltimoPerfil AS Etiqueta, COUNT(*) AS Cantidad,
+               CAST(ROUND(CAST(COUNT(*) AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
+        FROM #t WHERE UltimoPerfil NOT IN ('','0')
+        GROUP BY UltimoPerfil ORDER BY COUNT(*) DESC;
+
+        -- Result set 4: desgloseTipoAfiliado
+        SELECT TipoAfiliado AS Etiqueta, COUNT(*) AS Cantidad,
+               CAST(ROUND(CAST(COUNT(*) AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
+        FROM #t WHERE TipoAfiliado NOT IN ('','0')
+        GROUP BY TipoAfiliado ORDER BY COUNT(*) DESC;
+
+        -- Result set 5: desgloseRegimen
+        SELECT Regimen AS Etiqueta, COUNT(*) AS Cantidad,
+               CAST(ROUND(CAST(COUNT(*) AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
+        FROM #t WHERE Regimen NOT IN ('','0')
+        GROUP BY Regimen ORDER BY COUNT(*) DESC;
+
+        -- Result set 6: desgloseEPS (top 10 + Otras)
+        ;WITH EPS_Counts AS (
+            SELECT EPS AS Etiqueta, COUNT(*) AS Cantidad,
+                   ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, EPS) AS rn
+            FROM #t WHERE EPS NOT IN ('','0') GROUP BY EPS
+        ),
+        Top10 AS (SELECT Etiqueta, Cantidad, rn FROM EPS_Counts WHERE rn <= 10),
+        Otras AS (
+            SELECT '(Otras)' AS Etiqueta, SUM(Cantidad) AS Cantidad, 11 AS rn
+            FROM EPS_Counts WHERE rn > 10 HAVING SUM(Cantidad) > 0
+        )
+        SELECT Etiqueta, Cantidad,
+               CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
+        FROM (SELECT * FROM Top10 UNION ALL SELECT * FROM Otras) u
+        ORDER BY rn;
+
+        -- Result set 7: desgloseDepartamento
+        SELECT Departamento AS Etiqueta, COUNT(*) AS Cantidad,
+               CAST(ROUND(CAST(COUNT(*) AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
+        FROM #t WHERE Departamento NOT IN ('','0')
+        GROUP BY Departamento ORDER BY COUNT(*) DESC;
+
+        -- Result set 8: desgloseFuentesCelular
+        ;WITH F AS (
+            SELECT 'Cajacopi' AS Fuente, SUM(CASE WHEN CelCajacopi   NOT IN ('','0') THEN 1 ELSE 0 END) AS Cantidad FROM #t
+            UNION ALL SELECT 'Camara',   SUM(CASE WHEN CelCamara     NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'SaludTotal', SUM(CASE WHEN CelSaludTotal NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Positiva', SUM(CASE WHEN CelPositiva   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Tigo',     SUM(CASE WHEN CelTigo       NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'SOS',      SUM(CASE WHEN CelSOS        NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Claro',    SUM(CASE WHEN CelClaro      NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+        )
+        SELECT Fuente AS Etiqueta, Cantidad,
+               CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
+        FROM F WHERE Cantidad > 0 ORDER BY Cantidad DESC;
+
+        DROP TABLE #t;
+        """;
+
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int liderID)
     {
-        // Lectura via dbo.fn_BaseMadrePorCartera (iTVF, ver migración
-        // docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql).
-        // Equivale a SELECT * FROM vw_BaseMadre WHERE … pero con cada CTE
-        // Ultimo* pre-restringida a los TitularIDs de la cartera, eliminando
-        // spills al worktable. Métricas medidas P90 ~2.3s, P99 ~2.4s.
-        var filas = await _db.BaseMadreRows
-            .FromSql($"SELECT * FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderID})")
-            .AsNoTracking()
-            .ToListAsync();
+        var conn = _db.Database.GetDbConnection();
+        var wasOpen = conn.State == ConnectionState.Open;
+        if (!wasOpen) await conn.OpenAsync();
 
-        var total = filas.Count;
-        if (total == 0)
-            return new CalificadorCarteraDto { TotalTitulares = 0 };
-
-        // ── Bloque 2: gestión ─────────────────────────────────────────────────
-        var gestionDisponible = filas.Any(b =>
-            !string.IsNullOrEmpty(b.Saldo) && b.Saldo != "0");
-
-        var saldos = filas
-            .Where(b => decimal.TryParse(b.Saldo, NumberStyles.Any,
-                CultureInfo.InvariantCulture, out _))
-            .Select(b => decimal.Parse(b.Saldo!, NumberStyles.Any, CultureInfo.InvariantCulture))
-            .ToList();
-
-        var saldoTotal    = saldos.Sum();
-        var saldoPromedio = saldos.Count > 0 ? saldos.Average() : 0m;
-
-        var hoy = DateOnly.FromDateTime(DateTime.Today);
-
-        var titularesGestionados = filas.Count(b =>
-            !string.IsNullOrEmpty(b.UltimaFechaGestion) && b.UltimaFechaGestion != "0");
-
-        var titularesConAcuerdoVigente = filas.Count(b =>
-            DateOnly.TryParseExact(b.FechaPromesa, "dd/MM/yyyy",
-                CultureInfo.InvariantCulture, DateTimeStyles.None, out var fp) && fp >= hoy);
-
-        var valorTotalPromesas = filas
-            .Where(b => !string.IsNullOrEmpty(b.ValorPromesa) && b.ValorPromesa != "0"
-                && decimal.TryParse(b.ValorPromesa, NumberStyles.Any,
-                    CultureInfo.InvariantCulture, out _))
-            .Sum(b => decimal.Parse(b.ValorPromesa!, NumberStyles.Any, CultureInfo.InvariantCulture));
-
-        // ── Bloque 3: rotación ───────────────────────────────────────────────
-        // Todos los titulares; sin dato o valor no numérico se trata como 0 gestiones
-        var rotacionesTodos = filas
-            .Select(b => int.TryParse(b.Rotacion, out var r) ? r : 0)
-            .ToList();
-
-        // Promedio sobre el total de titulares (los de 0 gestiones bajan el promedio real)
-        var rotacionPromedio = rotacionesTodos.Count > 0
-            ? Math.Round((decimal)rotacionesTodos.Average(), 1)
-            : (decimal?)null;
-
-        static string RangoRotacion(int r) => r switch
+        try
         {
-            0      => "0",
-            <= 5   => "1-5",
-            <= 10  => "6-10",
-            <= 20  => "11-20",
-            _      => "+20",
-        };
+            var dto = new CalificadorCarteraDto();
 
-        static int OrdenRango(string etiqueta) => etiqueta switch
-        {
-            "0"    => 0,
-            "1-5"  => 1,
-            "6-10" => 2,
-            "11-20"=> 3,
-            "+20"  => 4,
-            _      => 99,
-        };
-
-        var desgloseRotacion = rotacionesTodos
-            .GroupBy(RangoRotacion)
-            .Select(g => new DesglosePar
+            await using (var cmd = conn.CreateCommand())
             {
-                Etiqueta   = g.Key,
-                Cantidad   = g.Count(),
-                Porcentaje = total > 0
-                    ? Math.Round((decimal)g.Count() / total * 100, 1) : 0,
-            })
-            .OrderBy(d => OrdenRango(d.Etiqueta))
-            .ToList();
+                cmd.CommandText = SqlAgregados;
+                AddParam(cmd, "@CarteraID", carteraID);
+                AddParam(cmd, "@LiderID",   liderID);
 
-        // ── Bloque 4: tipificación último perfil ──────────────────────────────
-        var desglosePerfil = Desglosar(
-            filas.Where(b => !string.IsNullOrEmpty(b.UltimoPerfil) && b.UltimoPerfil != "0")
-                 .Select(b => b.UltimoPerfil!),
-            total);
+                await using var reader = await cmd.ExecuteReaderAsync();
 
-        // ── Bloque 4: Fosyga ──────────────────────────────────────────────────
-        // Se considera localizado si devolvió al menos un campo con dato real.
-        var titularesConFosyga = filas.Count(b =>
-            (!string.IsNullOrEmpty(b.EPS)          && b.EPS          != "0") ||
-            (!string.IsNullOrEmpty(b.Regimen)      && b.Regimen      != "0") ||
-            (!string.IsNullOrEmpty(b.TipoAfiliado) && b.TipoAfiliado != "0"));
+                // Result set 1 — escalares
+                if (!await reader.ReadAsync())
+                    return new CalificadorCarteraDto { TotalTitulares = 0 };
 
-        var desgloseTipoAfiliado = Desglosar(
-            filas.Where(b => !string.IsNullOrEmpty(b.TipoAfiliado) && b.TipoAfiliado != "0")
-                 .Select(b => b.TipoAfiliado!),
-            total);
-
-        // ── Bloque 5: régimen ─────────────────────────────────────────────────
-        var desgloseRegimen = Desglosar(
-            filas.Where(b => !string.IsNullOrEmpty(b.Regimen) && b.Regimen != "0")
-                 .Select(b => b.Regimen!),
-            total);
-
-        // ── Bloque 6: EPS (top 10 + Otras) ───────────────────────────────────
-        var desgloseEPS = DesgloseConOtras(
-            filas.Where(b => !string.IsNullOrEmpty(b.EPS) && b.EPS != "0")
-                 .Select(b => b.EPS!),
-            total, top: 10);
-
-        // ── Bloque 7: departamento ────────────────────────────────────────────
-        var desgloseDepartamento = Desglosar(
-            filas.Where(b => !string.IsNullOrEmpty(b.Departamento) && b.Departamento != "0")
-                 .Select(b => b.Departamento!),
-            total);
-
-        // ── Bloque 8: contactabilidad ─────────────────────────────────────────
-        var conCelular       = filas.Count(TieneCelular);
-        var conEmail         = filas.Count(TieneEmail);
-        var conCelularYEmail = filas.Count(b => TieneCelular(b) && TieneEmail(b));
-        var sinContacto      = filas.Count(b => !TieneCelular(b) && !TieneEmail(b));
-
-        var desgloseFuentesCelular = FuentesCelular
-            .Select(f =>
-            {
-                var cantidad = filas.Count(b => TieneCelularFuente(b, f));
-                return new DesglosePar
+                var total = reader.GetInt32(reader.GetOrdinal("Total"));
+                if (total == 0)
                 {
-                    Etiqueta   = f,
-                    Cantidad   = cantidad,
-                    Porcentaje = total > 0 ? Math.Round((decimal)cantidad / total * 100, 1) : 0,
-                };
-            })
-            .Where(d => d.Cantidad > 0)
-            .OrderByDescending(d => d.Cantidad)
-            .ToList();
+                    await reader.CloseAsync();
+                    return new CalificadorCarteraDto { TotalTitulares = 0 };
+                }
 
-        // ── Bloque 9: edad Registraduría ─────────────────────────────────────
-        // Solo aparecen personas mayores de 33 años; null o 0 = no aparece en la fuente.
-        var conEdad = filas
-            .Where(b => b.EdadRegistraduria.HasValue && b.EdadRegistraduria.Value > 0)
-            .ToList();
+                dto.TotalTitulares             = total;
+                dto.GestionDisponible          = reader.GetBoolean(reader.GetOrdinal("GestionDisponible"));
+                dto.SaldoTotal                 = reader.GetDecimal(reader.GetOrdinal("SaldoTotal"));
+                dto.SaldoPromedio              = reader.GetDecimal(reader.GetOrdinal("SaldoPromedio"));
+                dto.TitularesGestionados       = reader.GetInt32(reader.GetOrdinal("TitularesGestionados"));
+                dto.TitularesConAcuerdoVigente = reader.GetInt32(reader.GetOrdinal("TitularesConAcuerdoVigente"));
+                dto.ValorTotalPromesas         = reader.GetDecimal(reader.GetOrdinal("ValorTotalPromesas"));
+                dto.RotacionPromedio           = await GetNullableDecimalAsync(reader, "RotacionPromedio");
+                dto.TitularesConFosyga         = reader.GetInt32(reader.GetOrdinal("TitularesConFosyga"));
+                dto.ConCelular                 = reader.GetInt32(reader.GetOrdinal("ConCelular"));
+                dto.ConEmail                   = reader.GetInt32(reader.GetOrdinal("ConEmail"));
+                dto.ConCelularYEmail           = reader.GetInt32(reader.GetOrdinal("ConCelularYEmail"));
+                dto.SinContacto                = reader.GetInt32(reader.GetOrdinal("SinContacto"));
+                dto.ConEdadRegistraduria       = reader.GetInt32(reader.GetOrdinal("ConEdadRegistraduria"));
+                dto.SinEdadRegistraduria       = total - dto.ConEdadRegistraduria;
+                dto.EdadPromedioRegistraduria  = await GetNullableDecimalAsync(reader, "EdadPromedioRegistraduria");
 
-        var conEdadRegistraduria      = conEdad.Count;
-        var sinEdadRegistraduria      = total - conEdadRegistraduria;
-        var edadPromedioRegistraduria = conEdad.Count > 0
-            ? Math.Round((decimal)conEdad.Average(b => b.EdadRegistraduria!.Value), 1)
-            : (decimal?)null;
+                // Result sets 2-8 — desgloses (etiqueta, cantidad, porcentaje)
+                await reader.NextResultAsync(); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader);
+                await reader.NextResultAsync(); dto.DesglosePerfil         = await ReadDesgloseAsync(reader);
+                await reader.NextResultAsync(); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader);
+                await reader.NextResultAsync(); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader);
+                await reader.NextResultAsync(); dto.DesgloseEPS            = await ReadDesgloseAsync(reader);
+                await reader.NextResultAsync(); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader);
+                await reader.NextResultAsync(); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader);
+            } // reader y command cerrados, conexión libre para la siguiente query
 
-        // ── Bloque 10: localización por fuente ───────────────────────────────
-        // Se consulta directo a cada tabla fuente (no la vista) para distinguir:
-        //   · EstadoEn* = 1  → encontrado
-        //   · EstadoEn* = 0  → buscado sin resultado
-        //   · sin fila       → aún no se ha consultado esa fuente
-        var localizacion = await ObtenerLocalizacionAsync(carteraID, liderID, total);
+            // Localización: query separada (ya optimizada vía TVF en commit 95ea28a).
+            // Mantenerla aparte simplifica el batch y no agrega latencia significativa.
+            dto.Localizacion = await ObtenerLocalizacionAsync(carteraID, liderID, dto.TotalTitulares);
 
-        return new CalificadorCarteraDto
+            return dto;
+        }
+        finally
         {
-            TotalTitulares             = total,
-            GestionDisponible          = gestionDisponible,
-            TitularesGestionados       = titularesGestionados,
-            SaldoTotal                 = saldoTotal,
-            SaldoPromedio              = saldoPromedio,
-            TitularesConAcuerdoVigente = titularesConAcuerdoVigente,
-            ValorTotalPromesas         = valorTotalPromesas,
-            RotacionPromedio           = rotacionPromedio,
-            DesgloseRotacion           = desgloseRotacion,
-            DesglosePerfil             = desglosePerfil,
-            TitularesConFosyga         = titularesConFosyga,
-            DesgloseTipoAfiliado       = desgloseTipoAfiliado,
-            DesgloseRegimen            = desgloseRegimen,
-            DesgloseEPS                = desgloseEPS,
-            DesgloseDepartamento       = desgloseDepartamento,
-            ConCelular                 = conCelular,
-            ConEmail                   = conEmail,
-            ConCelularYEmail           = conCelularYEmail,
-            SinContacto                = sinContacto,
-            DesgloseFuentesCelular     = desgloseFuentesCelular,
-            ConEdadRegistraduria       = conEdadRegistraduria,
-            SinEdadRegistraduria       = sinEdadRegistraduria,
-            EdadPromedioRegistraduria  = edadPromedioRegistraduria,
-            Localizacion               = localizacion,
-        };
+            if (!wasOpen) await conn.CloseAsync();
+        }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helpers ADO.NET ───────────────────────────────────────────────────────
 
-    private static bool TieneCelular(BaseMadreRow b) =>
-        TieneCelularFuente(b, "Cajacopi")   ||
-        TieneCelularFuente(b, "Camara")     ||
-        TieneCelularFuente(b, "SaludTotal") ||
-        TieneCelularFuente(b, "Positiva")   ||
-        TieneCelularFuente(b, "Tigo")       ||
-        TieneCelularFuente(b, "SOS")        ||
-        TieneCelularFuente(b, "Claro");
-
-    private static bool TieneCelularFuente(BaseMadreRow b, string fuente) => fuente switch
+    private static void AddParam(DbCommand cmd, string name, object value)
     {
-        "Cajacopi"      => !string.IsNullOrEmpty(b.CelularCajacopi)      && b.CelularCajacopi      != "0",
-        "Camara"        => !string.IsNullOrEmpty(b.CelularCamara)        && b.CelularCamara        != "0",
-        "SaludTotal"    => !string.IsNullOrEmpty(b.CelularSaludTotal)    && b.CelularSaludTotal    != "0",
-        "Positiva"      => !string.IsNullOrEmpty(b.CelularPositiva)      && b.CelularPositiva      != "0",
-        "Tigo"          => !string.IsNullOrEmpty(b.CelularTigo)          && b.CelularTigo          != "0",
-        "SOS"           => !string.IsNullOrEmpty(b.CelularSOS)           && b.CelularSOS           != "0",
-        "Claro"         => !string.IsNullOrEmpty(b.CelularClaro)         && b.CelularClaro         != "0",
-        _               => false,
-    };
+        var p = cmd.CreateParameter();
+        p.ParameterName = name;
+        p.Value = value;
+        cmd.Parameters.Add(p);
+    }
 
-    private static bool TieneEmail(BaseMadreRow b) =>
-        (!string.IsNullOrEmpty(b.EmailCajacopi)      && b.EmailCajacopi      != "0") ||
-        (!string.IsNullOrEmpty(b.EmailCamara)        && b.EmailCamara        != "0") ||
-        (!string.IsNullOrEmpty(b.EmailSaludTotal)    && b.EmailSaludTotal    != "0") ||
-        (!string.IsNullOrEmpty(b.EmailPositiva)      && b.EmailPositiva      != "0") ||
-        (!string.IsNullOrEmpty(b.EmailTigo)          && b.EmailTigo          != "0") ||
-        (!string.IsNullOrEmpty(b.EmailClaro)         && b.EmailClaro         != "0");
+    private static async Task<decimal?> GetNullableDecimalAsync(DbDataReader reader, string column)
+    {
+        var ord = reader.GetOrdinal(column);
+        return await reader.IsDBNullAsync(ord) ? null : reader.GetDecimal(ord);
+    }
 
-    /// <summary>Agrupa por etiqueta, calcula cantidad y % sobre total.</summary>
-    private static List<DesglosePar> Desglosar(
-        IEnumerable<string> valores, int total) =>
-        valores
-            .GroupBy(v => v)
-            .Select(g => new DesglosePar
+    private static async Task<List<DesglosePar>> ReadDesgloseAsync(DbDataReader reader)
+    {
+        var list = new List<DesglosePar>();
+        while (await reader.ReadAsync())
+        {
+            list.Add(new DesglosePar
             {
-                Etiqueta   = g.Key,
-                Cantidad   = g.Count(),
-                Porcentaje = total > 0
-                    ? Math.Round((decimal)g.Count() / total * 100, 1) : 0,
-            })
-            .OrderByDescending(d => d.Cantidad)
-            .ToList();
+                Etiqueta   = reader.GetString(0),
+                Cantidad   = reader.GetInt32(1),
+                Porcentaje = reader.GetDecimal(2),
+            });
+        }
+        return list;
+    }
 
     /// <summary>
-    /// Base: vw_BaseMadre (filtrada por carteraID+liderID) → LEFT JOIN a cada tabla fuente.
-    ///   encontrado    → tiene datos reales en la vista para esa fuente
-    ///   no encontrado → sin datos en la vista PERO existe en la tabla fuente (fue buscado)
-    ///   falta buscar  → sin datos en la vista Y sin fila en la tabla fuente (total - enc - noEnc)
-    /// Usar la vista como base garantiza que enc y total coinciden con el resto del calificador.
-    /// La vista aplana a "0" los sin-dato, por eso el "no encontrado" vs "falta buscar" se
-    /// distingue mediante la presencia de fila en cada tabla fuente.
+    /// Calcula los conteos de localización por fuente (encontrado / no encontrado /
+    /// falta buscar). Usa el TVF dbo.fn_BaseMadrePorCartera como base + 14 LEFT JOIN
+    /// DISTINCT contra cada tabla fuente para distinguir "no encontrado" (existe fila)
+    /// de "falta buscar" (no existe fila).
     /// </summary>
     private async Task<List<LocalizacionFuente>> ObtenerLocalizacionAsync(
         int carteraID, int liderID, int total)
     {
-        // SQL Server no permite EXISTS dentro de SUM(CASE WHEN ...).
-        // Solución: el subquery interno resuelve los EXISTS como columnas bit (0/1),
-        // y el SELECT exterior solo hace SUM sobre valores simples.
         var r = await _db.Database.SqlQuery<LocalizacionResumenRaw>($"""
             SELECT
-                -- Cajacopi
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularCajacopi,''),'0') IS NOT NULL
                            OR NULLIF(NULLIF(b.EmailCajacopi,  ''), '0') IS NOT NULL
                            OR (b.EdadCajacopi IS NOT NULL AND b.EdadCajacopi != 0)
@@ -334,7 +357,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND (b.EdadCajacopi IS NULL OR b.EdadCajacopi = 0)
                           AND b.EnCajacopi = 1
                          THEN 1 ELSE 0 END) AS CajacopiNoEnc,
-                -- Camara
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularCamara,''),'0') IS NOT NULL
                            OR NULLIF(NULLIF(b.EmailCamara,  ''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS CamaraEnc,
@@ -342,7 +364,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmailCamara,  ''), '0') IS NULL
                           AND b.EnCamara = 1
                          THEN 1 ELSE 0 END) AS CamaraNoEnc,
-                -- SaludTotal
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularSaludTotal,''),'0') IS NOT NULL
                            OR NULLIF(NULLIF(b.EmailSaludTotal,  ''), '0') IS NOT NULL
                            OR (b.NITSaludTotal IS NOT NULL AND b.NITSaludTotal != 0)
@@ -354,7 +375,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmpresaSaludTotal,''),'0') IS NULL
                           AND b.EnSaludTotal = 1
                          THEN 1 ELSE 0 END) AS SaludTotalNoEnc,
-                -- Fosyga
                 SUM(CASE WHEN NULLIF(NULLIF(b.EPS,         ''), '0') IS NOT NULL
                            OR NULLIF(NULLIF(b.Regimen,     ''), '0') IS NOT NULL
                            OR NULLIF(NULLIF(b.TipoAfiliado,''), '0') IS NOT NULL
@@ -364,7 +384,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.TipoAfiliado,''), '0') IS NULL
                           AND b.EnFosyga = 1
                          THEN 1 ELSE 0 END) AS FosygaNoEnc,
-                -- Compensados (solo campos de texto: la vista puede devolver fechas por defecto)
                 SUM(CASE WHEN NULLIF(NULLIF(b.EPSCompensados,         ''), '0') IS NOT NULL
                            OR NULLIF(NULLIF(b.TipoAfiliadoCompensados,''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS CompensadosEnc,
@@ -372,7 +391,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.TipoAfiliadoCompensados,''), '0') IS NULL
                           AND b.EnCompensados = 1
                          THEN 1 ELSE 0 END) AS CompensadosNoEnc,
-                -- Positiva
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularPositiva,''),'0') IS NOT NULL
                            OR NULLIF(NULLIF(b.EmailPositiva,  ''), '0') IS NOT NULL
                            OR (b.EdadPositiva IS NOT NULL AND b.EdadPositiva != 0)
@@ -382,7 +400,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND (b.EdadPositiva IS NULL OR b.EdadPositiva = 0)
                           AND b.EnPositiva = 1
                          THEN 1 ELSE 0 END) AS PositivaNoEnc,
-                -- Tigo
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularTigo,''),'0') IS NOT NULL
                            OR NULLIF(NULLIF(b.EmailTigo,  ''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS TigoEnc,
@@ -390,7 +407,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmailTigo,  ''), '0') IS NULL
                           AND b.EnTigo = 1
                          THEN 1 ELSE 0 END) AS TigoNoEnc,
-                -- SOS
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularSOS,  ''), '0') IS NOT NULL
                            OR (b.NitSOS IS NOT NULL AND b.NitSOS != 0)
                            OR NULLIF(NULLIF(b.EmpresaSOS,''), '0') IS NOT NULL
@@ -400,7 +416,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmpresaSOS,''), '0') IS NULL
                           AND b.EnSOS = 1
                          THEN 1 ELSE 0 END) AS SosNoEnc,
-                -- Claro
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularClaro,''),'0') IS NOT NULL
                            OR NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS ClaroEnc,
@@ -408,7 +423,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NULL
                           AND b.EnClaro = 1
                          THEN 1 ELSE 0 END) AS ClaroNoEnc,
-                -- Sura (ARL)
                 SUM(CASE WHEN (b.NITSura IS NOT NULL AND b.NITSura != 0)
                            OR NULLIF(NULLIF(b.EmpresaSura,''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS SuraEnc,
@@ -416,7 +430,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmpresaSura,''), '0') IS NULL
                           AND b.EnSura = 1
                          THEN 1 ELSE 0 END) AS SuraNoEnc,
-                -- Positiva Empresa
                 SUM(CASE WHEN (b.NITPositiva IS NOT NULL AND b.NITPositiva != 0)
                            OR NULLIF(NULLIF(b.EmpresaPositiva,''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS PosEmpEnc,
@@ -424,19 +437,16 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmpresaPositiva,''), '0') IS NULL
                           AND b.EnPosEmp = 1
                          THEN 1 ELSE 0 END) AS PosEmpNoEnc,
-                -- RUES
                 SUM(CASE WHEN NULLIF(NULLIF(b.EmpresaRUES,''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS RuesEnc,
                 SUM(CASE WHEN NULLIF(NULLIF(b.EmpresaRUES,''), '0') IS NULL
                           AND b.EnRUES = 1
                          THEN 1 ELSE 0 END) AS RuesNoEnc,
-                -- SIMIT
                 SUM(CASE WHEN NULLIF(NULLIF(b.PlacaSIMIT,''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS SimitEnc,
                 SUM(CASE WHEN NULLIF(NULLIF(b.PlacaSIMIT,''), '0') IS NULL
                           AND b.EnSIMIT = 1
                          THEN 1 ELSE 0 END) AS SimitNoEnc,
-                -- RGM
                 SUM(CASE WHEN NULLIF(NULLIF(b.Marca,''), '0') IS NOT NULL
                            OR (b.Modelo IS NOT NULL AND b.Modelo != 0)
                            OR NULLIF(NULLIF(b.Placa,''), '0') IS NOT NULL
@@ -483,8 +493,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     v.Marca,
                     v.Modelo,
                     v.Placa,
-                    -- Presencia en tabla fuente resuelta con DISTINCT LEFT JOIN:
-                    -- más eficiente que EXISTS correlacionado para carteras grandes.
                     CASE WHEN cj.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnCajacopi,
                     CASE WHEN cm.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnCamara,
                     CASE WHEN st.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSaludTotal,
@@ -499,8 +507,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     CASE WHEN ru.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRUES,
                     CASE WHEN si.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSIMIT,
                     CASE WHEN rg.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRGM
-                -- Misma optimización que CalificarAsync: el TVF ya devuelve la
-                -- cartera filtrada con las CTEs Ultimo* pre-restringidas.
                 FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderID}) v
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Cajacopi)         cj ON cj.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Camara)           cm ON cm.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
@@ -548,7 +554,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         };
     }
 
-    // ── DTO interno para mapear el resultado del SQL de localización ──────────
+    // DTO interno para mapear el resultado del SQL de localización
     private sealed class LocalizacionResumenRaw
     {
         public int CajacopiEnc    { get; set; } public int CajacopiNoEnc    { get; set; }
@@ -565,26 +571,5 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         public int RuesEnc        { get; set; } public int RuesNoEnc        { get; set; }
         public int SimitEnc       { get; set; } public int SimitNoEnc       { get; set; }
         public int RgmEnc         { get; set; } public int RgmNoEnc         { get; set; }
-    }
-
-    /// <summary>
-    /// Como Desglosar, pero limita a los top N y agrupa el resto en "(Otras)".
-    /// </summary>
-    private static List<DesglosePar> DesgloseConOtras(
-        IEnumerable<string> valores, int total, int top)
-    {
-        var todos = Desglosar(valores, total);
-        if (todos.Count <= top)
-            return todos;
-
-        var resultado = todos.Take(top).ToList();
-        var otrasCount = todos.Skip(top).Sum(d => d.Cantidad);
-        resultado.Add(new DesglosePar
-        {
-            Etiqueta   = "(Otras)",
-            Cantidad   = otrasCount,
-            Porcentaje = total > 0 ? Math.Round((decimal)otrasCount / total * 100, 1) : 0,
-        });
-        return resultado;
     }
 }
