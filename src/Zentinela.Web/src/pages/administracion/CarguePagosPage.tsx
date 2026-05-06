@@ -45,29 +45,56 @@ function BadgePago({ esValida }: { esValida: boolean }) {
 
 // ── Chip de conteo ────────────────────────────────────────────────────────────
 
-function ChipConteo({ numero, label, bg, border, colorNum, colorLabel }: {
+function ChipConteo({
+  numero, label, bg, border, colorNum, colorLabel,
+  onClick, abierto,
+}: {
   numero: number; label: string;
   bg: string; border: string; colorNum: string; colorLabel: string;
+  onClick?: () => void;
+  abierto?: boolean;
 }) {
+  const esClickeable = !!onClick;
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '8px',
-      background: bg, border: `0.5px solid ${border}`,
-      borderRadius: '8px', padding: '12px 18px',
-    }}>
+    <div
+      onClick={onClick}
+      role={esClickeable ? 'button' : undefined}
+      tabIndex={esClickeable ? 0 : undefined}
+      onKeyDown={esClickeable
+        ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!(); } }
+        : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        background: bg, border: `0.5px solid ${border}`,
+        borderRadius: '8px', padding: '12px 18px',
+        cursor: esClickeable ? 'pointer' : 'default',
+        userSelect: 'none',
+        boxShadow: esClickeable && abierto ? `inset 0 0 0 1px ${border}` : 'none',
+        transition: 'box-shadow 0.15s, transform 0.05s',
+      }}
+      title={esClickeable ? (abierto ? 'Click para ocultar el detalle' : 'Click para ver el detalle') : undefined}
+    >
       <span style={{ fontSize: '22px', fontWeight: 700, color: colorNum }}>
         {numero.toLocaleString('es-CO')}
       </span>
       <span style={{ fontSize: '13px', color: colorLabel }}>{label}</span>
+      {esClickeable && (
+        <span style={{
+          fontSize: '11px', color: colorLabel, marginLeft: 4,
+          transform: abierto ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.15s',
+        }}>
+          ▾
+        </span>
+      )}
     </div>
   );
 }
 
 // ── Panel de errores ──────────────────────────────────────────────────────────
 
-function PanelErrores({ filas, totalErrores }: { filas: PagoFila[]; totalErrores: number }) {
+function PanelErrores({ filas }: { filas: PagoFila[] }) {
   if (filas.length === 0) return null;
-  const hayMas = totalErrores > filas.length;
   return (
     <div style={{
       background: '#fef2f2', border: '1px solid #fca5a5',
@@ -82,23 +109,18 @@ function PanelErrores({ filas, totalErrores }: { filas: PagoFila[]; totalErrores
           width: 24, height: 24, borderRadius: '50%',
           background: '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, flexShrink: 0,
         }}>
-          {totalErrores}
+          {filas.length}
         </span>
         <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#b91c1c' }}>
-          {totalErrores === 1
+          {filas.length === 1
             ? '1 registro con error — no se cargará'
-            : `${totalErrores} registros con error — no se cargarán`}
-          {hayMas && (
-            <span style={{ fontWeight: 400, marginLeft: 6 }}>
-              (mostrando primeros {filas.length})
-            </span>
-          )}
+            : `${filas.length} registros con error — no se cargarán`}
         </p>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '420px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#fef2f2' }}>
+            <tr style={{ background: '#fef2f2', position: 'sticky', top: 0, zIndex: 1 }}>
               {['#', 'Cédula', 'Nombre', 'Motivo del error'].map((col, i) => (
                 <th key={i} style={{
                   padding: '8px 14px', textAlign: 'left',
@@ -137,9 +159,8 @@ function PanelErrores({ filas, totalErrores }: { filas: PagoFila[]; totalErrores
 
 // ── Tabla de preview ──────────────────────────────────────────────────────────
 
-function TablaPreview({ filas }: { filas: PagoFila[] }) {
-  const validas = filas.filter(f => f.esValida);
-  if (validas.length === 0) return null;
+function TablaPreview({ filas, totalValidas }: { filas: PagoFila[]; totalValidas: number }) {
+  if (filas.length === 0) return null;
   const COLS = ['#', 'Cédula', 'Nombre', 'Valor pagado', 'Fecha', 'Honorarios', 'Usuario Control', 'Estado'];
   return (
     <div style={{
@@ -150,7 +171,7 @@ function TablaPreview({ filas }: { filas: PagoFila[] }) {
         padding: '10px 16px', fontSize: '12px', color: 'var(--z-text-muted)',
         borderBottom: '0.5px solid var(--z-border)', margin: 0,
       }}>
-        Muestra — primeros {validas.length} registros válidos
+        Muestra — primeros {filas.length} de {totalValidas.toLocaleString('es-CO')} registros válidos
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -169,7 +190,7 @@ function TablaPreview({ filas }: { filas: PagoFila[] }) {
             </tr>
           </thead>
           <tbody>
-            {validas.map((fila, idx) => (
+            {filas.map((fila, idx) => (
               <tr key={idx} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
                 <td style={{ padding: '9px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
                   {idx + 1}
@@ -218,6 +239,10 @@ export function CarguePagosPage() {
   const [errorMensaje,       setErrorMensaje]       = useState('');
   const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
 
+  // Toggles para los detalles asociados a cada chip de conteo
+  const [verErrores, setVerErrores] = useState(false);
+  const [verValidos, setVerValidos] = useState(false);
+
   const { data: carteras = [] } = useQuery({
     queryKey: ['pagos-carteras'],
     queryFn:  listarCarterasPagos,
@@ -231,6 +256,10 @@ export function CarguePagosPage() {
     onSuccess: (data) => {
       setPreview(data);
       setErrorMensaje('');
+      // Si hay errores, abrir el panel de errores por defecto para que sean visibles;
+      // los válidos quedan colapsados (memory: vista previa máx. 10).
+      setVerErrores(data.cantidadErrores > 0);
+      setVerValidos(false);
       setEtapa('preview');
     },
     onError: (err: unknown) => {
@@ -268,13 +297,13 @@ export function CarguePagosPage() {
     setArchivoKB(0);
     setInsertados(0);
     setErrorMensaje('');
+    setVerErrores(false);
+    setVerValidos(false);
     if (inputRef.current) inputRef.current.value = '';
   };
 
   const esCargando   = mutValidar.isPending || mutConfirmar.isPending;
   const puedeValidar = !!carteraID && !!archivoNombre;
-
-  const filasConError = preview?.preview.filter(f => !f.esValida) ?? [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '960px' }}>
@@ -441,27 +470,33 @@ export function CarguePagosPage() {
       {!esCargando && etapa === 'preview' && preview && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* Chips de conteo */}
+          {/* Chips de conteo (clickeables — toggle del detalle) */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <ChipConteo
               numero={preview.cantidadValidas}
               label="pagos válidos"
               bg="#f0fdf4" border="#86efac" colorNum="#16a34a" colorLabel="#15803d"
+              onClick={preview.cantidadValidas > 0 ? () => setVerValidos(v => !v) : undefined}
+              abierto={verValidos}
             />
             {preview.cantidadErrores > 0 && (
               <ChipConteo
                 numero={preview.cantidadErrores}
                 label="con error — no se cargarán"
                 bg="#fef2f2" border="#fca5a5" colorNum="#dc2626" colorLabel="#b91c1c"
+                onClick={() => setVerErrores(v => !v)}
+                abierto={verErrores}
               />
             )}
           </div>
 
-          {/* Panel de errores */}
-          <PanelErrores filas={filasConError} totalErrores={preview.cantidadErrores} />
+          {/* Panel de errores — TODOS los errores (click en el chip rojo) */}
+          {verErrores && <PanelErrores filas={preview.errores} />}
 
-          {/* Tabla de válidos */}
-          <TablaPreview filas={preview.preview} />
+          {/* Tabla de válidos — primeros 10 (click en el chip verde) */}
+          {verValidos && (
+            <TablaPreview filas={preview.preview} totalValidas={preview.cantidadValidas} />
+          )}
 
           {/* Aviso */}
           <div style={{

@@ -209,7 +209,7 @@ public class CargueReporteService : ICargueReporteService
         return new PreviewReporteDto
         {
             Filas               = todasValidacion.Where(f => f.Estado == EstadoFilaReporte.Ok || f.Estado == EstadoFilaReporte.NuevoTitular).Take(10).ToList(),
-            FilasConError       = invalidas.Take(10).ToList(),
+            FilasConError       = invalidas,
             TotalValidos        = filasValidas.Count,
             TotalNuevos         = totalNuevos,
             TotalInvalidos      = invalidas.Count,

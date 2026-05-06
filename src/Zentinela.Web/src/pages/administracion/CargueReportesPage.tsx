@@ -164,9 +164,8 @@ function TablaPreview({ filas, columnasEncontradas }: {
 
 // ── Panel de errores ──────────────────────────────────────────────────────────
 
-function PanelErrores({ filas, totalInvalidos }: { filas: FilaValidacionReporteDto[]; totalInvalidos: number }) {
+function PanelErrores({ filas }: { filas: FilaValidacionReporteDto[] }) {
   if (filas.length === 0) return null;
-  const hayMas = totalInvalidos > filas.length;
   return (
     <div style={{
       background: '#fef2f2', border: '1px solid #fca5a5',
@@ -182,21 +181,20 @@ function PanelErrores({ filas, totalInvalidos }: { filas: FilaValidacionReporteD
           width: 24, height: 24, borderRadius: '50%',
           background: '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, flexShrink: 0,
         }}>
-          {totalInvalidos}
+          {filas.length}
         </span>
         <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#b91c1c' }}>
-          {totalInvalidos === 1
+          {filas.length === 1
             ? '1 registro con error — no se cargará'
-            : `${totalInvalidos} registros con error — no se cargarán`}
-          {hayMas && <span style={{ fontWeight: 400, marginLeft: 6 }}>(mostrando primeros {filas.length})</span>}
+            : `${filas.length} registros con error — no se cargarán`}
         </p>
       </div>
 
-      {/* Lista de errores */}
-      <div style={{ overflowX: 'auto' }}>
+      {/* Lista de errores — scroll vertical para listas largas */}
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '420px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#fef2f2' }}>
+            <tr style={{ background: '#fef2f2', position: 'sticky', top: 0, zIndex: 1 }}>
               {['#', 'TitularID', 'Nombre', 'Usuario Control', 'Motivo del error'].map((col, i) => (
                 <th key={i} style={{
                   padding: '8px 14px', textAlign: 'left',
@@ -238,18 +236,46 @@ function PanelErrores({ filas, totalInvalidos }: { filas: FilaValidacionReporteD
 
 // ── Chips de conteo ───────────────────────────────────────────────────────────
 
-function ChipConteo({ numero, label, bg, border, colorNum, colorLabel }: {
+function ChipConteo({
+  numero, label, bg, border, colorNum, colorLabel,
+  onClick, abierto,
+}: {
   numero: number; label: string;
   bg: string; border: string; colorNum: string; colorLabel: string;
+  onClick?: () => void;
+  abierto?: boolean;
 }) {
+  const esClickeable = !!onClick;
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '8px',
-      background: bg, border: `0.5px solid ${border}`,
-      borderRadius: '8px', padding: '12px 18px',
-    }}>
+    <div
+      onClick={onClick}
+      role={esClickeable ? 'button' : undefined}
+      tabIndex={esClickeable ? 0 : undefined}
+      onKeyDown={esClickeable
+        ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!(); } }
+        : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        background: bg, border: `0.5px solid ${border}`,
+        borderRadius: '8px', padding: '12px 18px',
+        cursor: esClickeable ? 'pointer' : 'default',
+        userSelect: 'none',
+        boxShadow: esClickeable && abierto ? `inset 0 0 0 1px ${border}` : 'none',
+        transition: 'box-shadow 0.15s, transform 0.05s',
+      }}
+      title={esClickeable ? (abierto ? 'Click para ocultar el detalle' : 'Click para ver el detalle') : undefined}
+    >
       <span style={{ fontSize: '22px', fontWeight: 700, color: colorNum }}>{numero}</span>
       <span style={{ fontSize: '13px', color: colorLabel }}>{label}</span>
+      {esClickeable && (
+        <span style={{
+          fontSize: '11px', color: colorLabel, marginLeft: 4,
+          transform: abierto ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.15s',
+        }}>
+          ▾
+        </span>
+      )}
     </div>
   );
 }
@@ -268,6 +294,10 @@ export function CargueReportesPage() {
   const [resultado,          setResultado]          = useState<import('../../types/reportes').ResultadoReporteDto | null>(null);
   const [errorMensaje,       setErrorMensaje]       = useState('');
 
+  // Toggles para los detalles asociados a cada chip de conteo
+  const [verErrores, setVerErrores] = useState(false);
+  const [verValidos, setVerValidos] = useState(false);
+
   const { data: carteras = [] } = useQuery({
     queryKey: ['carteras'],
     queryFn:  obtenerCarteras,
@@ -278,6 +308,10 @@ export function CargueReportesPage() {
       validarArchivoReporte(archivo, cid),
     onSuccess: (data) => {
       setPreview(data);
+      // Si hay errores, abrir el panel de errores por defecto para que sean visibles;
+      // los válidos quedan colapsados (memory: vista previa máx. 10).
+      setVerErrores(data.totalInvalidos > 0);
+      setVerValidos(false);
       setEtapa('preview');
       setErrorMensaje('');
     },
@@ -313,6 +347,8 @@ export function CargueReportesPage() {
     setArchivoKB(0);
     setResultado(null);
     setErrorMensaje('');
+    setVerErrores(false);
+    setVerValidos(false);
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
   };
 
@@ -467,12 +503,14 @@ export function CargueReportesPage() {
       {!esCargando && etapa === 'preview' && preview && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* Chips de conteo */}
+          {/* Chips de conteo (verde y rojo son clickeables — toggle del detalle) */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <ChipConteo
               numero={preview.totalUnicos}
               label="registros únicos válidos"
               bg="#f0fdf4" border="#86efac" colorNum="#16a34a" colorLabel="#15803d"
+              onClick={preview.filas.length > 0 ? () => setVerValidos(v => !v) : undefined}
+              abierto={verValidos}
             />
             {preview.totalDuplicados > 0 && (
               <ChipConteo
@@ -493,15 +531,17 @@ export function CargueReportesPage() {
                 numero={preview.totalInvalidos}
                 label="con error — no se cargarán"
                 bg="#fef2f2" border="#fca5a5" colorNum="#dc2626" colorLabel="#b91c1c"
+                onClick={() => setVerErrores(v => !v)}
+                abierto={verErrores}
               />
             )}
           </div>
 
-          {/* Panel de errores (primeros 10, con contador del total) */}
-          <PanelErrores filas={preview.filasConError} totalInvalidos={preview.totalInvalidos} />
+          {/* Panel de errores — TODOS los errores (click en el chip rojo) */}
+          {verErrores && <PanelErrores filas={preview.filasConError} />}
 
-          {/* Tabla de válidos (primeros 10) */}
-          {preview.filas.length > 0 && (
+          {/* Tabla de válidos — primeros 10 (click en el chip verde) */}
+          {verValidos && preview.filas.length > 0 && (
             <TablaPreview filas={preview.filas} columnasEncontradas={preview.columnasEncontradas} />
           )}
 

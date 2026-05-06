@@ -13,10 +13,11 @@ export interface FilaValidacionDto {
 }
 
 export interface PreviewAsignacionDto {
-  filas:             FilaValidacionDto[];
-  totalValidos:      number;   // Ok — existen en BD, listos
-  totalNuevos:       number;   // Nuevo — se crearán en Titular
-  totalErrores:      number;   // Error — fallaron validación
+  filas:             FilaValidacionDto[];   // primeras 10 filas sin error (vista previa)
+  filasConError:     FilaValidacionDto[];   // TODAS las filas con error
+  totalValidos:      number;                // Ok — existen en BD, listos
+  totalNuevos:       number;                // Nuevo — se crearán en Titular
+  totalErrores:      number;                // Error — fallaron validación
   titularIDsValidos: number[];
   nuevosTitulares:   NuevoTitularDto[];
 }

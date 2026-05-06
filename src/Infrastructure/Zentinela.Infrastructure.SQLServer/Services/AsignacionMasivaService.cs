@@ -178,9 +178,17 @@ public class AsignacionMasivaService : IAsignacionMasivaService
         var totalNuevos = nuevosTitulares.Count;
         var totalError  = todasLasFilas.Count(f => f.Estado == EstadoValidacion.Error);
 
+        // Filas: vista previa de hasta 10 registros sin error (Ok/Nuevo/YaAsignado).
+        // FilasConError: TODOS los errores con su razón para que el usuario los pueda corregir.
         return new PreviewAsignacionDto
         {
-            Filas             = todasLasFilas.Take(10).ToList(),
+            Filas             = todasLasFilas
+                                    .Where(f => f.Estado != EstadoValidacion.Error)
+                                    .Take(10)
+                                    .ToList(),
+            FilasConError     = todasLasFilas
+                                    .Where(f => f.Estado == EstadoValidacion.Error)
+                                    .ToList(),
             TotalValidos      = totalOk,
             TotalNuevos       = totalNuevos,
             TotalErrores      = totalError,

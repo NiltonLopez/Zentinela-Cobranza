@@ -67,11 +67,12 @@ public class CarguePagosService : ICarguePagosService
         var (idx, errorColumna) = ResolverIndices(headers, lineaEncabezado, separador);
         if (idx is null)
         {
+            var errorEncabezado = new PagoFilaDto { EsValida = false, ErrorMensaje = errorColumna };
             return new ValidarPagosResponse
             {
                 TotalFilas      = 0,
                 CantidadErrores = 1,
-                Preview = [new PagoFilaDto { EsValida = false, ErrorMensaje = errorColumna }],
+                Errores         = [errorEncabezado],
             };
         }
 
@@ -139,13 +140,15 @@ public class CarguePagosService : ICarguePagosService
         }
 
         var validas = filas.Where(f => f.EsValida).ToList();
+        var errores = filas.Where(f => !f.EsValida).ToList();
 
         return new ValidarPagosResponse
         {
             TotalFilas      = filas.Count,
             CantidadValidas = validas.Count,
-            CantidadErrores = filas.Count(f => !f.EsValida),
-            Preview         = filas.Take(10).ToList(),
+            CantidadErrores = errores.Count,
+            Preview         = validas.Take(10).ToList(),
+            Errores         = errores,
             TodasLasValidas = validas,
         };
     }

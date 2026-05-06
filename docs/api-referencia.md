@@ -874,7 +874,7 @@ Devuelve la lista de carteras disponibles para el selector de Cargue de Pagos.
 
 ## POST /api/pagos/validar
 
-Parsea y valida un archivo CSV de pagos. No persiste nada en BD. Devuelve un preview con las primeras 10 filas y la lista completa de filas válidas para el paso de confirmación.
+Parsea y valida un archivo CSV/XLSX de pagos. No persiste nada en BD. Devuelve un preview con las primeras 10 filas válidas, **TODAS** las filas con error (para inspección por el usuario), y la lista completa de filas válidas para el paso de confirmación.
 
 **Autenticación requerida:** Sí — `Admin`  
 **Content-Type:** `multipart/form-data`  
@@ -919,9 +919,21 @@ El sistema busca columnas por nombre (no por posición). Acepta mayúsculas, til
       "errorMensaje": null
     }
   ],
+  "errores": [
+    {
+      "cedulaTitular": 1020304055,
+      "nombreCliente": "GOMEZ ANA",
+      "esValida": false,
+      "errorMensaje": "Cédula 1020304055 no está asignada a esta cartera."
+    }
+  ],
   "todasLasValidas": [ ... ]
 }
 ```
+
+- `preview` — primeras 10 filas válidas para vista previa (regla del proyecto).
+- `errores` — **todas** las filas inválidas con `errorMensaje` para que el usuario las pueda corregir.
+- `todasLasValidas` — lista completa de filas válidas, se envía en el paso de confirmación.
 
 **Validaciones por fila:**
 1. Cédula numérica válida
@@ -1027,9 +1039,22 @@ Parsea el Excel y valida cada fila. Resuelve `UsuarioControl → AgenteID` via `
       "razon": null
     }
   ],
+  "filasConError": [
+    {
+      "titularID": "1020304055",
+      "nombre": null,
+      "usuarioControl": "xxxx",
+      "estado": "AgenteNoEncontrado",
+      "razon": "Usuario Control 'xxxx' no encontrado en el sistema"
+    }
+  ],
   "filasValidasRaw": [ ]
 }
 ```
+
+- `filas` — primeras 10 filas válidas (Ok / NuevoTitular) para vista previa.
+- `filasConError` — **todas** las filas con error, con la `razon` específica de cada una.
+- `filasValidasRaw` — payload completo que se envía a `/api/reportes/confirmar`.
 
 ---
 

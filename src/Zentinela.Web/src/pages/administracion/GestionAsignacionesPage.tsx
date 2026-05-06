@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
 import { generarPlantilla, validarArchivo, confirmarCargue } from '../../api/asignacionesApi';
-import type { PreviewAsignacionDto, EstadoValidacion } from '../../types/asignaciones';
+import type { PreviewAsignacionDto, EstadoValidacion, FilaValidacionDto } from '../../types/asignaciones';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 
 // ── Helpers de estilo ────────────────────────────────────────────────────────
@@ -23,6 +23,118 @@ function etiquetaEstado(estado: EstadoValidacion, razon: string | null): string 
   return razon ?? estado;
 }
 
+// ── Chip de conteo (clickeable opcional) ─────────────────────────────────────
+
+function ChipConteo({
+  numero, label, bg, border, colorNum, colorLabel,
+  onClick, abierto,
+}: {
+  numero: number; label: string;
+  bg: string; border: string; colorNum: string; colorLabel: string;
+  onClick?: () => void;
+  abierto?: boolean;
+}) {
+  const esClickeable = !!onClick;
+  return (
+    <div
+      onClick={onClick}
+      role={esClickeable ? 'button' : undefined}
+      tabIndex={esClickeable ? 0 : undefined}
+      onKeyDown={esClickeable
+        ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!(); } }
+        : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        background: bg, border: `0.5px solid ${border}`,
+        borderRadius: '8px', padding: '12px 18px',
+        cursor: esClickeable ? 'pointer' : 'default',
+        userSelect: 'none',
+        boxShadow: esClickeable && abierto ? `inset 0 0 0 1px ${border}` : 'none',
+        transition: 'box-shadow 0.15s, transform 0.05s',
+      }}
+      title={esClickeable ? (abierto ? 'Click para ocultar el detalle' : 'Click para ver el detalle') : undefined}
+    >
+      <span style={{ fontSize: '22px', fontWeight: 700, color: colorNum }}>{numero}</span>
+      <span style={{ fontSize: '13px', color: colorLabel }}>{label}</span>
+      {esClickeable && (
+        <span style={{
+          fontSize: '11px', color: colorLabel, marginLeft: 4,
+          transform: abierto ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.15s',
+        }}>
+          ▾
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── Panel de errores — TODOS los errores con su razón ───────────────────────
+
+function PanelErrores({ filas }: { filas: FilaValidacionDto[] }) {
+  if (filas.length === 0) return null;
+  return (
+    <div style={{
+      background: '#fef2f2', border: '1px solid #fca5a5',
+      borderRadius: '8px', overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '12px 16px', borderBottom: '1px solid #fca5a5',
+        display: 'flex', alignItems: 'center', gap: '10px',
+      }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 24, height: 24, borderRadius: '50%',
+          background: '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, flexShrink: 0,
+        }}>
+          {filas.length}
+        </span>
+        <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#b91c1c' }}>
+          {filas.length === 1
+            ? '1 registro con error — no se cargará'
+            : `${filas.length} registros con error — no se cargarán`}
+        </p>
+      </div>
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '420px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#fef2f2', position: 'sticky', top: 0, zIndex: 1 }}>
+              {['#', 'NumeroDocumento', 'Nombre', 'Motivo del error'].map((col, i) => (
+                <th key={i} style={{
+                  padding: '8px 14px', textAlign: 'left',
+                  fontSize: '11px', fontWeight: 600, color: '#b91c1c',
+                  borderBottom: '1px solid #fca5a5',
+                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((fila, idx) => (
+              <tr key={idx} style={{ borderBottom: '0.5px solid #fecaca' }}>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
+                  {idx + 1}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontWeight: 600 }}>
+                  {fila.numeroDocumento || '—'}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#b91c1c', fontStyle: fila.nombre ? 'normal' : 'italic' }}>
+                  {fila.nombre ?? '—'}
+                </td>
+                <td style={{ padding: '9px 14px', fontSize: '13px', color: '#dc2626', fontWeight: 500 }}>
+                  {fila.razon ?? 'Error de validación'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export function GestionAsignacionesPage() {
@@ -36,6 +148,10 @@ export function GestionAsignacionesPage() {
   const [mensajeFinal,  setMensajeFinal]  = useState('');
   const [carteraLabel,  setCarteraLabel]  = useState('');
   const [errorMensaje,  setErrorMensaje]  = useState('');
+
+  // Toggles para los detalles asociados a cada chip de conteo
+  const [verErrores, setVerErrores] = useState(false);
+  const [verValidos, setVerValidos] = useState(false);
 
   // Dropdown opciones Cartera+Líder (reutiliza calificador)
   const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
@@ -52,6 +168,10 @@ export function GestionAsignacionesPage() {
     },
     onSuccess: (data) => {
       setPreview(data);
+      // Si hay errores, abrir el panel de errores por defecto para que sean visibles;
+      // los válidos quedan colapsados (regla del proyecto: vista previa máx. 10).
+      setVerErrores(data.totalErrores > 0);
+      setVerValidos(false);
       setEtapa('preview');
     },
     onError: () => setErrorMensaje('No se pudo validar el archivo. Verifica el formato.'),
@@ -98,6 +218,8 @@ export function GestionAsignacionesPage() {
     setMensajeFinal('');
     setCarteraLabel('');
     setErrorMensaje('');
+    setVerErrores(false);
+    setVerValidos(false);
     if (inputArchivoRef.current) inputArchivoRef.current.value = '';
   };
 
@@ -237,95 +359,84 @@ export function GestionAsignacionesPage() {
       {!esCargando && etapa === 'preview' && preview && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* Conteos */}
+          {/* Conteos — chips verde y rojo son clickeables (toggle del detalle) */}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Verde — existen en BD, listos */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              background: '#f0fdf4', border: '0.5px solid #86efac',
-              borderRadius: '8px', padding: '12px 18px',
-            }}>
-              <span style={{ fontSize: '22px', fontWeight: 700, color: '#16a34a' }}>
-                {preview.totalValidos}
-              </span>
-              <span style={{ fontSize: '13px', color: '#15803d' }}>listos para asignar</span>
-            </div>
-
-            {/* Amarillo — titulares nuevos que se crearán */}
+            <ChipConteo
+              numero={preview.totalValidos}
+              label="listos para asignar"
+              bg="#f0fdf4" border="#86efac" colorNum="#16a34a" colorLabel="#15803d"
+              onClick={preview.filas.length > 0 ? () => setVerValidos(v => !v) : undefined}
+              abierto={verValidos}
+            />
             {preview.totalNuevos > 0 && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: '#fefce8', border: '0.5px solid #fde68a',
-                borderRadius: '8px', padding: '12px 18px',
-              }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: '#b45309' }}>
-                  {preview.totalNuevos}
-                </span>
-                <span style={{ fontSize: '13px', color: '#92400e' }}>nuevos en base de datos</span>
-              </div>
+              <ChipConteo
+                numero={preview.totalNuevos}
+                label="nuevos en base de datos"
+                bg="#fefce8" border="#fde68a" colorNum="#b45309" colorLabel="#92400e"
+              />
             )}
-
-            {/* Rojo — errores de validación */}
             {preview.totalErrores > 0 && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: '#fef2f2', border: '0.5px solid #fca5a5',
-                borderRadius: '8px', padding: '12px 18px',
-              }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, color: '#dc2626' }}>
-                  {preview.totalErrores}
-                </span>
-                <span style={{ fontSize: '13px', color: '#b91c1c' }}>errores (no se cargarán)</span>
-              </div>
+              <ChipConteo
+                numero={preview.totalErrores}
+                label="errores (no se cargarán)"
+                bg="#fef2f2" border="#fca5a5" colorNum="#dc2626" colorLabel="#b91c1c"
+                onClick={() => setVerErrores(v => !v)}
+                abierto={verErrores}
+              />
             )}
           </div>
 
-          {/* Tabla de validación (primeros 10) */}
-          <div style={{
-            background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
-            borderRadius: '8px', overflow: 'hidden',
-          }}>
-            <p style={{
-              padding: '12px 16px', fontSize: '12px', color: 'var(--z-text-muted)',
-              borderBottom: '0.5px solid var(--z-border)', margin: 0,
+          {/* Panel de errores — TODOS los errores con su razón (click en el chip rojo) */}
+          {verErrores && <PanelErrores filas={preview.filasConError} />}
+
+          {/* Tabla de válidos — primeros 10 (click en el chip verde) */}
+          {verValidos && preview.filas.length > 0 && (
+            <div style={{
+              background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+              borderRadius: '8px', overflow: 'hidden',
             }}>
-              Vista previa — primeros {preview.filas.length} registros del archivo
-            </p>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--z-bg-page)' }}>
-                  {['#', 'NumeroDocumento', 'Nombre', 'Estado'].map((col, i) => (
-                    <th key={i} style={{
-                      padding: '9px 14px', textAlign: 'left',
-                      fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
-                      borderBottom: '0.5px solid var(--z-border)',
-                      letterSpacing: '0.04em', textTransform: 'uppercase',
-                    }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.filas.map((fila, idx) => (
-                  <tr key={idx} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
-                    <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-                      {idx + 1}
-                    </td>
-                    <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
-                      {fila.numeroDocumento}
-                    </td>
-                    <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-                      {fila.nombre ?? '—'}
-                    </td>
-                    <td style={{ padding: '10px 14px', fontSize: '13px', color: colorEstado(fila.estado) }}>
-                      {etiquetaEstado(fila.estado, fila.razon)}
-                    </td>
+              <p style={{
+                padding: '12px 16px', fontSize: '12px', color: 'var(--z-text-muted)',
+                borderBottom: '0.5px solid var(--z-border)', margin: 0,
+              }}>
+                Vista previa — primeros {preview.filas.length} registros sin error
+              </p>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--z-bg-page)' }}>
+                    {['#', 'NumeroDocumento', 'Nombre', 'Estado'].map((col, i) => (
+                      <th key={i} style={{
+                        padding: '9px 14px', textAlign: 'left',
+                        fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
+                        borderBottom: '0.5px solid var(--z-border)',
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                      }}>
+                        {col}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {preview.filas.map((fila, idx) => (
+                    <tr key={idx} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+                        {idx + 1}
+                      </td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+                        {fila.numeroDocumento}
+                      </td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+                        {fila.nombre ?? '—'}
+                      </td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px', color: colorEstado(fila.estado) }}>
+                        {etiquetaEstado(fila.estado, fila.razon)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Aviso de reemplazo */}
           <div style={{

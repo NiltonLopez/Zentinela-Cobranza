@@ -26,12 +26,14 @@ public class NuevoTitularDto
 
 /// <summary>
 /// Vista previa devuelta tras validar el Excel.
-/// Filas contiene hasta 10 registros (muestra); TitularIDsValidos contiene la lista
-/// completa de IDs a confirmar; NuevosTitulares los que se crearán en Titular.
+/// Filas contiene hasta 10 registros sin error (Ok/Nuevo/YaAsignado) para vista previa.
+/// FilasConError contiene TODAS las filas con error para que el usuario las inspeccione.
+/// TitularIDsValidos contiene la lista completa de IDs a confirmar; NuevosTitulares los que se crearán en Titular.
 /// </summary>
 public class PreviewAsignacionDto
 {
     public List<FilaValidacionDto> Filas             { get; set; } = [];
+    public List<FilaValidacionDto> FilasConError      { get; set; } = [];
     public int                     TotalValidos       { get; set; }   // Ok — existen en BD, listos
     public int                     TotalNuevos        { get; set; }   // Nuevo — se crearán en Titular
     public int                     TotalErrores       { get; set; }   // Error — fallaron validación

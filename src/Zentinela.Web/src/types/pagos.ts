@@ -15,7 +15,8 @@ export interface ValidarPagosResponse {
   totalFilas: number;
   cantidadValidas: number;
   cantidadErrores: number;
-  preview: PagoFila[];
+  preview: PagoFila[];        // primeras 10 filas válidas para vista previa
+  errores: PagoFila[];        // TODAS las filas con error
   todasLasValidas: PagoFila[];
 }
 
