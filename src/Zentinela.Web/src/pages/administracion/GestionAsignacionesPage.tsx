@@ -86,38 +86,43 @@ function PanelErrores({ filas }: { filas: FilaValidacionDto[] }) {
       background: '#fef2f2', border: '1px solid #fca5a5',
       borderRadius: '8px', overflow: 'hidden',
     }}>
+      {/* Banner con total de REGISTROS (no de tipos) — debe ser inequívoco. */}
       <div style={{
-        padding: '12px 16px', borderBottom: '1px solid #fca5a5',
-        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '14px 18px', borderBottom: '1px solid #fca5a5',
+        display: 'flex', alignItems: 'baseline', gap: '10px',
       }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 24, height: 24, borderRadius: '50%',
-          background: '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, flexShrink: 0,
-        }}>
-          {filas.length}
+        <span style={{ fontSize: 24, fontWeight: 700, color: '#dc2626', lineHeight: 1 }}>
+          {filas.length.toLocaleString('es-CO')}
         </span>
-        <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#b91c1c' }}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#b91c1c' }}>
           {filas.length === 1
-            ? '1 registro con error — no se cargará'
-            : `${filas.length} registros con error — no se cargarán`}
+            ? 'registro con error — no se cargará'
+            : 'registros con error — no se cargarán'}
         </p>
       </div>
-      <ol style={{
-        margin: 0, padding: '12px 16px 12px 36px',
-        display: 'flex', flexDirection: 'column', gap: 6,
-      }}>
-        {lista.map(([categoria, cuenta]) => (
-          <li key={categoria} style={{ fontSize: 13, color: '#b91c1c' }}>
-            {categoria}
-            {cuenta > 1 && (
-              <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 6 }}>
-                ×{cuenta}
+
+      {/* Tipos de error y su conteo individual */}
+      <div style={{ padding: '12px 18px' }}>
+        <p style={{
+          margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#b91c1c',
+          textTransform: 'uppercase', letterSpacing: '0.04em',
+        }}>
+          Tipos de error encontrados ({lista.length})
+        </p>
+        <ol style={{
+          margin: 0, padding: '0 0 0 20px',
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          {lista.map(([categoria, cuenta]) => (
+            <li key={categoria} style={{ fontSize: 13, color: '#b91c1c' }}>
+              {categoria}
+              <span style={{ color: '#7f1d1d', marginLeft: 6 }}>
+                ({cuenta.toLocaleString('es-CO')} {cuenta === 1 ? 'fila' : 'filas'})
               </span>
-            )}
-          </li>
-        ))}
-      </ol>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }
