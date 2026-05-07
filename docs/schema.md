@@ -874,9 +874,24 @@ Envíos IVR (voz automatizada) a titulares. Espejo de `MensajesEnviados`. Carga 
 
 ### Tablas consultadas por el módulo "Rastreo de Líneas"
 
-El sub-módulo `/consultas/rastreo` (ver `ADR-015`) busca un celular **solo en las tablas de Localización** que tienen columna de teléfono, vía un único `UNION ALL` parametrizado en `RastreoLineasService`:
+El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCallCenter` que exponga columna(s) de teléfono usable, vía un único `UNION ALL` parametrizado en `RastreoLineasService.SqlConsulta`. Resuelve nombre del titular con `LEFT JOIN dbo.Titular`.
 
-`Cajacopi`, `Camara`, `Positiva`, `SaludTotal`, `SOS`, `Tigo`. Resuelve nombre del titular con `LEFT JOIN dbo.Titular`. NO consulta otras tablas con teléfono que no sean de localización (auditorías, listas negras, directorios, logs salientes), tampoco `*Auxiliar`, `*_bak`, `Staging_*`, `DatosExternos`, `CamaraEmpresa` ni vistas `vw_*`.
+**Tablas vigentes (8)** — fuente única de verdad: el código del service.
+
+| Tabla | Columna(s) consultadas | Etiqueta(s) en UI |
+|---|---|---|
+| Cajacopi | `NumeroTelefonoCelular`, `NumeroTelefonoFijo` | `Cajacopi (celular)`, `Cajacopi (fijo)` |
+| Camara | `NumeroTelefono` | `Cámara` |
+| SaludTotal | `NumeroTelefono` | `Salud Total` |
+| Positiva | `NumeroTelefonoCelular`, `NumeroTelefonoFijo` | `Positiva (celular)`, `Positiva (fijo)` |
+| Tigo | `NumeroTelefono` | `Tigo` |
+| SOS | `Telefono` | `SOS` |
+| DatosClaro | `NumeroTelefono` | `Claro` |
+| MutualSer | `NumeroTelefonoCelular`, `NumeroTelefonoCelular2`, `NumeroTelefonoFijo` | `MutualSer (celular 1)`, `MutualSer (celular 2)`, `MutualSer (fijo)` |
+
+**Excluidas explícitamente** (no son fuentes con teléfono usable para rastreo): auditorías (`AuditoriaMensajeria`, `AuditoriaIVR`), logs salientes (`MensajesEnviados`, `IVREnviados`), listas negras (`ListaNegraTelefonos`), directorios (`NumeroTelefonoGeneral`), `CamaraEmpresa`, staging (`*Auxiliar`), respaldos (`*_bak`, `Staging_*`), `DatosExternos` (memoria del proyecto: ignorada) y vistas `vw_*`.
+
+> ADR-015 originalmente restringió el set a "solo tablas de Localización". Ese criterio quedó superado en la práctica (ver `ADR-015 → Nota 2026-05-07`); regla vigente: cualquier fuente con teléfono usable se incluye. Toda fuente nueva con columna de teléfono debe extender `RastreoLineasService.SqlConsulta` — ver skill `/agregar-fuente-datos`, paso 5d.
 
 ### ListaNegraCorreos
 Correos marcados como erroneos / invalidos.
