@@ -79,7 +79,7 @@ src/
 | Calificador de Cartera      | `CalificadorCarteraService`         | `CalificadorCarteraController` | `CalificadorCarteraPage`     | sí (SQL crudo: `SqlAgregados` + `ObtenerLocalizacionAsync`) |
 | Comparador de Carteras      | `ComparadorCarterasService`         | `ComparadorCarterasController` | `ComparadorCarterasPage`     | NO — usa `UltimosEstadosTitular` |
 | Consulta Integrada          | `Modules/ConsultaIntegrada/**`      | (módulo autónomo)              | `ConsultaIntegradaPage`      | NO — consulta tablas fuente directamente |
-| Rastreo de Líneas           | `RastreoLineasService`              | `RastreoLineasController`      | `RastreoLineasPage`          | NO — UNION ALL sobre tablas de contactabilidad (ver ADR-015 para exclusiones) |
+| Rastreo de Líneas           | `RastreoLineasService`              | `RastreoLineasController`      | `RastreoLineasPage`          | NO consume el TVF, pero **sí debe extenderse** si la nueva fuente expone columna(s) de teléfono — UNION ALL en `RastreoLineasService.SqlConsulta` |
 | Gestión de Carteras (admin) | `GestionCarterasService`            | `GestionCarterasController`    | `GestionCarterasPage`        | NO |
 | Cargue de Reportes          | `CargueReporteService`              | `CargueReportesController`     | `CargueReportesPage`         | NO |
 | Localización (6 stubs)      | (sin servicio actualmente)          | —                              | `Arl/Caja/Camara/...` stubs  | NO |
@@ -96,8 +96,8 @@ src/
 | Positiva | 1:1 | sí / sí | sí | entidad 1:1 simple |
 | Tigo | 1:1 | sí / sí | no (inactiva) | entidad 1:1 simple |
 | SOS | 1:1 | sí / no | sí | entidad 1:1 + empresa |
-| DatosClaro | **N:1** | sí / sí | no | entidad N:1, aplana con sufijos `Email 1`, `Email 2`, … |
-| MutualSer | 1:1 | sí (×2 cels) / sí | sí | entidad 1:1 simple |
+| DatosClaro | **N:1** | sí / sí | sí (Rastreo) | entidad N:1, aplana con sufijos `Email 1`, `Email 2`, … |
+| MutualSer | 1:1 | sí (×2 cels) / sí | sí (Rastreo + Localización) | entidad 1:1 simple |
 | ARLSura | 1:1 | no | sí (solo empresa) | entidad simple |
 | PositivaEmpresas | 1:1 | no | no | entidad simple |
 | RUES | 1:1 | no | sí (solo empresa) | entidad simple |
@@ -201,7 +201,23 @@ Si la fuente debe consultarse fuera de la vista (3 estados o consulta dedicada),
 - Registrar `DbSet<<Fuente>>` en el DbContext del módulo (`HasNoKey().ToTable("<Tabla>")` si aplica).
 - En `CargarContactabilidadAsync`: añadir bloque de carga. Si es 1:1, simple `dict["Número Teléfono"] = entidad.NumeroTelefono`. Va dentro del grupo existente `"Contactabilidad"` con clave `"<NombreFuente>"`. ConsultaIntegradaPage es agnóstica y la renderizará automáticamente como sub-acordeón.
 
-**Servicios que NO se tocan** (verificado: no consultan `vw_BaseMadre` ni `fn_BaseMadrePorCartera`): `ComparadorCarterasService`, `GestionCarterasService`, `CargueReporteService`, `RastreoLineasService` (excluido por ADR-015 si la fuente no es de localización tipo telefónica).
+**5d. `Services/RastreoLineasService.cs`** — solo si la fuente expone una o más columnas de teléfono (celular, fijo, móvil, NumeroTelefono*, etc.):
+- En el comentario superior y en el comentario sobre `SqlConsulta`: añadir el nombre de la fuente a la lista.
+- Añadir un bloque `UNION ALL` por cada columna de teléfono dentro del CTE `Resultados` (ver patrón de `Cajacopi (celular)`/`Cajacopi (fijo)` o de `MutualSer (celular 1/2/fijo)` en líneas ~167-195).
+- Patrón por bloque:
+  ```sql
+  UNION ALL
+  -- <Fuente> (<descripción columna>)
+  SELECT '<Fuente>', '<Etiqueta UI>',
+         x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+    FROM dbo.<Tabla> x
+    LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+   WHERE x.<ColumnaTelefono> = @numero
+   GROUP BY x.TitularID, t.Nombre
+  ```
+- Nota: ADR-015 originalmente excluyó algunas tablas con teléfono (DatosClaro, MutualSer) bajo la idea de que "no son fuentes de localización". La práctica desde 2026-04 ha sido **incluir cualquier fuente con teléfono usable** — el ADR-015 quedó parcialmente desactualizado y se anota en el header del archivo.
+
+**Servicios que NO se tocan** (verificado: no consultan `vw_BaseMadre` ni `fn_BaseMadrePorCartera`): `ComparadorCarterasService`, `GestionCarterasService`, `CargueReporteService`.
 
 ### 6. Backend — API
 
@@ -282,6 +298,7 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - `ColumnasMadre.Todas` incluye las nuevas entradas.
 - Si la fuente expone celular/email: switches `ColumnaCelular`/`ColumnaEmail` y arrays `FUENTES_CELULAR`/`FUENTES_EMAIL` actualizados, en sincronía exacta de claves.
 - Si la fuente aporta localización: `ObtenerLocalizacionAsync` actualizada (subquery + JOIN + SUMs + `LocalizacionResumenRaw` + array `Fuente(...)`).
+- Si la fuente expone columnas de teléfono: `RastreoLineasService.SqlConsulta` extendido con `UNION ALL` por cada columna.
 - ConsultaIntegrada renderiza la nueva fuente como sub-bloque dentro del grupo "Contactabilidad" (sin tocar el frontend).
 - `ESTADO_FUENTE` en CalificadorCarteraPage incluye la nueva fuente con etiqueta + color.
 - Sidebar sigue alfabético; no se duplican rutas.
@@ -295,6 +312,7 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - ❌ **Modificar solo `vw_BaseMadre` y olvidar `fn_BaseMadrePorCartera`** — el código productivo consume el TVF; la vista solo se usa para EF mapping. Una migración que toca solo la vista deja el sistema inconsistente.
 - ❌ **Componer LINQ encima de `FromSql(TVF)`** — EF Core envuelve la TVF en subquery sin pushdown del TOP/filtros, causando timeouts (lección de `project_optimizacion_cartera_estado.md`). Mover TOP y filtros al SQL del TVF directamente.
 - ❌ **Olvidar la lista enumerada en `LocalizacionResumenRaw` y en el array `Fuente(...)`** — el método `ObtenerLocalizacionAsync` enumera las fuentes a mano (no es agnóstico). Si añades MutualSer al SQL pero no al DTO ni al retorno, la fuente nueva no aparece en el panel.
+- ❌ **Asumir que `RastreoLineasService` no se toca solo porque ADR-015 lo dice** — el ADR-015 quedó parcialmente desactualizado. La regla práctica vigente: si la fuente expone teléfono, **se añade al `UNION ALL` de `RastreoLineasService.SqlConsulta`**.
 - ❌ **Hardcodear cadenas de conexión** (regla global #3).
 - ❌ **Consumir la tabla fuente vía `vw_BaseMadre` cuando se necesitan 3 estados** — rompe localización (la vista aplana NULLs a `'0'`).
 - ❌ **Añadir la fuente al `switch` de celular/email si la BD no la expone como tal** — generaría columnas fantasma y excepciones EF.

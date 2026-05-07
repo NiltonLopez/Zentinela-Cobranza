@@ -12,7 +12,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// alineadas con el bloque Localización del Calificador de Cartera) y devuelve,
 /// agrupado por tabla, los titulares asociados.
 ///
-/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro.
+/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer.
 /// NO incluye auditorías, listas negras, directorios, ni logs salientes — esas
 /// no son fuentes de localización.
 ///
@@ -95,8 +95,9 @@ public class RastreoLineasService : IRastreoLineasService
 
     // ── SQL: UNION ALL sobre las fuentes de Localización ─────────────────────
     // Solo tablas del bloque Localización del Calificador con columna de teléfono:
-    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro.
+    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer.
     // Cajacopi y Positiva tienen Celular y Fijo → 2 SELECTs cada una.
+    // MutualSer tiene Celular, Celular2 y Fijo → 3 SELECTs.
     // ISNULL en Nombre por si algún TitularID no existe en dbo.Titular (orphan).
     private const string SqlConsulta = """
         ;WITH Resultados AS (
@@ -171,6 +172,30 @@ public class RastreoLineasService : IRastreoLineasService
               FROM dbo.DatosClaro x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
              WHERE x.NumeroTelefono = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- MutualSer (celular 1)
+            SELECT 'MutualSer', 'MutualSer (celular 1)',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.MutualSer x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroTelefonoCelular = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- MutualSer (celular 2)
+            SELECT 'MutualSer', 'MutualSer (celular 2)',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.MutualSer x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroTelefonoCelular2 = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- MutualSer (fijo)
+            SELECT 'MutualSer', 'MutualSer (fijo)',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.MutualSer x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroTelefonoFijo = @numero
              GROUP BY x.TitularID, t.Nombre
         )
         SELECT Tabla, Etiqueta, NumeroDocumento, Nombre, Apariciones

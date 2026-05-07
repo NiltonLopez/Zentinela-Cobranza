@@ -1,7 +1,18 @@
 # ADR-015 — Rastreo de Líneas (multititularidad)
 
-**Estado:** Aceptada
+**Estado:** Aceptada — parcialmente actualizada (ver "Nota 2026-05-07")
 **Fecha:** 2026-04-29
+
+> **Nota 2026-05-07** — El criterio "solo tablas de Localización" del bloque
+> original quedó superado en la práctica. La regla vigente es: **si una tabla
+> tiene columna de teléfono usable, se incluye en el rastreo**. Tablas ya
+> agregadas posteriormente: `DatosClaro` (commit `ca35f7c`), `MutualSer`
+> (commit en curso). El criterio de exclusión actual queda restringido a:
+> auditorías (`AuditoriaMensajeria`, `AuditoriaIVR`), logs salientes
+> (`MensajesEnviados`, `IVREnviados`), listas negras (`ListaNegraTelefonos`),
+> directorios (`NumeroTelefonoGeneral`), staging (`*Auxiliar`), respaldos
+> (`*_bak`, `Staging_*`) y vistas (`vw_*`). Ver `RastreoLineasService.cs`
+> para el set vigente.
 
 ## Contexto
 
