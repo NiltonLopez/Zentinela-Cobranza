@@ -1,4 +1,6 @@
-using System.Globalization;
+using System.Data;
+using System.Text;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Core.Entities;
 using Zentinela.Core.Interfaces;
@@ -6,6 +8,17 @@ using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Repositories;
 
+/// <summary>
+/// Repositorio para vw_BaseMadre vía dbo.fn_BaseMadrePorCartera (iTVF).
+///
+/// IMPORTANTE: NO usamos composición LINQ (.Where(...)) encima de FromSql porque
+/// EF Core wrappea como SELECT [t].* FROM (SELECT * FROM TVF(...)) AS [t] WHERE ...
+/// y SQL Server pierde optimizaciones (batch mode / inline TVF) en ese envoltorio,
+/// causando timeouts de 30s sobre carteras de tamaño moderado. En su lugar,
+/// construimos el SQL completo con todos los filtros incluidos (incluso saldoMinimo,
+/// rotacionMaxima, promesasVigentes y coincidencias — antes en C# memoria) y TOP en
+/// SQL para preview.
+/// </summary>
 public class BaseMadreRepository : IBaseMadreRepository
 {
     private readonly CallCenterDbContext _context;
@@ -14,33 +27,6 @@ public class BaseMadreRepository : IBaseMadreRepository
     {
         _context = context;
     }
-
-    // ── Selectores de celular/email por fuente ────────────────────────────────
-    // Acceden a los valores que la vista ya expone (TOP 1 más reciente).
-    // Usar estos valores garantiza que la comparación sea idéntica a hacer
-    // b.[Celular Camara] = b.[Celular Positiva] directamente en SQL.
-    private static string? CelularDeFuente(BaseMadreRow b, string fuente) => fuente switch
-    {
-        "Cajacopi"      => b.CelularCajacopi,
-        "Camara"        => b.CelularCamara,
-        "SaludTotal"    => b.CelularSaludTotal,
-        "Positiva"      => b.CelularPositiva,
-        "Tigo"          => b.CelularTigo,
-        "SOS"           => b.CelularSOS,
-        "Claro"         => b.CelularClaro,
-        _               => null,
-    };
-
-    private static string? EmailDeFuente(BaseMadreRow b, string fuente) => fuente switch
-    {
-        "Cajacopi"      => b.EmailCajacopi,
-        "Camara"        => b.EmailCamara,
-        "SaludTotal"    => b.EmailSaludTotal,
-        "Positiva"      => b.EmailPositiva,
-        "Tigo"          => b.EmailTigo,
-        "Claro"         => b.EmailClaro,
-        _               => null,
-    };
 
     public async Task<(IEnumerable<BaseMadreRow> Filas, int Total)> ObtenerAsync(
         int          carteraID,
@@ -58,126 +44,156 @@ public class BaseMadreRepository : IBaseMadreRepository
         List<string> coincidenciasEmail,
         int?         limite)
     {
-        // Lectura via dbo.fn_BaseMadrePorCartera (iTVF, ver migración
-        // docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql).
-        // El TVF acepta @LiderID = NULL para admin/director sin restricción de líder
-        // y pre-restringe el dominio de las CTEs Ultimo*. Mejora medida vs vw_BaseMadre
-        // directa: ~3× P90, hasta ~17× P99. Cartera grande sin líder (admin) ~3.9s.
-        // Los filtros LINQ que siguen se componen como SELECT * FROM (TVF) WHERE …,
-        // preservando el ergonomic .Where() encadenado.
-        var query = _context.BaseMadreRows
-            .FromSql($"SELECT * FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderID})");
+        var conditions = new List<string>();
+        var paramSpecs = new List<(string Name, object Value)>
+        {
+            ("@CarteraID", carteraID),
+            ("@LiderID",   (object?)liderID ?? DBNull.Value),
+        };
 
-        // ── Filtros traducibles a SQL ─────────────────────────────────────────
+        void AddCondition(string condition, params (string Name, object Value)[] extraParams)
+        {
+            conditions.Add(condition);
+            paramSpecs.AddRange(extraParams);
+        }
 
+        // ── Filtros simples por igualdad ─────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(ultimoPerfil))
-            query = query.Where(b => b.UltimoPerfil == ultimoPerfil);
+            AddCondition("[Ultimo Perfil] = @UltimoPerfil", ("@UltimoPerfil", ultimoPerfil));
 
         if (!string.IsNullOrWhiteSpace(mejorPerfil))
-            query = query.Where(b => b.MejorPerfil == mejorPerfil);
+            AddCondition("[Mejor Perfil] = @MejorPerfil",   ("@MejorPerfil", mejorPerfil));
 
         if (!string.IsNullOrWhiteSpace(tipoAfiliado))
-            query = query.Where(b => b.TipoAfiliado == tipoAfiliado);
+            AddCondition("[Tipo Afiliado] = @TipoAfiliado", ("@TipoAfiliado", tipoAfiliado));
 
         if (!string.IsNullOrWhiteSpace(estadoFosyga))
-            query = query.Where(b => b.EstadoEnFosyga == estadoFosyga);
+            AddCondition("[Estado en Fosyga] = @EstadoFosyga", ("@EstadoFosyga", estadoFosyga));
 
-        // Fuentes de celular: titular debe tener número en TODAS las fuentes elegidas
-        foreach (var fuente in fuentesCelular)
-        {
-            query = fuente switch
-            {
-                "Cajacopi"      => query.Where(b => b.CelularCajacopi      != null && b.CelularCajacopi      != "" && b.CelularCajacopi      != "0"),
-                "Camara"        => query.Where(b => b.CelularCamara        != null && b.CelularCamara        != "" && b.CelularCamara        != "0"),
-                "SaludTotal"    => query.Where(b => b.CelularSaludTotal    != null && b.CelularSaludTotal    != "" && b.CelularSaludTotal    != "0"),
-                "Positiva"      => query.Where(b => b.CelularPositiva      != null && b.CelularPositiva      != "" && b.CelularPositiva      != "0"),
-                "Tigo"          => query.Where(b => b.CelularTigo          != null && b.CelularTigo          != "" && b.CelularTigo          != "0"),
-                "SOS"           => query.Where(b => b.CelularSOS           != null && b.CelularSOS           != "" && b.CelularSOS           != "0"),
-                _               => query,
-            };
-        }
-
-        // Fuentes de email: titular debe tener email en TODAS las fuentes elegidas
-        foreach (var fuente in fuentesEmail)
-        {
-            query = fuente switch
-            {
-                "Cajacopi"      => query.Where(b => b.EmailCajacopi      != null && b.EmailCajacopi      != "" && b.EmailCajacopi      != "0"),
-                "Camara"        => query.Where(b => b.EmailCamara        != null && b.EmailCamara        != "" && b.EmailCamara        != "0"),
-                "SaludTotal"    => query.Where(b => b.EmailSaludTotal    != null && b.EmailSaludTotal    != "" && b.EmailSaludTotal    != "0"),
-                "Positiva"      => query.Where(b => b.EmailPositiva      != null && b.EmailPositiva      != "" && b.EmailPositiva      != "0"),
-                "Tigo"          => query.Where(b => b.EmailTigo          != null && b.EmailTigo          != "" && b.EmailTigo          != "0"),
-                _               => query,
-            };
-        }
-
-        // ── Filtros en memoria ────────────────────────────────────────────────
-        // FechaPromesa y Rotacion vienen como strings desde la vista.
-        var todasLasFilas = await query.AsNoTracking().ToListAsync();
-
+        // ── Filtros numéricos / fecha (antes en C# memoria) ──────────────────
         if (saldoMinimo.HasValue)
-            todasLasFilas = todasLasFilas
-                .Where(b => decimal.TryParse(
-                    b.Saldo,
-                    NumberStyles.Any,
-                    CultureInfo.InvariantCulture,
-                    out var s) && s >= saldoMinimo.Value)
-                .ToList();
+            AddCondition("TRY_CAST([Saldo] AS decimal(18,2)) >= @SaldoMinimo",
+                         ("@SaldoMinimo", saldoMinimo.Value));
 
         if (rotacionMaxima.HasValue)
-            todasLasFilas = todasLasFilas
-                .Where(b => int.TryParse(b.Rotacion, out var r) && r <= rotacionMaxima.Value)
-                .ToList();
+            AddCondition("TRY_CAST([Rotacion] AS int) <= @RotacionMaxima",
+                         ("@RotacionMaxima", rotacionMaxima.Value));
 
         if (promesasVigentes.HasValue)
         {
-            var hoy = DateOnly.FromDateTime(DateTime.Today);
-            todasLasFilas = todasLasFilas
-                .Where(b =>
-                {
-                    // FechaPromesa viene en formato dd/MM/yyyy desde la vista
-                    var tieneVigente = DateOnly.TryParseExact(
-                        b.FechaPromesa, "dd/MM/yyyy",
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.None,
-                        out var fp) && fp >= hoy;
-                    return promesasVigentes.Value ? tieneVigente : !tieneVigente;
-                })
-                .ToList();
+            // Vista guarda FechaPromesa en formato dd/MM/yyyy ("103" en CONVERT)
+            conditions.Add(promesasVigentes.Value
+                ? "TRY_CONVERT(date, [Fecha Promesa], 103) >= CAST(GETDATE() AS date)"
+                : "(TRY_CONVERT(date, [Fecha Promesa], 103) IS NULL OR TRY_CONVERT(date, [Fecha Promesa], 103) < CAST(GETDATE() AS date))");
         }
 
-        // Coincidencias: compara los valores que la vista expone (TOP 1 por fuente),
-        // equivalente a b.[Celular X] = b.[Celular Y] AND b.[Celular X] != '0'.
+        // ── Fuentes (al menos una requerida por cada checkbox) ───────────────
+        // Whitelist de columnas: el switch impide inyección por nombre de fuente.
+        foreach (var fuente in fuentesCelular)
+        {
+            var col = ColumnaCelular(fuente);
+            if (col != null) conditions.Add($"{col} NOT IN ('','0')");
+        }
+
+        foreach (var fuente in fuentesEmail)
+        {
+            var col = ColumnaEmail(fuente);
+            if (col != null) conditions.Add($"{col} NOT IN ('','0')");
+        }
+
+        // ── Coincidencias entre fuentes (mismo valor en N celulares / N emails) ─
+        // C# verificaba: todos los valores no vacíos AND todos iguales. SQL: cada
+        // columna NOT IN ('','0') AND igual a la primera.
         if (coincidenciasCelular.Count >= 2)
-            todasLasFilas = todasLasFilas
-                .Where(b =>
-                {
-                    var valores = coincidenciasCelular
-                        .Select(f => CelularDeFuente(b, f))
-                        .Where(v => !string.IsNullOrEmpty(v) && v != "0")
-                        .ToList();
-                    return valores.Count == coincidenciasCelular.Count
-                        && valores.Distinct().Count() == 1;
-                })
-                .ToList();
+            AgregarCoincidencias(conditions, coincidenciasCelular, ColumnaCelular);
 
         if (coincidenciasEmail.Count >= 2)
-            todasLasFilas = todasLasFilas
-                .Where(b =>
-                {
-                    var valores = coincidenciasEmail
-                        .Select(f => EmailDeFuente(b, f))
-                        .Where(v => !string.IsNullOrEmpty(v) && v != "0")
-                        .ToList();
-                    return valores.Count == coincidenciasEmail.Count
-                        && valores.Distinct().Count() == 1;
-                })
-                .ToList();
+            AgregarCoincidencias(conditions, coincidenciasEmail, ColumnaEmail);
 
-        var total = todasLasFilas.Count;
-        var filas = limite.HasValue ? todasLasFilas.Take(limite.Value) : todasLasFilas;
+        var whereClause = conditions.Count > 0
+            ? "WHERE " + string.Join(" AND ", conditions)
+            : string.Empty;
+
+        // limite es int? validado upstream — interpolación segura (no es input string)
+        var topClause = limite.HasValue ? $"TOP ({limite.Value})" : string.Empty;
+
+        var countSql = $"""
+            SELECT COUNT(*) AS Value
+            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            {whereClause}
+            """;
+
+        var dataSql = $"""
+            SELECT {topClause} *
+            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            {whereClause}
+            """;
+
+        // SqlParameter no se puede reusar entre comandos — instanciamos por query.
+        SqlParameter[] CreateParams() =>
+            paramSpecs.Select(s => new SqlParameter(s.Name, s.Value)).ToArray();
+
+        var total = await _context.Database
+            .SqlQueryRaw<int>(countSql, CreateParams())
+            .FirstOrDefaultAsync();
+
+        var filas = await _context.BaseMadreRows
+            .FromSqlRaw(dataSql, CreateParams())
+            .AsNoTracking()
+            .ToListAsync();
 
         return (filas, total);
     }
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Whitelist de columnas de celular por fuente. Devuelve null si la fuente no
+    /// está en la lista (silencioso, mantiene paridad con el switch original).
+    /// </summary>
+    private static string? ColumnaCelular(string fuente) => fuente switch
+    {
+        "Cajacopi"   => "[Celular Cajacopi]",
+        "Camara"     => "[Celular Camara]",
+        "SaludTotal" => "[Celular Salud Total]",
+        "Positiva"   => "[Celular Positiva]",
+        "Tigo"       => "[Celular Tigo]",
+        "SOS"        => "[Celular SOS]",
+        "Claro"      => "[Celular Claro]",
+        _            => null,
+    };
+
+    private static string? ColumnaEmail(string fuente) => fuente switch
+    {
+        "Cajacopi"   => "[Email CajaCopi]",
+        "Camara"     => "[Email Camara]",
+        "SaludTotal" => "[Email Salud Total]",
+        "Positiva"   => "[Email Positiva]",
+        "Tigo"       => "[Email Tigo]",
+        "Claro"      => "[Email Claro]",
+        _            => null,
+    };
+
+    /// <summary>
+    /// Agrega cláusulas AND para que las N fuentes elegidas tengan el mismo valor
+    /// no vacío. C# original: <c>valores.Distinct().Count() == 1</c> tras filtrar
+    /// vacíos/"0". Aquí: cada columna NOT IN ('','0') y todas iguales a la primera.
+    /// </summary>
+    private static void AgregarCoincidencias(
+        List<string> conditions, List<string> fuentes, Func<string, string?> mapper)
+    {
+        var cols = fuentes.Select(mapper).Where(c => c is not null).Cast<string>().ToList();
+        if (cols.Count < 2) return;
+
+        var sb = new StringBuilder();
+        sb.Append('(');
+        sb.Append(cols[0]).Append(" NOT IN ('','0')");
+        for (var i = 1; i < cols.Count; i++)
+        {
+            sb.Append(" AND ").Append(cols[i]).Append(" NOT IN ('','0')");
+            sb.Append(" AND ").Append(cols[0]).Append(" = ").Append(cols[i]);
+        }
+        sb.Append(')');
+        conditions.Add(sb.ToString());
+    }
 }
