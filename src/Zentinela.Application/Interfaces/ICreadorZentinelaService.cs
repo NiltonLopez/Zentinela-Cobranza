@@ -9,6 +9,13 @@ public interface ICreadorZentinelaService
     IEnumerable<ColumnaBaseMadre> ObtenerColumnas();
 
     /// <summary>
+    /// Opciones del dropdown superior. Para Líder: una entrada por cartera asignada.
+    /// Para Admin/Director: cada (Cartera × Líder) presente en Lider_Cartera más una
+    /// entrada agregada "Cartera Completo" por cartera (LiderID = null).
+    /// </summary>
+    Task<IEnumerable<OpcionCarteraDto>> ObtenerOpcionesAsync(ContextoUsuario contexto);
+
+    /// <summary>
     /// Retorna las primeras 100 filas que cumplen los filtros, más el total real.
     /// </summary>
     Task<PreviewBaseMadreResponse> ObtenerPreviewAsync(

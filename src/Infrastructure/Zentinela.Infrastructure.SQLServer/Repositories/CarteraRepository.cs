@@ -33,4 +33,16 @@ public class CarteraRepository : ICarteraRepository
             .AsNoTracking()
             .ToListAsync();
     }
+
+    public async Task<IEnumerable<LiderCartera>> ObtenerCombinacionesActivasAsync()
+    {
+        return await _context.LiderCarteras
+            .Include(lc => lc.Cartera)
+            .Include(lc => lc.Lider)
+            .Where(lc => lc.Cartera.Activa)
+            .OrderBy(lc => lc.Cartera.NombreCartera)
+            .ThenBy(lc => lc.Lider.Nombre)
+            .AsNoTracking()
+            .ToListAsync();
+    }
 }

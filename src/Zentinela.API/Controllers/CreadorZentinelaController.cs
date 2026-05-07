@@ -31,6 +31,20 @@ public class CreadorZentinelaController : ControllerBase
     }
 
     /// <summary>
+    /// Opciones del selector superior. Construido desde Lider_Cartera.
+    /// Líder ve sus carteras (etiqueta solo NombreCartera).
+    /// Admin/Director ve cada (Cartera × Líder) más una entrada agregada
+    /// "Cartera Completo" por cartera (LiderID = null).
+    /// </summary>
+    [HttpGet("opciones")]
+    public async Task<IActionResult> ObtenerOpciones()
+    {
+        var contexto = ObtenerContexto();
+        var opciones = await _service.ObtenerOpcionesAsync(contexto);
+        return Ok(opciones);
+    }
+
+    /// <summary>
     /// Retorna las primeras 100 filas que cumplen los filtros, más el total real.
     /// </summary>
     [HttpPost("preview")]

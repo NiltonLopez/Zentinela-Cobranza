@@ -6,6 +6,12 @@ export interface ColumnaBaseMadre {
 
 export interface FiltroBaseMadreRequest {
   carteraID: number;
+  /**
+   * LiderID opcional. Solo lo respeta el backend para Admin/Director.
+   * null = "Cartera Completo" (todos los líderes de la cartera).
+   * Para rol Líder se ignora — el backend usa siempre su LiderID del JWT.
+   */
+  liderID?: number | null;
   ultimoPerfil?: string;
   mejorPerfil?: string;
   promesasVigentes?: boolean;
@@ -23,4 +29,16 @@ export interface FiltroBaseMadreRequest {
 export interface PreviewBaseMadreResponse {
   total: number;
   filas: Record<string, unknown>[];
+}
+
+/**
+ * Entrada del selector superior del Creador.
+ *  - Líder: una entrada por cartera asignada, etiqueta = "NombreCartera".
+ *  - Admin/Director: una entrada por (Cartera × Líder) + una agregada
+ *    "NombreCartera Completo" con liderID = null.
+ */
+export interface OpcionCarteraDto {
+  carteraID: number;
+  liderID:   number | null;
+  etiqueta:  string;
 }

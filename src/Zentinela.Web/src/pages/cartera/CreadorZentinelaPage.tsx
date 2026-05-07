@@ -1,9 +1,21 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
-import { obtenerCarteras } from '../../api/carterasApi';
-import { obtenerColumnas, obtenerPreview, exportarExcel } from '../../api/creadorApi';
+import {
+  obtenerColumnas,
+  obtenerPreview,
+  exportarExcel,
+  obtenerOpcionesCreador,
+} from '../../api/creadorApi';
 import type { FiltroBaseMadreRequest, ColumnaBaseMadre } from '../../types/creador';
+
+interface SeleccionCartera {
+  carteraID: number;
+  liderID:   number | null;
+}
+
+const claveSeleccion = (carteraID: number, liderID: number | null) =>
+  `${carteraID}|${liderID ?? ''}`;
 
 // ── Tipificaciones conocidas para dropdowns ───────────────────────────────────
 const TIPIFICACIONES = [
@@ -48,7 +60,7 @@ const labelStyle: React.CSSProperties = {
 
 // ── Página ────────────────────────────────────────────────────────────────────
 export function CreadorZentinelaPage() {
-  const [carteraID,        setCarteraID]        = useState<number | null>(null);
+  const [seleccion,        setSeleccion]        = useState<SeleccionCartera | null>(null);
   const [ultimoPerfil,     setUltimoPerfil]     = useState('');
   const [mejorPerfil,      setMejorPerfil]      = useState('');
   const [promesasVigentes, setPromesasVigentes] = useState<'all' | 'vigentes' | 'sin'>('all');
@@ -67,9 +79,9 @@ export function CreadorZentinelaPage() {
   const anchorRef = useRef<HTMLAnchorElement>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
-  const { data: carteras = [] } = useQuery({
-    queryKey: ['carteras'],
-    queryFn: obtenerCarteras,
+  const { data: opciones = [] } = useQuery({
+    queryKey: ['creador-opciones'],
+    queryFn: obtenerOpcionesCreador,
   });
 
   const { data: columnas = [] } = useQuery({
@@ -89,7 +101,10 @@ export function CreadorZentinelaPage() {
     mutationFn: (filtro: FiltroBaseMadreRequest) => exportarExcel(filtro),
     onSuccess: (blob) => {
       const url          = URL.createObjectURL(blob);
-      const carteraNombre = carteras.find(c => c.id === carteraID)?.nombreCartera ?? 'Base';
+      const etiqueta     = seleccion
+        ? opciones.find(o => o.carteraID === seleccion.carteraID && o.liderID === seleccion.liderID)?.etiqueta
+        : undefined;
+      const carteraNombre = etiqueta ?? 'Base';
       const fecha        = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       if (anchorRef.current) {
         anchorRef.current.href     = url;
@@ -102,7 +117,8 @@ export function CreadorZentinelaPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const construirFiltro = (): FiltroBaseMadreRequest => ({
-    carteraID:          carteraID!,
+    carteraID:          seleccion!.carteraID,
+    liderID:            seleccion!.liderID,
     ultimoPerfil:       ultimoPerfil || undefined,
     mejorPerfil:        mejorPerfil  || undefined,
     promesasVigentes:   promesasVigentes === 'vigentes' ? true : promesasVigentes === 'sin' ? false : undefined,
@@ -137,8 +153,8 @@ export function CreadorZentinelaPage() {
       prev.includes(fuente) ? prev.filter(f => f !== fuente) : [...prev, fuente],
     );
 
-  const handleVerPreview  = () => { if (carteraID) setFiltroActivo(construirFiltro()); };
-  const handleExportar    = () => { if (carteraID) exportMutation.mutate(construirFiltro()); };
+  const handleVerPreview  = () => { if (seleccion) setFiltroActivo(construirFiltro()); };
+  const handleExportar    = () => { if (seleccion) exportMutation.mutate(construirFiltro()); };
 
   const toggleColumna = (nombre: string) =>
     setColumnasSeleccionadas(prev =>
@@ -177,13 +193,27 @@ export function CreadorZentinelaPage() {
         <div style={{ marginBottom: '16px' }}>
           <label style={labelStyle}>Cartera</label>
           <select
-            value={carteraID ?? ''}
-            onChange={e => { setCarteraID(e.target.value ? Number(e.target.value) : null); setFiltroActivo(null); }}
+            value={seleccion ? claveSeleccion(seleccion.carteraID, seleccion.liderID) : ''}
+            onChange={e => {
+              const v = e.target.value;
+              if (!v) { setSeleccion(null); setFiltroActivo(null); return; }
+              const [cid, lid] = v.split('|');
+              setSeleccion({
+                carteraID: Number(cid),
+                liderID:   lid === '' ? null : Number(lid),
+              });
+              setFiltroActivo(null);
+            }}
             style={{ ...inputStyle, cursor: 'pointer' }}
           >
             <option value="">Selecciona una cartera...</option>
-            {carteras.map(c => (
-              <option key={c.id} value={c.id}>{c.nombreCartera}</option>
+            {opciones.map(o => (
+              <option
+                key={claveSeleccion(o.carteraID, o.liderID)}
+                value={claveSeleccion(o.carteraID, o.liderID)}
+              >
+                {o.etiqueta}
+              </option>
             ))}
           </select>
         </div>
@@ -425,12 +455,12 @@ export function CreadorZentinelaPage() {
         <div style={{ marginTop: '16px' }}>
           <button
             onClick={handleVerPreview}
-            disabled={!carteraID || cargandoPreview}
+            disabled={!seleccion || cargandoPreview}
             style={{
               padding: '8px 20px', borderRadius: '6px', border: 'none',
-              background: carteraID ? 'var(--z-brand)' : 'var(--z-border)',
+              background: seleccion ? 'var(--z-brand)' : 'var(--z-border)',
               color: 'white', fontSize: '13px', fontWeight: 600,
-              cursor: carteraID ? 'pointer' : 'not-allowed',
+              cursor: seleccion ? 'pointer' : 'not-allowed',
               opacity: cargandoPreview ? 0.7 : 1,
             }}
           >

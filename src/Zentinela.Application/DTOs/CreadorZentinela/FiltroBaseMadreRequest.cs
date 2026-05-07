@@ -4,6 +4,14 @@ public class FiltroBaseMadreRequest
 {
     public int CarteraID { get; set; }
 
+    /// <summary>
+    /// LiderID opcional. Solo lo respeta el backend cuando el rol es Director
+    /// o Admin: en ese caso se filtra estrictamente por ese líder, o se trae
+    /// la cartera completa si llega null. Para el rol Líder se usa siempre su
+    /// LiderID del JWT, ignorando este campo (guard de seguridad).
+    /// </summary>
+    public int? LiderID { get; set; }
+
     /// <summary>Tipificación exacta del último perfil de gestión.</summary>
     public string? UltimoPerfil { get; set; }
 

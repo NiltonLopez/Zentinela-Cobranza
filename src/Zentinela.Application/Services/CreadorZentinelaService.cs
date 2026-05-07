@@ -26,10 +26,53 @@ public class CreadorZentinelaService : ICreadorZentinelaService
 
     public IEnumerable<ColumnaBaseMadre> ObtenerColumnas() => ColumnasMadre.Todas;
 
+    public async Task<IEnumerable<OpcionCarteraDto>> ObtenerOpcionesAsync(ContextoUsuario contexto)
+    {
+        // Líder: una entrada por cartera asignada (etiqueta = NombreCartera).
+        if (contexto.Rol == Roles.Lider && contexto.LiderID.HasValue)
+        {
+            var carteras = await _carteraRepo.ObtenerPorLiderAsync(contexto.LiderID.Value);
+            return carteras.Select(c => new OpcionCarteraDto
+            {
+                CarteraID = c.ID,
+                LiderID   = contexto.LiderID,
+                Etiqueta  = c.NombreCartera,
+            }).ToList();
+        }
+
+        // Admin / Director: combinaciones individuales + entrada agregada por cartera.
+        var combinaciones = await _carteraRepo.ObtenerCombinacionesActivasAsync();
+        var resultado = new List<OpcionCarteraDto>();
+
+        foreach (var grupo in combinaciones.GroupBy(lc => lc.CarteraID))
+        {
+            var nombreCartera = grupo.First().Cartera.NombreCartera;
+
+            foreach (var lc in grupo)
+            {
+                resultado.Add(new OpcionCarteraDto
+                {
+                    CarteraID = lc.CarteraID,
+                    LiderID   = lc.LiderID,
+                    Etiqueta  = $"{nombreCartera} — {lc.Lider.Nombre}",
+                });
+            }
+
+            resultado.Add(new OpcionCarteraDto
+            {
+                CarteraID = grupo.Key,
+                LiderID   = null,
+                Etiqueta  = $"{nombreCartera} Completo",
+            });
+        }
+
+        return resultado;
+    }
+
     public async Task<PreviewBaseMadreResponse> ObtenerPreviewAsync(
         ContextoUsuario contexto, FiltroBaseMadreRequest filtro)
     {
-        var liderID = ResolverLiderID(contexto);
+        var liderID = ResolverLiderID(contexto, filtro.LiderID);
         var (filas, total) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
             filtro.UltimoPerfil, filtro.MejorPerfil,
@@ -52,7 +95,7 @@ public class CreadorZentinelaService : ICreadorZentinelaService
     public async Task<(byte[] Bytes, string NombreArchivo)> ExportarExcelAsync(
         ContextoUsuario contexto, FiltroBaseMadreRequest filtro)
     {
-        var liderID = ResolverLiderID(contexto);
+        var liderID = ResolverLiderID(contexto, filtro.LiderID);
         var (filas, _) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
             filtro.UltimoPerfil, filtro.MejorPerfil,
@@ -81,11 +124,13 @@ public class CreadorZentinelaService : ICreadorZentinelaService
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Líder → usa su LiderID para filtrar solo sus titulares.
-    /// Admin / Director → null (sin restricción por líder).
+    /// Líder → siempre su LiderID del JWT, ignorando lo que mande el cliente
+    /// (guard de seguridad: un líder no puede ver titulares de otro líder).
+    /// Admin / Director → respeta el LiderID del filtro: un valor concreto
+    /// restringe la consulta a ese líder; null = "Cartera Completo" (todos).
     /// </summary>
-    private static int? ResolverLiderID(ContextoUsuario contexto) =>
-        contexto.Rol == Roles.Lider ? contexto.LiderID : null;
+    private static int? ResolverLiderID(ContextoUsuario contexto, int? liderIDDelFiltro) =>
+        contexto.Rol == Roles.Lider ? contexto.LiderID : liderIDDelFiltro;
 
     private static IEnumerable<ColumnaBaseMadre> ResolverColumnas(List<string> seleccionadas) =>
         seleccionadas.Count == 0

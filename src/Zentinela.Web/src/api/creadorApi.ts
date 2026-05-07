@@ -1,8 +1,18 @@
 import api from './authApi';
-import type { ColumnaBaseMadre, FiltroBaseMadreRequest, PreviewBaseMadreResponse } from '../types/creador';
+import type {
+  ColumnaBaseMadre,
+  FiltroBaseMadreRequest,
+  PreviewBaseMadreResponse,
+  OpcionCarteraDto,
+} from '../types/creador';
 
 export const obtenerColumnas = async (): Promise<ColumnaBaseMadre[]> => {
   const res = await api.get<ColumnaBaseMadre[]>('/api/creador/columnas');
+  return res.data;
+};
+
+export const obtenerOpcionesCreador = async (): Promise<OpcionCarteraDto[]> => {
+  const res = await api.get<OpcionCarteraDto[]>('/api/creador/opciones');
   return res.data;
 };
 
