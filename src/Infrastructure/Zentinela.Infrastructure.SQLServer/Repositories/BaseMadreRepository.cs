@@ -23,6 +23,10 @@ public class BaseMadreRepository : IBaseMadreRepository
 {
     private readonly CallCenterDbContext _context;
 
+    // Carteras pesadas (P99 ~190k filas, admin sin líder ~395k) + cold cache pueden
+    // demorar más que el default de 30s entre la TVF, los filtros y el TOP.
+    private const int CommandTimeoutSegundos = 180;
+
     public BaseMadreRepository(CallCenterDbContext context)
     {
         _context = context;
@@ -132,6 +136,9 @@ public class BaseMadreRepository : IBaseMadreRepository
         // SqlParameter no se puede reusar entre comandos — instanciamos por query.
         SqlParameter[] CreateParams() =>
             paramSpecs.Select(s => new SqlParameter(s.Name, s.Value)).ToArray();
+
+        // Aplica a las dos queries que siguen (count + datos) — ambas van por EF Core.
+        _context.Database.SetCommandTimeout(CommandTimeoutSegundos);
 
         var total = await _context.Database
             .SqlQueryRaw<int>(countSql, CreateParams())

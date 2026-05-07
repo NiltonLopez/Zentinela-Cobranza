@@ -249,8 +249,16 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         DROP TABLE #t;
         """;
 
+    // Carteras pesadas (P99 ~190k filas, admin sin líder ~395k) + cold cache pueden
+    // sumar 30-60s entre TVF, materialización y desgloses. El default de 30s para
+    // ADO.NET y EF Core no alcanza — subimos a 3 min para dar margen.
+    private const int CommandTimeoutSegundos = 180;
+
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int liderID)
     {
+        // Aplica al SqlQuery<> de ObtenerLocalizacionAsync (que viaja por EF Core).
+        _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
+
         var conn = _db.Database.GetDbConnection();
         var wasOpen = conn.State == ConnectionState.Open;
         if (!wasOpen) await conn.OpenAsync();
@@ -261,7 +269,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
             await using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = SqlAgregados;
+                cmd.CommandText    = SqlAgregados;
+                cmd.CommandTimeout = CommandTimeoutSegundos;
                 AddParam(cmd, "@CarteraID", carteraID);
                 AddParam(cmd, "@LiderID",   liderID);
 
