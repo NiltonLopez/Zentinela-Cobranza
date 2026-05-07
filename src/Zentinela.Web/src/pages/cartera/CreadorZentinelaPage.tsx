@@ -79,6 +79,8 @@ export function CreadorZentinelaPage() {
   const [coincidenciasEmail,   setCoincidenciasEmail]   = useState<string[]>([]);
   const [filtrosAbiertos,  setFiltrosAbiertos]  = useState(false);
   const [columnasSeleccionadas, setColumnasSeleccionadas] = useState<string[]>([]);
+  // Columnas siempre presentes en el Excel — no se pueden desmarcar.
+  const COLUMNAS_FIJAS = ['NumeroDocumento', 'Nombre'];
   const [filtroActivo,     setFiltroActivo]     = useState<FiltroBaseMadreRequest | null>(null);
 
   const anchorRef = useRef<HTMLAnchorElement>(null);
@@ -161,10 +163,12 @@ export function CreadorZentinelaPage() {
   const handleVerPreview  = () => { if (seleccion) setFiltroActivo(construirFiltro()); };
   const handleExportar    = () => { if (seleccion) exportMutation.mutate(construirFiltro()); };
 
-  const toggleColumna = (nombre: string) =>
+  const toggleColumna = (nombre: string) => {
+    if (COLUMNAS_FIJAS.includes(nombre)) return; // Doc + Nombre no se desmarcan
     setColumnasSeleccionadas(prev =>
       prev.includes(nombre) ? prev.filter(c => c !== nombre) : [...prev, nombre],
     );
+  };
 
   // Columnas visibles en tabla = seleccionadas o todas si lista vacía
   const columnasVisibles: ColumnaBaseMadre[] =
@@ -491,29 +495,42 @@ export function CreadorZentinelaPage() {
               Todas
             </button>
             <button
-              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => n === 'NumeroDocumento' || n === 'Nombre' || n.startsWith('Celular')))}
+              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => COLUMNAS_FIJAS.includes(n) || n.startsWith('Celular')))}
               style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
             >
               Solo celulares
             </button>
             <button
-              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => n === 'NumeroDocumento' || n === 'Nombre' || n.startsWith('Email')))}
+              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => COLUMNAS_FIJAS.includes(n) || n.startsWith('Email')))}
               style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
             >
               Solo emails
+            </button>
+            <button
+              onClick={() => setColumnasSeleccionadas([...COLUMNAS_FIJAS])}
+              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
+            >
+              Ninguna
             </button>
           </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px 12px' }}>
           {columnas.map(col => {
-            const activa = columnasSeleccionadas.length === 0 || columnasSeleccionadas.includes(col.nombre);
+            const esFija = COLUMNAS_FIJAS.includes(col.nombre);
+            const activa = esFija || columnasSeleccionadas.length === 0 || columnasSeleccionadas.includes(col.nombre);
             return (
-              <label key={col.nombre} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', cursor: 'pointer', color: activa ? 'var(--z-text-primary)' : 'var(--z-text-muted)' }}>
+              <label key={col.nombre} style={{
+                display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px',
+                cursor: esFija ? 'not-allowed' : 'pointer',
+                color: activa ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+              }}>
                 <input
                   type="checkbox"
                   checked={activa}
+                  disabled={esFija}
                   onChange={() => {
+                    if (esFija) return; // defensa: el disabled ya bloquea, esto cubre clicks programáticos
                     if (columnasSeleccionadas.length === 0) {
                       setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => n !== col.nombre));
                     } else {
