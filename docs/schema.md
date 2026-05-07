@@ -294,7 +294,7 @@ Contactabilidad telefónica y email obtenida del operador Claro. Cardinalidad ~9
 > **Diferencia con el resto:** las demás fuentes ordenan por `FechaConsulta DESC`; DatosClaro usa `FechaInsercion DESC` (la tabla no tiene `FechaConsulta`). La fecha también se expone en la vista como `[Ultima Insercion Claro]` para medir vigencia de los datos.
 
 ### DatosExternos
-Datos de contacto de fuentes externas genericas.
+Datos de contacto de fuentes externas genericas. **No consumida** por ningún módulo de Zentinela. Desde 2026-05-07 tampoco la referencian `vw_BaseMadre` ni `dbo.fn_BaseMadrePorCartera` (ver `docs/sql/migrations/2026-05-07_remove_datos_externos_from_basemadre.sql`).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1170,7 +1170,7 @@ Diagramas de base de datos (sistema SQL Server Management Studio).
 
 | Función | Descripcion |
 |---------|-------------|
-| dbo.fn_BaseMadrePorCartera(@CarteraID int, @LiderID int = NULL) | Replica funcional de `vw_BaseMadre` filtrada por `(CarteraID, LiderID)` con pre-restricción del dominio en cada CTE Ultimo*. Acepta `@LiderID = NULL` para admin/director sin restricción. Mejora medida P90 ~3×, P99 ~17× vs llamar a la vista directa. Aplicada 2026-05-06 (ver `docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql`). Consumida por `CalificadorCarteraService` y `BaseMadreRepository`. |
+| dbo.fn_BaseMadrePorCartera(@CarteraID int, @LiderID int = NULL) | Replica funcional de `vw_BaseMadre` filtrada por `(CarteraID, LiderID)` con pre-restricción del dominio en cada CTE Ultimo*. Acepta `@LiderID = NULL` para admin/director sin restricción. Mejora medida P90 ~3×, P99 ~17× vs llamar a la vista directa. Aplicada 2026-05-06 (`docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql`). Actualizaciones: 2026-05-07 — fuente MutualSer agregada (10 columnas, ver `2026-05-07_mutualser_in_basemadre.sql`); 2026-05-07 — DatosExternos removida del CTE/JOIN/columnas (`2026-05-07_remove_datos_externos_from_basemadre.sql`). Consumida por `CalificadorCarteraService` y `BaseMadreRepository`. |
 
 ---
 
@@ -1296,7 +1296,6 @@ Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en 
 | `[Celular Cajacopi]`, `[Email CajaCopi]` | `CelularCajacopi`, `EmailCajacopi` | Cajacopi |
 | `[Celular Camara]`, `[Email Camara]` | `CelularCamara`, `EmailCamara` | Camara |
 | `[Celular Salud Total]`, `[Email Salud Total]` | `CelularSaludTotal`, `EmailSaludTotal` | SaludTotal |
-| `[Celular Datos Externos]`, `[Email Datos Externos]` | (no mapeadas — DatosExternos ignorado) | DatosExternos |
 | `[Celular Claro]`, `[Email Claro]`, `[Ultima Insercion Claro]` | `CelularClaro`, `EmailClaro`, `UltimaInsercionClaro` | DatosClaro |
 | `[Celular MutualSer]`, `[Celular 2 MutualSer]`, `[Telefono Fijo MutualSer]`, `[Email MutualSer]`, `[Regimen MutualSer]`, `[Tipo Afiliado MutualSer]`, `[Departamento MutualSer]`, `[Municipio MutualSer]`, `[Estado MutualSer]`, `[Ultima Consulta MutualSer]` | `CelularMutualSer`, `Celular2MutualSer`, `TelefonoFijoMutualSer`, `EmailMutualSer`, `RegimenMutualSer`, `TipoAfiliadoMutualSer`, `DepartamentoMutualSer`, `MunicipioMutualSer`, `EstadoMutualSer`, `UltimaConsultaMutualSer` | MutualSer |
 | `[Celular Positiva]`, `[Email Positiva]` | `CelularPositiva`, `EmailPositiva` | Positiva |
