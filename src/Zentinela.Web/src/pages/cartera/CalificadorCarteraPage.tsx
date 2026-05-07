@@ -229,6 +229,7 @@ const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: st
   'Tigo':             { etiqueta: 'Inactivo',     color: '#DC2626' },
   'SOS':              { etiqueta: 'Funcional',    color: '#16A34A' },
   'Claro':            { etiqueta: 'Inactivo',     color: '#DC2626' },
+  'MutualSer':        { etiqueta: 'Funcional',    color: '#16A34A' },
   'Sura (ARL)':       { etiqueta: 'Funcional',    color: '#16A34A', nota: 'solo nombre de empresa' },
   'Positiva Emp.':    { etiqueta: 'Funcional',    color: '#16A34A' },
   'RUES':             { etiqueta: 'Funcional',    color: '#16A34A' },

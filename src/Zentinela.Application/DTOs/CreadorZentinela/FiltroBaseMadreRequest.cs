@@ -40,7 +40,9 @@ public class FiltroBaseMadreRequest
 
     /// <summary>
     /// Fuentes de datos de celular que deben tener número registrado.
-    /// Claves válidas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, Claro.
+    /// Claves válidas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, Claro,
+    /// MutualSer (cel 1), MutualSer2 (cel 2). MutualSer expone 2 celulares como
+    /// columnas independientes — ver docs/para-tener-en-cuenta.md.
     /// Solo se retornan titulares con número en TODAS las fuentes seleccionadas.
     /// </summary>
     public List<string> FuentesCelular { get; set; } = [];
@@ -55,7 +57,7 @@ public class FiltroBaseMadreRequest
 
     /// <summary>
     /// Fuentes de email que deben tener dirección registrada.
-    /// Claves válidas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, Claro.
+    /// Claves válidas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, Claro, MutualSer.
     /// Solo se retornan titulares con email en TODAS las fuentes seleccionadas.
     /// </summary>
     public List<string> FuentesEmail { get; set; } = [];

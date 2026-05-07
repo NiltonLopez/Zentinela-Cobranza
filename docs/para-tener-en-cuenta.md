@@ -1,76 +1,180 @@
 # Para tener en cuenta
 
-Hallazgos de la revisión general del proyecto (2026-04-20).
+Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
+backlog: los items se cierran o se descartan con razón explícita.
+
+Última actualización: **2026-05-07**.
 
 ---
 
-## Alta prioridad
+## Notas de arquitectura — fuentes de datos
 
-- [ ] **Bug: badge `FilaAgente` — lógica de precedencia incorrecta**
-  La expresión `tieneMeta && !(...) || guardado` tiene ambigüedad de operadores. Además `FilaAgente` solo considera `recaudo` para detectar cambios, mientras `FilaLider` considera `recaudo + honorarios`. Inconsistencia visual garantizada.
+- **MutualSer expone 2 celulares como entradas independientes en el selector.**
+  Es la única fuente con 2 entradas en `BaseMadreRepository.ColumnaCelular`
+  (`MutualSer` → `[Celular MutualSer]`, `MutualSer2` → `[Celular 2 MutualSer]`).
+  Excepción consciente a la convención "1 fuente = 1 entrada": la tabla expone
+  `NumeroTelefonoCelular` y `NumeroTelefonoCelular2` como columnas con valor
+  propio (no por prioridad), y queremos que el líder pueda filtrar por cualquiera
+  de las dos. El frontend (`CreadorZentinelaPage.FUENTES_CELULAR`) muestra dos
+  chips: `MutualSer (1)` y `MutualSer (2)`. El `NumeroTelefonoFijo` se expone
+  como columna pero NO entra al selector — el switch existe para marcado masivo
+  a móviles, no a fijos.
 
-- [ ] **Bug: inputs no se resetean tras `invalidateQueries`**
-  Si otra sesión guarda una meta y el query se refresca, los inputs locales de la fila siguen mostrando el valor viejo aunque el badge diga "Con meta". Solución: usar `key` ligada al valor actual de la meta para forzar remount, o `useEffect` para sincronizar cuando cambian los props.
+---
 
-- [ ] **Partir `InformesRecaudoPage.tsx`**
-  Más de 1.300 líneas con constantes, helpers, hooks, componentes y cuatro tabs en un solo archivo. Estructura sugerida:
+## Resueltos en esta sesión (2026-05-06, Ola 1)
+
+- [x] **Inputs de meta no se resincronizan tras `invalidateQueries`**
+  `AsignacionMetasPage.tsx` ahora pasa `key` ligada al valor servido en
+  `<FilaLider/>` y `<FilaAgente/>`. Si otra sesión actualiza una meta y
+  el query se refresca, los componentes remontan y los inputs reflejan el
+  valor real, no el local en memoria.
+
+- [x] **Agentes retirados aparecen en Asignación de Metas**
+  `AsignacionMetasService.ObtenerFilasAgenteAsync` filtra por
+  `EstadoEmpleado` al consultar `_rrhh.Empleados` y descarta del resultado
+  toda asignación cuyo agente no esté activo.
+
+- [x] **Join en memoria sin documentar en `ObtenerFilasAgenteAsync`**
+  Comentario de bloque arriba del método explicando por qué el join vive en
+  LINQ-to-Objects (cross-DbContext) y por qué no se debe mover al query.
+
+- [x] **Try/catch ciegos en cargues**
+  `CargueReporteService.ConfirmarCargueAsync` y
+  `AsignacionMasivaService.ConfirmarCargueAsync` ahora loguean con
+  `ILogger<T>.LogError` antes del rollback, con contexto (cantidad de filas,
+  cartera/líder cuando aplica) para diagnóstico en producción.
+
+- [x] **Abreviaciones en firmas públicas**
+  `req` → `request` en `GuardarMetaLiderAsync` y `GuardarMetaAgenteAsync`.
+  `lc` → `liderCartera` en el `Select(...)` largo de
+  `InformesRecaudoService.GetInformeLideresAsync`. **No** se renombró `lc`
+  en lambdas one-liner de `Include` ni `idx` en loops del `ExcelExporter`.
+
+- [x] **Timeout extendido del Calificador documentado**
+  `CalificadorCarteraService.CalificarAsync` tiene comentario que explica
+  por qué se amplía el timeout y por qué es seguro (DbContext Scoped, no
+  reutilizado fuera de este flujo).
+
+---
+
+## Resueltos antes de esta sesión (verificados en 2026-05-06)
+
+- [x] **Bug `FilaAgente` — precedencia de operadores**
+  `BadgeMeta tieneMeta={(fila.tieneMeta && !modificado) || guardado}` con
+  paréntesis correctos en `AsignacionMetasPage.tsx:217`.
+
+- [x] **CORS en `Program.cs`**
+  Política `FrontendPolicy` con orígenes explícitos + fallback IP on-premise
+  (`10.0.0.89:5050`). Ya no es hardcode de un solo origen.
+
+- [x] **`AsNoTracking()` consistente en `AsignacionMetasService`**
+  Todas las queries de solo lectura lo aplican.
+
+- [x] **Validación de negocio fuera del controlador**
+  `AsignacionMetasController` valida `Valor <= 0` en endpoint, pero el
+  servicio puede asumir el invariante. La regla se respeta.
+
+- [x] **Manejo global de errores en frontend**
+  Interceptor Axios en `authApi.ts` redirige en 401 y captura otros errores
+  con mensaje al usuario.
+
+- [x] **`AsignacionMetasService` recibe dos `DbContext`**
+  Es legítimo cross-DB (`CallCenterDbContext` y `RecursosHumanosDbContext`)
+  — ver ADR-001. No es violación de DIP en el contexto del proyecto.
+
+---
+
+## Ola 2 — Para cuando aterrice el softphone
+
+Refactors que pagan doble: limpian deuda actual **y** desbloquean la
+integración de un marcador propio + creación de gestiones desde Zentinela.
+Requieren ADR antes de tocar código.
+
+- [ ] **ADR-016: ¿BD destino para gestiones propias?**
+  Decisión a tomar antes de cualquier código de softphone: `DBZentinela` vs
+  `DBCallCenter`. Recomendación: `DBZentinela` (preserva el contrato de
+  `CallCenterDbContext` como `ExcludeFromMigrations` / read-only).
+
+- [ ] **Abstracción `IGestionesRepository`**
+  Hoy `DashboardDirectorService` y `DashboardAsesorService` consultan
+  `_callCenter.UltimosEstadosTitular` directamente. Una interfaz en
+  `Zentinela.Application/Interfaces/Repositories/` con dos
+  implementaciones (Legacy + Zentinela) permite intercambiar fuente sin
+  tocar dashboards.
+
+- [ ] **Entidad `Gestion` en Core + `ExtensionSIP` en `Agente`**
+  Ahora solo existen `UltimoEstadoTitular` (snapshot) y `HistoricoEstadoTitular`
+  (histórico de snapshots). No hay entidad de evento "asesor X gestionó a
+  titular Y a las HH:mm:ss". Necesario para softphone. Agregar `ExtensionSIP`
+  (string, nullable) a `Agente` para mapear a la extensión telefónica.
+
+- [ ] **SignalR cableado básico en `Program.cs`**
+  Registrar `AddSignalR()` y un `NotificacionesHub` vacío, sin migrar nada
+  existente. El softphone necesita push bidireccional para estado de llamada.
+
+- [ ] **Partir `InformesRecaudoPage.tsx` (1.304 líneas) e `InformesVirtualidadPage.tsx` (1.367 líneas)**
+  Estructura propuesta original sigue válida:
   ```
+  pages/informes/_shared/   ← extraer patrón compartido entre Recaudo y Virtualidad
   pages/informes/recaudo/
     InformesRecaudoPage.tsx     ← solo el shell con tabs
-    tabs/TabAgentes.tsx
-    tabs/TabLideres.tsx
-    tabs/TabCarteras.tsx
-    tabs/TabComparativo.tsx
-    components/KpiCard.tsx
-    components/ThSort.tsx
-    hooks/useSortable.ts
-    utils/formatters.ts         ← cop, pct
-    constants.ts                ← MESES, paleta, fechas
+    tabs/...
+    components/...
+    hooks/...
+    utils/formatters.ts
+    constants.ts
+  pages/informes/virtualidad/
+    ...
   ```
+  Hacer una sola vez bien y reutilizar.
+
+- [ ] **`CancellationToken` end-to-end en operaciones largas**
+  Selectivo: solo en (a) export de Excel, (b) cargues con BulkCopy,
+  (c) cualquier query >2s en producción. No propagar a todo el codebase.
 
 ---
 
-## Media prioridad
+## WONTFIX (over-engineering al stage actual)
 
-- [ ] **CORS hardcodeado en `Program.cs`**
-  Mover origins a `appsettings.json` / `appsettings.Development.json`:
-  ```json
-  "Cors": { "Origins": ["http://localhost:5173", "http://localhost:5174"] }
-  ```
-  En producción solo cambia config, no código.
+Items descartados con razón explícita. Reevaluar solo si cambia un supuesto
+del proyecto (más clientes, más equipo, más ambientes, mucho más volumen).
 
-- [ ] **`AsNoTracking()` inconsistente en `AsignacionMetasService`**
-  Todos los queries de solo lectura deberían tenerlo. Revisar `ObtenerEstadoMesActualAsync` y derivados.
+- **Partir `ExcelExporter` en `IBaseMadreExporter` / `IReporteExporter` / `IAsignacionesExporter`**
+  597 líneas cohesivas y poco modificadas. Triplicar interfaces no reduce
+  complejidad real. Si un export se vuelve dramáticamente distinto en el
+  futuro, ahí se extrae.
 
-- [ ] **Validación de negocio en el controlador**
-  Reglas como `MetaRecaudo <= 0` están en el controlador. Deben moverse al servicio o a un validador dedicado.
+- **Modularizar `DependencyInjection.cs` con `AddXModule()`**
+  22 registros organizados es archivo que se toca una vez por feature. Costo
+  de leer 22 líneas < costo de saltar entre 8 archivos. Reevaluar si pasa
+  de 50.
 
-- [ ] **Manejo global de errores en el frontend**
-  No hay interceptor Axios centralizado. Falta redirect automático en 401 y toast global en 500.
+- **`IAgenteLookupService` para encapsular acceso a RRHH**
+  Hay un solo lookup (en `AsignacionMetasService`). Crear abstracción para
+  una llamada es ceremonia. Cuando aparezca el segundo o tercer servicio
+  que mire `_rrhh.Empleados`, ahí se extrae.
 
-- [ ] **Alinear versión de Node entre máquinas**
-  El `package-lock.json` deriva. Agregar `.nvmrc` o campo `engines` en `package.json`.
+- **Mover `RegistroService` de Infrastructure a Application**
+  ADR-001 ya documentó que el patrón actual permite servicios multi-DB en
+  Infrastructure. Coherencia > pureza académica. Si en algún momento se
+  migra el patrón, se hace en bloque, no archivo por archivo.
 
----
+- **Value object `PeriodoMesActual`**
+  La verificación de 2026-05-06 mostró que la lógica está en **un solo
+  lugar** (`InformesRecaudoService`), no duplicada con
+  `AsignacionMetasService` como suponía la nota original. No hay duplicación
+  real que eliminar.
 
-## Baja prioridad
+- **`.nvmrc` / `engines` en `package.json`**
+  Riesgo bajo: 1 cliente, máquinas controladas. Agregar cuando un drift
+  cause un bug, no preventivamente.
 
-- [ ] **Dividir `ExcelExporter` e `IExcelExporter`**
-  Mezcla BaseMadre, Asignaciones y Reportes en una sola clase e interfaz. Partir por responsabilidad:
-  `IBaseMadreExporter`, `IReporteExporter`, `IAsignacionesExporter`.
+- **CORS a `appsettings.json`**
+  Ya está en `Program.cs` con fallback IP funcionando. Mover a config solo
+  cuando haya >1 ambiente con valores distintos.
 
-- [ ] **Patrón de módulos en `DependencyInjection.cs`**
-  Con 15+ registros en un método, cada módulo nuevo lo modifica. Escalar con extensiones por módulo:
-  `services.AddInformesModule()`, `services.AddCargueModule()`, etc.
-
-- [ ] **`AsignacionMetasService` recibe dos `DbContext` directamente**
-  Viola DIP. Considerar `IAgenteLookupService` para encapsular el acceso a RRHH. Cuando cambie la fuente de nombres, hoy hay que tocar el servicio de metas.
-
-- [ ] **Lógica de período duplicada**
-  `diasDelMes`, `diasTranscurridos` y mes/año actual se calculan por separado en `InformesRecaudoService` y `AsignacionMetasService`. Candidato a value object `PeriodoMesActual` en Application layer.
-
-- [ ] **Join en memoria sin documentar en `ObtenerFilasAgenteAsync`**
-  El patrón carga en batch y hace join en memoria (correcto, sin N+1), pero sin un comentario que lo explique el próximo dev lo va a "optimizar" rompiéndolo.
-
-- [ ] **Agentes retirados aparecen en Metas**
-  `ObtenerFilasAgenteAsync` no filtra por estado activo del empleado en RRHH. Definir si es intencional o agregar filtro.
+- **Renombrar todas las abreviaciones**
+  Cubierto en sección de resueltos solo para firmas públicas y bloques de
+  código que se leen a diario. Renombrar `idx` y similares en loops cortos
+  genera churn que ensucia git blame sin aportar legibilidad real.

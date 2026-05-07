@@ -47,6 +47,16 @@ public class BaseMadreRow
     public string? CelularClaro             { get; set; }
     public string? EmailClaro               { get; set; }
     public DateOnly? UltimaInsercionClaro   { get; set; }
+    public string? CelularMutualSer         { get; set; }
+    public string? Celular2MutualSer        { get; set; }
+    public string? TelefonoFijoMutualSer    { get; set; }
+    public string? EmailMutualSer           { get; set; }
+    public string? RegimenMutualSer         { get; set; }
+    public string? TipoAfiliadoMutualSer    { get; set; }
+    public string? DepartamentoMutualSer    { get; set; }
+    public string? MunicipioMutualSer       { get; set; }
+    public string? EstadoMutualSer          { get; set; }
+    public DateOnly? UltimaConsultaMutualSer { get; set; }
     public long?   NITSura                  { get; set; }
     public string? EmpresaSura              { get; set; }
     public long?   NITPositiva              { get; set; }

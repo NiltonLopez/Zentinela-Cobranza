@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-04-29  
+> Generado: 2026-04-02 — Actualizado: 2026-05-07  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -320,6 +320,25 @@ Datos de afiliacion al SGSSS (Fosyga/ADRES).
 | EstadoEnFosyga | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+### MutualSer
+Contactabilidad y calificación socioeconómica del afiliado a MutualSer EPS. Cardinalidad 1:1 por `TitularID` (614.145 filas == titulares únicos). Tabla heap (sin PK ni índices nativos) — la migración `2026-05-07_mutualser_in_basemadre.sql` crea `IX_MutualSer_TitularID_FechaConsulta` para soportar el JOIN del iTVF. Tabla espejo `MutualSerAuxiliar` (staging).
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | NO | — | Titular |
+| NumeroTelefonoCelular | varchar(10) | SI | — | — |
+| NumeroTelefonoCelular2 | varchar(10) | SI | — | — |
+| NumeroTelefonoFijo | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| Regimen | varchar(30) | SI | — | — |
+| TipoAfiliado | varchar(50) | SI | — | — |
+| Departamento | varchar(50) | SI | — | — |
+| Municipio | varchar(50) | SI | — | — |
+| EstadoEnMutualSer | bit | NO | — | — |
+| FechaConsulta | date | NO | — | — |
+
+> **Excepción al patrón "1 fuente = 1 entrada en switch celular"**: MutualSer expone 2 celulares como columnas independientes (no por prioridad). El switch `BaseMadreRepository.ColumnaCelular` admite las claves `MutualSer` y `MutualSer2`. El `NumeroTelefonoFijo` se expone como columna pero NO entra al selector — el switch existe para marcado masivo a móviles. Ver `docs/para-tener-en-cuenta.md`.
+
 ### Positiva
 Datos de afiliacion a Positiva (ARL) por titular.
 
@@ -562,6 +581,25 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | NumeroTelefono | varchar(10) | SI | — | — |
 | Cartera | varchar(50) | SI | — | — |
 | Codigo | varchar(20) | SI | — | — |
+
+### MutualSerAuxiliar
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | SI | — | — |
+| NumeroTelefonoCelular | varchar(10) | SI | — | — |
+| NumeroTelefonoCelular2 | nchar(10) | SI | — | — |
+| NumeroTelefonoFijo | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| Regimen | varchar(30) | SI | — | — |
+| TipoAfiliado | varchar(50) | SI | — | — |
+| Departamento | varchar(50) | SI | — | — |
+| Municipio | varchar(50) | SI | — | — |
+| EstadoEnMutualSer | bit | SI | — | — |
+| Nombre | varchar(80) | SI | — | — |
+| FechaConsulta | date | SI | — | — |
+| CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### PositivaAuxiliar
 
@@ -1223,6 +1261,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | Compensados | `IX_Compensados_TitularID_Fecha` |
 | DatosClaro | `IX_DatosClaro_TitularID_FechaInsercion` (sobre `TitularID, FechaInsercion DESC`) |
 | Fosyga | `IX_Fosyga_TitularID_Fecha` |
+| MutualSer | `IX_MutualSer_TitularID_FechaConsulta` (creado en migración `2026-05-07_mutualser_in_basemadre.sql`) |
 | Positiva | `IX_Positiva_TitularID_Fecha` |
 | PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
 | RGM | `IX_RGM_TitularID_Fecha` |
@@ -1244,6 +1283,7 @@ Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en 
 | `[Celular Salud Total]`, `[Email Salud Total]` | `CelularSaludTotal`, `EmailSaludTotal` | SaludTotal |
 | `[Celular Datos Externos]`, `[Email Datos Externos]` | (no mapeadas — DatosExternos ignorado) | DatosExternos |
 | `[Celular Claro]`, `[Email Claro]`, `[Ultima Insercion Claro]` | `CelularClaro`, `EmailClaro`, `UltimaInsercionClaro` | DatosClaro |
+| `[Celular MutualSer]`, `[Celular 2 MutualSer]`, `[Telefono Fijo MutualSer]`, `[Email MutualSer]`, `[Regimen MutualSer]`, `[Tipo Afiliado MutualSer]`, `[Departamento MutualSer]`, `[Municipio MutualSer]`, `[Estado MutualSer]`, `[Ultima Consulta MutualSer]` | `CelularMutualSer`, `Celular2MutualSer`, `TelefonoFijoMutualSer`, `EmailMutualSer`, `RegimenMutualSer`, `TipoAfiliadoMutualSer`, `DepartamentoMutualSer`, `MunicipioMutualSer`, `EstadoMutualSer`, `UltimaConsultaMutualSer` | MutualSer |
 | `[Celular Positiva]`, `[Email Positiva]` | `CelularPositiva`, `EmailPositiva` | Positiva |
 | `[Celular Tigo]`, `[Email Tigo]` | `CelularTigo`, `EmailTigo` | Tigo |
 | `[Celular SOS]` | `CelularSOS` | SOS |
@@ -1263,6 +1303,7 @@ Indicador junto al nombre de cada fuente en la tabla de localización (`Califica
 | Tigo | Inactivo | — |
 | SOS | Funcional | — |
 | Claro | Inactivo | — |
+| MutualSer | Funcional | 1:1 — aporta 2 celulares + email + régimen + dept/municipio + estado |
 | Sura (ARL) | Funcional | Solo aporta nombre de empresa, no contactabilidad |
 | Positiva Emp. | Funcional | — |
 | RUES | Funcional | — |

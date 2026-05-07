@@ -34,8 +34,11 @@ const FUENTES_EMAIL = [
   { key: 'Positiva',      label: 'Positiva'       },
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'Claro',         label: 'Claro'          },
+  { key: 'MutualSer',     label: 'MutualSer'      },
 ];
 
+// MutualSer expone 2 celulares como columnas independientes — entran como
+// dos chips separados (excepción consciente a "1 fuente = 1 entrada").
 const FUENTES_CELULAR = [
   { key: 'Cajacopi',      label: 'Cajacopi'       },
   { key: 'Camara',        label: 'Cámara'         },
@@ -44,6 +47,8 @@ const FUENTES_CELULAR = [
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'SOS',           label: 'SOS'            },
   { key: 'Claro',         label: 'Claro'          },
+  { key: 'MutualSer',     label: 'MutualSer (1)'  },
+  { key: 'MutualSer2',    label: 'MutualSer (2)'  },
 ];
 
 const inputStyle: React.CSSProperties = {

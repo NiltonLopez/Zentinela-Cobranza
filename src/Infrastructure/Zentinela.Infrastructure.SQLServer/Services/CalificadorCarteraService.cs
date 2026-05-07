@@ -95,12 +95,15 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Celular Tigo]                    AS CelTigo,
             [Celular SOS]                     AS CelSOS,
             [Celular Claro]                   AS CelClaro,
+            [Celular MutualSer]               AS CelMutualSer,
+            [Celular 2 MutualSer]             AS CelMutualSer2,
             [Email CajaCopi]                  AS EmCajacopi,
             [Email Camara]                    AS EmCamara,
             [Email Salud Total]               AS EmSaludTotal,
             [Email Positiva]                  AS EmPositiva,
             [Email Tigo]                      AS EmTigo,
             [Email Claro]                     AS EmClaro,
+            [Email MutualSer]                 AS EmMutualSer,
             [Edad Registraduria]              AS EdadReg,
             TRY_CAST([Saldo]                       AS decimal(18,2))  AS _Saldo,
             TRY_CAST(NULLIF([Valor Promesa], '0')  AS decimal(18,2))  AS _ValorPromesa,
@@ -130,30 +133,36 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 WHERE EPS NOT IN ('','0') OR Regimen NOT IN ('','0')
                    OR TipoAfiliado NOT IN ('','0'))                                 AS TitularesConFosyga,
             (SELECT COUNT(*) FROM #t
-                WHERE CelCajacopi   NOT IN ('','0') OR CelCamara   NOT IN ('','0')
-                   OR CelSaludTotal NOT IN ('','0') OR CelPositiva NOT IN ('','0')
-                   OR CelTigo       NOT IN ('','0') OR CelSOS      NOT IN ('','0')
-                   OR CelClaro      NOT IN ('','0'))                                AS ConCelular,
+                WHERE CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
+                   OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
+                   OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
+                   OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
+                   OR CelMutualSer2 NOT IN ('','0'))                                AS ConCelular,
             (SELECT COUNT(*) FROM #t
                 WHERE EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                    OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
-                   OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0'))   AS ConEmail,
+                   OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
+                   OR EmMutualSer  NOT IN ('','0'))                                 AS ConEmail,
             (SELECT COUNT(*) FROM #t
-                WHERE (CelCajacopi   NOT IN ('','0') OR CelCamara   NOT IN ('','0')
-                    OR CelSaludTotal NOT IN ('','0') OR CelPositiva NOT IN ('','0')
-                    OR CelTigo       NOT IN ('','0') OR CelSOS      NOT IN ('','0')
-                    OR CelClaro      NOT IN ('','0'))
+                WHERE (CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
+                    OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
+                    OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
+                    OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
+                    OR CelMutualSer2 NOT IN ('','0'))
                   AND (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                     OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
-                    OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0'))) AS ConCelularYEmail,
+                    OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
+                    OR EmMutualSer  NOT IN ('','0'))) AS ConCelularYEmail,
             (SELECT COUNT(*) FROM #t
-                WHERE NOT (CelCajacopi   NOT IN ('','0') OR CelCamara   NOT IN ('','0')
-                        OR CelSaludTotal NOT IN ('','0') OR CelPositiva NOT IN ('','0')
-                        OR CelTigo       NOT IN ('','0') OR CelSOS      NOT IN ('','0')
-                        OR CelClaro      NOT IN ('','0'))
+                WHERE NOT (CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
+                        OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
+                        OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
+                        OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
+                        OR CelMutualSer2 NOT IN ('','0'))
                   AND NOT (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                         OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
-                        OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0'))) AS SinContacto,
+                        OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
+                        OR EmMutualSer  NOT IN ('','0'))) AS SinContacto,
             (SELECT COUNT(*) FROM #t WHERE EdadReg > 0)                             AS ConEdadRegistraduria,
             CASE WHEN (SELECT COUNT(*) FROM #t WHERE EdadReg > 0) > 0
                  THEN (SELECT CAST(ROUND(AVG(CAST(EdadReg AS decimal(18,4))), 1) AS decimal(10,1))
@@ -224,12 +233,14 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         -- Result set 8: desgloseFuentesCelular
         ;WITH F AS (
             SELECT 'Cajacopi' AS Fuente, SUM(CASE WHEN CelCajacopi   NOT IN ('','0') THEN 1 ELSE 0 END) AS Cantidad FROM #t
-            UNION ALL SELECT 'Camara',   SUM(CASE WHEN CelCamara     NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Camara',     SUM(CASE WHEN CelCamara     NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'SaludTotal', SUM(CASE WHEN CelSaludTotal NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
-            UNION ALL SELECT 'Positiva', SUM(CASE WHEN CelPositiva   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
-            UNION ALL SELECT 'Tigo',     SUM(CASE WHEN CelTigo       NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
-            UNION ALL SELECT 'SOS',      SUM(CASE WHEN CelSOS        NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
-            UNION ALL SELECT 'Claro',    SUM(CASE WHEN CelClaro      NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Positiva',   SUM(CASE WHEN CelPositiva   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Tigo',       SUM(CASE WHEN CelTigo       NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'SOS',        SUM(CASE WHEN CelSOS        NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Claro',      SUM(CASE WHEN CelClaro      NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'MutualSer (1)', SUM(CASE WHEN CelMutualSer  NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'MutualSer (2)', SUM(CASE WHEN CelMutualSer2 NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
         )
         SELECT Fuente AS Etiqueta, Cantidad,
                CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
@@ -423,6 +434,19 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                           AND NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NULL
                           AND b.EnClaro = 1
                          THEN 1 ELSE 0 END) AS ClaroNoEnc,
+                SUM(CASE WHEN NULLIF(NULLIF(b.CelularMutualSer, ''),'0') IS NOT NULL
+                           OR NULLIF(NULLIF(b.Celular2MutualSer,''),'0') IS NOT NULL
+                           OR NULLIF(NULLIF(b.EmailMutualSer,   ''),'0') IS NOT NULL
+                           OR NULLIF(NULLIF(b.DepartamentoMutualSer,''),'0') IS NOT NULL
+                           OR NULLIF(NULLIF(b.MunicipioMutualSer,   ''),'0') IS NOT NULL
+                         THEN 1 ELSE 0 END) AS MutualSerEnc,
+                SUM(CASE WHEN NULLIF(NULLIF(b.CelularMutualSer, ''),'0') IS NULL
+                          AND NULLIF(NULLIF(b.Celular2MutualSer,''),'0') IS NULL
+                          AND NULLIF(NULLIF(b.EmailMutualSer,   ''),'0') IS NULL
+                          AND NULLIF(NULLIF(b.DepartamentoMutualSer,''),'0') IS NULL
+                          AND NULLIF(NULLIF(b.MunicipioMutualSer,   ''),'0') IS NULL
+                          AND b.EnMutualSer = 1
+                         THEN 1 ELSE 0 END) AS MutualSerNoEnc,
                 SUM(CASE WHEN (b.NITSura IS NOT NULL AND b.NITSura != 0)
                            OR NULLIF(NULLIF(b.EmpresaSura,''), '0') IS NOT NULL
                          THEN 1 ELSE 0 END) AS SuraEnc,
@@ -484,6 +508,11 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     v.[Empresa SOS]               AS EmpresaSOS,
                     v.[Celular Claro]             AS CelularClaro,
                     v.[Email Claro]               AS EmailClaro,
+                    v.[Celular MutualSer]         AS CelularMutualSer,
+                    v.[Celular 2 MutualSer]       AS Celular2MutualSer,
+                    v.[Email MutualSer]           AS EmailMutualSer,
+                    v.[Departamento MutualSer]    AS DepartamentoMutualSer,
+                    v.[Municipio MutualSer]       AS MunicipioMutualSer,
                     v.[NIT Sura]                  AS NITSura,
                     v.[Empresa Sura]              AS EmpresaSura,
                     v.[NIT Positiva]              AS NITPositiva,
@@ -502,6 +531,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     CASE WHEN ti.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnTigo,
                     CASE WHEN s.TitularID  IS NOT NULL THEN 1 ELSE 0 END AS EnSOS,
                     CASE WHEN dc.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnClaro,
+                    CASE WHEN ms.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnMutualSer,
                     CASE WHEN ar.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSura,
                     CASE WHEN pe.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnPosEmp,
                     CASE WHEN ru.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRUES,
@@ -517,6 +547,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
+                LEFT JOIN (SELECT DISTINCT TitularID FROM MutualSer)        ms ON ms.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM PositivaEmpresas) pe ON pe.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM RUES)             ru ON ru.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
@@ -538,6 +569,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Fuente("Tigo",           r.TigoEnc,        r.TigoNoEnc,        total),
             Fuente("SOS",            r.SosEnc,         r.SosNoEnc,         total),
             Fuente("Claro",          r.ClaroEnc,       r.ClaroNoEnc,       total),
+            Fuente("MutualSer",      r.MutualSerEnc,   r.MutualSerNoEnc,   total),
             Fuente("Sura (ARL)",     r.SuraEnc,        r.SuraNoEnc,        total),
             Fuente("Positiva Emp.",  r.PosEmpEnc,      r.PosEmpNoEnc,      total),
             Fuente("RUES",           r.RuesEnc,        r.RuesNoEnc,        total),
@@ -566,6 +598,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         public int TigoEnc        { get; set; } public int TigoNoEnc        { get; set; }
         public int SosEnc         { get; set; } public int SosNoEnc         { get; set; }
         public int ClaroEnc       { get; set; } public int ClaroNoEnc       { get; set; }
+        public int MutualSerEnc   { get; set; } public int MutualSerNoEnc   { get; set; }
         public int SuraEnc        { get; set; } public int SuraNoEnc        { get; set; }
         public int PosEmpEnc      { get; set; } public int PosEmpNoEnc      { get; set; }
         public int RuesEnc        { get; set; } public int RuesNoEnc        { get; set; }

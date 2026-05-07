@@ -558,9 +558,9 @@ Retorna hasta 100 filas que cumplen los filtros aplicados, más el total real de
 | `saldoMinimo` | `decimal?` | Saldo mínimo en pesos (filtro en memoria) |
 | `tipoAfiliado` | `string?` | Tipo de afiliado Fosyga (Cotizante, Beneficiario, Pensionado) |
 | `estadoFosyga` | `string?` | Estado Fosyga (Activo, Inactivo, Retirado) |
-| `fuentesCelular` | `string[]` | El titular debe tener celular en TODAS las fuentes listadas. Claves: `Cajacopi`, `Camara`, `SaludTotal`, `Positiva`, `Tigo`, `SOS` |
+| `fuentesCelular` | `string[]` | El titular debe tener celular en TODAS las fuentes listadas. Claves: `Cajacopi`, `Camara`, `SaludTotal`, `Positiva`, `Tigo`, `SOS`, `Claro`, `MutualSer` (cel 1), `MutualSer2` (cel 2). MutualSer expone 2 celulares como entradas independientes — ver `docs/para-tener-en-cuenta.md`. |
 | `coincidenciasCelular` | `string[]` | El número debe ser idéntico en todas las fuentes seleccionadas (mínimo 2) |
-| `fuentesEmail` | `string[]` | El titular debe tener email en TODAS las fuentes listadas. Claves: `Cajacopi`, `Camara`, `SaludTotal`, `Positiva`, `Tigo` |
+| `fuentesEmail` | `string[]` | El titular debe tener email en TODAS las fuentes listadas. Claves: `Cajacopi`, `Camara`, `SaludTotal`, `Positiva`, `Tigo`, `Claro`, `MutualSer` |
 | `coincidenciasEmail` | `string[]` | El email debe ser idéntico en todas las fuentes seleccionadas (mínimo 2) |
 | `columnasSeleccionadas` | `string[]` | Nombres de propiedad C# a incluir. Lista vacía = todas las columnas |
 

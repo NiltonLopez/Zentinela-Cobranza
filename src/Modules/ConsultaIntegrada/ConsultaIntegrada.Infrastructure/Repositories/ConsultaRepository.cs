@@ -206,6 +206,25 @@ public class ConsultaRepository : IConsultaRepository
             contactabilidad["Claro"] = claroDict;
         }
 
+        // MutualSer es 1:1 por TitularID — entidad simple, sin aplanar múltiples filas.
+        var mutualSer = await _context.MutualSers.FirstOrDefaultAsync(m => m.TitularId == titular.NumeroDocumento);
+        if (mutualSer != null)
+        {
+            contactabilidad["MutualSer"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"]    = mutualSer.NumeroTelefonoCelular  ?? "N/A",
+                ["Número Teléfono 2"]  = mutualSer.NumeroTelefonoCelular2 ?? "N/A",
+                ["Teléfono Fijo"]      = mutualSer.NumeroTelefonoFijo     ?? "N/A",
+                ["Email"]              = mutualSer.Email                  ?? "N/A",
+                ["Régimen"]            = mutualSer.Regimen                ?? "N/A",
+                ["Tipo Afiliado"]      = mutualSer.TipoAfiliado           ?? "N/A",
+                ["Departamento"]       = mutualSer.Departamento           ?? "N/A",
+                ["Municipio"]          = mutualSer.Municipio              ?? "N/A",
+                ["Estado"]             = mutualSer.EstadoEnMutualSer ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = FormatDateOnly(mutualSer.FechaConsulta),
+            };
+        }
+
         if (contactabilidad.Any())
             resultado.Datos["Contactabilidad"] = contactabilidad;
     }

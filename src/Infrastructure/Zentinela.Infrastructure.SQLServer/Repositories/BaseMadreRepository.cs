@@ -160,6 +160,10 @@ public class BaseMadreRepository : IBaseMadreRepository
         "Tigo"       => "[Celular Tigo]",
         "SOS"        => "[Celular SOS]",
         "Claro"      => "[Celular Claro]",
+        // MutualSer expone 2 celulares como columnas independientes (no por prioridad);
+        // ver docs/para-tener-en-cuenta.md (excepción a "1 fuente = 1 entrada").
+        "MutualSer"  => "[Celular MutualSer]",
+        "MutualSer2" => "[Celular 2 MutualSer]",
         _            => null,
     };
 
@@ -171,6 +175,7 @@ public class BaseMadreRepository : IBaseMadreRepository
         "Positiva"   => "[Email Positiva]",
         "Tigo"       => "[Email Tigo]",
         "Claro"      => "[Email Claro]",
+        "MutualSer"  => "[Email MutualSer]",
         _            => null,
     };
 
