@@ -264,3 +264,32 @@ La vista `vw_BaseMadre` usa `ROW_NUMBER() OVER (PARTITION BY TitularID ORDER BY 
 CREATE INDEX IX_TitularCartera_LiderID_CarteraID
     ON Titular_Cartera(LiderID, CarteraID);
 ```
+
+---
+
+## Consulta Integrada — fuentes con cardinalidad N por titular
+
+`ConsultaRepository` (en `src/Modules/ConsultaIntegrada/.../Repositories`) consulta cada
+fuente externa por `TitularID`. La mayoría de tablas son 1-a-1 con el titular y se resuelven
+con `FirstOrDefaultAsync`. Las siguientes tablas son **N-a-1** (varias filas por titular) y
+requieren `ToListAsync` + agregación:
+
+| Tabla | Cardinalidad | Significado | Estrategia de agregación |
+|-------|--------------|-------------|--------------------------|
+| `DatosClaro` | N por titular (uno por número/email encontrado) | Contactabilidad Claro | Distinct sobre `NumeroTelefono` y `Email`, ordenado por `FechaInsercion` desc. Más reciente = `Última Inserción`. |
+| `RGM` | N por titular (uno por vehículo) | Vehículos en RGM | GroupBy `Placa`, quedándonos con la fila de `FechaConsulta` más reciente por placa. |
+| `SIMIT` | N por titular (uno por placa) | Estado de comparendos | GroupBy `Placa`, fila de `FechaConsulta` más reciente por placa (refleja último estado de comparendos). |
+
+### Aplanado al DTO
+
+`ConsultaResult.Datos` es `Dictionary<grupo, Dictionary<fuente, Dictionary<campo, valor>>>` —
+plano por fuente. Cuando hay N elementos, las claves se numeran en orden de recencia:
+
+- 1 elemento → claves originales (`Número Teléfono`, `Placa`, `Marca`, etc.) — sin cambios visuales.
+- 2+ elementos → sufijo numerado (`Número Teléfono 1`, `Número Teléfono 2`, …).
+
+Para SIMIT con varias placas, el estado conserva su clave correlativa (`Estado Placa N`),
+preservando el badge verde/rojo en la UI (`ConsultaIntegradaPage.tsx` matchea por substring
+`"sin comparendo"` / `"con comparendo"`). `Fecha Consulta` queda única por fuente (la más reciente).
+
+Filas con `Placa` o `NumeroTelefono` nulos/vacíos se descartan antes de aplanar.

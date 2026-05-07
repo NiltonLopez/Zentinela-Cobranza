@@ -154,15 +154,56 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
-        var claro = await _context.DatosClaros.FirstOrDefaultAsync(c => c.TitularId == titular.NumeroDocumento);
-        if (claro != null)
+        // DatosClaro es keyless y guarda una fila por número/email encontrado del titular,
+        // así que aquí traemos TODAS las filas y las aplanamos en el dict (la fuente Claro
+        // es la única de Contactabilidad con cardinalidad N por titular).
+        var clarosRows = await _context.DatosClaros
+            .Where(c => c.TitularId == titular.NumeroDocumento)
+            .ToListAsync();
+
+        if (clarosRows.Count > 0)
         {
-            contactabilidad["Claro"] = new Dictionary<string, string>
+            var clarosOrdenados = clarosRows
+                .OrderByDescending(c => c.FechaInsercion)
+                .ToList();
+
+            var numeros = clarosOrdenados
+                .Select(c => c.NumeroTelefono)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct()
+                .ToList();
+
+            var emails = clarosOrdenados
+                .Select(c => c.Email)
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .Distinct()
+                .ToList();
+
+            var claroDict = new Dictionary<string, string>();
+
+            if (numeros.Count == 1)
             {
-                ["Número Teléfono"] = claro.NumeroTelefono ?? "N/A",
-                ["Email"] = claro.Email ?? "N/A",
-                ["Última Inserción"] = FormatDateOnly(claro.FechaInsercion)
-            };
+                claroDict["Número Teléfono"] = numeros[0]!;
+            }
+            else
+            {
+                for (int i = 0; i < numeros.Count; i++)
+                    claroDict[$"Número Teléfono {i + 1}"] = numeros[i]!;
+            }
+
+            if (emails.Count == 1)
+            {
+                claroDict["Email"] = emails[0]!;
+            }
+            else if (emails.Count > 1)
+            {
+                for (int i = 0; i < emails.Count; i++)
+                    claroDict[$"Email {i + 1}"] = emails[i]!;
+            }
+
+            claroDict["Última Inserción"] = FormatDateOnly(clarosOrdenados[0].FechaInsercion);
+
+            contactabilidad["Claro"] = claroDict;
         }
 
         if (contactabilidad.Any())
@@ -260,27 +301,86 @@ public class ConsultaRepository : IConsultaRepository
     {
         var datosAdicionales = new Dictionary<string, Dictionary<string, string>>();
 
-        var rgm = await _context.Rgms.FirstOrDefaultAsync(r => r.TitularId == titular.NumeroDocumento);
-        if (rgm != null)
+        // RGM: una fila por vehículo; deduplicamos por Placa con la consulta más reciente.
+        var rgmRows = await _context.Rgms
+            .Where(r => r.TitularId == titular.NumeroDocumento)
+            .ToListAsync();
+
+        if (rgmRows.Count > 0)
         {
-            datosAdicionales["RGM"] = new Dictionary<string, string>
+            var vehiculos = rgmRows
+                .Where(r => !string.IsNullOrWhiteSpace(r.Placa))
+                .GroupBy(r => r.Placa!)
+                .Select(g => g.OrderByDescending(r => r.FechaConsulta).First())
+                .OrderByDescending(r => r.FechaConsulta)
+                .ToList();
+
+            if (vehiculos.Count > 0)
             {
-                ["Marca"] = rgm.Marca ?? "N/A",
-                ["Modelo"] = rgm.Modelo?.ToString() ?? "N/A",
-                ["Placa"] = rgm.Placa ?? "N/A",
-                ["Fecha Consulta"] = FormatDateTime(ToDateTimeNullable(rgm.FechaConsulta))
-            };
+                var rgmDict = new Dictionary<string, string>();
+
+                if (vehiculos.Count == 1)
+                {
+                    var r = vehiculos[0];
+                    rgmDict["Marca"] = r.Marca ?? "N/A";
+                    rgmDict["Modelo"] = r.Modelo?.ToString() ?? "N/A";
+                    rgmDict["Placa"] = r.Placa ?? "N/A";
+                }
+                else
+                {
+                    for (int i = 0; i < vehiculos.Count; i++)
+                    {
+                        var r = vehiculos[i];
+                        var n = i + 1;
+                        rgmDict[$"Marca {n}"] = r.Marca ?? "N/A";
+                        rgmDict[$"Modelo {n}"] = r.Modelo?.ToString() ?? "N/A";
+                        rgmDict[$"Placa {n}"] = r.Placa ?? "N/A";
+                    }
+                }
+
+                rgmDict["Fecha Consulta"] = FormatDateTime(ToDateTimeNullable(vehiculos[0].FechaConsulta));
+                datosAdicionales["RGM"] = rgmDict;
+            }
         }
 
-        var simit = await _context.Simits.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
-        if (simit != null)
+        // SIMIT: una fila por placa; deduplicamos por Placa con la consulta más reciente.
+        var simitRows = await _context.Simits
+            .Where(s => s.TitularId == titular.NumeroDocumento)
+            .ToListAsync();
+
+        if (simitRows.Count > 0)
         {
-            datosAdicionales["SIMIT"] = new Dictionary<string, string>
+            var placas = simitRows
+                .Where(s => !string.IsNullOrWhiteSpace(s.Placa))
+                .GroupBy(s => s.Placa!)
+                .Select(g => g.OrderByDescending(s => s.FechaConsulta).First())
+                .OrderByDescending(s => s.FechaConsulta)
+                .ToList();
+
+            if (placas.Count > 0)
             {
-                ["Placa"] = simit.Placa ?? "N/A",
-                ["Estado"] = simit.EstadoEnSimit ? "Sin comparendos" : "Con comparendos",
-                ["Fecha Consulta"] = FormatDateTime(ToDateTimeNullable(simit.FechaConsulta))
-            };
+                var simitDict = new Dictionary<string, string>();
+
+                if (placas.Count == 1)
+                {
+                    var s = placas[0];
+                    simitDict["Placa"] = s.Placa ?? "N/A";
+                    simitDict["Estado"] = s.EstadoEnSimit ? "Sin comparendos" : "Con comparendos";
+                }
+                else
+                {
+                    for (int i = 0; i < placas.Count; i++)
+                    {
+                        var s = placas[i];
+                        var n = i + 1;
+                        simitDict[$"Placa {n}"] = s.Placa ?? "N/A";
+                        simitDict[$"Estado Placa {n}"] = s.EstadoEnSimit ? "Sin comparendos" : "Con comparendos";
+                    }
+                }
+
+                simitDict["Fecha Consulta"] = FormatDateTime(ToDateTimeNullable(placas[0].FechaConsulta));
+                datosAdicionales["SIMIT"] = simitDict;
+            }
         }
 
         if (datosAdicionales.Any())
