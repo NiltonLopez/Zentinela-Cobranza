@@ -6,6 +6,7 @@ export interface RegistroRequest {
 
 export interface RegistroResponse {
   nombreCompleto: string;
+  usuario: string;
   rol: string;
   mensaje: string;
 }

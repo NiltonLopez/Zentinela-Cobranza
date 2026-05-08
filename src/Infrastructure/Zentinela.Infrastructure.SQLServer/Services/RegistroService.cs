@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
@@ -62,10 +64,12 @@ public class RegistroService : IRegistroService
             throw new InvalidOperationException("Esta cédula ya tiene una cuenta registrada.");
 
         // 4. Calcular UsuarioControlNext: primerNombre.primerApellido + últimos 3 dígitos del documento
+        // Identity rechaza ñ y tildes en el username, así que el slug se hace ASCII puro.
+        // El nombre real (con ñ/tildes) se conserva intacto en NombreCompleto.
         var primerNombre  = empleado.Nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? empleado.Nombre;
         var primerApellido = empleado.Apellidos.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? empleado.Apellidos;
         var ultimos3 = request.Cedula.ToString()[^Math.Min(3, request.Cedula.ToString().Length)..];
-        var usuarioControlNext = $"{primerNombre}.{primerApellido}{ultimos3}".ToLowerInvariant();
+        var usuarioControlNext = SlugAscii($"{primerNombre}.{primerApellido}{ultimos3}");
 
         var usernameTomado = await _userManager.FindByNameAsync(usuarioControlNext);
         if (usernameTomado is not null)
@@ -130,8 +134,30 @@ public class RegistroService : IRegistroService
         return new RegistroResponse
         {
             NombreCompleto = nombreCompleto,
+            Usuario = usuarioControlNext,
             Rol = rol,
             Mensaje = $"Usuario registrado exitosamente con el rol '{rol}'.",
         };
+    }
+
+    /// <summary>
+    /// Convierte un texto a slug ASCII apto para username de Identity:
+    /// quita diacríticos (ñ→n, á→a, é→e...), pasa a minúsculas y descarta
+    /// cualquier carácter fuera del set permitido por defecto en Identity.
+    /// </summary>
+    private static string SlugAscii(string texto)
+    {
+        var descompuesto = texto.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(descompuesto.Length);
+        foreach (var c in descompuesto)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+                continue; // descarta tildes/diéresis combinantes
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '@' || c == '+')
+                sb.Append(c);
+            // resto: caracteres no soportados por Identity → se descartan silenciosamente
+        }
+        return sb.ToString().ToLowerInvariant();
     }
 }

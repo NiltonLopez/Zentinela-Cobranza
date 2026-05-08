@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { registrarUsuario } from '../api/registroApi';
+import { registrarUsuario, type RegistroResponse } from '../api/registroApi';
 import { ZButton } from '../components/ZButton';
 
 export function RegisterPage() {
   const [cedula, setCedula] = useState('');
   const [error, setError] = useState('');
-  const [exito, setExito] = useState('');
+  const [resultado, setResultado] = useState<RegistroResponse | null>(null);
   const [cargando, setCargando] = useState(false);
 
   const inputStyle: React.CSSProperties = {
@@ -25,17 +25,12 @@ export function RegisterPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setExito('');
+    setResultado(null);
     setCargando(true);
 
     try {
-      const resultado = await registrarUsuario({
-        cedula: Number(cedula),
-      });
-      setExito(
-        `${resultado.nombreCompleto} registrado correctamente como ${resultado.rol}. ` +
-        `Puedes iniciar sesión con tu cédula como contraseña.`
-      );
+      const r = await registrarUsuario({ cedula: Number(cedula) });
+      setResultado(r);
       setCedula('');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { mensaje?: string } } })
@@ -103,17 +98,39 @@ export function RegisterPage() {
             </p>
           )}
 
-          {exito && (
-            <p style={{
+          {resultado && (
+            <div style={{
               fontSize: '12px',
-              color: '#16a34a',
+              color: '#15803d',
               background: '#f0fdf4',
               border: '0.5px solid #bbf7d0',
               borderRadius: '6px',
-              padding: '10px 12px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
             }}>
-              {exito}
-            </p>
+              <p style={{ margin: 0 }}>
+                <strong>{resultado.nombreCompleto}</strong> registrado correctamente como <strong>{resultado.rol}</strong>.
+              </p>
+              <p style={{ margin: 0 }}>
+                Tu usuario es:{' '}
+                <code style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '12px',
+                  background: '#dcfce7',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  color: '#14532d',
+                }}>{resultado.usuario}</code>
+              </p>
+              <p style={{ margin: 0, color: '#166534' }}>
+                Se compone de tu <strong>primer nombre</strong>, un punto, tu <strong>primer apellido</strong> y los <strong>últimos 3 dígitos de tu cédula</strong>.
+              </p>
+              <p style={{ margin: 0, color: '#166534' }}>
+                Inicia sesión con tu usuario y, como contraseña, tu número de cédula. Te pediremos cambiarla en el primer ingreso.
+              </p>
+            </div>
           )}
 
           <ZButton
