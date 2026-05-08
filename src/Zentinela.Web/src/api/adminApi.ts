@@ -54,3 +54,7 @@ export const asignarCarteraAgente = async (agenteID: number, carteraID: number):
 export const desasignarCarteraAgente = async (agenteID: number, carteraID: number): Promise<void> => {
   await api.delete(`/api/admin/agentes/${agenteID}/carteras/${carteraID}`);
 };
+
+export const cambiarRol = async (id: number, rol: string): Promise<void> => {
+  await api.put(`/api/admin/usuarios/${id}/rol`, { rol });
+};

@@ -187,6 +187,44 @@ public class AdminService : IAdminService
             .FirstOrDefaultAsync();
     }
 
+    /// <summary>
+    /// Reemplaza el rol actual del usuario por <paramref name="nuevoRol"/>.
+    /// Si el nuevo rol es Líder, resuelve el LiderID en DBCallCenter por NumeroDocumento;
+    /// en cualquier otro caso limpia LiderID para evitar permisos residuales.
+    /// </summary>
+    public async Task CambiarRolAsync(int usuarioID, string nuevoRol)
+    {
+        // Validar que el rol solicitado exista en el sistema
+        var rolesValidos = new[] { Roles.Admin, Roles.Lider, Roles.Director, Roles.Asesor };
+        if (!rolesValidos.Contains(nuevoRol))
+            throw new InvalidOperationException(
+                $"El rol '{nuevoRol}' no es válido. Roles disponibles: {string.Join(", ", rolesValidos)}.");
+
+        var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())
+            ?? throw new InvalidOperationException("Usuario no encontrado.");
+
+        // Remover todos los roles actuales (un usuario tiene exactamente un rol)
+        var rolesActuales = await _userManager.GetRolesAsync(usuario);
+        if (rolesActuales.Any())
+            await _userManager.RemoveFromRolesAsync(usuario, rolesActuales);
+
+        // Si el nuevo rol es Líder, resolver y vincular el LiderID en DBCallCenter
+        if (nuevoRol == Roles.Lider)
+        {
+            var lider = await _callCenter.Lideres
+                .FirstOrDefaultAsync(l => l.NumeroDocumento == usuario.NumeroDocumento && l.Activo);
+            usuario.LiderID = lider?.ID;
+        }
+        else
+        {
+            // Cualquier otro rol no necesita LiderID
+            usuario.LiderID = null;
+        }
+
+        await _userManager.UpdateAsync(usuario);
+        await _userManager.AddToRoleAsync(usuario, nuevoRol);
+    }
+
     public async Task InactivarUsuarioAsync(int usuarioID)
     {
         var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())

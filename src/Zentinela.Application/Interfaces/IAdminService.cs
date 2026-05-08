@@ -55,27 +55,28 @@ public interface IAdminService
     /// <summary>
     /// Lista todos los agentes activos (Agente.Activo + Empleado.EstadoEmpleado),
     /// con su supervisor, líder resuelto y conteo de carteras asignadas en Cartera_Agente.
-    /// Incluye agentes sin supervisor o cuyo supervisor no es líder activo,
-    /// con MotivoNoAsignable poblado para que la UI los muestre con badge.
     /// </summary>
     Task<IEnumerable<AgenteAdminDto>> ListarAgentesAsync();
 
     /// <summary>
     /// Devuelve las carteras del líder del supervisor del agente, marcando cuáles
-    /// ya están asignadas en Cartera_Agente. Si el agente no tiene supervisor
-    /// o el supervisor no es líder activo, MotivoNoAsignable se completa y Carteras es vacío.
+    /// ya están asignadas en Cartera_Agente.
     /// </summary>
     Task<CarterasDelAgenteDto> ObtenerCarterasDelAgenteAsync(long agenteID);
 
     /// <summary>
-    /// Asigna una cartera al agente. Resuelve el LiderID server-side desde el
-    /// supervisor del agente. Idempotente: si la fila ya existe, no inserta.
+    /// Asigna una cartera al agente. Idempotente: si la fila ya existe, no inserta.
     /// </summary>
     Task AsignarCarteraAgenteAsync(long agenteID, int carteraID);
 
     /// <summary>
-    /// Quita una cartera del agente. Resuelve el LiderID server-side desde el
-    /// supervisor actual. Idempotente: si la fila no existe, no falla.
+    /// Quita una cartera del agente. Idempotente: si la fila no existe, no falla.
     /// </summary>
     Task DesasignarCarteraAgenteAsync(long agenteID, int carteraID);
+
+    /// <summary>
+    /// Cambia el rol del usuario en Zentinela de forma independiente a su cargo en RRHH.
+    /// Reemplaza el rol anterior por el nuevo (un usuario tiene exactamente un rol).
+    /// </summary>
+    Task CambiarRolAsync(int usuarioID, string nuevoRol);
 }

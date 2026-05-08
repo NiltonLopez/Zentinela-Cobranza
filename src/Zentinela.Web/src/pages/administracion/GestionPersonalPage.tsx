@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual, cambiarUsuario } from '../../api/adminApi';
+import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual, cambiarUsuario, cambiarRol } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
+
+const ROLES_DISPONIBLES = ['Admin', 'Líder', 'Director', 'Asesor'] as const;
 
 // Ícono lápiz minimalista (16×16 stroke). Usa currentColor para heredar color del padre.
 function IconoLapiz({ size = 13 }: { size?: number }) {
@@ -477,21 +479,8 @@ function ModalEditarUsuario({
   const puedeGuardar = valido && !sinCambios && !cargando;
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.4)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 100,
-    }}>
-      <div style={{
-        background: 'var(--z-bg-card)',
-        border: '0.5px solid var(--z-border)',
-        borderRadius: '12px',
-        padding: '32px',
-        maxWidth: '420px',
-        width: '90%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-      }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)', borderRadius: '12px', padding: '32px', maxWidth: '420px', width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
         <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--z-text-primary)' }}>
           Modificar usuario
         </p>
@@ -500,80 +489,76 @@ function ModalEditarUsuario({
           <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>.
           Se usará para iniciar sesión en Zentinela.
         </p>
-
-        <label style={{
-          display: 'block', fontSize: '11px', fontWeight: 600,
-          color: 'var(--z-text-muted)', textTransform: 'uppercase',
-          letterSpacing: '0.04em', marginBottom: 6,
-        }}>
+        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
           Usuario
         </label>
         <input
-          type="text"
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-          autoFocus
-          disabled={cargando}
-          spellCheck={false}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            fontSize: '13px',
-            fontFamily: 'monospace',
-            border: '1px solid var(--z-border)',
-            borderRadius: '6px',
-            background: 'var(--z-bg-page)',
-            color: 'var(--z-text-primary)',
-            outline: 'none',
-            marginBottom: 6,
-            boxSizing: 'border-box',
-          }}
+          type="text" value={valor} onChange={(e) => setValor(e.target.value)}
+          autoFocus disabled={cargando} spellCheck={false}
+          style={{ width: '100%', padding: '8px 12px', fontSize: '13px', fontFamily: 'monospace', border: '1px solid var(--z-border)', borderRadius: '6px', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none', marginBottom: 6, boxSizing: 'border-box' }}
           onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--z-border)'; }}
         />
-        <p style={{ fontSize: 11, color: 'var(--z-text-muted)', marginBottom: 16 }}>
-          Entre 3 y 50 caracteres. El cambio aplica de inmediato.
-        </p>
-
+        <p style={{ fontSize: 11, color: 'var(--z-text-muted)', marginBottom: 16 }}>Entre 3 y 50 caracteres. El cambio aplica de inmediato.</p>
         {errorMensaje && (
-          <div style={{
-            padding: '8px 12px',
-            borderRadius: '6px',
-            fontSize: '12px',
-            background: '#fff5f5',
-            border: '0.5px solid #fecaca',
-            color: '#dc2626',
-            marginBottom: '16px',
-          }}>
+          <div style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px', background: '#fff5f5', border: '0.5px solid #fecaca', color: '#dc2626', marginBottom: '16px' }}>
             {errorMensaje}
           </div>
         )}
-
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancelar}
-            disabled={cargando}
-            style={{
-              padding: '8px 16px', borderRadius: '6px',
-              border: '1px solid var(--z-border)', background: 'transparent',
-              color: 'var(--z-text-muted)', fontSize: '13px',
-              cursor: cargando ? 'not-allowed' : 'pointer',
-            }}
-          >
+          <button onClick={onCancelar} disabled={cargando} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--z-border)', background: 'transparent', color: 'var(--z-text-muted)', fontSize: '13px', cursor: cargando ? 'not-allowed' : 'pointer' }}>
             Cancelar
           </button>
-          <button
-            onClick={() => onConfirmar(limpio)}
-            disabled={!puedeGuardar}
-            style={{
-              padding: '8px 16px', borderRadius: '6px',
-              border: 'none', background: 'var(--z-brand)',
-              color: 'white', fontSize: '13px', fontWeight: 600,
-              cursor: puedeGuardar ? 'pointer' : 'not-allowed',
-              opacity: puedeGuardar ? 1 : 0.5,
-            }}
-          >
+          <button onClick={() => onConfirmar(limpio)} disabled={!puedeGuardar} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--z-brand)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: puedeGuardar ? 'pointer' : 'not-allowed', opacity: puedeGuardar ? 1 : 0.5 }}>
             {cargando ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalCambiarRol({
+  usuario,
+  onConfirmar,
+  onCancelar,
+  cargando,
+}: {
+  usuario: UsuarioAdmin;
+  onConfirmar: (nuevoRol: string) => void;
+  onCancelar: () => void;
+  cargando: boolean;
+}) {
+  const [rolSeleccionado, setRolSeleccionado] = useState<string>(usuario.rol);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)', borderRadius: '12px', padding: '32px', maxWidth: '400px', width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
+        <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '4px', color: 'var(--z-text-primary)' }}>
+          Cambiar rol
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+          Selecciona el nuevo rol para{' '}
+          <strong style={{ color: 'var(--z-text-primary)' }}>{usuario.nombreCompleto}</strong>.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
+          {ROLES_DISPONIBLES.map((rol) => {
+            const colores = BADGE_COLORES[rol] ?? { bg: '#F5F5F4', color: '#78716C' };
+            const seleccionado = rolSeleccionado === rol;
+            return (
+              <div key={rol} onClick={() => setRolSeleccionado(rol)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', border: seleccionado ? `1.5px solid ${colores.color}` : '1px solid var(--z-border)', background: seleccionado ? colores.bg : 'transparent', cursor: 'pointer', transition: 'all 0.15s' }}>
+                <span style={{ fontSize: '13px', fontWeight: seleccionado ? 600 : 400, color: seleccionado ? colores.color : 'var(--z-text-primary)' }}>{rol}</span>
+                {seleccionado && <span style={{ fontSize: '14px', color: colores.color }}>✓</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onCancelar} disabled={cargando} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--z-border)', background: 'transparent', color: 'var(--z-text-muted)', fontSize: '13px', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button onClick={() => onConfirmar(rolSeleccionado)} disabled={cargando || rolSeleccionado === usuario.rol} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--z-brand)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: (cargando || rolSeleccionado === usuario.rol) ? 'not-allowed' : 'pointer', opacity: (cargando || rolSeleccionado === usuario.rol) ? 0.4 : 1 }}>
+            {cargando ? 'Guardando...' : 'Confirmar'}
           </button>
         </div>
       </div>
@@ -584,12 +569,24 @@ function ModalEditarUsuario({
 export function GestionPersonalPage() {
   const [busqueda,          setBusqueda]          = useState('');
   const [filtroSupervisor,  setFiltroSupervisor]  = useState('');
+  const [menuAbiertoId,     setMenuAbiertoId]     = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const cerrar = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuAbiertoId(null);
+    };
+    document.addEventListener('mousedown', cerrar);
+    return () => document.removeEventListener('mousedown', cerrar);
+  }, []);
   const [usuarioParaReset, setUsuarioParaReset] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaReasignar, setUsuarioParaReasignar] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaInactivar, setUsuarioParaInactivar] = useState<UsuarioAdmin | null>(null);
   const [usuarioParaEditarUsuario, setUsuarioParaEditarUsuario] = useState<UsuarioAdmin | null>(null);
   const [errorEditarUsuario, setErrorEditarUsuario] = useState<string | null>(null);
   const [filaHover, setFilaHover] = useState<number | null>(null);
+  const [usuarioParaCambiarRol, setUsuarioParaCambiarRol] = useState<UsuarioAdmin | null>(null);
   const [feedback, setFeedback] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const queryClient = useQueryClient();
 
@@ -657,6 +654,20 @@ export function GestionPersonalPage() {
     },
   });
 
+  const mutationCambiarRol = useMutation({
+    mutationFn: ({ usuarioId, rol }: { usuarioId: number; rol: string }) =>
+      cambiarRol(usuarioId, rol),
+    onSuccess: (_, { rol }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-usuarios'] });
+      setFeedback({ tipo: 'exito', texto: `Rol de ${usuarioParaCambiarRol?.nombreCompleto} actualizado a '${rol}' correctamente.` });
+      setUsuarioParaCambiarRol(null);
+    },
+    onError: () => {
+      setFeedback({ tipo: 'error', texto: 'No se pudo cambiar el rol. Intenta de nuevo.' });
+      setUsuarioParaCambiarRol(null);
+    },
+  });
+
   const mutationReasignar = useMutation({
     mutationFn: ({ usuarioId, nuevoSupervisorId }: { usuarioId: number; nuevoSupervisorId: number }) =>
       reasignarSupervisor(usuarioId, nuevoSupervisorId),
@@ -688,26 +699,24 @@ export function GestionPersonalPage() {
   });
 
   return (
-    <div style={{ maxWidth: '960px' }}>
+    <div style={{ width: '100%' }}>
       {/* Encabezado */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
-            Gestión de Personal
-          </h1>
-          <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
-            Administración de usuarios registrados en Zentinela.
-          </p>
-        </div>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+          Gestión de Personal
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
+          Administración de usuarios registrados en Zentinela.
+        </p>
       </div>
 
       {/* Feedback */}
       {feedback && (
         <div style={{
-          padding: '10px 14px',
+          padding: '11px 16px',
           borderRadius: '8px',
           fontSize: '13px',
-          marginBottom: '16px',
+          marginBottom: '20px',
           background: feedback.tipo === 'exito' ? '#f0fdf4' : '#fff5f5',
           border: `0.5px solid ${feedback.tipo === 'exito' ? '#bbf7d0' : '#fecaca'}`,
           color: feedback.tipo === 'exito' ? '#16a34a' : '#dc2626',
@@ -718,7 +727,7 @@ export function GestionPersonalPage() {
           {feedback.texto}
           <button
             onClick={() => setFeedback(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: 'inherit', lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: 'inherit', lineHeight: 1, marginLeft: 12, flexShrink: 0 }}
           >
             ×
           </button>
@@ -726,7 +735,7 @@ export function GestionPersonalPage() {
       )}
 
       {/* Buscador + filtro supervisor */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <input
           type="text"
           placeholder="Buscar por nombre, usuario o rol..."
@@ -769,20 +778,21 @@ export function GestionPersonalPage() {
       </div>
 
       {/* Tabla */}
-      <div style={{
+      <div ref={menuRef} style={{
         background: 'var(--z-bg-card)',
         border: '0.5px solid var(--z-border)',
-        borderRadius: '10px',
-        overflow: 'hidden',
+        borderRadius: '12px',
+        overflow: 'visible',
       }}>
         {/* Encabezado tabla */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 160px 120px 140px 320px',
+          gridTemplateColumns: '28fr 14fr max-content 15fr 40px',
           columnGap: '16px',
-          padding: '10px 16px',
+          padding: '11px 20px',
           borderBottom: '0.5px solid var(--z-border)',
           background: 'var(--z-bg-surface)',
+          borderRadius: '12px 12px 0 0',
         }}>
           {['Nombre', 'Usuario', 'Rol', 'Estado', ''].map((h) => (
             <span key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -792,19 +802,19 @@ export function GestionPersonalPage() {
         </div>
 
         {isLoading && (
-          <div style={{ padding: '32px', textAlign: 'center', color: 'var(--z-text-muted)', fontSize: '13px' }}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--z-text-muted)', fontSize: '13px' }}>
             Cargando usuarios...
           </div>
         )}
 
         {isError && (
-          <div style={{ padding: '32px', textAlign: 'center', color: '#dc2626', fontSize: '13px' }}>
+          <div style={{ padding: '40px', textAlign: 'center', color: '#dc2626', fontSize: '13px' }}>
             Error al cargar usuarios.
           </div>
         )}
 
         {!isLoading && !isError && usuariosFiltrados.length === 0 && (
-          <div style={{ padding: '32px', textAlign: 'center', color: 'var(--z-text-muted)', fontSize: '13px' }}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--z-text-muted)', fontSize: '13px' }}>
             {busqueda ? 'Sin resultados para la búsqueda.' : 'No hay usuarios registrados.'}
           </div>
         )}
@@ -816,9 +826,9 @@ export function GestionPersonalPage() {
             onMouseLeave={() => setFilaHover(prev => prev === u.id ? null : prev)}
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 160px 120px 140px 320px',
+              gridTemplateColumns: '28fr 14fr max-content 15fr 40px',
               columnGap: '16px',
-              padding: '12px 16px',
+              padding: '13px 20px',
               alignItems: 'center',
               borderBottom: i < usuariosFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
             }}
@@ -863,92 +873,100 @@ export function GestionPersonalPage() {
 
             <BadgeRol rol={u.rol} />
 
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 500,
-              color: u.requiereCambioPassword ? '#d97706' : '#16a34a',
-            }}>
+            <span style={{ fontSize: '11px', fontWeight: 500, color: u.requiereCambioPassword ? '#d97706' : '#16a34a' }}>
               {u.requiereCambioPassword ? 'Cambio pendiente' : 'Al día'}
             </span>
 
-            {/* Acciones */}
-            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+            {/* Botón opciones */}
+            <div style={{ position: 'relative' }}>
               <button
-                onClick={() => setUsuarioParaReset(u)}
+                onClick={() => setMenuAbiertoId(menuAbiertoId === u.id ? null : u.id)}
                 style={{
-                  padding: '5px 10px',
-                  borderRadius: '5px',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '6px',
                   border: '1px solid var(--z-border)',
-                  background: 'transparent',
-                  fontSize: '11px',
+                  background: menuAbiertoId === u.id ? 'var(--z-bg-surface)' : 'transparent',
                   color: 'var(--z-text-muted)',
                   cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}
-                onMouseOver={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--z-brand)';
-                  (e.currentTarget as HTMLElement).style.color = 'var(--z-brand)';
-                }}
-                onMouseOut={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--z-border)';
-                  (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
-                }}
+                onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--z-bg-surface)'; }}
+                onMouseOut={(e) => { if (menuAbiertoId !== u.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
-                Restablecer clave
+                ···
               </button>
-              <button
-                onClick={() => setUsuarioParaReasignar(u)}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: '5px',
-                  border: '1px solid var(--z-border)',
-                  background: 'transparent',
-                  fontSize: '11px',
-                  color: 'var(--z-text-muted)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s',
-                }}
-                onMouseOver={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = '#d97706';
-                  (e.currentTarget as HTMLElement).style.color = '#d97706';
-                }}
-                onMouseOut={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--z-border)';
-                  (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
-                }}
-              >
-                Reasignar supervisor
-              </button>
-              <button
-                onClick={() => setUsuarioParaInactivar(u)}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: '5px',
-                  border: '1px solid var(--z-border)',
-                  background: 'transparent',
-                  fontSize: '11px',
-                  color: 'var(--z-text-muted)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s',
-                }}
-                onMouseOver={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = '#dc2626';
-                  (e.currentTarget as HTMLElement).style.color = '#dc2626';
-                }}
-                onMouseOut={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--z-border)';
-                  (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
-                }}
-              >
-                Inactivar
-              </button>
+
+              {menuAbiertoId === u.id && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '36px',
+                  background: 'var(--z-bg-card)',
+                  border: '0.5px solid var(--z-border)',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+                  zIndex: 50,
+                  minWidth: '180px',
+                  overflow: 'hidden',
+                }}>
+                  {[
+                    { label: 'Cambiar rol',          color: '#7c3aed', bg: '#f5f3ff', accion: () => { setUsuarioParaCambiarRol(u);  setMenuAbiertoId(null); } },
+                    { label: 'Restablecer clave',     color: '#2563eb', bg: '#eff6ff', accion: () => { setUsuarioParaReset(u);        setMenuAbiertoId(null); } },
+                    { label: 'Reasignar supervisor',  color: '#d97706', bg: '#fffbeb', accion: () => { setUsuarioParaReasignar(u);    setMenuAbiertoId(null); } },
+                    { label: 'Inactivar',             color: '#dc2626', bg: '#fff5f5', accion: () => { setUsuarioParaInactivar(u);   setMenuAbiertoId(null); } },
+                  ].map(({ label, color, bg, accion }, idx, arr) => (
+                    <button
+                      key={label}
+                      onClick={accion}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '10px 16px',
+                        textAlign: 'left',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: idx < arr.length - 1 ? '0.5px solid var(--z-border)' : 'none',
+                        fontSize: '13px',
+                        color: 'var(--z-text-primary)',
+                        cursor: 'pointer',
+                        transition: 'background 0.1s, color 0.1s',
+                      }}
+                      onMouseOver={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = bg;
+                        (e.currentTarget as HTMLElement).style.color = color;
+                      }}
+                      onMouseOut={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'transparent';
+                        (e.currentTarget as HTMLElement).style.color = 'var(--z-text-primary)';
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      {/* Modal cambiar rol */}
+      {usuarioParaCambiarRol && (
+        <ModalCambiarRol
+          usuario={usuarioParaCambiarRol}
+          cargando={mutationCambiarRol.isPending}
+          onConfirmar={(nuevoRol) =>
+            mutationCambiarRol.mutate({ usuarioId: usuarioParaCambiarRol.id, rol: nuevoRol })
+          }
+          onCancelar={() => setUsuarioParaCambiarRol(null)}
+        />
+      )}
 
       {/* Modal restablecer contraseña */}
       {usuarioParaReset && (

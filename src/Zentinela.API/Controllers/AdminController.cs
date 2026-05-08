@@ -95,6 +95,24 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Cambia el rol del usuario en Zentinela, independientemente de su cargo en RRHH.
+    /// Roles válidos: Admin, Líder, Director, Asesor.
+    /// </summary>
+    [HttpPut("usuarios/{id:int}/rol")]
+    public async Task<IActionResult> CambiarRol(int id, [FromBody] CambiarRolRequest dto)
+    {
+        try
+        {
+            await _adminService.CambiarRolAsync(id, dto.Rol);
+            return Ok(new { mensaje = $"Rol actualizado a '{dto.Rol}' correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Inactiva un usuario: pone EstadoEmpleado = false en DBRecursosHumanos
     /// y elimina el ApplicationUser de Zentinela.
     /// </summary>
