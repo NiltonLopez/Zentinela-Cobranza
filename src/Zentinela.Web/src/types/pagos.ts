@@ -18,6 +18,7 @@ export interface ValidarPagosResponse {
   preview: PagoFila[];        // primeras 10 filas válidas para vista previa
   errores: PagoFila[];        // TODAS las filas con error
   todasLasValidas: PagoFila[];
+  todasLasInvalidas?: PagoFila[];
 }
 
 export interface CarteraDropdown {

@@ -97,7 +97,11 @@ public class CarguePagosService : ICarguePagosService
             .AsNoTracking()
             .ToListAsync();
 
-        var liderPorCedula = asignaciones.ToDictionary(a => a.TitularID, a => a.LiderID);
+        // DistinctBy: un titular puede aparecer varias veces en TitularCartera
+        // (asignado a más de un líder). Tomamos la primera asignación encontrada.
+        var liderPorCedula = asignaciones
+            .DistinctBy(a => a.TitularID)
+            .ToDictionary(a => a.TitularID, a => a.LiderID);
 
         foreach (var fila in filasValidas)
         {
@@ -123,10 +127,12 @@ public class CarguePagosService : ICarguePagosService
             .AsNoTracking()
             .ToListAsync();
 
-        var agentePorUsuario = agentes.ToDictionary(
-            a => a.UsuarioControlNext!,
-            a => a.AgenteID,
-            StringComparer.OrdinalIgnoreCase);
+        var agentePorUsuario = agentes
+            .DistinctBy(a => a.UsuarioControlNext!.ToLowerInvariant())
+            .ToDictionary(
+                a => a.UsuarioControlNext!,
+                a => a.AgenteID,
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var fila in filasValidas.Where(f => f.EsValida))
         {
@@ -196,8 +202,8 @@ public class CarguePagosService : ICarguePagosService
             ("Cedula",         "Cedula"),
             ("Nombre",         "Nombre"),
             ("Valor",          "Valor"),
-            ("Fecha",          "Fecha"),
             ("Honorarios",     "Honorarios"),
+            ("Fecha",          "Fecha"),
             ("UsuarioControl", "UsuarioControl"),
         };
 
@@ -212,7 +218,7 @@ public class CarguePagosService : ICarguePagosService
         }
 
         // Fila de ejemplo en gris
-        var ejemplo = new object[] { 1020304050L, "PEREZ JUAN", 1500000, "2026-04-21", 225000, "jperez" };
+        var ejemplo = new object[] { 1020304050L, "PEREZ JUAN", 1500000, 225000, "2026-04-21", "jperez" };
         for (int i = 0; i < ejemplo.Length; i++)
         {
             var celda = ws.Cell(2, i + 1);
@@ -348,9 +354,30 @@ public class CarguePagosService : ICarguePagosService
         if (rango is null) return filas;
 
         foreach (var fila in rango.Rows())
-            filas.Add(fila.Cells().Select(c => c.GetString()).ToArray());
+            filas.Add(fila.Cells().Select(CeldaATexto).ToArray());
 
         return filas;
+    }
+
+    /// <summary>
+    /// Convierte el valor de una celda a string.
+    /// Las celdas con tipo DateTime se formatean como yyyy-MM-dd para que
+    /// el parser de fechas las resuelva correctamente sin depender del formato regional de Excel.
+    /// </summary>
+    private static string CeldaATexto(ClosedXML.Excel.IXLCell c)
+    {
+        if (c.DataType == XLDataType.DateTime)
+            return c.GetDateTime().ToString("yyyy-MM-dd");
+
+        // Fallback: algunos archivos guardan fechas como número OADate
+        // si la celda tiene formato de fecha pero el tipo es Number.
+        if (c.DataType == XLDataType.Number && c.Style.NumberFormat.Format.Contains("d"))
+        {
+            try { return DateTime.FromOADate(c.GetDouble()).ToString("yyyy-MM-dd"); }
+            catch { /* no era una fecha OADate válida, continúa con GetString */ }
+        }
+
+        return c.GetString();
     }
 
     /// <summary>
