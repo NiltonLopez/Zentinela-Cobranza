@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Zentinela.Application.DTOs.Asignaciones;
 using Zentinela.Application.Interfaces;
 using Zentinela.Infrastructure.SQLServer.Persistence;
@@ -17,11 +18,16 @@ public class AsignacionMasivaService : IAsignacionMasivaService
 {
     private readonly CallCenterDbContext _db;
     private readonly IExcelExporter     _excelExporter;
+    private readonly ILogger<AsignacionMasivaService> _logger;
 
-    public AsignacionMasivaService(CallCenterDbContext db, IExcelExporter excelExporter)
+    public AsignacionMasivaService(
+        CallCenterDbContext db,
+        IExcelExporter excelExporter,
+        ILogger<AsignacionMasivaService> logger)
     {
         _db            = db;
         _excelExporter = excelExporter;
+        _logger        = logger;
     }
 
     // ── Plantilla ─────────────────────────────────────────────────────────────
@@ -272,8 +278,11 @@ public class AsignacionMasivaService : IAsignacionMasivaService
             await bulk.WriteToServerAsync(tabla);
             await tx.CommitAsync();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex,
+                "Falló confirmación de asignación masiva (CarteraID={CarteraID}, LiderID={LiderID}, {TotalTitulares} titular(es), {NuevosTitulares} nuevo(s))",
+                carteraID, liderID, titularIDs.Count, nuevosTitulares.Count);
             await tx.RollbackAsync();
             throw;
         }

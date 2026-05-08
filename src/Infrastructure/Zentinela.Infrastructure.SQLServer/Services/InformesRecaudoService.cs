@@ -192,11 +192,11 @@ public class InformesRecaudoService : IInformesRecaudoService
             .AsNoTracking()
             .ToListAsync();
 
-        var filas = liderCarteras.Select(lc =>
+        var filas = liderCarteras.Select(liderCartera =>
         {
-            var pago = pagos.FirstOrDefault(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID);
-            var meta = metas.FirstOrDefault(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID);
-            var cap  = capacidades.FirstOrDefault(c => c.LiderID == lc.LiderID && c.CarteraID == lc.CarteraID);
+            var pago = pagos.FirstOrDefault(p => p.LiderID == liderCartera.LiderID && p.CarteraID == liderCartera.CarteraID);
+            var meta = metas.FirstOrDefault(m => m.LiderID == liderCartera.LiderID && m.CarteraID == liderCartera.CarteraID);
+            var cap  = capacidades.FirstOrDefault(c => c.LiderID == liderCartera.LiderID && c.CarteraID == liderCartera.CarteraID);
 
             var recaudo    = pago?.Recaudo    ?? 0m;
             var honorarios = pago?.Honorarios ?? 0m;
@@ -214,11 +214,11 @@ public class InformesRecaudoService : IInformesRecaudoService
 
             return new InformeLiderCarteraDto
             {
-                LiderID          = lc.LiderID,
-                NombreLider      = lc.Lider.Nombre,
-                CarteraID        = lc.CarteraID,
-                NombreCartera    = lc.Cartera.NombreCartera,
-                TotalAsesores    = asesoresPorLiderCartera.FirstOrDefault(x => x.LiderID == lc.LiderID && x.CarteraID == lc.CarteraID)?.Total ?? 0,
+                LiderID          = liderCartera.LiderID,
+                NombreLider      = liderCartera.Lider.Nombre,
+                CarteraID        = liderCartera.CarteraID,
+                NombreCartera    = liderCartera.Cartera.NombreCartera,
+                TotalAsesores    = asesoresPorLiderCartera.FirstOrDefault(x => x.LiderID == liderCartera.LiderID && x.CarteraID == liderCartera.CarteraID)?.Total ?? 0,
                 ValorMeta        = valorMeta,
                 TipoMeta         = tipoMeta,
                 TieneMeta        = meta != null,

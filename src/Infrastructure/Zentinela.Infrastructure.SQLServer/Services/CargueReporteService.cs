@@ -5,6 +5,7 @@ using ClosedXML.Excel;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Zentinela.Application.DTOs.Reportes;
 using Zentinela.Application.Interfaces;
 using Zentinela.Core.Entities;
@@ -29,8 +30,13 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 public class CargueReporteService : ICargueReporteService
 {
     private readonly CallCenterDbContext _db;
+    private readonly ILogger<CargueReporteService> _logger;
 
-    public CargueReporteService(CallCenterDbContext db) => _db = db;
+    public CargueReporteService(CallCenterDbContext db, ILogger<CargueReporteService> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
 
     // ── Última actualización ──────────────────────────────────────────────────
 
@@ -308,8 +314,11 @@ public class CargueReporteService : ICargueReporteService
 
             await tx.CommitAsync();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex,
+                "Falló confirmación de cargue de reportes ({TotalFilas} filas, {TitularesNuevos} titular(es) nuevo(s) hasta el fallo)",
+                filasValidas.Count, titularesInsertados);
             await tx.RollbackAsync();
             throw;
         }
