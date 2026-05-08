@@ -391,6 +391,99 @@ Separador de sección con línea horizontal + barra vertical de color + título 
 
 ---
 
+## Patrones de hover en botones inline
+
+Cuando un botón **no** se construye con `<ZButton>` (que ya trae su `opacity: 0.85` de hover), la página suele usar estilos inline con `React.CSSProperties`. Para esos casos, este es el conjunto canónico de patrones — referenciado en `CreadorZentinelaPage.tsx` (Card 2 + Card 3). Aplicar literal cuando se agreguen botones nuevos a otras páginas para mantener consistencia.
+
+### Mecánica común
+
+- Estado: `const [botonHover, setBotonHover] = useState<string | null>(null);` — un único state para todos los botones de la página, con clave string única por botón (`'cols-todas'`, `'export-csv'`, etc.).
+- Handlers:
+  ```tsx
+  onMouseEnter={() => setBotonHover('clave-unica')}
+  onMouseLeave={() => setBotonHover(prev => prev === 'clave-unica' ? null : prev)}
+  ```
+  El `prev === clave ? null : prev` evita carreras cuando el cursor cruza dos botones rápido.
+- Transición: siempre `transition: '<props> 0.15s ease'`. Animar solo las propiedades que cambian (`background`, `box-shadow`, `filter`) — no `all`, que dispara reflows innecesarios.
+- Disabled: el hover **no se aplica** cuando el botón está disabled o en un estado de `isPending`. Calcular un boolean `<accion>Activo` arriba y gateaer ambos el `disabled` y el style condicional con él.
+
+### Variante 1 — Botón sólido de acción primaria (ej: "Ver preview")
+
+Fondo `var(--z-brand)`, texto blanco. Hover oscurece con `filter: brightness(0.92)` + sombra sutil. Usa `filter` en vez de cambiar el color para que sirva con cualquier brand color sin tener que conocer su tono exacto.
+
+```tsx
+<button
+  onClick={handler}
+  disabled={!activo}
+  onMouseEnter={() => setBotonHover('accion')}
+  onMouseLeave={() => setBotonHover(prev => prev === 'accion' ? null : prev)}
+  style={{
+    padding: '8px 20px', borderRadius: '6px', border: 'none',
+    background: activo ? 'var(--z-brand)' : 'var(--z-border)',
+    color: 'white', fontSize: '13px', fontWeight: 600,
+    cursor: activo ? 'pointer' : 'not-allowed',
+    filter:    activo && botonHover === 'accion' ? 'brightness(0.92)' : 'none',
+    boxShadow: activo && botonHover === 'accion' ? '0 2px 6px rgba(0,0,0,0.12)' : 'none',
+    transition: 'filter 0.15s ease, box-shadow 0.15s ease',
+  }}
+>
+  Acción
+</button>
+```
+
+### Variante 2 — Botón sólido verde (descarga / éxito)
+
+Fondo `#16a34a` (verde Tailwind 600). Hover baja un escalón a `#15803d` (Tailwind 700) + sombra verde tintada. Más fuerte que la variante 1 porque la acción es decisiva (descargar archivo).
+
+```tsx
+style={{
+  background: activo ? (hover ? '#15803d' : '#16a34a') : 'var(--z-border)',
+  boxShadow: hover ? '0 2px 6px rgba(22,163,74,0.30)' : 'none',
+  transition: 'background 0.15s ease, box-shadow 0.15s ease',
+  // ...resto igual a variante 1, sin border
+}}
+```
+
+### Variante 3 — Botón outline verde (acción secundaria con relación a una primaria)
+
+Borde `#16a34a` con fondo transparente. Hover **rellena** con verde claro al 10% (`rgba(22,163,74,0.10)`) + sombra verde más suave. Patrón pensado para parejas "secundaria + primaria" donde la primaria es la variante 2 (ej: "Descargar CSV" + "Descargar Excel").
+
+```tsx
+style={{
+  border: '1px solid #16a34a',
+  background: hover ? 'rgba(22, 163, 74, 0.10)' : 'transparent',
+  color: activo ? '#15803d' : 'var(--z-text-muted)',
+  boxShadow: hover ? '0 2px 6px rgba(22,163,74,0.18)' : 'none',
+  transition: 'background 0.15s ease, box-shadow 0.15s ease',
+}}
+```
+
+### Variante 4 — Chips de preset / utilidad (outline gris)
+
+Borde `var(--z-border)`, fondo transparente, texto `var(--z-text-muted)`. Hover oscurece el borde a `var(--z-text-muted)`, fondo a `var(--z-bg-surface)`, texto a `var(--z-text-primary)`. Para los presets de "Todas / Solo X / Solo Y / Ninguna" del Creador o cualquier tira similar.
+
+```tsx
+const presetStyle = (key: string): React.CSSProperties => ({
+  padding: '4px 10px', fontSize: '11px', borderRadius: '4px',
+  border: `1px solid ${botonHover === key ? 'var(--z-text-muted)' : 'var(--z-border)'}`,
+  background: botonHover === key ? 'var(--z-bg-surface)' : 'transparent',
+  color:      botonHover === key ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+  cursor: 'pointer', transition: 'all 0.15s ease',
+});
+```
+
+(En este caso `transition: 'all'` es aceptable porque cambia 3 propiedades simultáneas.)
+
+### Reglas
+
+- Una sola variable de estado por página (`botonHover: string | null`), no un boolean por botón.
+- Las claves deben ser globales-de-la-página, prefijo por sección si hace falta (`'cols-todas'`, `'export-csv'`).
+- Nunca aplicar hover a un botón disabled / loading — el cursor `not-allowed` ya comunica el estado.
+- Sombras siempre como `box-shadow: 0 2px 6px ...` con tinte coherente con el color del botón. No usar `0 4px 12px` o sombras más fuertes (rompen la jerarquía visual con cards y modales).
+- `transition` siempre `0.15s ease`. 0.1s se siente abrupto, 0.2s+ ya empieza a sentirse lento en hovers.
+
+---
+
 ## Convenciones de código frontend
 
 1. **Estilos**: se usan estilos inline con objetos `React.CSSProperties` y variables CSS `var(--z-*)`. No se usa Tailwind ni CSS Modules.
