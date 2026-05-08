@@ -117,6 +117,10 @@ VITE_API_URL=http://<servidor>:5051/api
 ```
 > No commitear este archivo si contiene URLs internas — añadirlo al `.gitignore` si aún no lo está.
 
+### Fallback de acceso por IP
+
+`src/Zentinela.Web/src/api/authApi.ts` aplica un fallback automático: si la SPA fue cargada desde una IP literal (regex `^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$`) en vez del nombre `zentinela`, la `baseURL` de axios se resuelve como `<protocolo>://<misma-ip>:5051` ignorando `VITE_API_URL`. Esto permite que un usuario en la red interna acceda como `http://10.0.0.89:5050` cuando el DNS interno no resuelve `zentinela`. Para que funcione end-to-end, la política CORS `ZentinelaPolicy` en `Program.cs` también whitelista `http://10.0.0.89:5050`. Si cambia la IP del servidor o el puerto de la SPA, actualizar ambos lugares.
+
 ---
 
 ## 3. Checklist de release

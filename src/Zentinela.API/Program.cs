@@ -29,7 +29,9 @@ builder.Services.AddCors(options =>
               .AllowCredentials());
 
     options.AddPolicy("ZentinelaPolicy", policy =>
-        policy.WithOrigins("http://zentinela")
+        policy.WithOrigins(
+                  "http://zentinela",
+                  "http://10.0.0.89:5050")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());

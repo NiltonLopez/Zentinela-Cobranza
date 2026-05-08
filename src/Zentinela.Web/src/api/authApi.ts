@@ -2,8 +2,21 @@ import axios from 'axios';
 import type { LoginRequest, LoginResponse } from '../types/auth';
 import { STORAGE_KEYS } from '../constants/storage';
 
+// Si la SPA fue cargada por IP (acceso de respaldo cuando el DNS interno
+// no resuelve `zentinela`), apuntamos a la API por la misma IP en su puerto
+// dedicado. En cualquier otro caso usamos VITE_API_URL del entorno.
+const PUERTO_API_FALLBACK = '5051';
+const ES_IP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+function resolverBaseURL(): string {
+  if (typeof window !== 'undefined' && ES_IP.test(window.location.hostname)) {
+    return `${window.location.protocol}//${window.location.hostname}:${PUERTO_API_FALLBACK}`;
+  }
+  return import.meta.env.VITE_API_URL;
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: resolverBaseURL(),
 });
 
 // Interceptor de request: agrega token JWT a todas las peticiones
