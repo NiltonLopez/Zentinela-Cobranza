@@ -9,7 +9,6 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/calificador")]
-[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director}")]
 public class CalificadorCarteraController : ControllerBase
 {
     private readonly ICalificadorCarteraService _service;
@@ -21,8 +20,10 @@ public class CalificadorCarteraController : ControllerBase
 
     /// <summary>
     /// Lista de combinaciones Cartera+Líder disponibles según el rol del usuario.
+    /// Auxiliar de Sistemas también accede al dropdown (lo necesita en Gestión de Asignaciones).
     /// </summary>
     [HttpGet("opciones")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.AuxiliarSistemas}")]
     public async Task<IActionResult> ObtenerOpciones()
     {
         var contexto = ObtenerContexto();
@@ -34,6 +35,7 @@ public class CalificadorCarteraController : ControllerBase
     /// Calcula todas las métricas para la asignación Cartera+Líder indicada.
     /// </summary>
     [HttpGet("{carteraID:int}/{liderID:int}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director}")]
     public async Task<IActionResult> Calificar(int carteraID, int liderID)
     {
         var resultado = await _service.CalificarAsync(carteraID, liderID);
