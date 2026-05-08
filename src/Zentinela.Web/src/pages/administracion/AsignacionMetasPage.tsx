@@ -422,7 +422,7 @@ export function AsignacionMetasPage() {
                       </tr>
                     ) : filasFiltradas.lider.map(f => (
                       <FilaLider
-                        key={`${f.liderID}-${f.carteraID}`}
+                        key={`${f.liderID}-${f.carteraID}-${f.tipoMeta ?? 'x'}-${f.valorMeta ?? 'x'}`}
                         fila={f} año={data.año} mes={data.mes} onGuardado={refrescar}
                       />
                     ))}
@@ -457,7 +457,7 @@ export function AsignacionMetasPage() {
                       </tr>
                     ) : filasFiltradas.agente.map(f => (
                       <FilaAgente
-                        key={f.agenteID}
+                        key={`${f.agenteID}-${f.tipoMeta ?? 'x'}-${f.valorMeta ?? 'x'}`}
                         fila={f} año={data.año} mes={data.mes} onGuardado={refrescar}
                       />
                     ))}

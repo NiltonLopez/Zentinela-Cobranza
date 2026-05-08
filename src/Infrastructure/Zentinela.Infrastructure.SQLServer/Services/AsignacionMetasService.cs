@@ -79,9 +79,13 @@ public class AsignacionMetasService : IAsignacionMetasService
             .ToList();
     }
 
+    // Join en memoria por diseño: _callCenter y _rrhh son DbContexts distintos
+    // (DBCallCenter y DBRecursosHumanos). EF Core no puede generar un JOIN SQL
+    // entre ellos. NO mover a un .Where(... Contains ...) con join al query —
+    // no funciona entre DbContexts y degrada a múltiples roundtrips. El patrón
+    // correcto es: cargar IDs en batch desde cada contexto y cruzar en LINQ-to-Objects.
     private async Task<List<FilaMetaAgenteDto>> ObtenerFilasAgenteAsync(short año, byte mes)
     {
-        // Agentes activos: todos los que tienen al menos una asignación en Cartera_Agente
         var asignaciones = await _callCenter.CarteraAgentes
             .GroupBy(ca => ca.AgenteID)
             .Select(g => new
@@ -100,9 +104,11 @@ public class AsignacionMetasService : IAsignacionMetasService
             .AsNoTracking()
             .ToListAsync();
 
-        // Nombres desde RRHH
+        // Nombres desde RRHH, filtrando empleados retirados (EstadoEmpleado = false).
+        // Si el agente no aparece en este diccionario, queda fuera del resultado:
+        // el sistema no debe ofrecer asignar metas a personal retirado.
         var nombres = await _rrhh.Empleados
-            .Where(e => agenteIds.Contains(e.NumeroDocumento))
+            .Where(e => e.EstadoEmpleado && agenteIds.Contains(e.NumeroDocumento))
             .AsNoTracking()
             .ToDictionaryAsync(e => e.NumeroDocumento, e => $"{e.Nombre} {e.Apellidos}".Trim());
 
@@ -114,6 +120,7 @@ public class AsignacionMetasService : IAsignacionMetasService
             .AsNoTracking().ToListAsync();
 
         return asignaciones
+            .Where(a => nombres.ContainsKey(a.AgenteID))
             .Select(a =>
             {
                 var meta = metas.FirstOrDefault(m => m.AgenteID == a.AgenteID);
@@ -121,7 +128,7 @@ public class AsignacionMetasService : IAsignacionMetasService
                 return new FilaMetaAgenteDto
                 {
                     AgenteID      = a.AgenteID,
-                    NombreAgente  = nombres.TryGetValue(a.AgenteID, out var n) ? n : $"Agente {a.AgenteID}",
+                    NombreAgente  = nombres[a.AgenteID],
                     NombreCartera = lc?.Cartera.NombreCartera,
                     NombreLider   = lc?.Lider.Nombre,
                     TipoMeta      = meta?.TipoMeta,
@@ -135,29 +142,29 @@ public class AsignacionMetasService : IAsignacionMetasService
 
     // ── UPSERT por fila ───────────────────────────────────────────────────────
 
-    public async Task<ResultadoMetaDto> GuardarMetaLiderAsync(GuardarMetaLiderRequest req)
+    public async Task<ResultadoMetaDto> GuardarMetaLiderAsync(GuardarMetaLiderRequest request)
     {
         var existing = await _callCenter.MetaLiderCarteraMes
-            .FirstOrDefaultAsync(m => m.LiderID == req.LiderID && m.CarteraID == req.CarteraID
-                                   && m.Año == req.Año && m.Mes == req.Mes);
+            .FirstOrDefaultAsync(m => m.LiderID == request.LiderID && m.CarteraID == request.CarteraID
+                                   && m.Año == request.Año && m.Mes == request.Mes);
 
         bool actualizado;
         if (existing is not null)
         {
-            existing.TipoMeta  = req.TipoMeta;
-            existing.ValorMeta = req.Valor;
+            existing.TipoMeta  = request.TipoMeta;
+            existing.ValorMeta = request.Valor;
             actualizado = true;
         }
         else
         {
             _callCenter.MetaLiderCarteraMes.Add(new MetaLiderCarteraMes
             {
-                LiderID   = req.LiderID,
-                CarteraID = req.CarteraID,
-                Año       = req.Año,
-                Mes       = req.Mes,
-                TipoMeta  = req.TipoMeta,
-                ValorMeta = req.Valor,
+                LiderID   = request.LiderID,
+                CarteraID = request.CarteraID,
+                Año       = request.Año,
+                Mes       = request.Mes,
+                TipoMeta  = request.TipoMeta,
+                ValorMeta = request.Valor,
             });
             actualizado = false;
         }
@@ -171,27 +178,27 @@ public class AsignacionMetasService : IAsignacionMetasService
         };
     }
 
-    public async Task<ResultadoMetaDto> GuardarMetaAgenteAsync(GuardarMetaAgenteRequest req)
+    public async Task<ResultadoMetaDto> GuardarMetaAgenteAsync(GuardarMetaAgenteRequest request)
     {
         var existing = await _callCenter.MetaAgentesMes
-            .FirstOrDefaultAsync(m => m.AgenteID == req.AgenteID && m.Año == req.Año && m.Mes == req.Mes);
+            .FirstOrDefaultAsync(m => m.AgenteID == request.AgenteID && m.Año == request.Año && m.Mes == request.Mes);
 
         bool actualizado;
         if (existing is not null)
         {
-            existing.TipoMeta  = req.TipoMeta;
-            existing.ValorMeta = req.Valor;
+            existing.TipoMeta  = request.TipoMeta;
+            existing.ValorMeta = request.Valor;
             actualizado = true;
         }
         else
         {
             _callCenter.MetaAgentesMes.Add(new MetaAgenteMes
             {
-                AgenteID  = req.AgenteID,
-                Año       = req.Año,
-                Mes       = req.Mes,
-                TipoMeta  = req.TipoMeta,
-                ValorMeta = req.Valor,
+                AgenteID  = request.AgenteID,
+                Año       = request.Año,
+                Mes       = request.Mes,
+                TipoMeta  = request.TipoMeta,
+                ValorMeta = request.Valor,
             });
             actualizado = false;
         }
