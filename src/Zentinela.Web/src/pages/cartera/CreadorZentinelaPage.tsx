@@ -5,6 +5,7 @@ import {
   obtenerColumnas,
   obtenerPreview,
   exportarExcel,
+  exportarCsv,
   obtenerOpcionesCreador,
 } from '../../api/creadorApi';
 import type { FiltroBaseMadreRequest, ColumnaBaseMadre } from '../../types/creador';
@@ -103,23 +104,32 @@ export function CreadorZentinelaPage() {
     enabled: filtroActivo !== null,
   });
 
-  // ── Mutación descarga ──────────────────────────────────────────────────────
+  // ── Mutaciones descarga ────────────────────────────────────────────────────
+  // Helper compartido: dispara la descarga del blob con el nombre de archivo
+  // construido a partir de la cartera seleccionada y la extensión correcta.
+  const dispararDescarga = (blob: Blob, extension: 'xlsx' | 'csv') => {
+    const url = URL.createObjectURL(blob);
+    const etiqueta = seleccion
+      ? opciones.find(o => o.carteraID === seleccion.carteraID && o.liderID === seleccion.liderID)?.etiqueta
+      : undefined;
+    const carteraNombre = etiqueta ?? 'Base';
+    const fecha         = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    if (anchorRef.current) {
+      anchorRef.current.href     = url;
+      anchorRef.current.download = `BaseMadre_${carteraNombre}_${fecha}.${extension}`;
+      anchorRef.current.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
   const exportMutation = useMutation({
     mutationFn: (filtro: FiltroBaseMadreRequest) => exportarExcel(filtro),
-    onSuccess: (blob) => {
-      const url          = URL.createObjectURL(blob);
-      const etiqueta     = seleccion
-        ? opciones.find(o => o.carteraID === seleccion.carteraID && o.liderID === seleccion.liderID)?.etiqueta
-        : undefined;
-      const carteraNombre = etiqueta ?? 'Base';
-      const fecha        = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      if (anchorRef.current) {
-        anchorRef.current.href     = url;
-        anchorRef.current.download = `BaseMadre_${carteraNombre}_${fecha}.xlsx`;
-        anchorRef.current.click();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    },
+    onSuccess: (blob) => dispararDescarga(blob, 'xlsx'),
+  });
+
+  const exportCsvMutation = useMutation({
+    mutationFn: (filtro: FiltroBaseMadreRequest) => exportarCsv(filtro),
+    onSuccess: (blob) => dispararDescarga(blob, 'csv'),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -162,6 +172,7 @@ export function CreadorZentinelaPage() {
 
   const handleVerPreview  = () => { if (seleccion) setFiltroActivo(construirFiltro()); };
   const handleExportar    = () => { if (seleccion) exportMutation.mutate(construirFiltro()); };
+  const handleExportarCsv = () => { if (seleccion) exportCsvMutation.mutate(construirFiltro()); };
 
   const toggleColumna = (nombre: string) => {
     if (COLUMNAS_FIJAS.includes(nombre)) return; // Doc + Nombre no se desmarcan
@@ -567,25 +578,44 @@ export function CreadorZentinelaPage() {
               )}
             </p>
 
-            <button
-              onClick={handleExportar}
-              disabled={!preview || preview.total === 0 || exportMutation.isPending}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '8px 18px', borderRadius: '6px', border: 'none',
-                background: preview && preview.total > 0 ? '#16a34a' : 'var(--z-border)',
-                color: 'white', fontSize: '13px', fontWeight: 600,
-                cursor: preview && preview.total > 0 ? 'pointer' : 'not-allowed',
-                opacity: exportMutation.isPending ? 0.7 : 1,
-              }}
-            >
-              {exportMutation.isPending ? 'Generando...' : '↓ Descargar Excel'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleExportarCsv}
+                disabled={!preview || preview.total === 0 || exportCsvMutation.isPending}
+                title="Recomendado para carteras grandes — descarga en streaming, abre directo en Excel"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 18px', borderRadius: '6px',
+                  border: '1px solid #16a34a', background: 'transparent',
+                  color: preview && preview.total > 0 ? '#16a34a' : 'var(--z-text-muted)',
+                  fontSize: '13px', fontWeight: 600,
+                  cursor: preview && preview.total > 0 ? 'pointer' : 'not-allowed',
+                  opacity: exportCsvMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {exportCsvMutation.isPending ? 'Generando...' : '↓ Descargar CSV'}
+              </button>
+
+              <button
+                onClick={handleExportar}
+                disabled={!preview || preview.total === 0 || exportMutation.isPending}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 18px', borderRadius: '6px', border: 'none',
+                  background: preview && preview.total > 0 ? '#16a34a' : 'var(--z-border)',
+                  color: 'white', fontSize: '13px', fontWeight: 600,
+                  cursor: preview && preview.total > 0 ? 'pointer' : 'not-allowed',
+                  opacity: exportMutation.isPending ? 0.7 : 1,
+                }}
+              >
+                {exportMutation.isPending ? 'Generando...' : '↓ Descargar Excel'}
+              </button>
+            </div>
           </div>
 
-          {exportMutation.isError && (
+          {(exportMutation.isError || exportCsvMutation.isError) && (
             <p style={{ fontSize: '12px', color: '#dc2626', marginBottom: '12px' }}>
-              Error al generar el Excel. Intenta de nuevo.
+              Error al generar la descarga. Intenta de nuevo.
             </p>
           )}
 

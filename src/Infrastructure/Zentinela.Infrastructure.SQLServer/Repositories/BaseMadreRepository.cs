@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,8 @@ public class BaseMadreRepository : IBaseMadreRepository
         _context = context;
     }
 
+    // ── ObtenerAsync (preview) ───────────────────────────────────────────────
+
     public async Task<(IEnumerable<BaseMadreRow> Filas, int Total)> ObtenerAsync(
         int          carteraID,
         int?         liderID,
@@ -47,6 +50,129 @@ public class BaseMadreRepository : IBaseMadreRepository
         List<string> fuentesEmail,
         List<string> coincidenciasEmail,
         int?         limite)
+    {
+        var (whereClause, paramSpecs) = ConstruirWhereYParams(
+            carteraID, liderID, ultimoPerfil, mejorPerfil, promesasVigentes,
+            rotacionMaxima, saldoMinimo, tipoAfiliado, estadoFosyga,
+            fuentesCelular, coincidenciasCelular, fuentesEmail, coincidenciasEmail);
+
+        // limite es int? validado upstream — interpolación segura (no es input string)
+        var topClause = limite.HasValue ? $"TOP ({limite.Value})" : string.Empty;
+
+        var countSql = $"""
+            SELECT COUNT(*) AS Value
+            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            {whereClause}
+            """;
+
+        var dataSql = $"""
+            SELECT {topClause} *
+            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            {whereClause}
+            """;
+
+        // SqlParameter no se puede reusar entre comandos — instanciamos por query.
+        SqlParameter[] CreateParams() =>
+            paramSpecs.Select(s => new SqlParameter(s.Name, s.Value)).ToArray();
+
+        // Aplica a las dos queries que siguen (count + datos) — ambas van por EF Core.
+        _context.Database.SetCommandTimeout(CommandTimeoutSegundos);
+
+        var total = await _context.Database
+            .SqlQueryRaw<int>(countSql, CreateParams())
+            .FirstOrDefaultAsync();
+
+        var filas = await _context.BaseMadreRows
+            .FromSqlRaw(dataSql, CreateParams())
+            .AsNoTracking()
+            .ToListAsync();
+
+        return (filas, total);
+    }
+
+    // ── StreamFilasAsync (export Excel/CSV) ──────────────────────────────────
+
+    public async Task StreamFilasAsync(
+        int                    carteraID,
+        int?                   liderID,
+        string?                ultimoPerfil,
+        string?                mejorPerfil,
+        bool?                  promesasVigentes,
+        int?                   rotacionMaxima,
+        decimal?               saldoMinimo,
+        string?                tipoAfiliado,
+        string?                estadoFosyga,
+        List<string>           fuentesCelular,
+        List<string>           coincidenciasCelular,
+        List<string>           fuentesEmail,
+        List<string>           coincidenciasEmail,
+        IReadOnlyList<string>  propiedadesSeleccionadas,
+        Func<DbDataReader, ValueTask> procesarFila,
+        CancellationToken      ct = default)
+    {
+        var (whereClause, paramSpecs) = ConstruirWhereYParams(
+            carteraID, liderID, ultimoPerfil, mejorPerfil, promesasVigentes,
+            rotacionMaxima, saldoMinimo, tipoAfiliado, estadoFosyga,
+            fuentesCelular, coincidenciasCelular, fuentesEmail, coincidenciasEmail);
+
+        // Proyección explícita: solo los campos pedidos. Si el catálogo no tiene
+        // alias para alguno (no debería pasar), se omite — evitamos un SELECT
+        // vacío con un fallback mínimo a [Numero Documento].
+        var aliasesSql = propiedadesSeleccionadas
+            .Select(p => SqlAlias.TryGetValue(p, out var s) ? s : null)
+            .Where(s => s != null)
+            .ToList();
+
+        if (aliasesSql.Count == 0)
+            aliasesSql.Add("[Numero Documento]");
+
+        var sql = $"""
+            SELECT {string.Join(", ", aliasesSql)}
+            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            {whereClause}
+            """;
+
+        var conn = _context.Database.GetDbConnection();
+        var wasOpen = conn.State == ConnectionState.Open;
+        if (!wasOpen) await conn.OpenAsync(ct);
+
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText    = sql;
+            cmd.CommandTimeout = CommandTimeoutSegundos;
+            foreach (var (name, value) in paramSpecs)
+            {
+                var p = cmd.CreateParameter();
+                p.ParameterName = name;
+                p.Value = value;
+                cmd.Parameters.Add(p);
+            }
+
+            // SequentialAccess permite leer column-by-column sin buffering — útil
+            // cuando hay strings largos. No restringe lecturas si vamos en orden.
+            await using var reader = await cmd.ExecuteReaderAsync(
+                CommandBehavior.SequentialAccess, ct);
+
+            while (await reader.ReadAsync(ct))
+                await procesarFila(reader);
+        }
+        finally
+        {
+            if (!wasOpen) await conn.CloseAsync();
+        }
+    }
+
+    // ── Construcción de WHERE + parámetros (compartido) ──────────────────────
+
+    private static (string WhereClause, List<(string Name, object Value)> Params)
+        ConstruirWhereYParams(
+            int carteraID, int? liderID,
+            string? ultimoPerfil, string? mejorPerfil,
+            bool? promesasVigentes, int? rotacionMaxima,
+            decimal? saldoMinimo, string? tipoAfiliado, string? estadoFosyga,
+            List<string> fuentesCelular, List<string> coincidenciasCelular,
+            List<string> fuentesEmail, List<string> coincidenciasEmail)
     {
         var conditions = new List<string>();
         var paramSpecs = new List<(string Name, object Value)>
@@ -106,8 +232,6 @@ public class BaseMadreRepository : IBaseMadreRepository
         }
 
         // ── Coincidencias entre fuentes (mismo valor en N celulares / N emails) ─
-        // C# verificaba: todos los valores no vacíos AND todos iguales. SQL: cada
-        // columna NOT IN ('','0') AND igual a la primera.
         if (coincidenciasCelular.Count >= 2)
             AgregarCoincidencias(conditions, coincidenciasCelular, ColumnaCelular);
 
@@ -118,39 +242,82 @@ public class BaseMadreRepository : IBaseMadreRepository
             ? "WHERE " + string.Join(" AND ", conditions)
             : string.Empty;
 
-        // limite es int? validado upstream — interpolación segura (no es input string)
-        var topClause = limite.HasValue ? $"TOP ({limite.Value})" : string.Empty;
-
-        var countSql = $"""
-            SELECT COUNT(*) AS Value
-            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
-            {whereClause}
-            """;
-
-        var dataSql = $"""
-            SELECT {topClause} *
-            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
-            {whereClause}
-            """;
-
-        // SqlParameter no se puede reusar entre comandos — instanciamos por query.
-        SqlParameter[] CreateParams() =>
-            paramSpecs.Select(s => new SqlParameter(s.Name, s.Value)).ToArray();
-
-        // Aplica a las dos queries que siguen (count + datos) — ambas van por EF Core.
-        _context.Database.SetCommandTimeout(CommandTimeoutSegundos);
-
-        var total = await _context.Database
-            .SqlQueryRaw<int>(countSql, CreateParams())
-            .FirstOrDefaultAsync();
-
-        var filas = await _context.BaseMadreRows
-            .FromSqlRaw(dataSql, CreateParams())
-            .AsNoTracking()
-            .ToListAsync();
-
-        return (filas, total);
+        return (whereClause, paramSpecs);
     }
+
+    // ── Mapeo C# → alias SQL en la TVF (paralelo a BaseMadreRowMapping) ──────
+
+    /// <summary>
+    /// Mapea cada propiedad de <see cref="BaseMadreRow"/> al alias bracket-quoted
+    /// que la TVF emite. Se usa para proyectar SELECT solo de las columnas que el
+    /// usuario pidió (en lugar de SELECT *), reduciendo bytes-on-the-wire y la
+    /// memoria que consumiría materializar las columnas no pedidas.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> SqlAlias =
+        new Dictionary<string, string>
+        {
+            ["NumeroDocumento"]            = "[Numero Documento]",
+            ["Nombre"]                     = "[Nombre]",
+            ["Saldo"]                      = "[Saldo]",
+            ["UltimaFechaGestion"]         = "[Ultima Fecha Gestion]",
+            ["FechaPromesa"]               = "[Fecha Promesa]",
+            ["ValorPromesa"]               = "[Valor Promesa]",
+            ["MejorPerfil"]                = "[Mejor Perfil]",
+            ["UltimoPerfil"]               = "[Ultimo Perfil]",
+            ["Rotacion"]                   = "[Rotacion]",
+            ["UltimoNumeroMarcado"]        = "[Ultimo Numero Marcado en ControlNext]",
+            ["EstadoEnFosyga"]             = "[Estado en Fosyga]",
+            ["EPS"]                        = "[EPS]",
+            ["Regimen"]                    = "[Regimen]",
+            ["TipoAfiliado"]               = "[Tipo Afiliado]",
+            ["Departamento"]               = "[Departamento]",
+            ["Municipio"]                  = "[Municipio]",
+            ["UltimaConsultaFosyga"]       = "[Ultima Consulta en Fosyga]",
+            ["EPSEnCompensados"]           = "[EPS en Compensados]",
+            ["UltimoPeriodoCompensado"]    = "[Ultimo Periodo Compensado]",
+            ["TipoAfiliadoCompensados"]    = "[Tipo Afiliado Compensados]",
+            ["UltimaConsultaCompensados"]  = "[Ultima Consulta en Compensados]",
+            ["EdadRegistraduria"]          = "[Edad Registraduria]",
+            ["EdadCajaCopi"]               = "[Edad CajaCopi]",
+            ["EdadPositiva"]               = "[Edad Positiva]",
+            ["CelularCajacopi"]            = "[Celular Cajacopi]",
+            ["EmailCajacopi"]              = "[Email CajaCopi]",
+            ["CelularCamara"]              = "[Celular Camara]",
+            ["EmailCamara"]                = "[Email Camara]",
+            ["CelularSaludTotal"]          = "[Celular Salud Total]",
+            ["EmailSaludTotal"]            = "[Email Salud Total]",
+            ["CelularPositiva"]            = "[Celular Positiva]",
+            ["EmailPositiva"]              = "[Email Positiva]",
+            ["CelularTigo"]                = "[Celular Tigo]",
+            ["EmailTigo"]                  = "[Email Tigo]",
+            ["CelularSOS"]                 = "[Celular SOS]",
+            ["CelularClaro"]               = "[Celular Claro]",
+            ["EmailClaro"]                 = "[Email Claro]",
+            ["UltimaInsercionClaro"]       = "[Ultima Insercion Claro]",
+            ["CelularMutualSer"]           = "[Celular MutualSer]",
+            ["Celular2MutualSer"]          = "[Celular 2 MutualSer]",
+            ["TelefonoFijoMutualSer"]      = "[Telefono Fijo MutualSer]",
+            ["EmailMutualSer"]             = "[Email MutualSer]",
+            ["RegimenMutualSer"]           = "[Regimen MutualSer]",
+            ["TipoAfiliadoMutualSer"]      = "[Tipo Afiliado MutualSer]",
+            ["DepartamentoMutualSer"]      = "[Departamento MutualSer]",
+            ["MunicipioMutualSer"]         = "[Municipio MutualSer]",
+            ["EstadoMutualSer"]            = "[Estado MutualSer]",
+            ["UltimaConsultaMutualSer"]    = "[Ultima Consulta MutualSer]",
+            ["NITSura"]                    = "[NIT Sura]",
+            ["EmpresaSura"]                = "[Empresa Sura]",
+            ["NITPositiva"]                = "[NIT Positiva]",
+            ["EmpresaPositiva"]            = "[Empresa Positiva]",
+            ["NITSaludTotal"]              = "[NIT Salud Total]",
+            ["EmpresaSaludTotal"]          = "[Empresa Salud Total]",
+            ["NitSOS"]                     = "[Nit Sos]",
+            ["EmpresaSOS"]                 = "[Empresa SOS]",
+            ["EmpresaRUES"]                = "[Empresa RUES]",
+            ["PlacaSIMIT"]                 = "[PLACA SIMIT]",
+            ["Marca"]                      = "[Marca]",
+            ["Modelo"]                     = "[Modelo]",
+            ["Placa"]                      = "[Placa]",
+        };
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

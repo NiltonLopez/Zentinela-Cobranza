@@ -594,10 +594,40 @@ Misma estructura que `POST /api/creador/preview`.
 
 ### Response — 200 OK
 
-Archivo `.xlsx` con Content-Type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.  
-Nombre del archivo: `BaseMadre_<CarteraID>_<timestamp>.xlsx`.
+Archivo `.xlsx` con Content-Type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+Nombre del archivo: `BaseMadre_<NombreCartera>_<yyyyMMdd>.xlsx`.
+
+**Internamente** el endpoint usa `BaseMadreRepository.StreamFilasAsync` con proyección
+SQL solo de las columnas pedidas (no `SELECT *`) y `DbDataReader` directo (sin
+materializar `BaseMadreRow` ni reflexión por celda). ClosedXML sigue construyendo
+el workbook en memoria — para carteras grandes preferí `/exportar-csv`.
 
 ---
+
+## POST /api/creador/exportar-csv
+
+Descarga **streaming** en CSV. No materializa la cartera en memoria — escribe fila por
+fila desde `SqlDataReader` directo a `Response.Body`. Recomendado para carteras
+grandes (≥100k filas) o cuando `/exportar` se acerca al timeout de SQL.
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+### Request body
+
+Misma estructura que `POST /api/creador/preview` (mismo `FiltroBaseMadreRequest`,
+incluyendo `columnasSeleccionadas`).
+
+### Response — 200 OK
+
+Archivo `.csv` UTF-8 (con BOM) con Content-Type `text/csv; charset=utf-8`.
+Nombre del archivo: `BaseMadre_<NombreCartera>_<yyyyMMdd>.csv`.
+
+Formato:
+- Separador `;` (Excel ES-CO lo abre con doble click).
+- Encabezados = etiquetas humanas (con tildes), igual que en el Excel.
+- Quoting RFC 4180: campos con `;`, `"`, salto de línea o retorno se envuelven en `"` y las comillas internas se duplican.
+- Fechas en `dd/MM/yyyy`. Decimales con punto (cultura invariante).
 
 ---
 

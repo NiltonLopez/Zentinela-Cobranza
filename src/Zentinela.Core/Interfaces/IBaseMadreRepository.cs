@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Zentinela.Core.Entities;
 
 namespace Zentinela.Core.Interfaces;
@@ -26,4 +27,29 @@ public interface IBaseMadreRepository
         List<string>   fuentesEmail,
         List<string>   coincidenciasEmail,
         int?           limite);
+
+    /// <summary>
+    /// Streaming row-by-row. Proyecta en SQL solo las propiedades pedidas (ahorra
+    /// payload + materialización), abre un DbDataReader y entrega cada fila al
+    /// callback. Pensado para exportar (Excel/CSV) sin materializar la cartera
+    /// completa en memoria. Las columnas se entregan al reader en el mismo orden
+    /// que <paramref name="propiedadesSeleccionadas"/>.
+    /// </summary>
+    Task StreamFilasAsync(
+        int                    carteraID,
+        int?                   liderID,
+        string?                ultimoPerfil,
+        string?                mejorPerfil,
+        bool?                  promesasVigentes,
+        int?                   rotacionMaxima,
+        decimal?               saldoMinimo,
+        string?                tipoAfiliado,
+        string?                estadoFosyga,
+        List<string>           fuentesCelular,
+        List<string>           coincidenciasCelular,
+        List<string>           fuentesEmail,
+        List<string>           coincidenciasEmail,
+        IReadOnlyList<string>  propiedadesSeleccionadas,
+        Func<DbDataReader, ValueTask> procesarFila,
+        CancellationToken      ct = default);
 }

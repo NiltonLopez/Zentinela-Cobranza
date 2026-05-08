@@ -27,3 +27,10 @@ export const exportarExcel = async (filtro: FiltroBaseMadreRequest): Promise<Blo
   const res = await api.post('/api/creador/exportar', filtro, { responseType: 'blob' });
   return res.data as Blob;
 };
+
+// Streaming en backend — recomendado para carteras grandes (≥100k filas).
+// Devuelve un Blob con el CSV completo (BOM UTF-8 + separador `;`).
+export const exportarCsv = async (filtro: FiltroBaseMadreRequest): Promise<Blob> => {
+  const res = await api.post('/api/creador/exportar-csv', filtro, { responseType: 'blob' });
+  return res.data as Blob;
+};

@@ -70,6 +70,31 @@ public class CreadorZentinelaController : ControllerBase
             nombreArchivo);
     }
 
+    /// <summary>
+    /// Descarga streaming en CSV. No materializa la cartera en memoria —
+    /// camino recomendado para carteras grandes (≥100k filas) donde el
+    /// .xlsx sale demasiado pesado o el endpoint /exportar se acerca al
+    /// timeout. Excel ES-CO abre el CSV directo (BOM UTF-8 + separador `;`).
+    /// </summary>
+    [HttpPost("exportar-csv")]
+    public async Task ExportarCsv([FromBody] FiltroBaseMadreRequest filtro)
+    {
+        var contexto = ObtenerContexto();
+
+        // Content-Disposition es header → resolver el nombre antes de empezar
+        // a escribir el body. ResolverNombreArchivoAsync hace una sola query
+        // ligera (lista de carteras, ya cacheada en EF Core).
+        var nombreArchivo = await _service.ResolverNombreArchivoAsync(filtro.CarteraID, "csv");
+
+        Response.ContentType = "text/csv; charset=utf-8";
+        Response.Headers.Append(
+            "Content-Disposition",
+            $"attachment; filename=\"{nombreArchivo}\"");
+
+        await _service.EscribirCsvAsync(
+            contexto, filtro, Response.Body, HttpContext.RequestAborted);
+    }
+
     private ContextoUsuario ObtenerContexto() => new(
         Rol:     User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
         LiderID: int.TryParse(User.FindFirstValue("liderID"), out var id) ? id : null);
