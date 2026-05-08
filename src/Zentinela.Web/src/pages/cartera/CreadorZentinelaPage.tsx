@@ -83,6 +83,8 @@ export function CreadorZentinelaPage() {
   // Columnas siempre presentes en el Excel — no se pueden desmarcar.
   const COLUMNAS_FIJAS = ['NumeroDocumento', 'Nombre'];
   const [filtroActivo,     setFiltroActivo]     = useState<FiltroBaseMadreRequest | null>(null);
+  // Botón actualmente hovereado (para feedback visual). null = ninguno.
+  const [botonHover,       setBotonHover]       = useState<string | null>(null);
 
   const anchorRef = useRef<HTMLAnchorElement>(null);
 
@@ -476,12 +478,17 @@ export function CreadorZentinelaPage() {
           <button
             onClick={handleVerPreview}
             disabled={!seleccion || cargandoPreview}
+            onMouseEnter={() => setBotonHover('ver-preview')}
+            onMouseLeave={() => setBotonHover(prev => prev === 'ver-preview' ? null : prev)}
             style={{
               padding: '8px 20px', borderRadius: '6px', border: 'none',
               background: seleccion ? 'var(--z-brand)' : 'var(--z-border)',
               color: 'white', fontSize: '13px', fontWeight: 600,
               cursor: seleccion ? 'pointer' : 'not-allowed',
               opacity: cargandoPreview ? 0.7 : 1,
+              filter: seleccion && botonHover === 'ver-preview' ? 'brightness(0.92)' : 'none',
+              boxShadow: seleccion && botonHover === 'ver-preview' ? '0 2px 6px rgba(0,0,0,0.12)' : 'none',
+              transition: 'filter 0.15s ease, box-shadow 0.15s ease',
             }}
           >
             {cargandoPreview ? 'Consultando...' : 'Ver preview'}
@@ -499,30 +506,53 @@ export function CreadorZentinelaPage() {
             Columnas en el Excel
           </p>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setColumnasSeleccionadas([])}
-              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
-            >
-              Todas
-            </button>
-            <button
-              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => COLUMNAS_FIJAS.includes(n) || n.startsWith('Celular')))}
-              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
-            >
-              Solo celulares
-            </button>
-            <button
-              onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => COLUMNAS_FIJAS.includes(n) || n.startsWith('Email')))}
-              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
-            >
-              Solo emails
-            </button>
-            <button
-              onClick={() => setColumnasSeleccionadas([...COLUMNAS_FIJAS])}
-              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--z-border)', background: 'transparent', cursor: 'pointer', color: 'var(--z-text-muted)' }}
-            >
-              Ninguna
-            </button>
+            {(() => {
+              // Estilo común para los 4 presets — el hover oscurece el borde y
+              // el texto + agrega un fill muy sutil (igual la transición se ve).
+              const presetStyle = (key: string): React.CSSProperties => ({
+                padding: '4px 10px', fontSize: '11px', borderRadius: '4px',
+                border: `1px solid ${botonHover === key ? 'var(--z-text-muted)' : 'var(--z-border)'}`,
+                background: botonHover === key ? 'var(--z-bg-surface)' : 'transparent',
+                color: botonHover === key ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+                cursor: 'pointer', transition: 'all 0.15s ease',
+              });
+              const hoverHandlers = (key: string) => ({
+                onMouseEnter: () => setBotonHover(key),
+                onMouseLeave: () => setBotonHover(prev => prev === key ? null : prev),
+              });
+              return (
+                <>
+                  <button
+                    onClick={() => setColumnasSeleccionadas([])}
+                    style={presetStyle('cols-todas')}
+                    {...hoverHandlers('cols-todas')}
+                  >
+                    Todas
+                  </button>
+                  <button
+                    onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => COLUMNAS_FIJAS.includes(n) || n.startsWith('Celular')))}
+                    style={presetStyle('cols-celulares')}
+                    {...hoverHandlers('cols-celulares')}
+                  >
+                    Solo celulares
+                  </button>
+                  <button
+                    onClick={() => setColumnasSeleccionadas(columnas.map(c => c.nombre).filter(n => COLUMNAS_FIJAS.includes(n) || n.startsWith('Email')))}
+                    style={presetStyle('cols-emails')}
+                    {...hoverHandlers('cols-emails')}
+                  >
+                    Solo emails
+                  </button>
+                  <button
+                    onClick={() => setColumnasSeleccionadas([...COLUMNAS_FIJAS])}
+                    style={presetStyle('cols-ninguna')}
+                    {...hoverHandlers('cols-ninguna')}
+                  >
+                    Ninguna
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -579,37 +609,60 @@ export function CreadorZentinelaPage() {
             </p>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={handleExportarCsv}
-                disabled={!preview || preview.total === 0 || exportCsvMutation.isPending}
-                title="Recomendado para carteras grandes — descarga en streaming, abre directo en Excel"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '8px 18px', borderRadius: '6px',
-                  border: '1px solid #16a34a', background: 'transparent',
-                  color: preview && preview.total > 0 ? '#16a34a' : 'var(--z-text-muted)',
-                  fontSize: '13px', fontWeight: 600,
-                  cursor: preview && preview.total > 0 ? 'pointer' : 'not-allowed',
-                  opacity: exportCsvMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {exportCsvMutation.isPending ? 'Generando...' : '↓ Descargar CSV'}
-              </button>
+              {(() => {
+                const csvActivo   = !!preview && preview.total > 0 && !exportCsvMutation.isPending;
+                const excelActivo = !!preview && preview.total > 0 && !exportMutation.isPending;
+                const csvHover    = csvActivo   && botonHover === 'export-csv';
+                const excelHover  = excelActivo && botonHover === 'export-excel';
+                return (
+                  <>
+                    <button
+                      onClick={handleExportarCsv}
+                      disabled={!csvActivo}
+                      onMouseEnter={() => setBotonHover('export-csv')}
+                      onMouseLeave={() => setBotonHover(prev => prev === 'export-csv' ? null : prev)}
+                      title="Recomendado para carteras grandes — descarga en streaming, abre directo en Excel"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '8px 18px', borderRadius: '6px',
+                        border: '1px solid #16a34a',
+                        // Hover: rellena con verde claro y oscurece el texto.
+                        background: csvHover ? 'rgba(22, 163, 74, 0.10)' : 'transparent',
+                        color: preview && preview.total > 0 ? '#15803d' : 'var(--z-text-muted)',
+                        fontSize: '13px', fontWeight: 600,
+                        cursor: csvActivo ? 'pointer' : 'not-allowed',
+                        opacity: exportCsvMutation.isPending ? 0.7 : 1,
+                        boxShadow: csvHover ? '0 2px 6px rgba(22,163,74,0.18)' : 'none',
+                        transition: 'background 0.15s ease, box-shadow 0.15s ease',
+                      }}
+                    >
+                      {exportCsvMutation.isPending ? 'Generando...' : '↓ Descargar CSV'}
+                    </button>
 
-              <button
-                onClick={handleExportar}
-                disabled={!preview || preview.total === 0 || exportMutation.isPending}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '8px 18px', borderRadius: '6px', border: 'none',
-                  background: preview && preview.total > 0 ? '#16a34a' : 'var(--z-border)',
-                  color: 'white', fontSize: '13px', fontWeight: 600,
-                  cursor: preview && preview.total > 0 ? 'pointer' : 'not-allowed',
-                  opacity: exportMutation.isPending ? 0.7 : 1,
-                }}
-              >
-                {exportMutation.isPending ? 'Generando...' : '↓ Descargar Excel'}
-              </button>
+                    <button
+                      onClick={handleExportar}
+                      disabled={!excelActivo}
+                      onMouseEnter={() => setBotonHover('export-excel')}
+                      onMouseLeave={() => setBotonHover(prev => prev === 'export-excel' ? null : prev)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '8px 18px', borderRadius: '6px', border: 'none',
+                        // Hover: oscurece el verde un escalón.
+                        background: preview && preview.total > 0
+                          ? (excelHover ? '#15803d' : '#16a34a')
+                          : 'var(--z-border)',
+                        color: 'white', fontSize: '13px', fontWeight: 600,
+                        cursor: excelActivo ? 'pointer' : 'not-allowed',
+                        opacity: exportMutation.isPending ? 0.7 : 1,
+                        boxShadow: excelHover ? '0 2px 6px rgba(22,163,74,0.30)' : 'none',
+                        transition: 'background 0.15s ease, box-shadow 0.15s ease',
+                      }}
+                    >
+                      {exportMutation.isPending ? 'Generando...' : '↓ Descargar Excel'}
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
