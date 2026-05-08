@@ -93,39 +93,15 @@ function ChipConteo({
 
 // ── Panel de errores ──────────────────────────────────────────────────────────
 
-/**
- * Normaliza un mensaje de error de Pagos para agrupar por tipo:
- *  - Quita el prefijo "Línea N:".
- *  - Quita valores entre comillas simples ('...').
- *  - Quita números embebidos (cédulas, conteos de columnas).
- *  - Capitaliza la primera letra y limpia puntuación final.
- */
-function categoriaErrorPago(msg: string | undefined): string {
-  if (!msg) return 'Error de validación';
-  const sinPrefijo = msg.replace(/^Línea\s+\d+\s*:\s*/i, '');
-  const sinValores = sinPrefijo.replace(/'[^']*'/g, '');
-  const sinNumeros = sinValores.replace(/\b\d+\b/g, '');
-  const compacto   = sinNumeros.replace(/\s+/g, ' ').replace(/\s*\.\s*$/, '').trim();
-  if (!compacto) return 'Error de validación';
-  return compacto.charAt(0).toUpperCase() + compacto.slice(1);
-}
-
 function PanelErrores({ filas }: { filas: PagoFila[] }) {
   if (filas.length === 0) return null;
-
-  const grupos = new Map<string, number>();
-  for (const fila of filas) {
-    const cat = categoriaErrorPago(fila.errorMensaje);
-    grupos.set(cat, (grupos.get(cat) ?? 0) + 1);
-  }
-  const lista = [...grupos.entries()].sort((a, b) => b[1] - a[1]);
 
   return (
     <div style={{
       background: '#fef2f2', border: '1px solid #fca5a5',
       borderRadius: '8px', overflow: 'hidden',
     }}>
-      {/* Banner con total de REGISTROS (no de tipos) — debe ser inequívoco. */}
+      {/* Encabezado */}
       <div style={{
         padding: '14px 18px', borderBottom: '1px solid #fca5a5',
         display: 'flex', alignItems: 'baseline', gap: '10px',
@@ -140,27 +116,51 @@ function PanelErrores({ filas }: { filas: PagoFila[] }) {
         </p>
       </div>
 
-      {/* Tipos de error y su conteo individual */}
-      <div style={{ padding: '12px 18px' }}>
-        <p style={{
-          margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#b91c1c',
-          textTransform: 'uppercase', letterSpacing: '0.04em',
-        }}>
-          Tipos de error encontrados ({lista.length})
-        </p>
-        <ol style={{
-          margin: 0, padding: '0 0 0 20px',
-          display: 'flex', flexDirection: 'column', gap: 6,
-        }}>
-          {lista.map(([categoria, cuenta]) => (
-            <li key={categoria} style={{ fontSize: 13, color: '#b91c1c' }}>
-              {categoria}
-              <span style={{ color: '#7f1d1d', marginLeft: 6 }}>
-                ({cuenta.toLocaleString('es-CO')} {cuenta === 1 ? 'fila' : 'filas'})
-              </span>
-            </li>
-          ))}
-        </ol>
+      {/* Tabla registro por registro */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#fee2e2' }}>
+              {['#', 'Cédula', 'Nombre', 'Usuario Control', 'Error'].map((col, i) => (
+                <th key={i} style={{
+                  padding: '8px 14px', textAlign: 'left',
+                  fontSize: '11px', fontWeight: 600, color: '#b91c1c',
+                  borderBottom: '1px solid #fca5a5',
+                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((fila, idx) => (
+              <tr
+                key={idx}
+                style={{
+                  borderBottom: idx < filas.length - 1 ? '0.5px solid #fecaca' : 'none',
+                  background: idx % 2 === 0 ? 'transparent' : '#fff5f5',
+                }}
+              >
+                <td style={{ padding: '8px 14px', fontSize: '12px', color: '#b91c1c', whiteSpace: 'nowrap' }}>
+                  {idx + 1}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#7f1d1d', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {fila.cedulaTitular}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#7f1d1d', whiteSpace: 'nowrap' }}>
+                  {fila.nombreCliente || '—'}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '12px', color: '#b91c1c', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {fila.usuarioControl || '—'}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#dc2626' }}>
+                  {fila.errorMensaje ?? 'Error desconocido'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
