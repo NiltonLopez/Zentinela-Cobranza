@@ -4,8 +4,7 @@ import { login } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 import { ZButton } from '../components/ZButton';
 import ZentinelaLogo from '../components/ZentinelaLogo';
-import { MODULOS } from '../config/navigation';
-import type { Rol } from '../types/auth';
+import { rutaInicialPorRol } from '../config/navigation';
 
 export function LoginPage() {
   const [usuario, setUsuario] = useState('');
@@ -22,8 +21,7 @@ export function LoginPage() {
     try {
       const respuesta = await login({ usuario, password });
       iniciarSesion(respuesta);
-      const primerModulo = MODULOS.find(m => m.rolesPermitidos.includes(respuesta.rol as Rol));
-      navigate(primerModulo?.defaultPath ?? '/home');
+      navigate(rutaInicialPorRol(respuesta.rol));
     } catch {
       setError('Usuario o contraseña incorrectos.');
     } finally {

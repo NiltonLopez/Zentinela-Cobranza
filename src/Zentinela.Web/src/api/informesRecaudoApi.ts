@@ -3,6 +3,7 @@ import type {
   InformeAgentesResponse,
   InformeLideresResponse,
   InformeCarterasResponse,
+  InformeAgenciasExternasResponse,
 } from '../types/informesRecaudo';
 
 export const getInformeAgentes = async (
@@ -36,6 +37,17 @@ export const getInformeCarteras = async (
   const { data } = await api.get<InformeCarterasResponse>(
     '/api/informes/recaudo/carteras',
     { params: { añoA, mesA, añoB, mesB } },
+  );
+  return data;
+};
+
+export const getInformeAgenciasExternas = async (
+  año: number,
+  mes: number,
+): Promise<InformeAgenciasExternasResponse> => {
+  const { data } = await api.get<InformeAgenciasExternasResponse>(
+    '/api/informes/recaudo/agencias-externas',
+    { params: { año, mes } },
   );
   return data;
 };

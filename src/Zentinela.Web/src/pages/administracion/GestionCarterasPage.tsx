@@ -102,7 +102,7 @@ function ModalCrear({
   errorServidor,
 }: {
   lideres: LiderDropdown[];
-  onCrear: (payload: { carteraID?: number; nombreCartera?: string; liderID: number }) => void;
+  onCrear: (payload: { carteraID?: number; nombreCartera?: string; liderID: number; esExterna?: boolean }) => void;
   onCancelar: () => void;
   cargando: boolean;
   errorServidor: string | null;
@@ -112,6 +112,9 @@ function ModalCrear({
   const [sugerencias, setSugerencias] = useState<CarteraAutocomplete[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [liderID, setLiderID] = useState<number | ''>('');
+  // Solo aplica cuando se crea una cartera nueva — si el usuario selecciona una existente,
+  // el flag se ignora server-side para no alterar la cartera ya guardada.
+  const [esExterna, setEsExterna] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce para el autocompletado de cartera
@@ -142,10 +145,13 @@ function ModalCrear({
 
   function handleSubmit() {
     if (!liderID) return;
+    // EsExterna se persiste en la relación (Lider_Cartera) — aplica también cuando
+    // se asocia a una cartera existente, porque la misma cartera puede tener
+    // relaciones internas y externas en paralelo según el líder.
     if (carteraSeleccionada) {
-      onCrear({ carteraID: carteraSeleccionada.id, liderID: Number(liderID) });
+      onCrear({ carteraID: carteraSeleccionada.id, liderID: Number(liderID), esExterna });
     } else if (nombreCartera.trim()) {
-      onCrear({ nombreCartera: nombreCartera.trim(), liderID: Number(liderID) });
+      onCrear({ nombreCartera: nombreCartera.trim(), liderID: Number(liderID), esExterna });
     }
   }
 
@@ -251,7 +257,7 @@ function ModalCrear({
         </div>
 
         {/* Selector de Líder */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: '14px' }}>
           <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--z-text-muted)', display: 'block', marginBottom: '6px' }}>
             Líder
           </label>
@@ -272,6 +278,30 @@ function ModalCrear({
             ))}
           </select>
         </div>
+
+        {/* Toggle Cartera externa — marca esta relación líder-cartera como externa.
+            Aplica también cuando se reutiliza una cartera existente, porque la
+            misma cartera puede tener relaciones internas y externas en paralelo. */}
+        <label
+          title="La relación queda fuera de informes y metas administrativas"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            marginBottom: '20px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            color: 'var(--z-text-muted)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={esExterna}
+            onChange={(e) => setEsExterna(e.target.checked)}
+            style={{ cursor: 'inherit' }}
+          />
+          <span>Cartera externa</span>
+          <span>— excluida de informes y metas administrativas</span>
+        </label>
 
         {/* Error del servidor */}
         {errorServidor && (
@@ -361,14 +391,29 @@ function TarjetaRelacion({
         </button>
       )}
 
-      <p style={{
-        fontSize: '13px', fontWeight: 600,
-        color: 'var(--z-text-primary)',
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
         marginBottom: '6px',
         paddingRight: activa ? '24px' : '0',
       }}>
-        {relacion.nombreCartera}
-      </p>
+        <p style={{
+          fontSize: '13px', fontWeight: 600,
+          color: 'var(--z-text-primary)', margin: 0,
+        }}>
+          {relacion.nombreCartera}
+        </p>
+        {relacion.esExterna && (
+          <span title="Cartera externa — agencias/personal externo" style={{
+            fontSize: '10px', fontWeight: 600,
+            padding: '1px 6px', borderRadius: '4px',
+            background: '#FFF7ED', color: '#C2410C',
+            textTransform: 'uppercase', letterSpacing: '0.04em',
+            flexShrink: 0,
+          }}>
+            Externa
+          </span>
+        )}
+      </div>
 
       <p style={{ fontSize: '12px', color: 'var(--z-text-muted)', marginBottom: '10px' }}>
         {relacion.nombreLider}

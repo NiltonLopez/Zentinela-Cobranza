@@ -195,7 +195,11 @@ public class AdminService : IAdminService
     public async Task CambiarRolAsync(int usuarioID, string nuevoRol)
     {
         // Validar que el rol solicitado exista en el sistema
-        var rolesValidos = new[] { Roles.Admin, Roles.Lider, Roles.Director, Roles.Asesor };
+        var rolesValidos = new[]
+        {
+            Roles.Admin, Roles.Lider, Roles.Director, Roles.Asesor,
+            Roles.LiderExterno, Roles.AsesorExterno,
+        };
         if (!rolesValidos.Contains(nuevoRol))
             throw new InvalidOperationException(
                 $"El rol '{nuevoRol}' no es válido. Roles disponibles: {string.Join(", ", rolesValidos)}.");
@@ -208,8 +212,10 @@ public class AdminService : IAdminService
         if (rolesActuales.Any())
             await _userManager.RemoveFromRolesAsync(usuario, rolesActuales);
 
-        // Si el nuevo rol es Líder, resolver y vincular el LiderID en DBCallCenter
-        if (nuevoRol == Roles.Lider)
+        // Líder normal y Líder Externo necesitan LiderID resuelto desde DBCallCenter
+        // para que los módulos operativos (Calificador, Creador, Comparador) filtren
+        // por sus carteras propias.
+        if (nuevoRol == Roles.Lider || nuevoRol == Roles.LiderExterno)
         {
             var lider = await _callCenter.Lideres
                 .FirstOrDefaultAsync(l => l.NumeroDocumento == usuario.NumeroDocumento && l.Activo);
@@ -474,6 +480,17 @@ public class AdminService : IAdminService
         {
             var errores = string.Join(", ", resultado.Errors.Select(e => e.Description));
             throw new InvalidOperationException($"No se pudo cambiar el usuario: {errores}");
+        }
+
+        // Mantener Agente.UsuarioControlNext sincronizado con el UserName de Identity.
+        // El vínculo es por cédula: Agente.AgenteID == ApplicationUser.NumeroDocumento.
+        // Si el usuario no es un agente (p. ej. Admin sin presencia en DBCallCenter), se omite.
+        var agente = await _callCenter.Agentes
+            .FirstOrDefaultAsync(a => a.AgenteID == usuario.NumeroDocumento);
+        if (agente is not null)
+        {
+            agente.UsuarioControlNext = limpio;
+            await _callCenter.SaveChangesAsync();
         }
     }
 }

@@ -11,4 +11,10 @@ public static class Roles
     public const string Director = "Director";
     public const string Asesor = "Asesor";
     public const string AuxiliarSistemas = "Auxiliar de Sistemas";
+
+    // Roles externos: líderes/asesores que no pertenecen a la empresa.
+    // Ven solo módulos operativos (Cartera para LiderExterno, Consulta Integrada
+    // para AsesorExterno). Quedan excluidos de informes, metas y dashboards admin.
+    public const string LiderExterno  = "Líder Externo";
+    public const string AsesorExterno = "Asesor Externo";
 }

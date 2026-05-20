@@ -7,7 +7,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/consultas/rastreo")]
-[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.Asesor}")]
+[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.Asesor},{Roles.LiderExterno}")]
 public class RastreoLineasController : ControllerBase
 {
     private readonly IRastreoLineasService _service;

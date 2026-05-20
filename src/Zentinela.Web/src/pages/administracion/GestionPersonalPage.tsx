@@ -3,7 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual, cambiarUsuario, cambiarRol } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
 
-const ROLES_DISPONIBLES = ['Admin', 'Líder', 'Director', 'Asesor'] as const;
+const ROLES_DISPONIBLES = [
+  'Admin', 'Líder', 'Director', 'Asesor',
+  'Líder Externo', 'Asesor Externo',
+] as const;
 
 // Ícono lápiz minimalista (16×16 stroke). Usa currentColor para heredar color del padre.
 function IconoLapiz({ size = 13 }: { size?: number }) {
@@ -19,10 +22,13 @@ function IconoLapiz({ size = 13 }: { size?: number }) {
 }
 
 const BADGE_COLORES: Record<string, { bg: string; color: string }> = {
-  Admin:    { bg: '#FEF0EC', color: '#F54927' },
-  Líder:    { bg: '#EFF6FF', color: '#2563EB' },
-  Director: { bg: '#F0FDF4', color: '#16A34A' },
-  Asesor:   { bg: '#F5F5F4', color: '#78716C' },
+  Admin:              { bg: '#FEF0EC', color: '#F54927' },
+  Líder:              { bg: '#EFF6FF', color: '#2563EB' },
+  Director:           { bg: '#F0FDF4', color: '#16A34A' },
+  Asesor:             { bg: '#F5F5F4', color: '#78716C' },
+  // Roles externos: tonalidades más cálidas para distinguirlos visualmente
+  'Líder Externo':    { bg: '#FFF7ED', color: '#C2410C' },
+  'Asesor Externo':   { bg: '#FDF4FF', color: '#A21CAF' },
 };
 
 function BadgeRol({ rol }: { rol: string }) {
@@ -694,7 +700,7 @@ export function GestionPersonalPage() {
       u.usuario.toLowerCase().includes(q) ||
       u.rol.toLowerCase().includes(q);
     const coincideSupervisor =
-      !filtroSupervisor || u.supervisorNombre === filtroSupervisor;
+      !filtroSupervisor || u.nombreSupervisor === filtroSupervisor;
     return coincideTexto && coincideSupervisor;
   });
 

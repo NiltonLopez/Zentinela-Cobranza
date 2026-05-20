@@ -9,7 +9,9 @@ public class UltimoEstadoTitularMapping : IEntityTypeConfiguration<UltimoEstadoT
     public void Configure(EntityTypeBuilder<UltimoEstadoTitular> builder)
     {
         builder.ToTable("UltimoEstadoTitular", t => t.ExcludeFromMigrations());
-        builder.HasKey(u => new { u.TitularID, u.CarteraID, u.AgenteID });
+        // PK real en BD es (TitularID, CarteraID); AgenteID es un campo nullable
+        // que se actualiza vía MERGE en CargueReporteService.
+        builder.HasKey(u => new { u.TitularID, u.CarteraID });
         builder.Property(u => u.UltimoPerfil).HasMaxLength(50);
         builder.Property(u => u.MejorPerfil).HasMaxLength(50);
         builder.Property(u => u.NumeroMarcado).HasMaxLength(10);

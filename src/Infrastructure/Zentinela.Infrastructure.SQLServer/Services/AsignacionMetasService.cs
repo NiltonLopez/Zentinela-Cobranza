@@ -33,10 +33,11 @@ public class AsignacionMetasService : IAsignacionMetasService
 
     private async Task<List<FilaMetaLiderCarteraDto>> ObtenerFilasLiderCarteraAsync(short año, byte mes)
     {
+        // Metas administrativas: excluye relaciones externas (Lider_Cartera.EsExterna = 1)
         var combinaciones = await _callCenter.LiderCarteras
             .Include(lc => lc.Lider)
             .Include(lc => lc.Cartera)
-            .Where(lc => lc.Lider.Activo && lc.Cartera.Activa)
+            .Where(lc => lc.Lider.Activo && lc.Cartera.Activa && !lc.EsExterna)
             .AsNoTracking()
             .ToListAsync();
 
@@ -86,7 +87,12 @@ public class AsignacionMetasService : IAsignacionMetasService
     // correcto es: cargar IDs en batch desde cada contexto y cruzar en LINQ-to-Objects.
     private async Task<List<FilaMetaAgenteDto>> ObtenerFilasAgenteAsync(short año, byte mes)
     {
+        // Agentes con asignaciones cuya relación (Líder, Cartera) NO es externa:
+        // los asesores que trabajan exclusivamente bajo líderes externos no reciben
+        // meta administrativa.
         var asignaciones = await _callCenter.CarteraAgentes
+            .Where(ca => !_callCenter.LiderCarteras.Any(lc =>
+                lc.LiderID == ca.LiderID && lc.CarteraID == ca.CarteraID && lc.EsExterna))
             .GroupBy(ca => ca.AgenteID)
             .Select(g => new
             {

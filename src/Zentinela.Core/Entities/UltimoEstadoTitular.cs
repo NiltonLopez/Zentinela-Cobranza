@@ -8,7 +8,12 @@ public class UltimoEstadoTitular
 {
     public long TitularID { get; set; }
     public int CarteraID { get; set; }
-    public int AgenteID { get; set; }
+    /// <summary>
+    /// Asesor responsable del titular en esta cartera. Nullable porque la BD
+    /// almacena cientos de miles de filas con AgenteID NULL (titulares cargados
+    /// sin gestor asignado). La PK real es (TitularID, CarteraID).
+    /// </summary>
+    public int? AgenteID { get; set; }
     public string? UltimoPerfil { get; set; }
     public string? MejorPerfil { get; set; }
 

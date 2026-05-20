@@ -1,8 +1,16 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { RutaProtegida } from './components/RutaProtegida';
 import { AppLayout } from './components/layout/AppLayout';
+import { rutaInicialPorRol } from './config/navigation';
+
+// Redirige a la ruta inicial según el rol del usuario en sesión.
+// Necesario para usuarios externos que no tienen acceso a /home.
+function RedirigirAInicio() {
+  const { usuario } = useAuth();
+  return <Navigate to={rutaInicialPorRol(usuario?.rol)} replace />;
+}
 
 // Páginas públicas
 import { LoginPage } from './pages/LoginPage';
@@ -24,6 +32,7 @@ import { ComparadorCarterasPage } from './pages/cartera/ComparadorCarterasPage';
 // Informes
 import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPage';
 import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
+import { AgenciasExternasPage } from './pages/informes/AgenciasExternasPage';
 
 // Administración
 import { GestionAsignacionesPage } from './pages/administracion/GestionAsignacionesPage';
@@ -61,9 +70,9 @@ function App() {
             {/* ── Rutas protegidas bajo AppLayout ────────────────────────── */}
             <Route element={<RutaProtegida><AppLayout /></RutaProtegida>}>
 
-              {/* Redirect raíz → /home */}
-              <Route index element={<Navigate to="/home" replace />} />
-              <Route path="/" element={<Navigate to="/home" replace />} />
+              {/* Redirect raíz → inicio según rol */}
+              <Route index element={<RedirigirAInicio />} />
+              <Route path="/" element={<RedirigirAInicio />} />
 
               {/* Home — todos los roles autenticados */}
               <Route
@@ -103,7 +112,7 @@ function App() {
               <Route
                 path="/cartera/creador"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Líder Externo']}>
                     <CreadorZentinelaPage />
                   </RutaProtegida>
                 }
@@ -111,7 +120,7 @@ function App() {
               <Route
                 path="/cartera/calificador"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Líder Externo']}>
                     <CalificadorCarteraPage />
                   </RutaProtegida>
                 }
@@ -120,7 +129,7 @@ function App() {
               <Route
                 path="/cartera/comparador"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Líder Externo']}>
                     <ComparadorCarterasPage />
                   </RutaProtegida>
                 }
@@ -140,6 +149,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
                     <InformesRecaudoPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/informes/agencias-externas"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                    <AgenciasExternasPage />
                   </RutaProtegida>
                 }
               />
@@ -218,7 +235,7 @@ function App() {
               <Route
                 path="/consultas/integrada"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor', 'Líder Externo', 'Asesor Externo']}>
                     <ConsultaIntegradaPage />
                   </RutaProtegida>
                 }
@@ -226,7 +243,7 @@ function App() {
               <Route
                 path="/consultas/rastreo"
                 element={
-                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor']}>
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Asesor', 'Líder Externo']}>
                     <RastreoLineasPage />
                   </RutaProtegida>
                 }
@@ -236,8 +253,8 @@ function App() {
 
             </Route>
 
-            {/* Catch-all → /home */}
-            <Route path="*" element={<Navigate to="/home" replace />} />
+            {/* Catch-all → inicio según rol */}
+            <Route path="*" element={<RedirigirAInicio />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

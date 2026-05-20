@@ -51,7 +51,8 @@ public class PagosController : ControllerBase
     [HttpGet("carteras")]
     public async Task<IActionResult> ListarCarteras()
     {
-        var relaciones = await _gestionCarteras.ListarRelacionesAsync();
+        // Cargue de Pagos es flujo administrativo: las carteras externas no aplican.
+        var relaciones = await _gestionCarteras.ListarRelacionesAsync(incluirExternas: false);
         var carteras = relaciones
             .DistinctBy(r => r.CarteraID)
             .OrderBy(r => r.NombreCartera)

@@ -20,13 +20,19 @@ public class GestionCarterasService : IGestionCarterasService
         _context = context;
     }
 
-    public async Task<IEnumerable<RelacionLiderCarteraDto>> ListarRelacionesAsync()
+    public async Task<IEnumerable<RelacionLiderCarteraDto>> ListarRelacionesAsync(bool incluirExternas = true)
     {
         // Subconsulta correlacionada para contar asignaciones de Titular_Cartera por relación.
         // Se ejecuta en SQL Server (no en memoria) gracias al Select proyectado.
-        return await _context.LiderCarteras
+        var query = _context.LiderCarteras
             .Include(lc => lc.Lider)
             .Include(lc => lc.Cartera)
+            .AsQueryable();
+
+        if (!incluirExternas)
+            query = query.Where(lc => !lc.EsExterna);
+
+        return await query
             .OrderBy(lc => lc.Cartera.NombreCartera)
             .ThenBy(lc => lc.Lider.Nombre)
             .Select(lc => new RelacionLiderCarteraDto
@@ -35,6 +41,7 @@ public class GestionCarterasService : IGestionCarterasService
                 CarteraID         = lc.CarteraID,
                 NombreLider       = lc.Lider.Nombre,
                 NombreCartera     = lc.Cartera.NombreCartera,
+                EsExterna         = lc.EsExterna,
                 TotalAsignaciones = _context.TitularCarteras
                     .Count(tc => tc.LiderID == lc.LiderID && tc.CarteraID == lc.CarteraID),
                 TotalAsesores     = _context.CarteraAgentes
@@ -120,7 +127,14 @@ public class GestionCarterasService : IGestionCarterasService
         var cartera = await _context.Carteras.FindAsync(carteraID)
             ?? throw new InvalidOperationException("La cartera no existe.");
 
-        _context.LiderCarteras.Add(new LiderCartera { LiderID = dto.LiderID, CarteraID = carteraID });
+        // EsExterna se persiste en la relación (no en la cartera) — la misma cartera puede
+        // tener relaciones internas y externas en paralelo según el líder que la trabaje.
+        _context.LiderCarteras.Add(new LiderCartera
+        {
+            LiderID   = dto.LiderID,
+            CarteraID = carteraID,
+            EsExterna = dto.EsExterna,
+        });
         await _context.SaveChangesAsync();
 
         return new RelacionLiderCarteraDto
@@ -129,6 +143,7 @@ public class GestionCarterasService : IGestionCarterasService
             CarteraID         = carteraID,
             NombreLider       = lider.Nombre,
             NombreCartera     = cartera.NombreCartera,
+            EsExterna         = dto.EsExterna,
             TotalAsignaciones = 0,
         };
     }

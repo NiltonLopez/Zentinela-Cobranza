@@ -20,6 +20,9 @@ export const crearRelacion = async (payload: {
   carteraID?: number;
   nombreCartera?: string;
   liderID: number;
+  // Solo se respeta cuando la cartera es nueva (carteraID null). Si se selecciona
+  // una cartera existente, el backend ignora el flag para no alterar su estado.
+  esExterna?: boolean;
 }): Promise<RelacionLiderCartera> => {
   const res = await api.post<RelacionLiderCartera>('/api/gestion-carteras/relaciones', payload);
   return res.data;

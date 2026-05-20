@@ -23,7 +23,7 @@ public class CalificadorCarteraController : ControllerBase
     /// Auxiliar de Sistemas también accede al dropdown (lo necesita en Gestión de Asignaciones).
     /// </summary>
     [HttpGet("opciones")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.AuxiliarSistemas}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.AuxiliarSistemas},{Roles.LiderExterno}")]
     public async Task<IActionResult> ObtenerOpciones()
     {
         var contexto = ObtenerContexto();
@@ -35,7 +35,7 @@ public class CalificadorCarteraController : ControllerBase
     /// Calcula todas las métricas para la asignación Cartera+Líder indicada.
     /// </summary>
     [HttpGet("{carteraID:int}/{liderID:int}")]
-    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
     public async Task<IActionResult> Calificar(int carteraID, int liderID)
     {
         var resultado = await _service.CalificarAsync(carteraID, liderID);

@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Zentinela.Application;
 using Zentinela.Application.Interfaces;
 
 namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/informes/recaudo")]
-[Authorize(Roles = "Admin,Líder,Director")]
+[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director}")]
 public class InformesRecaudoController : ControllerBase
 {
     private readonly IInformesRecaudoService _service;
@@ -50,6 +51,19 @@ public class InformesRecaudoController : ControllerBase
             return BadRequest(new { mensaje = "Mes inválido." });
 
         var resultado = await _service.GetInformeCarterasAsync(añoA, mesA, añoB, mesB);
+        return Ok(resultado);
+    }
+
+    /// <summary>
+    /// Sub-informe de agencias externas: recaudo, honorarios y asignaciones por
+    /// (líder, cartera externa) para el mes indicado. Complemento del informe de
+    /// líderes — solo incluye carteras con EsExterna = 1.
+    /// </summary>
+    [HttpGet("agencias-externas")]
+    public async Task<IActionResult> GetAgenciasExternas([FromQuery] int año, [FromQuery] int mes)
+    {
+        if (mes < 1 || mes > 12) return BadRequest(new { mensaje = "Mes inválido." });
+        var resultado = await _service.GetInformeAgenciasExternasAsync(año, mes);
         return Ok(resultado);
     }
 }

@@ -4,8 +4,12 @@ namespace Zentinela.Application.Interfaces;
 
 public interface IGestionCarterasService
 {
-    /// <summary>Lista todas las relaciones Líder_Cartera con el conteo de titulares asignados.</summary>
-    Task<IEnumerable<RelacionLiderCarteraDto>> ListarRelacionesAsync();
+    /// <summary>
+    /// Lista todas las relaciones Líder_Cartera con el conteo de titulares asignados.
+    /// Pasa <c>incluirExternas=false</c> en flujos administrativos (selector de Pagos, etc.)
+    /// donde las carteras con <c>Cartera.EsExterna=1</c> no aplican.
+    /// </summary>
+    Task<IEnumerable<RelacionLiderCarteraDto>> ListarRelacionesAsync(bool incluirExternas = true);
 
     /// <summary>Lista todos los líderes activos para el dropdown de creación.</summary>
     Task<IEnumerable<LiderDropdownDto>> ListarLideresAsync();

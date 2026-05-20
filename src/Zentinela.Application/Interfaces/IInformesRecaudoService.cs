@@ -27,4 +27,12 @@ public interface IInformesRecaudoService
     /// entre el período A y el período B (cualquier combinación mes/año).
     /// </summary>
     Task<InformeCarterasResponse> GetInformeCarterasAsync(int añoA, int mesA, int añoB, int mesB);
+
+    /// <summary>
+    /// Sub-informe de agencias externas: una fila por (líder, cartera externa)
+    /// con recaudo, honorarios y total de asignaciones del mes.
+    /// Solo incluye relaciones donde Cartera.EsExterna = 1 (complemento de los
+    /// otros sub-informes que excluyen las externas del universo administrativo).
+    /// </summary>
+    Task<InformeAgenciasExternasResponse> GetInformeAgenciasExternasAsync(int año, int mes);
 }

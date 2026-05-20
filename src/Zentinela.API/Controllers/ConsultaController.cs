@@ -1,12 +1,15 @@
 using ConsultaIntegrada.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Zentinela.Application;
 
 namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/consulta")]
-[Authorize]
+// Ambos roles externos pueden consultar: AsesorExterno como su único módulo,
+// LiderExterno como complemento al módulo Cartera.
+[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.Asesor},{Roles.AuxiliarSistemas},{Roles.LiderExterno},{Roles.AsesorExterno}")]
 public class ConsultaController : ControllerBase
 {
     private readonly IConsultaService _service;

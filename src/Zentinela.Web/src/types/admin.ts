@@ -5,7 +5,7 @@ export interface UsuarioAdmin {
   numeroDocumento: number;
   rol: string;
   requiereCambioPassword: boolean;
-  supervisorNombre: string | null;
+  nombreSupervisor: string | null;
 }
 
 export interface Supervisor {

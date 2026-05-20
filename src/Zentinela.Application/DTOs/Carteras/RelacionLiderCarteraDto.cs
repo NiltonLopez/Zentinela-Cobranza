@@ -8,4 +8,6 @@ public class RelacionLiderCarteraDto
     public string NombreCartera     { get; set; } = string.Empty;
     public int    TotalAsignaciones { get; set; }
     public int    TotalAsesores     { get; set; }
+    /// <summary>Espejo de Cartera.EsExterna para que la UI marque la relación como externa.</summary>
+    public bool   EsExterna         { get; set; }
 }

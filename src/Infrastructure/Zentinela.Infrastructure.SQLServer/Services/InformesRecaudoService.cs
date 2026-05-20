@@ -38,9 +38,13 @@ public class InformesRecaudoService : IInformesRecaudoService
         var (diasDelMes, diasTranscurridos)           = CalcularDias(año, mes);
         var (diasHabilesDelMes, diasHabilesTransc)    = CalcularDiasHabiles(año, mes);
 
-        // Pagos del mes
+        // Universo administrativo: pagos cuya combinación (Líder, Cartera) NO está
+        // marcada como externa en Lider_Cartera. Pagos sin relación viva en
+        // Lider_Cartera (histórico) se consideran internos por defecto.
         var pagos = await _callCenter.Pagos
-            .Where(p => p.FechaPago.Year == año && p.FechaPago.Month == mes)
+            .Where(p => p.FechaPago.Year == año && p.FechaPago.Month == mes
+                     && !_callCenter.LiderCarteras.Any(lc =>
+                            lc.LiderID == p.LiderID && lc.CarteraID == p.CarteraID && lc.EsExterna))
             .AsNoTracking()
             .ToListAsync();
 
@@ -151,9 +155,11 @@ public class InformesRecaudoService : IInformesRecaudoService
         var (diasDelMes, diasTranscurridos)           = CalcularDias(año, mes);
         var (diasHabilesDelMes, diasHabilesTransc)    = CalcularDiasHabiles(año, mes);
 
-        // Recaudo del mes por líder-cartera
+        // Recaudo del mes por líder-cartera (excluye relaciones externas)
         var pagos = await _callCenter.Pagos
-            .Where(p => p.FechaPago.Year == año && p.FechaPago.Month == mes)
+            .Where(p => p.FechaPago.Year == año && p.FechaPago.Month == mes
+                     && !_callCenter.LiderCarteras.Any(lc =>
+                            lc.LiderID == p.LiderID && lc.CarteraID == p.CarteraID && lc.EsExterna))
             .GroupBy(p => new { p.LiderID, p.CarteraID })
             .Select(g => new
             {
@@ -165,16 +171,19 @@ public class InformesRecaudoService : IInformesRecaudoService
             .AsNoTracking()
             .ToListAsync();
 
-        // Metas del mes
+        // Metas del mes (solo relaciones internas)
         var metas = await _callCenter.MetaLiderCarteraMes
-            .Where(m => m.Año == año && m.Mes == mes)
+            .Where(m => m.Año == año && m.Mes == mes
+                     && !_callCenter.LiderCarteras.Any(lc =>
+                            lc.LiderID == m.LiderID && lc.CarteraID == m.CarteraID && lc.EsExterna))
             .AsNoTracking()
             .ToListAsync();
 
-        // Todas las relaciones líder-cartera activas (con navegación a nombres)
+        // Todas las relaciones líder-cartera internas (con navegación a nombres)
         var liderCarteras = await _callCenter.LiderCarteras
             .Include(lc => lc.Lider)
             .Include(lc => lc.Cartera)
+            .Where(lc => !lc.EsExterna)
             .AsNoTracking()
             .ToListAsync();
 
@@ -247,9 +256,11 @@ public class InformesRecaudoService : IInformesRecaudoService
     public async Task<InformeCarterasResponse> GetInformeCarterasAsync(
         int añoA, int mesA, int añoB, int mesB)
     {
-        // Recaudo por cartera para período A
+        // Recaudo por cartera para período A (excluye pagos con relación externa)
         var recaudoA = await _callCenter.Pagos
-            .Where(p => p.FechaPago.Year == añoA && p.FechaPago.Month == mesA)
+            .Where(p => p.FechaPago.Year == añoA && p.FechaPago.Month == mesA
+                     && !_callCenter.LiderCarteras.Any(lc =>
+                            lc.LiderID == p.LiderID && lc.CarteraID == p.CarteraID && lc.EsExterna))
             .GroupBy(p => p.CarteraID)
             .Select(g => new
             {
@@ -260,9 +271,11 @@ public class InformesRecaudoService : IInformesRecaudoService
             .AsNoTracking()
             .ToDictionaryAsync(x => x.CarteraID);
 
-        // Recaudo por cartera para período B
+        // Recaudo por cartera para período B (excluye pagos con relación externa)
         var recaudoB = await _callCenter.Pagos
-            .Where(p => p.FechaPago.Year == añoB && p.FechaPago.Month == mesB)
+            .Where(p => p.FechaPago.Year == añoB && p.FechaPago.Month == mesB
+                     && !_callCenter.LiderCarteras.Any(lc =>
+                            lc.LiderID == p.LiderID && lc.CarteraID == p.CarteraID && lc.EsExterna))
             .GroupBy(p => p.CarteraID)
             .Select(g => new
             {
@@ -311,6 +324,94 @@ public class InformesRecaudoService : IInformesRecaudoService
             TotalRecaudoB  = filas.Sum(f => f.RecaudoB),
             VariacionTotal = filas.Sum(f => f.VariacionRecaudo),
             Carteras       = filas,
+        };
+    }
+
+    // ── Informe de Agencias Externas ──────────────────────────────────────────
+
+    public async Task<InformeAgenciasExternasResponse> GetInformeAgenciasExternasAsync(int año, int mes)
+    {
+        // Universo: solo relaciones externas (Lider_Cartera.EsExterna = 1).
+        // Una misma cartera puede aparecer dos veces si tiene una relación externa
+        // y otra interna con líderes distintos.
+        var liderCarteras = await _callCenter.LiderCarteras
+            .Include(lc => lc.Lider)
+            .Include(lc => lc.Cartera)
+            .Where(lc => lc.EsExterna && lc.Lider.Activo && lc.Cartera.Activa)
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (liderCarteras.Count == 0)
+            return new InformeAgenciasExternasResponse();
+
+        var paresExternos = liderCarteras
+            .Select(lc => new { lc.LiderID, lc.CarteraID })
+            .ToHashSet();
+
+        // Recaudo del mes por (líder, cartera) limitado a las combinaciones externas.
+        // Filtramos en BD por las carteraIDs y luego cribamos en memoria por par exacto.
+        var carteraIDs = liderCarteras.Select(lc => lc.CarteraID).Distinct().ToList();
+        var liderIDs   = liderCarteras.Select(lc => lc.LiderID).Distinct().ToList();
+
+        var pagosRaw = await _callCenter.Pagos
+            .Where(p => p.FechaPago.Year == año && p.FechaPago.Month == mes
+                     && carteraIDs.Contains(p.CarteraID)
+                     && liderIDs.Contains(p.LiderID))
+            .GroupBy(p => new { p.LiderID, p.CarteraID })
+            .Select(g => new
+            {
+                g.Key.LiderID,
+                g.Key.CarteraID,
+                Recaudo    = g.Sum(p => p.ValorPagado),
+                Honorarios = g.Sum(p => p.Honorarios),
+            })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var pagos = pagosRaw
+            .Where(p => paresExternos.Contains(new { p.LiderID, p.CarteraID }))
+            .ToList();
+
+        // Total de asignaciones (capacity) por (líder, cartera) — mismo cribado por par.
+        var asignacionesRaw = await _callCenter.TitularCarteras
+            .Where(tc => carteraIDs.Contains(tc.CarteraID) && liderIDs.Contains(tc.LiderID))
+            .GroupBy(tc => new { tc.LiderID, tc.CarteraID })
+            .Select(g => new { g.Key.LiderID, g.Key.CarteraID, Total = g.Count() })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var asignaciones = asignacionesRaw
+            .Where(a => paresExternos.Contains(new { a.LiderID, a.CarteraID }))
+            .ToList();
+
+        var filas = liderCarteras
+            .Select(lc =>
+            {
+                var pago = pagos.FirstOrDefault(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID);
+                var asig = asignaciones.FirstOrDefault(a => a.LiderID == lc.LiderID && a.CarteraID == lc.CarteraID);
+
+                return new FilaAgenciaExternaDto
+                {
+                    LiderID           = lc.LiderID,
+                    NombreLider       = lc.Lider.Nombre,
+                    CarteraID         = lc.CarteraID,
+                    NombreCartera     = lc.Cartera.NombreCartera,
+                    Recaudo           = pago?.Recaudo    ?? 0m,
+                    Honorarios        = pago?.Honorarios ?? 0m,
+                    TotalAsignaciones = asig?.Total      ?? 0,
+                };
+            })
+            .OrderBy(f => f.NombreLider)
+            .ThenBy(f => f.NombreCartera)
+            .ToList();
+
+        return new InformeAgenciasExternasResponse
+        {
+            TotalRecaudo      = filas.Sum(f => f.Recaudo),
+            TotalHonorarios   = filas.Sum(f => f.Honorarios),
+            TotalAsignaciones = filas.Sum(f => f.TotalAsignaciones),
+            TotalAgencias     = filas.Select(f => f.LiderID).Distinct().Count(),
+            Filas             = filas,
         };
     }
 

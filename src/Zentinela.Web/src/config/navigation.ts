@@ -17,6 +17,9 @@ export interface Modulo {
   subModulos: SubModulo[];
 }
 
+// Líder Externo: solo ve el módulo Cartera (Calificador / Creador / Comparador).
+// Asesor Externo: solo ve Consulta Integrada (dentro del módulo Consultas).
+// Ninguno ve Home/Dashboard, Informes, Administración ni Rastreo de Líneas.
 export const MODULOS: Modulo[] = [
   {
     key: 'home',
@@ -33,7 +36,7 @@ export const MODULOS: Modulo[] = [
   {
     key: 'cartera',
     label: 'Cartera',
-    rolesPermitidos: ['Admin', 'Líder', 'Director'],
+    rolesPermitidos: ['Admin', 'Líder', 'Director', 'Líder Externo'],
     defaultPath: '/cartera/creador',
     subModulos: [
       { key: 'creador', label: 'Creador Zentinela', path: '/cartera/creador' },
@@ -47,8 +50,9 @@ export const MODULOS: Modulo[] = [
     rolesPermitidos: ['Admin', 'Líder', 'Director'],
     defaultPath: '/informes/recaudo',
     subModulos: [
-      { key: 'virtualidad', label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Director'] },
-      { key: 'recaudo',    label: 'Informes de Recaudo',     path: '/informes/recaudo'     },
+      { key: 'virtualidad',       label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Director'] },
+      { key: 'recaudo',           label: 'Informes de Recaudo',     path: '/informes/recaudo'     },
+      { key: 'agencias-externas', label: 'Agencias Externas',       path: '/informes/agencias-externas' },
     ],
   },
   {
@@ -70,14 +74,23 @@ export const MODULOS: Modulo[] = [
   {
     key: 'consultas',
     label: 'Consultas',
-    rolesPermitidos: ['Admin', 'Líder', 'Director', 'Asesor'],
+    rolesPermitidos: ['Admin', 'Líder', 'Director', 'Asesor', 'Líder Externo', 'Asesor Externo'],
     defaultPath: '/consultas/integrada',
     subModulos: [
       { key: 'integrada', label: 'Consulta Integrada', path: '/consultas/integrada' },
-      { key: 'rastreo',   label: 'Rastreo de Líneas',  path: '/consultas/rastreo'   },
+      { key: 'rastreo',   label: 'Rastreo de Líneas',  path: '/consultas/rastreo',
+        rolesPermitidos: ['Admin', 'Líder', 'Director', 'Asesor', 'Líder Externo'] },
     ],
   },
 ];
+
+/// Devuelve la ruta inicial post-login según el rol. Los roles externos no tienen
+/// Dashboard, así que aterrizan directamente en el defaultPath de su módulo permitido.
+export function rutaInicialPorRol(rol: string | undefined): string {
+  if (rol === 'Líder Externo')  return '/cartera/creador';
+  if (rol === 'Asesor Externo') return '/consultas/integrada';
+  return '/home';
+}
 
 // Dado un pathname, devuelve el módulo activo
 export function pathToModulo(pathname: string): ModuloKey {

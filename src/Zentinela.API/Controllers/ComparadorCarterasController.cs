@@ -9,7 +9,7 @@ namespace Zentinela.API.Controllers;
 
 [ApiController]
 [Route("api/comparador")]
-[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director}")]
+[Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
 public class ComparadorCarterasController : ControllerBase
 {
     private readonly IComparadorCarterasService _service;

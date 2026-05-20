@@ -46,6 +46,9 @@ Relación muchos-a-muchos entre Lider y Cartera.
 |---------|------|----------|----|------------|
 | LiderID | int | NO | SI | Lider |
 | CarteraID | int | NO | SI | Cartera |
+| EsExterna | bit | NO | — | — |
+
+`EsExterna = 1` marca la relación como operada por agencia externa o personal externo. Vive en la relación (no en `Cartera`) porque la misma cartera puede tener simultáneamente relaciones internas y externas según el líder que la trabaje. Las relaciones externas quedan excluidas de informes administrativos, metas, Dashboard Director, Comparador de Carteras y selector de Cargue de Pagos; se listan en `Informes → Agencias Externas`. Ortogonal al rol del usuario (`LiderExterno` / `AsesorExterno`). Migración: `docs/sql/migrations/2026-05-20_lider_cartera_es_externa.sql`.
 
 ### Titular_Cartera
 Asignación de titulares a carteras y líderes. Tabla pivote principal del negocio.
@@ -103,7 +106,7 @@ Poblada por Zentinela vía `CargueReporteService` (SqlBulkCopy + MERGE). Ver ADR
 |---------|------|----------|----|-------|
 | TitularID | bigint | NO | SI | FK → Titular |
 | CarteraID | int | NO | SI | FK → Cartera |
-| AgenteID | int | NO | — | Actualizable via MERGE |
+| AgenteID | int | SI | — | Actualizable via MERGE — NULL para titulares cargados sin asesor asignado |
 | UltimoPerfil | varchar(50) | SI | — | |
 | MejorPerfil | varchar(50) | SI | — | |
 | SaldoTotal | money | SI | — | |

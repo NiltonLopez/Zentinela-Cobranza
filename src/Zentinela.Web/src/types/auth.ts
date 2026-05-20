@@ -22,4 +22,14 @@ export interface Usuario {
 }
 
 // Roles alineados con Application.Roles (backend)
-export type Rol = 'Admin' | 'Líder' | 'Director' | 'Asesor' | 'Auxiliar de Sistemas';
+// 'Líder Externo' y 'Asesor Externo' son agencias/personal externos: ven solo módulos
+// operativos (Cartera para LiderExterno, Consulta Integrada para AsesorExterno) y
+// quedan fuera de informes, metas, dashboards y demás flujos administrativos.
+export type Rol =
+  | 'Admin'
+  | 'Líder'
+  | 'Director'
+  | 'Asesor'
+  | 'Auxiliar de Sistemas'
+  | 'Líder Externo'
+  | 'Asesor Externo';

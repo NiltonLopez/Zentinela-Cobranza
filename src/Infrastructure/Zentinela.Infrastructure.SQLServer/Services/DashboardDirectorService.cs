@@ -26,10 +26,15 @@ public class DashboardDirectorService : IDashboardDirectorService
 
     // ── Dropdowns ─────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Líderes activos con al menos una relación interna (Lider_Cartera.EsExterna = 0).
+    /// Excluye líderes externos puros (todas sus relaciones son externas).
+    /// </summary>
     public async Task<List<LiderDropdownDto>> ObtenerLideresAsync()
     {
         return await _callCenter.Lideres
-            .Where(l => l.Activo)
+            .Where(l => l.Activo
+                     && _callCenter.LiderCarteras.Any(lc => lc.LiderID == l.ID && !lc.EsExterna))
             .OrderBy(l => l.Nombre)
             .Select(l => new LiderDropdownDto { ID = l.ID, Nombre = l.Nombre })
             .AsNoTracking()
@@ -39,7 +44,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     public async Task<List<CarteraDropdownDto>> ObtenerCarterasLiderAsync(int liderID)
     {
         return await _callCenter.LiderCarteras
-            .Where(lc => lc.LiderID == liderID)
+            .Where(lc => lc.LiderID == liderID && !lc.EsExterna)
             .Select(lc => new CarteraDropdownDto
             {
                 ID = lc.CarteraID,
@@ -75,10 +80,33 @@ public class DashboardDirectorService : IDashboardDirectorService
             hasta = fechaHasta.Value;
         }
 
-        // Fuente: UltimoEstadoTitular (HistoricoEstadoTitular aún no está poblada)
-        var carteraIDsFiltro = await ResolverCarteraIDsAsync(liderID, carteraID);
-        var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDsFiltro)
+        // Fuente: UltimoEstadoTitular (HistoricoEstadoTitular aún no está poblada).
+        // Regla de filtrado para Dashboard de Líder / Director:
+        //  - Si hay liderID: incluir TODOS los estados gestionados por los asesores
+        //    del líder, sin restringir cartera (los asesores pueden apoyar carteras
+        //    de otros líderes y esas gestiones cuentan para su rendimiento).
+        //  - Si solo hay carteraID: vista por cartera específica (típico del Director).
+        //  - Si no hay filtros: vista global, excluyendo carteras solo externas.
+        var query = _callCenter.UltimosEstadosTitular
             .Where(u => u.FechaUltimaGestion >= desde && u.FechaUltimaGestion <= hasta);
+
+        if (carteraID.HasValue)
+        {
+            query = query.Where(u => u.CarteraID == carteraID.Value);
+        }
+
+        if (liderID.HasValue)
+        {
+            var lid = liderID.Value;
+            query = query.Where(u => _callCenter.CarteraAgentes.Any(ca =>
+                ca.AgenteID == u.AgenteID && ca.LiderID == lid));
+        }
+        else if (!carteraID.HasValue)
+        {
+            // Vista global del Director: excluir carteras exclusivamente externas.
+            query = query.Where(u => _callCenter.LiderCarteras.Any(lc =>
+                lc.CarteraID == u.CarteraID && !lc.EsExterna));
+        }
 
         // Total de titulares asignados (sin filtro de fecha — es el universo completo del filtro)
         var totalAsignados = await ContarAsignadosAsync(liderID, carteraID);
@@ -119,14 +147,19 @@ public class DashboardDirectorService : IDashboardDirectorService
 
         if (!liderID.HasValue)
         {
+            // Para el desglose por líder los registros sin AgenteID aún cuentan
+            // (titulares sin asesor pero con perfil de gestión); se preserva el null.
             filasLider = await ConstruirFilasLiderAsync(registros
                 .Select(r => (r.CarteraID, r.AgenteID, r.UltimoPerfil, r.ValorPromesa))
                 .ToList());
         }
         else
         {
+            // Para el desglose por asesor los registros con AgenteID NULL no aportan
+            // (no hay asesor al cual atribuir la gestión); se filtran fuera.
             filasAsesor = await ConstruirFilasAsesorAsync(registros
-                .Select(r => (r.AgenteID, r.UltimoPerfil, r.ValorPromesa))
+                .Where(r => r.AgenteID.HasValue)
+                .Select(r => (AgenteID: r.AgenteID!.Value, r.UltimoPerfil, r.ValorPromesa))
                 .ToList());
         }
 
@@ -156,38 +189,62 @@ public class DashboardDirectorService : IDashboardDirectorService
         return await query.MaxAsync(u => u.FechaUltimaGestion);
     }
 
-    /// <summary>Cuenta el universo total de titulares asignados según el filtro activo.</summary>
+    /// <summary>
+    /// Cuenta el universo total de titulares asignados según el filtro activo.
+    /// Excluye combinaciones (Líder, Cartera) marcadas como externas.
+    /// </summary>
     private async Task<int> ContarAsignadosAsync(int? liderID, int? carteraID)
     {
         var q = _callCenter.TitularCarteras.AsQueryable();
         if (carteraID.HasValue)
+        {
             q = q.Where(tc => tc.CarteraID == carteraID.Value);
-        else if (liderID.HasValue)
-            q = q.Where(tc => tc.LiderID == liderID.Value);
+        }
+        else
+        {
+            // Universo administrativo: excluir asignaciones cuya relación (Líder, Cartera) es externa
+            q = q.Where(tc => !_callCenter.LiderCarteras.Any(lc =>
+                lc.LiderID == tc.LiderID && lc.CarteraID == tc.CarteraID && lc.EsExterna));
+            if (liderID.HasValue)
+                q = q.Where(tc => tc.LiderID == liderID.Value);
+        }
         return await q.CountAsync();
     }
 
+    /// <summary>
+    /// Si se filtra por líder sin cartera específica, devuelve las carteras del líder
+    /// cuyas relaciones son internas. Si se filtra por cartera específica, devuelve null.
+    /// </summary>
     private async Task<List<int>?> ResolverCarteraIDsAsync(int? liderID, int? carteraID)
     {
         if (carteraID.HasValue || !liderID.HasValue) return null;
 
         return await _callCenter.LiderCarteras
-            .Where(lc => lc.LiderID == liderID.Value)
+            .Where(lc => lc.LiderID == liderID.Value && !lc.EsExterna)
             .Select(lc => lc.CarteraID)
             .ToListAsync();
     }
 
-    private static IQueryable<Zentinela.Core.Entities.UltimoEstadoTitular> AplicarFiltroCarteras(
+    /// <summary>
+    /// Aplica el filtro de cartera a una query sobre UltimoEstadoTitular.
+    /// Cuando no hay filtro de cartera ni de líder, restringe a carteras que tienen
+    /// al menos una relación interna en Lider_Cartera (excluye carteras exclusivamente
+    /// externas del universo administrativo). Nota: UltimoEstadoTitular no expone
+    /// LiderID, así que el filtro es a nivel de cartera, no de relación específica —
+    /// una cartera "mixta" aporta todos sus titulares al agregado.
+    /// </summary>
+    private IQueryable<Zentinela.Core.Entities.UltimoEstadoTitular> AplicarFiltroCarteras(
         IQueryable<Zentinela.Core.Entities.UltimoEstadoTitular> q,
         int? carteraID, List<int>? carteraIDs)
     {
         if (carteraID.HasValue)     return q.Where(u => u.CarteraID == carteraID.Value);
         if (carteraIDs is not null) return q.Where(u => carteraIDs.Contains(u.CarteraID));
-        return q;
+        return q.Where(u => _callCenter.LiderCarteras.Any(lc =>
+            lc.CarteraID == u.CarteraID && !lc.EsExterna));
     }
 
     private async Task<List<FilaLiderDto>> ConstruirFilasLiderAsync(
-        List<(int CarteraID, int AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
+        List<(int CarteraID, int? AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
     {
         // Mapear CarteraID → LiderID usando LiderCartera
         var liderCarteras = await _callCenter.LiderCarteras
@@ -281,10 +338,20 @@ public class DashboardDirectorService : IDashboardDirectorService
     public async Task<List<PagoDirectorDto>> ObtenerPagosAsync(
         int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
+        // Universo administrativo: pagos cuya combinación (Líder, Cartera) NO sea externa,
+        // salvo cuando el director seleccione una cartera explícita (el dropdown ya filtra).
         var query = _callCenter.Pagos.AsQueryable();
 
         if (liderID.HasValue)    query = query.Where(p => p.LiderID   == liderID.Value);
-        if (carteraID.HasValue)  query = query.Where(p => p.CarteraID == carteraID.Value);
+        if (carteraID.HasValue)
+        {
+            query = query.Where(p => p.CarteraID == carteraID.Value);
+        }
+        else
+        {
+            query = query.Where(p => !_callCenter.LiderCarteras.Any(lc =>
+                lc.LiderID == p.LiderID && lc.CarteraID == p.CarteraID && lc.EsExterna));
+        }
         if (fechaDesde.HasValue) query = query.Where(p => p.FechaPago >= fechaDesde.Value);
         if (fechaHasta.HasValue) query = query.Where(p => p.FechaPago <= fechaHasta.Value);
 

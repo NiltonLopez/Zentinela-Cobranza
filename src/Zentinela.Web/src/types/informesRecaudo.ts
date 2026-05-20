@@ -77,3 +77,23 @@ export interface InformeCarterasResponse {
   variacionTotal: number;
   carteras: InformeCarteraComparativo[];
 }
+
+// ── Informe de Agencias Externas ──────────────────────────────────────────────
+
+export interface FilaAgenciaExterna {
+  liderID: number;
+  nombreLider: string;
+  carteraID: number;
+  nombreCartera: string;
+  recaudo: number;
+  honorarios: number;
+  totalAsignaciones: number;
+}
+
+export interface InformeAgenciasExternasResponse {
+  totalRecaudo: number;
+  totalHonorarios: number;
+  totalAsignaciones: number;
+  totalAgencias: number;
+  filas: FilaAgenciaExterna[];
+}
