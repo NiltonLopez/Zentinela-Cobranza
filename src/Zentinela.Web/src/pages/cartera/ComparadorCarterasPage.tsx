@@ -29,12 +29,24 @@ function fmtFecha(s: string | null): string {
 
 // ── Componentes ───────────────────────────────────────────────────────────────
 
+// Espejo de PerfilClasificacion.cs (backend). Si se agregan códigos allá,
+// agregarlos también acá para que la chip salga del color correcto.
+const PERFILES_PAZ_Y_SALVO = new Set([
+  'paz y salvo', 'consignación por aplicar', 'pago total', 'normalizado',
+]);
+const PERFILES_CONTACTO_POSITIVO = new Set([
+  'acuerdo de pago abono', 'acuerdo de pago total', 'realizo abono', 'recordar',
+  'incumplido', 'no hubo acuerdo', 'potencial acuerdo', 'renuente', 'no gestionar',
+  'contacto positivo', 'promesa de pago', 'acuerdo',
+]);
+
 function ChipPerfil({ perfil }: { perfil: string | null }) {
   if (!perfil) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>Sin dato</span>;
 
+  const key = perfil.toLowerCase();
   const color =
-    ['Pago Total', 'Paz y Salvo', 'Normalizado'].includes(perfil) ? '#22C55E' :
-    ['Contacto Positivo', 'Promesa de Pago', 'Acuerdo'].includes(perfil) ? '#3B82F6' :
+    PERFILES_PAZ_Y_SALVO.has(key)        ? '#22C55E' :
+    PERFILES_CONTACTO_POSITIVO.has(key)  ? '#3B82F6' :
     '#EF4444';
 
   return (
@@ -319,7 +331,7 @@ export function ComparadorCarterasPage() {
             <div>
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
                           letterSpacing: '0.08em', color: 'var(--z-text-muted)', marginBottom: 4 }}>
-                Sin gestión (base del comparativo)
+                Base del comparativo
               </p>
               <p style={{ fontSize: 28, fontWeight: 700, color: '#EF4444' }}>
                 {fmt(data.totalSinGestion)}

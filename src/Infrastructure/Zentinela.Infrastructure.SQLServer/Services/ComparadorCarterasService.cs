@@ -9,8 +9,11 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
 /// Compara titular a titular la cartera seleccionada contra todas las demás carteras.
-/// Identifica titulares que en la cartera seleccionada tienen Sin Gestión / Contacto Negativo
-/// pero en otra cartera ya tienen Contacto Positivo o Ya Pagó — oportunidades de gestión.
+/// Identifica oportunidades de gestión: titulares cuyo perfil en otra cartera tiene
+/// peso estrictamente mayor que en la seleccionada. Esto cubre dos casos:
+///   1) Seleccionada = Contacto Negativo → muestra coincidencias en Contacto Positivo o Paz y Salvo.
+///   2) Seleccionada = Contacto Positivo → muestra coincidencias en Paz y Salvo.
+/// Los titulares ya en Paz y Salvo (peso máximo) en la seleccionada se excluyen de la base.
 /// </summary>
 public class ComparadorCarterasService : IComparadorCarterasService
 {
@@ -74,18 +77,18 @@ public class ComparadorCarterasService : IComparadorCarterasService
         // Tomamos la fila con el mejor perfil entre todos sus agentes.
         var mejorEnSeleccionada = enSeleccionada
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PesoCategoria(PerfilClasificacion.Clasificar(x.UltimoPerfil))).First())
+            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
             .ToList();
 
-        var mejorPerfilPorTitular = mejorEnSeleccionada.ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
         var numMarcadoSeleccionadaDict = mejorEnSeleccionada.ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
 
-        // Solo los que en su mejor perfil siguen siendo Sin Gestión
-        var sinGestion = mejorPerfilPorTitular
-            .Where(kv => PerfilClasificacion.Clasificar(kv.Value) == CategoriaGestion.SinGestion)
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        // Base del comparativo: titulares cuyo mejor perfil en la seleccionada NO es
+        // Paz y Salvo (peso < 2). Incluye Contacto Negativo y Contacto Positivo.
+        var paraComparar = mejorEnSeleccionada
+            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) < 2)
+            .ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
 
-        if (sinGestion.Count == 0)
+        if (paraComparar.Count == 0)
         {
             return new ComparadorCarterasDto
             {
@@ -96,8 +99,11 @@ public class ComparadorCarterasService : IComparadorCarterasService
             };
         }
 
-        // 2. Buscar esos mismos titulares en otras carteras con estado positivo
-        var titularIDs = sinGestion.Keys.ToList();
+        var pesoEnSeleccionada = paraComparar
+            .ToDictionary(kv => kv.Key, kv => PerfilClasificacion.Peso(kv.Value));
+
+        // 2. Buscar esos mismos titulares en otras carteras
+        var titularIDs = paraComparar.Keys.ToList();
 
         var enOtras = await (
             from tc in _db.TitularCarteras
@@ -121,11 +127,11 @@ public class ComparadorCarterasService : IComparadorCarterasService
         ).AsNoTracking().ToListAsync();
 
         // 3. Deduplicar por (TitularID, CarteraID) tomando el mejor perfil por agente,
-        //    luego filtrar solo los que tienen estado positivo en la otra cartera
+        //    luego conservar solo los que en la otra cartera tienen peso mayor que en la seleccionada.
         var coincidencias = enOtras
             .GroupBy(x => new { x.TitularID, x.CarteraID, x.NombreCartera })
-            .Select(g => g.OrderByDescending(x => PesoCategoria(PerfilClasificacion.Clasificar(x.UltimoPerfil))).First())
-            .Where(x => PerfilClasificacion.Clasificar(x.UltimoPerfil) != CategoriaGestion.SinGestion)
+            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSeleccionada[x.TitularID])
             .GroupBy(x => new { x.CarteraID, x.NombreCartera })
             .Select(g => new ComparadorVsCarteraDto
             {
@@ -133,7 +139,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
                 NombreCartera      = g.Key.NombreCartera,
                 TotalCoincidencias = g.Count(),
                 Preview            = g.Take(5).Select(x => MapTitular(x.TitularID, x.Nombre,
-                    sinGestion.GetValueOrDefault(x.TitularID), x.UltimoPerfil, g.Key.NombreCartera,
+                    paraComparar.GetValueOrDefault(x.TitularID), x.UltimoPerfil, g.Key.NombreCartera,
                     numMarcadoSeleccionadaDict.GetValueOrDefault(x.TitularID), x.NumeroMarcado,
                     x.SaldoTotal, x.FechaUltimaGestion, x.ValorPromesa)).ToList(),
             })
@@ -144,7 +150,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         {
             CarteraID                 = carteraID,
             NombreCarteraSeleccionada = nombreSeleccionada,
-            TotalSinGestion           = sinGestion.Count,
+            TotalSinGestion           = paraComparar.Count,
             Comparaciones             = coincidencias,
         };
     }
@@ -154,8 +160,9 @@ public class ComparadorCarterasService : IComparadorCarterasService
     public async Task<IEnumerable<TitularComparativoDto>> ObtenerParaExcelAsync(
         int carteraID, int otraCarteraID)
     {
-        // Titulares Sin Gestión en la cartera seleccionada
-        var sinGestion = await (
+        // Titulares de la cartera seleccionada que califican como base del comparativo
+        // (peso < Paz y Salvo, es decir Negativo o Positivo).
+        var enSeleccionada = await (
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
@@ -163,21 +170,24 @@ public class ComparadorCarterasService : IComparadorCarterasService
             select new { tc.TitularID, ue.UltimoPerfil, ue.NumeroMarcado }
         ).AsNoTracking().ToListAsync();
 
-        var mejorEnSel = sinGestion
+        var mejorEnSel = enSeleccionada
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PesoCategoria(PerfilClasificacion.Clasificar(x.UltimoPerfil))).First())
+            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
             .ToList();
 
-        var sinGestionDict = mejorEnSel
-            .Where(x => PerfilClasificacion.Clasificar(x.UltimoPerfil) == CategoriaGestion.SinGestion)
+        var paraCompararDict = mejorEnSel
+            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) < 2)
             .ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
 
         var numMarcadoSelDict = mejorEnSel
             .ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
 
-        if (sinGestionDict.Count == 0) return [];
+        if (paraCompararDict.Count == 0) return [];
 
-        var titularIDs = sinGestionDict.Keys.ToList();
+        var pesoEnSel = paraCompararDict
+            .ToDictionary(kv => kv.Key, kv => PerfilClasificacion.Peso(kv.Value));
+
+        var titularIDs = paraCompararDict.Keys.ToList();
 
         var enOtra = await (
             from tc in _db.TitularCarteras
@@ -204,10 +214,10 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         return enOtra
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PesoCategoria(PerfilClasificacion.Clasificar(x.UltimoPerfil))).First())
-            .Where(x => PerfilClasificacion.Clasificar(x.UltimoPerfil) != CategoriaGestion.SinGestion)
+            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSel[x.TitularID])
             .Select(x => MapTitular(x.TitularID, x.Nombre,
-                sinGestionDict.GetValueOrDefault(x.TitularID), x.UltimoPerfil, nombreOtra,
+                paraCompararDict.GetValueOrDefault(x.TitularID), x.UltimoPerfil, nombreOtra,
                 numMarcadoSelDict.GetValueOrDefault(x.TitularID), x.NumeroMarcado,
                 x.SaldoTotal, x.FechaUltimaGestion, x.ValorPromesa))
             .ToList();
@@ -252,9 +262,9 @@ public class ComparadorCarterasService : IComparadorCarterasService
             }
         ).AsNoTracking().ToListAsync();
 
-        // También necesitamos los titulares Sin Gestión que no están en el preview
+        // También necesitamos los titulares "para comparar" que no están en el preview
         // (tienen más de 5 en alguna sección). Re-consultamos sin límite.
-        var sinGestionCompleto = await (
+        var enSeleccionadaCompleto = await (
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
@@ -262,19 +272,22 @@ public class ComparadorCarterasService : IComparadorCarterasService
             select new { tc.TitularID, ue.UltimoPerfil, ue.NumeroMarcado }
         ).AsNoTracking().ToListAsync();
 
-        var mejorEnSelFull = sinGestionCompleto
+        var mejorEnSelFull = enSeleccionadaCompleto
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PesoCategoria(PerfilClasificacion.Clasificar(x.UltimoPerfil))).First())
+            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
             .ToList();
 
-        var sinGestionFull = mejorEnSelFull
-            .Where(x => PerfilClasificacion.Clasificar(x.UltimoPerfil) == CategoriaGestion.SinGestion)
+        var paraCompararFull = mejorEnSelFull
+            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) < 2)
             .ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
+
+        var pesoEnSelFull = paraCompararFull
+            .ToDictionary(kv => kv.Key, kv => PerfilClasificacion.Peso(kv.Value));
 
         var numMarcadoSelFullDict = mejorEnSelFull
             .ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
 
-        var allIDs = sinGestionFull.Keys.ToList();
+        var allIDs = paraCompararFull.Keys.ToList();
 
         var todasEnOtras = await (
             from tc in _db.TitularCarteras
@@ -299,25 +312,18 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         return todasEnOtras
             .GroupBy(x => new { x.TitularID, x.CarteraID, x.NombreCartera })
-            .Select(g => g.OrderByDescending(x => PesoCategoria(PerfilClasificacion.Clasificar(x.UltimoPerfil))).First())
-            .Where(x => PerfilClasificacion.Clasificar(x.UltimoPerfil) != CategoriaGestion.SinGestion)
+            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSelFull[x.TitularID])
             .OrderBy(x => x.NombreCartera)
             .ThenBy(x => x.Nombre)
             .Select(x => MapTitular(x.TitularID, x.Nombre,
-                sinGestionFull.GetValueOrDefault(x.TitularID), x.UltimoPerfil, x.NombreCartera,
+                paraCompararFull.GetValueOrDefault(x.TitularID), x.UltimoPerfil, x.NombreCartera,
                 numMarcadoSelFullDict.GetValueOrDefault(x.TitularID), x.NumeroMarcado,
                 x.SaldoTotal, x.FechaUltimaGestion, x.ValorPromesa))
             .ToList();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static int PesoCategoria(CategoriaGestion c) => c switch
-    {
-        CategoriaGestion.YaPago           => 2,
-        CategoriaGestion.ContactoPositivo => 1,
-        _                                 => 0,
-    };
 
     private static TitularComparativoDto MapTitular(
         long titularID, string nombre,
