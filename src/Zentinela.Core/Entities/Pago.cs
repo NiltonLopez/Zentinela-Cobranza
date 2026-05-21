@@ -16,7 +16,11 @@ public class Pago
     public int     LiderID          { get; set; }
     public int     CarteraID        { get; set; }
     public int     UsuarioControlID { get; set; }
-    /// <summary>Cédula del agente responsable del titular. FK a Agente.AgenteID.</summary>
-    public long    AgenteControlID  { get; set; }
+    /// <summary>
+    /// Cédula del agente responsable del titular. FK a Agente.AgenteID.
+    /// NULL cuando el pago entró sin mérito de asesor (UsuarioControl = "BASE GENERAL"
+    /// en el cargue) y el recaudo se atribuye solamente al líder.
+    /// </summary>
+    public long?   AgenteControlID  { get; set; }
     public DateTime FechaRegistro   { get; set; }
 }

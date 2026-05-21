@@ -16,18 +16,29 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// El CSV puede tener las columnas en cualquier orden y puede incluir columnas extra.
 /// El servicio localiza cada columna por nombre (case-insensitive, sin tildes ni espacios).
 /// Columnas requeridas y alias aceptados:
-///   Cédula      → cedula, cedula, numerodocumento, documento
+///   Cédula      → cedula, numerodocumento, documento
 ///   Nombre      → nombre, nombrecliente, cliente
 ///   Valor       → valor, valorpagado, valorpago, montopagado
 ///   Fecha       → fecha, fechapago, fechadepago
 ///   Honorarios  → honorarios, honorario
 ///   UsuarioCtrl → usuariocontrol, usuario, usuariocontrolnext, control
 ///
-/// LiderID se resuelve desde TitularCartera (Cedula + CarteraID).
-/// AgenteControlID se resuelve por lookup Agente.UsuarioControlNext = UsuarioControl.
+/// Resolución de Líder y Agente:
+///   - Si UsuarioControl = "BASE GENERAL" (case-insensitive): AgenteControlID queda NULL,
+///     LiderID = único líder en Titular_Cartera para esa (cédula, cartera). 0 o >1 líderes → error.
+///   - Si UsuarioControl normal: AgenteControlID = Agente.UsuarioControlNext lookup.
+///     LiderID = único líder en Titular_Cartera; si hay varios líderes para la cédula en la
+///     cartera, se desempata con CarteraAgente.LiderID del agente resuelto.
 /// </summary>
 public class CarguePagosService : ICarguePagosService
 {
+    /// <summary>
+    /// Valor especial del campo Usuario Control que indica un pago sin asesor
+    /// responsable. Case-insensitive: aceptamos "BASE GENERAL", "Base General",
+    /// "base general", etc. AgenteControlID queda NULL para esos pagos.
+    /// </summary>
+    private const string BaseGeneralKeyword = "BASE GENERAL";
+
     private readonly CallCenterDbContext _context;
     private readonly ICalificadorCarteraCache _calificadorCache;
 
@@ -90,44 +101,31 @@ public class CarguePagosService : ICarguePagosService
 
         var filasValidas = filas.Where(f => f.EsValida).ToList();
 
-        // ── Lookup 1: LiderID desde TitularCartera ────────────────────────────
-        var cedulas = filasValidas.Select(f => f.CedulaTitular).Distinct().ToList();
-
-        var asignaciones = await _context.TitularCarteras
-            .Where(tc => cedulas.Contains(tc.TitularID) && tc.CarteraID == carteraID)
-            .Select(tc => new { tc.TitularID, tc.LiderID })
-            .AsNoTracking()
-            .ToListAsync();
-
-        // DistinctBy: un titular puede aparecer varias veces en TitularCartera
-        // (asignado a más de un líder). Tomamos la primera asignación encontrada.
-        var liderPorCedula = asignaciones
-            .DistinctBy(a => a.TitularID)
-            .ToDictionary(a => a.TitularID, a => a.LiderID);
-
+        // ── Marcar filas BASE GENERAL ─────────────────────────────────────────
+        // Valor especial (case-insensitive) que indica que el pago no tiene asesor
+        // responsable y se atribuye solo al líder.
         foreach (var fila in filasValidas)
         {
-            if (liderPorCedula.TryGetValue(fila.CedulaTitular, out var liderID))
-                fila.LiderID = liderID;
-            else
-            {
-                fila.EsValida     = false;
-                fila.ErrorMensaje = $"Cédula {fila.CedulaTitular} no está asignada a esta cartera.";
-            }
+            fila.EsBaseGeneral = string.Equals(
+                fila.UsuarioControl.Trim(),
+                BaseGeneralKeyword,
+                StringComparison.OrdinalIgnoreCase);
         }
 
-        // ── Lookup 2: AgenteControlID desde Agente.UsuarioControlNext ─────────
+        // ── Lookup 1: AgenteControlID para filas NO BASE GENERAL ──────────────
         var usuariosControl = filasValidas
-            .Where(f => f.EsValida && !string.IsNullOrWhiteSpace(f.UsuarioControl))
+            .Where(f => !f.EsBaseGeneral && !string.IsNullOrWhiteSpace(f.UsuarioControl))
             .Select(f => f.UsuarioControl.Trim())
             .Distinct()
             .ToList();
 
-        var agentes = await _context.Agentes
-            .Where(a => a.UsuarioControlNext != null && usuariosControl.Contains(a.UsuarioControlNext))
-            .Select(a => new { a.UsuarioControlNext, a.AgenteID })
-            .AsNoTracking()
-            .ToListAsync();
+        var agentes = usuariosControl.Count == 0
+            ? []
+            : await _context.Agentes
+                .Where(a => a.UsuarioControlNext != null && usuariosControl.Contains(a.UsuarioControlNext))
+                .Select(a => new { a.UsuarioControlNext, a.AgenteID })
+                .AsNoTracking()
+                .ToListAsync();
 
         var agentePorUsuario = agentes
             .DistinctBy(a => a.UsuarioControlNext!.ToLowerInvariant())
@@ -136,7 +134,7 @@ public class CarguePagosService : ICarguePagosService
                 a => a.AgenteID,
                 StringComparer.OrdinalIgnoreCase);
 
-        foreach (var fila in filasValidas.Where(f => f.EsValida))
+        foreach (var fila in filasValidas.Where(f => !f.EsBaseGeneral))
         {
             if (agentePorUsuario.TryGetValue(fila.UsuarioControl.Trim(), out var agenteID))
                 fila.AgenteControlID = agenteID;
@@ -144,6 +142,78 @@ public class CarguePagosService : ICarguePagosService
             {
                 fila.EsValida     = false;
                 fila.ErrorMensaje = $"Usuario Control '{fila.UsuarioControl}' no encontrado en el sistema.";
+            }
+        }
+
+        // ── Lookup 2: Asignaciones de Titular_Cartera para resolver LiderID ───
+        var cedulas = filasValidas.Select(f => f.CedulaTitular).Distinct().ToList();
+
+        var asignaciones = await _context.TitularCarteras
+            .Where(tc => cedulas.Contains(tc.TitularID) && tc.CarteraID == carteraID)
+            .Select(tc => new { tc.TitularID, tc.LiderID })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var lideresPorCedula = asignaciones
+            .GroupBy(a => a.TitularID)
+            .ToDictionary(g => g.Key, g => g.Select(a => a.LiderID).Distinct().ToList());
+
+        // ── Lookup 3: CarteraAgente para desempatar líder en filas normales ───
+        // Necesario solo cuando una cédula tiene >1 líderes en la cartera: el líder
+        // del agente resuelto (vía Cartera_Agente) decide a quién se le atribuye el pago.
+        var agenteIDsResueltos = filasValidas
+            .Where(f => f.EsValida && !f.EsBaseGeneral && f.AgenteControlID.HasValue)
+            .Select(f => f.AgenteControlID!.Value)
+            .Distinct()
+            .ToList();
+
+        var liderPorAgenteDict = agenteIDsResueltos.Count == 0
+            ? new Dictionary<long, int>()
+            : (await _context.CarteraAgentes
+                    .Where(ca => agenteIDsResueltos.Contains(ca.AgenteID) && ca.CarteraID == carteraID)
+                    .Select(ca => new { ca.AgenteID, ca.LiderID })
+                    .AsNoTracking()
+                    .ToListAsync())
+                .DistinctBy(x => x.AgenteID)
+                .ToDictionary(x => x.AgenteID, x => x.LiderID);
+
+        // ── Resolver LiderID para cada fila ───────────────────────────────────
+        foreach (var fila in filasValidas.Where(f => f.EsValida))
+        {
+            if (!lideresPorCedula.TryGetValue(fila.CedulaTitular, out var lideres) || lideres.Count == 0)
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje = $"Cédula {fila.CedulaTitular} no está asignada a ningún líder en esta cartera.";
+                continue;
+            }
+
+            if (lideres.Count == 1)
+            {
+                fila.LiderID = lideres[0];
+                continue;
+            }
+
+            // Múltiples líderes para la cédula en esta cartera
+            if (fila.EsBaseGeneral)
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje =
+                    $"Cédula {fila.CedulaTitular} (BASE GENERAL) está asignada a {lideres.Count} líderes en esta cartera — no se puede determinar a cuál atribuir el pago.";
+                continue;
+            }
+
+            // Pago normal: desempatar usando el líder del agente vía Cartera_Agente
+            if (fila.AgenteControlID.HasValue &&
+                liderPorAgenteDict.TryGetValue(fila.AgenteControlID.Value, out var liderDelAgente) &&
+                lideres.Contains(liderDelAgente))
+            {
+                fila.LiderID = liderDelAgente;
+            }
+            else
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje =
+                    $"Cédula {fila.CedulaTitular} está asignada a {lideres.Count} líderes en esta cartera y el agente '{fila.UsuarioControl}' no resuelve a ninguno de ellos vía Cartera_Agente — no se puede desempatar.";
             }
         }
 
@@ -224,13 +294,20 @@ public class CarguePagosService : ICarguePagosService
             celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         }
 
-        // Fila de ejemplo en gris
-        var ejemplo = new object[] { 1020304050L, "PEREZ JUAN", 1500000, 225000, "2026-04-21", "jperez" };
-        for (int i = 0; i < ejemplo.Length; i++)
+        // Filas de ejemplo en gris: una con asesor, otra BASE GENERAL.
+        var ejemplos = new object[][]
         {
-            var celda = ws.Cell(2, i + 1);
-            celda.Value = ejemplo[i].ToString();
-            celda.Style.Font.FontColor = XLColor.Gray;
+            new object[] { 1020304050L, "PEREZ JUAN",   1500000, 225000, "2026-04-21", "jperez" },
+            new object[] { 9876543210L, "GOMEZ MARIA",  900000,  135000, "2026-04-21", "BASE GENERAL" },
+        };
+        for (int r = 0; r < ejemplos.Length; r++)
+        {
+            for (int i = 0; i < ejemplos[r].Length; i++)
+            {
+                var celda = ws.Cell(2 + r, i + 1);
+                celda.Value = ejemplos[r][i].ToString();
+                celda.Style.Font.FontColor = XLColor.Gray;
+            }
         }
 
         ws.Columns().AdjustToContents();

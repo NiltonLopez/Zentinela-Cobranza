@@ -4,9 +4,10 @@ export interface PagoFila {
   valorPagado: number;
   fechaPago: string;      // ISO date "YYYY-MM-DD"
   honorarios: number;
-  usuarioControl: string;    // valor crudo del CSV — lookup por Agente.UsuarioControlNext
-  agenteControlID: number;   // AgenteID resuelto del lookup
-  liderID: number;           // resuelto automáticamente desde TitularCartera
+  usuarioControl: string;    // valor crudo del CSV — "BASE GENERAL" (case-insensitive) marca pago sin asesor
+  agenteControlID: number | null;  // null cuando es BASE GENERAL
+  liderID: number;           // resuelto desde TitularCartera (o CarteraAgente como desempate)
+  esBaseGeneral: boolean;    // true cuando UsuarioControl = "BASE GENERAL"
   esValida: boolean;
   errorMensaje?: string;
 }

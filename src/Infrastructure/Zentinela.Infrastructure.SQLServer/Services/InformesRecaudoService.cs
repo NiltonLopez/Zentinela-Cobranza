@@ -51,7 +51,10 @@ public class InformesRecaudoService : IInformesRecaudoService
         if (pagos.Count == 0)
             return new InformeAgentesResponse();
 
-        var agenteIDs = pagos.Select(p => p.AgenteControlID).Distinct().ToList();
+        // Pagos BASE GENERAL (AgenteControlID NULL) no aplican al informe por agente —
+        // su recaudo se imputa solo al líder y se ve en GetInformeLideresAsync.
+        var pagosConAgente = pagos.Where(p => p.AgenteControlID.HasValue).ToList();
+        var agenteIDs = pagosConAgente.Select(p => p.AgenteControlID!.Value).Distinct().ToList();
 
         // Metas de agentes para el mes
         var metasRaw = await _callCenter.MetaAgentesMes
@@ -95,9 +98,9 @@ public class InformesRecaudoService : IInformesRecaudoService
             .AsNoTracking()
             .ToDictionaryAsync(e => e.NumeroDocumento, e => $"{e.Nombre} {e.Apellidos}".Trim());
 
-        // Agrupar y calcular por agente
-        var agentes = pagos
-            .GroupBy(p => p.AgenteControlID)
+        // Agrupar y calcular por agente (excluye BASE GENERAL ya filtrado arriba)
+        var agentes = pagosConAgente
+            .GroupBy(p => p.AgenteControlID!.Value)
             .Select(g =>
             {
                 var agenteID   = g.Key;

@@ -1353,13 +1353,13 @@ Pagos confirmados cargados manualmente por cartera desde la UI. Alimenta los inf
 | Honorarios | decimal(18,2) | NO | — | — |
 | LiderID | int | NO | — | Lider_Cartera |
 | CarteraID | int | NO | — | Cartera |
-| AgenteControlID | bigint | NO | — | Agente (cross-DB ref) |
+| AgenteControlID | bigint | SÍ | — | Agente (cross-DB ref) |
 | UsuarioControlID | int | NO | — | ApplicationUser (DBZentinela, sin FK) |
 | FechaRegistro | datetime | NO | — | — |
 
 **Notas:**
-- `LiderID` se resuelve automáticamente desde `Titular_Cartera` usando `(CedulaTitular, CarteraID)`.
-- `AgenteControlID` se resuelve desde `Agente.UsuarioControlNext` (valor textual del CSV).
+- `LiderID` se resuelve automáticamente desde `Titular_Cartera` usando `(CedulaTitular, CarteraID)`. Si la cédula tiene múltiples líderes en la cartera, se desempata con `Cartera_Agente.LiderID` del agente resuelto (excepto en pagos BASE GENERAL, que requieren unicidad).
+- `AgenteControlID` se resuelve desde `Agente.UsuarioControlNext` (valor textual del CSV). **NULL** cuando el campo Usuario Control del CSV es `BASE GENERAL` (case-insensitive) — el pago se atribuye solo al líder. Ver ADR-018 y migración `2026-05-21_pago_agentecontrolid_nullable.sql`.
 - `UsuarioControlID` referencia a `ApplicationUser` en `DBZentinela` — no existe FK a nivel de BD por ser cross-database.
 - La tabla usa `ExcludeFromMigrations` en EF Core; el schema se gestiona con el script SQL manual.
 

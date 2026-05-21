@@ -220,7 +220,17 @@ function TablaPreview({ filas, totalValidas }: { filas: PagoFila[]; totalValidas
                   {cop(fila.honorarios)}
                 </td>
                 <td style={{ padding: '9px 14px', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-                  {fila.usuarioControl}
+                  {fila.esBaseGeneral ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, padding: '2px 8px',
+                      borderRadius: 12, background: '#0EA5E922', color: '#0369A1',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      BASE GENERAL
+                    </span>
+                  ) : (
+                    fila.usuarioControl
+                  )}
                 </td>
                 <td style={{ padding: '9px 14px' }}>
                   <BadgePago esValida={fila.esValida} />

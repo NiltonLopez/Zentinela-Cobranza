@@ -26,7 +26,8 @@ public class PagoMapping : IEntityTypeConfiguration<Pago>
         builder.Property(p => p.LiderID).IsRequired();
         builder.Property(p => p.CarteraID).IsRequired();
         builder.Property(p => p.UsuarioControlID).IsRequired();
-        builder.Property(p => p.AgenteControlID).IsRequired();
+        // AgenteControlID nullable: ver migración 2026-05-21_pago_agentecontrolid_nullable.sql
+        builder.Property(p => p.AgenteControlID);
         builder.Property(p => p.FechaRegistro)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("GETDATE()")

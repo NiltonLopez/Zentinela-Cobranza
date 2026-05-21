@@ -392,8 +392,13 @@ public class DashboardDirectorService : IDashboardDirectorService
             .AsNoTracking()
             .ToListAsync();
 
-        // Nombres de asesores desde DBRecursosHumanos
-        var agenteIDs = pagos.Select(x => x.p.AgenteControlID).Distinct().ToList();
+        // Nombres de asesores desde DBRecursosHumanos. Pagos BASE GENERAL
+        // (AgenteControlID NULL) muestran la etiqueta literal en lugar de un nombre.
+        var agenteIDs = pagos
+            .Where(x => x.p.AgenteControlID.HasValue)
+            .Select(x => x.p.AgenteControlID!.Value)
+            .Distinct()
+            .ToList();
         var empleados = await _rrhh.Empleados
             .Where(e => agenteIDs.Contains(e.NumeroDocumento))
             .AsNoTracking()
@@ -412,8 +417,9 @@ public class DashboardDirectorService : IDashboardDirectorService
             Honorarios    = x.p.Honorarios,
             NombreCartera = x.NombreCartera,
             NombreLider   = x.NombreLider,
-            NombreAsesor  = nombrePorAgente.TryGetValue(x.p.AgenteControlID, out var nombre)
-                            ? nombre : $"Agente {x.p.AgenteControlID}",
+            NombreAsesor  = x.p.AgenteControlID is long agId
+                            ? (nombrePorAgente.TryGetValue(agId, out var nombre) ? nombre : $"Agente {agId}")
+                            : "BASE GENERAL",
             FechaRegistro = x.p.FechaRegistro,
         }).ToList();
     }
