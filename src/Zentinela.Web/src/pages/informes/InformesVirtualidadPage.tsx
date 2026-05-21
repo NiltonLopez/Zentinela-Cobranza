@@ -359,14 +359,17 @@ function TabMensajeria() {
     enabled:  false,
   });
 
-  // Listas de líderes y carteras únicas (derivadas de la etiqueta "Cartera — Líder")
+  // Listas de líderes y carteras únicas (derivadas de la etiqueta "Cartera — Líder").
+  // El dropdown del Calificador incluye entradas "Cartera Completo" con liderID null;
+  // para el filtro de Virtualidad solo aplican las combinaciones líder-cartera concretas.
+  const opcionesPorLider = opciones.filter((o): o is typeof o & { liderID: number } => o.liderID !== null);
   const lideresUnicos = Array.from(
-    new Map(opciones.map(o => [o.liderID, { id: o.liderID, nombre: o.etiqueta.split(' — ')[1] ?? `Líder ${o.liderID}` }])).values()
+    new Map(opcionesPorLider.map(o => [o.liderID, { id: o.liderID, nombre: o.etiqueta.split(' — ')[1] ?? `Líder ${o.liderID}` }])).values()
   ).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
   const carterasFiltradas = Array.from(
     new Map(
-      opciones
+      opcionesPorLider
         .filter(o => filtroLider === 0 || o.liderID === filtroLider)
         .map(o => [o.carteraID, { id: o.carteraID, nombre: o.etiqueta.split(' — ')[0] ?? `Cartera ${o.carteraID}` }])
     ).values()
@@ -716,13 +719,16 @@ function TabIVR() {
     enabled:  false,
   });
 
+  // Idem al primer bloque: descartamos entradas "Cartera Completo" (liderID null)
+  // — el filtro de Virtualidad opera por combinación líder-cartera concreta.
+  const opcionesPorLider = opciones.filter((o): o is typeof o & { liderID: number } => o.liderID !== null);
   const lideresUnicos = Array.from(
-    new Map(opciones.map(o => [o.liderID, { id: o.liderID, nombre: o.etiqueta.split(' — ')[1] ?? `Líder ${o.liderID}` }])).values()
+    new Map(opcionesPorLider.map(o => [o.liderID, { id: o.liderID, nombre: o.etiqueta.split(' — ')[1] ?? `Líder ${o.liderID}` }])).values()
   ).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
   const carterasFiltradas = Array.from(
     new Map(
-      opciones
+      opcionesPorLider
         .filter(o => filtroLider === 0 || o.liderID === filtroLider)
         .map(o => [o.carteraID, { id: o.carteraID, nombre: o.etiqueta.split(' — ')[0] ?? `Cartera ${o.carteraID}` }])
     ).values()
