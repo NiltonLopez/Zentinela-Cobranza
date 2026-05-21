@@ -73,6 +73,12 @@ public static class DependencyInjection
                 };
             });
 
+        // ── Caché in-memory (Singleton) ───────────────────────────────────────
+        // Caché del Calificador de Cartera con invalidación global por CTS.
+        // Debe vivir entre requests para servir de algo.
+        services.AddMemoryCache();
+        services.AddSingleton<ICalificadorCarteraCache, CalificadorCarteraCache>();
+
         // ── Servicios de infraestructura ──────────────────────────────────────
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<ICarteraRepository, CarteraRepository>();

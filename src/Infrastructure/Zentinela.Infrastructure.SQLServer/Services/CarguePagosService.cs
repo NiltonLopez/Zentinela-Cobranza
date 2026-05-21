@@ -29,10 +29,12 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 public class CarguePagosService : ICarguePagosService
 {
     private readonly CallCenterDbContext _context;
+    private readonly ICalificadorCarteraCache _calificadorCache;
 
-    public CarguePagosService(CallCenterDbContext context)
+    public CarguePagosService(CallCenterDbContext context, ICalificadorCarteraCache calificadorCache)
     {
-        _context = context;
+        _context          = context;
+        _calificadorCache = calificadorCache;
     }
 
     public async Task<ValidarPagosResponse> ValidarArchivoAsync(Stream archivo, int carteraID, string extension)
@@ -179,6 +181,11 @@ public class CarguePagosService : ICarguePagosService
 
         _context.Pagos.AddRange(pagos);
         await _context.SaveChangesAsync();
+
+        // Persistencia exitosa — los pagos no alteran las agregaciones actuales del
+        // Calificador, pero sí podrían influir en versiones futuras del DTO (recaudo
+        // por líder, etc.). Invalidar es barato y mantiene coherencia.
+        _calificadorCache.InvalidarTodo();
 
         return pagos.Count;
     }

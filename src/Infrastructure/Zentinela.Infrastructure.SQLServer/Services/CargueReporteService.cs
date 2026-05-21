@@ -31,11 +31,16 @@ public class CargueReporteService : ICargueReporteService
 {
     private readonly CallCenterDbContext _db;
     private readonly ILogger<CargueReporteService> _logger;
+    private readonly ICalificadorCarteraCache _calificadorCache;
 
-    public CargueReporteService(CallCenterDbContext db, ILogger<CargueReporteService> logger)
+    public CargueReporteService(
+        CallCenterDbContext db,
+        ILogger<CargueReporteService> logger,
+        ICalificadorCarteraCache calificadorCache)
     {
-        _db = db;
-        _logger = logger;
+        _db               = db;
+        _logger           = logger;
+        _calificadorCache = calificadorCache;
     }
 
     // ── Última actualización ──────────────────────────────────────────────────
@@ -322,6 +327,10 @@ public class CargueReporteService : ICargueReporteService
             await tx.RollbackAsync();
             throw;
         }
+
+        // Commit exitoso — el cargue muta UltimoEstadoTitular/HistoricoEstadoTitular,
+        // que alimentan las métricas del Calificador. Invalidamos toda la caché.
+        _calificadorCache.InvalidarTodo();
 
         var unicos = filasValidas.Count - duplicadosEliminados;
         return new ResultadoReporteDto

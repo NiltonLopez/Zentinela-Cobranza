@@ -10,17 +10,20 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
 /// Calcula las métricas del Calificador de Cartera. Toda la agregación vive en SQL:
-/// un único batch materializa la cartera filtrada en una temporal y emite 8 result
-/// sets (escalares + 7 desgloses). C# sólo hidrata el DTO. Reemplaza los 9 bloques
-/// C# en memoria que iteraban sobre 60-190k filas.
+/// un único batch materializa la cartera filtrada en una temporal y emite 9 result
+/// sets (escalares + 7 desgloses + localización). C# sólo hidrata el DTO. Reemplaza
+/// los 9 bloques C# en memoria que iteraban sobre 60-190k filas y, desde esta
+/// optimización, también la segunda pasada del TVF que calculaba localización.
 /// </summary>
 public class CalificadorCarteraService : ICalificadorCarteraService
 {
     private readonly CallCenterDbContext _db;
+    private readonly ICalificadorCarteraCache _cache;
 
-    public CalificadorCarteraService(CallCenterDbContext db)
+    public CalificadorCarteraService(CallCenterDbContext db, ICalificadorCarteraCache cache)
     {
-        _db = db;
+        _db    = db;
+        _cache = cache;
     }
 
     // ── Dropdown ──────────────────────────────────────────────────────────────
@@ -97,10 +100,12 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     // ── Métricas ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// SQL batch que materializa la cartera en #t (con columnas pre-parseadas) y
-    /// emite 8 result sets. Reemplaza los 9 bloques C# que iteraban filas en memoria.
-    /// Los nombres de columna y orden de filas replican exactamente lo que producía
-    /// el código C# (Cantidad DESC, OrdenRango para Rotación, top 10 + Otras para EPS).
+    /// SQL batch que materializa la cartera en #t (con columnas pre-parseadas y todas
+    /// las columnas necesarias para localización) y emite 9 result sets. Reemplaza los
+    /// 9 bloques C# que iteraban filas en memoria + la segunda pasada del TVF que
+    /// calculaba localización. Los nombres de columna y orden de filas replican
+    /// exactamente lo que producía el código C# (Cantidad DESC, OrdenRango para
+    /// Rotación, top 10 + Otras para EPS).
     /// </summary>
     private const string SqlAgregados = """
         SET NOCOUNT ON;
@@ -135,7 +140,28 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             TRY_CAST([Saldo]                       AS decimal(18,2))  AS _Saldo,
             TRY_CAST(NULLIF([Valor Promesa], '0')  AS decimal(18,2))  AS _ValorPromesa,
             TRY_CAST([Rotacion]                    AS int)            AS _Rotacion,
-            TRY_CONVERT(date, [Fecha Promesa], 103)                   AS _FechaPromesa
+            TRY_CONVERT(date, [Fecha Promesa], 103)                   AS _FechaPromesa,
+            -- Columnas extra para localización (result set 9)
+            TRY_CAST([Numero Documento] AS bigint) AS TitularID,
+            [Edad CajaCopi]               AS EdadCajacopi,
+            [NIT Salud Total]             AS NITSaludTotal,
+            [Empresa Salud Total]         AS EmpresaSaludTotal,
+            [EPS en Compensados]          AS EPSCompensados,
+            [Tipo Afiliado Compensados]   AS TipoAfiliadoCompensados,
+            [Edad Positiva]               AS EdadPositiva,
+            [Nit Sos]                     AS NitSOS,
+            [Empresa SOS]                 AS EmpresaSOS,
+            [Departamento MutualSer]      AS DepartamentoMutualSer,
+            [Municipio MutualSer]         AS MunicipioMutualSer,
+            [NIT Sura]                    AS NITSura,
+            [Empresa Sura]                AS EmpresaSura,
+            [NIT Positiva]                AS NITPositiva,
+            [Empresa Positiva]            AS EmpresaPositiva,
+            [Empresa RUES]                AS EmpresaRUES,
+            [PLACA SIMIT]                 AS PlacaSIMIT,
+            Marca,
+            Modelo,
+            Placa
         INTO #t
         FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID);
 
@@ -273,6 +299,149 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
         FROM F WHERE Cantidad > 0 ORDER BY Cantidad DESC;
 
+        -- Result set 9: localización (15 fuentes, encontrados/no-encontrados)
+        -- Reusa #t y agrega LEFT JOIN DISTINCT contra cada tabla fuente para
+        -- distinguir "no encontrado" (existe fila pero datos vacíos) de
+        -- "falta buscar" (no existe fila en la tabla fuente).
+        SELECT
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelCajacopi,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmCajacopi,  ''), '0') IS NOT NULL
+                       OR (t.EdadCajacopi IS NOT NULL AND t.EdadCajacopi != 0)
+                     THEN 1 ELSE 0 END) AS CajacopiEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelCajacopi,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmCajacopi,  ''), '0') IS NULL
+                      AND (t.EdadCajacopi IS NULL OR t.EdadCajacopi = 0)
+                      AND cj.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CajacopiNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelCamara,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmCamara,  ''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CamaraEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelCamara,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmCamara,  ''), '0') IS NULL
+                      AND cm.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CamaraNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelSaludTotal,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmSaludTotal,  ''), '0') IS NOT NULL
+                       OR (t.NITSaludTotal IS NOT NULL AND t.NITSaludTotal != 0)
+                       OR NULLIF(NULLIF(t.EmpresaSaludTotal,''),'0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SaludTotalEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelSaludTotal,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmSaludTotal,  ''), '0') IS NULL
+                      AND (t.NITSaludTotal IS NULL OR t.NITSaludTotal = 0)
+                      AND NULLIF(NULLIF(t.EmpresaSaludTotal,''),'0') IS NULL
+                      AND st.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SaludTotalNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.EPS,         ''), '0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.Regimen,     ''), '0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.TipoAfiliado,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS FosygaEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.EPS,         ''), '0') IS NULL
+                      AND NULLIF(NULLIF(t.Regimen,     ''), '0') IS NULL
+                      AND NULLIF(NULLIF(t.TipoAfiliado,''), '0') IS NULL
+                      AND f.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS FosygaNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.EPSCompensados,         ''), '0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.TipoAfiliadoCompensados,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CompensadosEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.EPSCompensados,         ''), '0') IS NULL
+                      AND NULLIF(NULLIF(t.TipoAfiliadoCompensados,''), '0') IS NULL
+                      AND co.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CompensadosNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelPositiva,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmPositiva,  ''), '0') IS NOT NULL
+                       OR (t.EdadPositiva IS NOT NULL AND t.EdadPositiva != 0)
+                     THEN 1 ELSE 0 END) AS PositivaEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelPositiva,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmPositiva,  ''), '0') IS NULL
+                      AND (t.EdadPositiva IS NULL OR t.EdadPositiva = 0)
+                      AND p.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS PositivaNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelTigo,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmTigo,  ''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS TigoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelTigo,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmTigo,  ''), '0') IS NULL
+                      AND ti.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS TigoNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelSOS,    ''), '0') IS NOT NULL
+                       OR (t.NitSOS IS NOT NULL AND t.NitSOS != 0)
+                       OR NULLIF(NULLIF(t.EmpresaSOS,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SosEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelSOS,    ''), '0') IS NULL
+                      AND (t.NitSOS IS NULL OR t.NitSOS = 0)
+                      AND NULLIF(NULLIF(t.EmpresaSOS,''), '0') IS NULL
+                      AND s.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SosNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelClaro,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmClaro,  ''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS ClaroEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelClaro,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmClaro,  ''), '0') IS NULL
+                      AND dc.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS ClaroNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelMutualSer, ''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.CelMutualSer2,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmMutualSer,  ''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.DepartamentoMutualSer,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.MunicipioMutualSer,   ''),'0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS MutualSerEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelMutualSer, ''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.CelMutualSer2,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmMutualSer,  ''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.DepartamentoMutualSer,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.MunicipioMutualSer,   ''),'0') IS NULL
+                      AND ms.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS MutualSerNoEnc,
+            SUM(CASE WHEN (t.NITSura IS NOT NULL AND t.NITSura != 0)
+                       OR NULLIF(NULLIF(t.EmpresaSura,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SuraEnc,
+            SUM(CASE WHEN (t.NITSura IS NULL OR t.NITSura = 0)
+                      AND NULLIF(NULLIF(t.EmpresaSura,''), '0') IS NULL
+                      AND ar.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SuraNoEnc,
+            SUM(CASE WHEN (t.NITPositiva IS NOT NULL AND t.NITPositiva != 0)
+                       OR NULLIF(NULLIF(t.EmpresaPositiva,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS PosEmpEnc,
+            SUM(CASE WHEN (t.NITPositiva IS NULL OR t.NITPositiva = 0)
+                      AND NULLIF(NULLIF(t.EmpresaPositiva,''), '0') IS NULL
+                      AND pe.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS PosEmpNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.EmpresaRUES,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS RuesEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.EmpresaRUES,''), '0') IS NULL
+                      AND ru.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS RuesNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.PlacaSIMIT,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SimitEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.PlacaSIMIT,''), '0') IS NULL
+                      AND si.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS SimitNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.Marca,''), '0') IS NOT NULL
+                       OR (t.Modelo IS NOT NULL AND t.Modelo != 0)
+                       OR NULLIF(NULLIF(t.Placa,''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS RgmEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.Marca,''), '0') IS NULL
+                      AND (t.Modelo IS NULL OR t.Modelo = 0)
+                      AND NULLIF(NULLIF(t.Placa,''), '0') IS NULL
+                      AND rg.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS RgmNoEnc
+        FROM #t t
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Cajacopi)         cj ON cj.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Camara)           cm ON cm.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM SaludTotal)       st ON st.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Fosyga)           f  ON f.TitularID  = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Compensados)      co ON co.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Positiva)         p  ON p.TitularID  = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM MutualSer)        ms ON ms.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM PositivaEmpresas) pe ON pe.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM RUES)             ru ON ru.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM SIMIT)            si ON si.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM RGM)              rg ON rg.TitularID = t.TitularID;
+
         DROP TABLE #t;
         """;
 
@@ -283,7 +452,11 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID)
     {
-        // Aplica al SqlQuery<> de ObtenerLocalizacionAsync (que viaja por EF Core).
+        // Hit de caché: el batch de 9 result sets cuesta 1-3s P90 y las recargas
+        // son muy frecuentes. Si hay entry vigente la devolvemos directo (<100ms).
+        if (_cache.TryGet(carteraID, liderID, out var cached))
+            return cached!;
+
         _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
 
         var conn = _db.Database.GetDbConnection();
@@ -294,58 +467,60 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         {
             var dto = new CalificadorCarteraDto();
 
-            await using (var cmd = conn.CreateCommand())
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText    = SqlAgregados;
+            cmd.CommandTimeout = CommandTimeoutSegundos;
+            AddParam(cmd, "@CarteraID", carteraID);
+            // null → DBNull para que fn_BaseMadrePorCartera reciba NULL y omita el filtro de líder
+            AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            // Result set 1 — escalares
+            if (!await reader.ReadAsync())
+                return new CalificadorCarteraDto { TotalTitulares = 0 };
+
+            var total = reader.GetInt32(reader.GetOrdinal("Total"));
+            if (total == 0)
             {
-                cmd.CommandText    = SqlAgregados;
-                cmd.CommandTimeout = CommandTimeoutSegundos;
-                AddParam(cmd, "@CarteraID", carteraID);
-                // null → DBNull para que fn_BaseMadrePorCartera reciba NULL y omita el filtro de líder
-                AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
+                await reader.CloseAsync();
+                return new CalificadorCarteraDto { TotalTitulares = 0 };
+            }
 
-                await using var reader = await cmd.ExecuteReaderAsync();
+            dto.TotalTitulares             = total;
+            dto.GestionDisponible          = reader.GetBoolean(reader.GetOrdinal("GestionDisponible"));
+            dto.SaldoTotal                 = reader.GetDecimal(reader.GetOrdinal("SaldoTotal"));
+            dto.SaldoPromedio              = reader.GetDecimal(reader.GetOrdinal("SaldoPromedio"));
+            dto.TitularesGestionados       = reader.GetInt32(reader.GetOrdinal("TitularesGestionados"));
+            dto.TitularesConAcuerdoVigente = reader.GetInt32(reader.GetOrdinal("TitularesConAcuerdoVigente"));
+            dto.ValorTotalPromesas         = reader.GetDecimal(reader.GetOrdinal("ValorTotalPromesas"));
+            dto.RotacionPromedio           = await GetNullableDecimalAsync(reader, "RotacionPromedio");
+            dto.TitularesConFosyga         = reader.GetInt32(reader.GetOrdinal("TitularesConFosyga"));
+            dto.ConCelular                 = reader.GetInt32(reader.GetOrdinal("ConCelular"));
+            dto.ConEmail                   = reader.GetInt32(reader.GetOrdinal("ConEmail"));
+            dto.ConCelularYEmail           = reader.GetInt32(reader.GetOrdinal("ConCelularYEmail"));
+            dto.SinContacto                = reader.GetInt32(reader.GetOrdinal("SinContacto"));
+            dto.ConEdadRegistraduria       = reader.GetInt32(reader.GetOrdinal("ConEdadRegistraduria"));
+            dto.SinEdadRegistraduria       = total - dto.ConEdadRegistraduria;
+            dto.EdadPromedioRegistraduria  = await GetNullableDecimalAsync(reader, "EdadPromedioRegistraduria");
 
-                // Result set 1 — escalares
-                if (!await reader.ReadAsync())
-                    return new CalificadorCarteraDto { TotalTitulares = 0 };
+            // Result sets 2-8 — desgloses (etiqueta, cantidad, porcentaje)
+            await reader.NextResultAsync(); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(); dto.DesglosePerfil         = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(); dto.DesgloseEPS            = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader);
 
-                var total = reader.GetInt32(reader.GetOrdinal("Total"));
-                if (total == 0)
-                {
-                    await reader.CloseAsync();
-                    return new CalificadorCarteraDto { TotalTitulares = 0 };
-                }
+            // Result set 9 — localización (15 fuentes, una sola fila)
+            await reader.NextResultAsync();
+            dto.Localizacion = await LeerLocalizacionAsync(reader, total);
 
-                dto.TotalTitulares             = total;
-                dto.GestionDisponible          = reader.GetBoolean(reader.GetOrdinal("GestionDisponible"));
-                dto.SaldoTotal                 = reader.GetDecimal(reader.GetOrdinal("SaldoTotal"));
-                dto.SaldoPromedio              = reader.GetDecimal(reader.GetOrdinal("SaldoPromedio"));
-                dto.TitularesGestionados       = reader.GetInt32(reader.GetOrdinal("TitularesGestionados"));
-                dto.TitularesConAcuerdoVigente = reader.GetInt32(reader.GetOrdinal("TitularesConAcuerdoVigente"));
-                dto.ValorTotalPromesas         = reader.GetDecimal(reader.GetOrdinal("ValorTotalPromesas"));
-                dto.RotacionPromedio           = await GetNullableDecimalAsync(reader, "RotacionPromedio");
-                dto.TitularesConFosyga         = reader.GetInt32(reader.GetOrdinal("TitularesConFosyga"));
-                dto.ConCelular                 = reader.GetInt32(reader.GetOrdinal("ConCelular"));
-                dto.ConEmail                   = reader.GetInt32(reader.GetOrdinal("ConEmail"));
-                dto.ConCelularYEmail           = reader.GetInt32(reader.GetOrdinal("ConCelularYEmail"));
-                dto.SinContacto                = reader.GetInt32(reader.GetOrdinal("SinContacto"));
-                dto.ConEdadRegistraduria       = reader.GetInt32(reader.GetOrdinal("ConEdadRegistraduria"));
-                dto.SinEdadRegistraduria       = total - dto.ConEdadRegistraduria;
-                dto.EdadPromedioRegistraduria  = await GetNullableDecimalAsync(reader, "EdadPromedioRegistraduria");
-
-                // Result sets 2-8 — desgloses (etiqueta, cantidad, porcentaje)
-                await reader.NextResultAsync(); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader);
-                await reader.NextResultAsync(); dto.DesglosePerfil         = await ReadDesgloseAsync(reader);
-                await reader.NextResultAsync(); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader);
-                await reader.NextResultAsync(); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader);
-                await reader.NextResultAsync(); dto.DesgloseEPS            = await ReadDesgloseAsync(reader);
-                await reader.NextResultAsync(); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader);
-                await reader.NextResultAsync(); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader);
-            } // reader y command cerrados, conexión libre para la siguiente query
-
-            // Localización: query separada (ya optimizada vía TVF en commit 95ea28a).
-            // Mantenerla aparte simplifica el batch y no agrega latencia significativa.
-            dto.Localizacion = await ObtenerLocalizacionAsync(carteraID, liderID, dto.TotalTitulares);
-
+            // Solo cacheamos resultados con datos. TotalTitulares == 0 (manejado arriba
+            // con returns tempranos) probablemente sea transitorio y no debemos ocultar
+            // la llegada de datos nuevos.
+            _cache.Set(carteraID, liderID, dto);
             return dto;
         }
         finally
@@ -386,236 +561,40 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     }
 
     /// <summary>
-    /// Calcula los conteos de localización por fuente (encontrado / no encontrado /
-    /// falta buscar). Usa el TVF dbo.fn_BaseMadrePorCartera como base + 14 LEFT JOIN
-    /// DISTINCT contra cada tabla fuente para distinguir "no encontrado" (existe fila)
-    /// de "falta buscar" (no existe fila).
+    /// Lee el result set 9 (una sola fila con 30 SUMs: 15 fuentes × encontrado/no-encontrado)
+    /// y construye la lista de LocalizacionFuente. FaltanPorBuscar = total - encontrados - noEncontrados.
+    /// Usa GetOrdinal por nombre para mantener consistencia con el resto de la clase.
     /// </summary>
-    private async Task<List<LocalizacionFuente>> ObtenerLocalizacionAsync(
-        int carteraID, int? liderID, int total)
+    private static async Task<List<LocalizacionFuente>> LeerLocalizacionAsync(
+        DbDataReader reader, int total)
     {
-        // El TVF acepta NULL → sin filtro de líder (cartera completa).
-        // Para que la interpolación de SqlQuery serialice NULL correctamente
-        // tomamos (object?)liderID — si es null se pasa como DBNull al parámetro.
-        var liderParam = (object?)liderID ?? DBNull.Value;
-        var r = await _db.Database.SqlQuery<LocalizacionResumenRaw>($"""
-            SELECT
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularCajacopi,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailCajacopi,  ''), '0') IS NOT NULL
-                           OR (b.EdadCajacopi IS NOT NULL AND b.EdadCajacopi != 0)
-                         THEN 1 ELSE 0 END) AS CajacopiEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularCajacopi,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailCajacopi,  ''), '0') IS NULL
-                          AND (b.EdadCajacopi IS NULL OR b.EdadCajacopi = 0)
-                          AND b.EnCajacopi = 1
-                         THEN 1 ELSE 0 END) AS CajacopiNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularCamara,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailCamara,  ''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS CamaraEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularCamara,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailCamara,  ''), '0') IS NULL
-                          AND b.EnCamara = 1
-                         THEN 1 ELSE 0 END) AS CamaraNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularSaludTotal,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailSaludTotal,  ''), '0') IS NOT NULL
-                           OR (b.NITSaludTotal IS NOT NULL AND b.NITSaludTotal != 0)
-                           OR NULLIF(NULLIF(b.EmpresaSaludTotal,''),'0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS SaludTotalEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularSaludTotal,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailSaludTotal,  ''), '0') IS NULL
-                          AND (b.NITSaludTotal IS NULL OR b.NITSaludTotal = 0)
-                          AND NULLIF(NULLIF(b.EmpresaSaludTotal,''),'0') IS NULL
-                          AND b.EnSaludTotal = 1
-                         THEN 1 ELSE 0 END) AS SaludTotalNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.EPS,         ''), '0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.Regimen,     ''), '0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.TipoAfiliado,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS FosygaEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.EPS,         ''), '0') IS NULL
-                          AND NULLIF(NULLIF(b.Regimen,     ''), '0') IS NULL
-                          AND NULLIF(NULLIF(b.TipoAfiliado,''), '0') IS NULL
-                          AND b.EnFosyga = 1
-                         THEN 1 ELSE 0 END) AS FosygaNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.EPSCompensados,         ''), '0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.TipoAfiliadoCompensados,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS CompensadosEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.EPSCompensados,         ''), '0') IS NULL
-                          AND NULLIF(NULLIF(b.TipoAfiliadoCompensados,''), '0') IS NULL
-                          AND b.EnCompensados = 1
-                         THEN 1 ELSE 0 END) AS CompensadosNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularPositiva,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailPositiva,  ''), '0') IS NOT NULL
-                           OR (b.EdadPositiva IS NOT NULL AND b.EdadPositiva != 0)
-                         THEN 1 ELSE 0 END) AS PositivaEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularPositiva,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailPositiva,  ''), '0') IS NULL
-                          AND (b.EdadPositiva IS NULL OR b.EdadPositiva = 0)
-                          AND b.EnPositiva = 1
-                         THEN 1 ELSE 0 END) AS PositivaNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularTigo,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailTigo,  ''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS TigoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularTigo,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailTigo,  ''), '0') IS NULL
-                          AND b.EnTigo = 1
-                         THEN 1 ELSE 0 END) AS TigoNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularSOS,  ''), '0') IS NOT NULL
-                           OR (b.NitSOS IS NOT NULL AND b.NitSOS != 0)
-                           OR NULLIF(NULLIF(b.EmpresaSOS,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS SosEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularSOS,  ''), '0') IS NULL
-                          AND (b.NitSOS IS NULL OR b.NitSOS = 0)
-                          AND NULLIF(NULLIF(b.EmpresaSOS,''), '0') IS NULL
-                          AND b.EnSOS = 1
-                         THEN 1 ELSE 0 END) AS SosNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularClaro,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS ClaroEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularClaro,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailClaro,  ''), '0') IS NULL
-                          AND b.EnClaro = 1
-                         THEN 1 ELSE 0 END) AS ClaroNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularMutualSer, ''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.Celular2MutualSer,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.EmailMutualSer,   ''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.DepartamentoMutualSer,''),'0') IS NOT NULL
-                           OR NULLIF(NULLIF(b.MunicipioMutualSer,   ''),'0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS MutualSerEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.CelularMutualSer, ''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.Celular2MutualSer,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.EmailMutualSer,   ''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.DepartamentoMutualSer,''),'0') IS NULL
-                          AND NULLIF(NULLIF(b.MunicipioMutualSer,   ''),'0') IS NULL
-                          AND b.EnMutualSer = 1
-                         THEN 1 ELSE 0 END) AS MutualSerNoEnc,
-                SUM(CASE WHEN (b.NITSura IS NOT NULL AND b.NITSura != 0)
-                           OR NULLIF(NULLIF(b.EmpresaSura,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS SuraEnc,
-                SUM(CASE WHEN (b.NITSura IS NULL OR b.NITSura = 0)
-                          AND NULLIF(NULLIF(b.EmpresaSura,''), '0') IS NULL
-                          AND b.EnSura = 1
-                         THEN 1 ELSE 0 END) AS SuraNoEnc,
-                SUM(CASE WHEN (b.NITPositiva IS NOT NULL AND b.NITPositiva != 0)
-                           OR NULLIF(NULLIF(b.EmpresaPositiva,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS PosEmpEnc,
-                SUM(CASE WHEN (b.NITPositiva IS NULL OR b.NITPositiva = 0)
-                          AND NULLIF(NULLIF(b.EmpresaPositiva,''), '0') IS NULL
-                          AND b.EnPosEmp = 1
-                         THEN 1 ELSE 0 END) AS PosEmpNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.EmpresaRUES,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS RuesEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.EmpresaRUES,''), '0') IS NULL
-                          AND b.EnRUES = 1
-                         THEN 1 ELSE 0 END) AS RuesNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.PlacaSIMIT,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS SimitEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.PlacaSIMIT,''), '0') IS NULL
-                          AND b.EnSIMIT = 1
-                         THEN 1 ELSE 0 END) AS SimitNoEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.Marca,''), '0') IS NOT NULL
-                           OR (b.Modelo IS NOT NULL AND b.Modelo != 0)
-                           OR NULLIF(NULLIF(b.Placa,''), '0') IS NOT NULL
-                         THEN 1 ELSE 0 END) AS RgmEnc,
-                SUM(CASE WHEN NULLIF(NULLIF(b.Marca,''), '0') IS NULL
-                          AND (b.Modelo IS NULL OR b.Modelo = 0)
-                          AND NULLIF(NULLIF(b.Placa,''), '0') IS NULL
-                          AND b.EnRGM = 1
-                         THEN 1 ELSE 0 END) AS RgmNoEnc
-            FROM (
-                SELECT
-                    TRY_CAST(v.[Numero Documento] AS bigint) AS TitularID,
-                    v.[Celular Cajacopi]          AS CelularCajacopi,
-                    v.[Email CajaCopi]            AS EmailCajacopi,
-                    v.[Edad CajaCopi]             AS EdadCajacopi,
-                    v.[Celular Camara]            AS CelularCamara,
-                    v.[Email Camara]              AS EmailCamara,
-                    v.[Celular Salud Total]       AS CelularSaludTotal,
-                    v.[Email Salud Total]         AS EmailSaludTotal,
-                    v.[NIT Salud Total]           AS NITSaludTotal,
-                    v.[Empresa Salud Total]       AS EmpresaSaludTotal,
-                    v.EPS,
-                    v.Regimen,
-                    v.[Tipo Afiliado]             AS TipoAfiliado,
-                    v.[EPS en Compensados]        AS EPSCompensados,
-                    v.[Tipo Afiliado Compensados] AS TipoAfiliadoCompensados,
-                    v.[Ultimo Periodo Compensado] AS UltimoPeriodoCompensado,
-                    v.[Celular Positiva]          AS CelularPositiva,
-                    v.[Email Positiva]            AS EmailPositiva,
-                    v.[Edad Positiva]             AS EdadPositiva,
-                    v.[Celular Tigo]              AS CelularTigo,
-                    v.[Email Tigo]                AS EmailTigo,
-                    v.[Celular SOS]               AS CelularSOS,
-                    v.[Nit Sos]                   AS NitSOS,
-                    v.[Empresa SOS]               AS EmpresaSOS,
-                    v.[Celular Claro]             AS CelularClaro,
-                    v.[Email Claro]               AS EmailClaro,
-                    v.[Celular MutualSer]         AS CelularMutualSer,
-                    v.[Celular 2 MutualSer]       AS Celular2MutualSer,
-                    v.[Email MutualSer]           AS EmailMutualSer,
-                    v.[Departamento MutualSer]    AS DepartamentoMutualSer,
-                    v.[Municipio MutualSer]       AS MunicipioMutualSer,
-                    v.[NIT Sura]                  AS NITSura,
-                    v.[Empresa Sura]              AS EmpresaSura,
-                    v.[NIT Positiva]              AS NITPositiva,
-                    v.[Empresa Positiva]          AS EmpresaPositiva,
-                    v.[Empresa RUES]              AS EmpresaRUES,
-                    v.[PLACA SIMIT]               AS PlacaSIMIT,
-                    v.Marca,
-                    v.Modelo,
-                    v.Placa,
-                    CASE WHEN cj.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnCajacopi,
-                    CASE WHEN cm.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnCamara,
-                    CASE WHEN st.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSaludTotal,
-                    CASE WHEN f.TitularID  IS NOT NULL THEN 1 ELSE 0 END AS EnFosyga,
-                    CASE WHEN co.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnCompensados,
-                    CASE WHEN p.TitularID  IS NOT NULL THEN 1 ELSE 0 END AS EnPositiva,
-                    CASE WHEN ti.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnTigo,
-                    CASE WHEN s.TitularID  IS NOT NULL THEN 1 ELSE 0 END AS EnSOS,
-                    CASE WHEN dc.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnClaro,
-                    CASE WHEN ms.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnMutualSer,
-                    CASE WHEN ar.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSura,
-                    CASE WHEN pe.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnPosEmp,
-                    CASE WHEN ru.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRUES,
-                    CASE WHEN si.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSIMIT,
-                    CASE WHEN rg.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRGM
-                FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderParam}) v
-                LEFT JOIN (SELECT DISTINCT TitularID FROM Cajacopi)         cj ON cj.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM Camara)           cm ON cm.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM SaludTotal)       st ON st.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM Fosyga)           f  ON f.TitularID  = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM Compensados)      co ON co.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM Positiva)         p  ON p.TitularID  = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM MutualSer)        ms ON ms.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM PositivaEmpresas) pe ON pe.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM RUES)             ru ON ru.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM SIMIT)            si ON si.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-                LEFT JOIN (SELECT DISTINCT TitularID FROM RGM)              rg ON rg.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
-            ) b
-            """).FirstOrDefaultAsync();
+        if (!await reader.ReadAsync()) return [];
 
-        if (r is null) return [];
+        // Si todas las SUMs vienen NULL (sucede con #t vacía aunque ya cubrimos total==0 arriba),
+        // tratamos cada columna como 0.
+        int Sum(string col)
+        {
+            var ord = reader.GetOrdinal(col);
+            return reader.IsDBNull(ord) ? 0 : reader.GetInt32(ord);
+        }
 
         return
         [
-            Fuente("Cajacopi",       r.CajacopiEnc,    r.CajacopiNoEnc,    total),
-            Fuente("Cámara",         r.CamaraEnc,      r.CamaraNoEnc,      total),
-            Fuente("Salud Total",    r.SaludTotalEnc,  r.SaludTotalNoEnc,  total),
-            Fuente("Fosyga",         r.FosygaEnc,      r.FosygaNoEnc,      total),
-            Fuente("Compensados",    r.CompensadosEnc, r.CompensadosNoEnc, total),
-            Fuente("Positiva",       r.PositivaEnc,    r.PositivaNoEnc,    total),
-            Fuente("Tigo",           r.TigoEnc,        r.TigoNoEnc,        total),
-            Fuente("SOS",            r.SosEnc,         r.SosNoEnc,         total),
-            Fuente("Claro",          r.ClaroEnc,       r.ClaroNoEnc,       total),
-            Fuente("MutualSer",      r.MutualSerEnc,   r.MutualSerNoEnc,   total),
-            Fuente("Sura (ARL)",     r.SuraEnc,        r.SuraNoEnc,        total),
-            Fuente("Positiva Emp.",  r.PosEmpEnc,      r.PosEmpNoEnc,      total),
-            Fuente("RUES",           r.RuesEnc,        r.RuesNoEnc,        total),
-            Fuente("SIMIT",          r.SimitEnc,       r.SimitNoEnc,       total),
-            Fuente("RGM",            r.RgmEnc,         r.RgmNoEnc,         total),
+            Fuente("Cajacopi",      Sum("CajacopiEnc"),    Sum("CajacopiNoEnc"),    total),
+            Fuente("Cámara",        Sum("CamaraEnc"),      Sum("CamaraNoEnc"),      total),
+            Fuente("Salud Total",   Sum("SaludTotalEnc"),  Sum("SaludTotalNoEnc"),  total),
+            Fuente("Fosyga",        Sum("FosygaEnc"),      Sum("FosygaNoEnc"),      total),
+            Fuente("Compensados",   Sum("CompensadosEnc"), Sum("CompensadosNoEnc"), total),
+            Fuente("Positiva",      Sum("PositivaEnc"),    Sum("PositivaNoEnc"),    total),
+            Fuente("Tigo",          Sum("TigoEnc"),        Sum("TigoNoEnc"),        total),
+            Fuente("SOS",           Sum("SosEnc"),         Sum("SosNoEnc"),         total),
+            Fuente("Claro",         Sum("ClaroEnc"),       Sum("ClaroNoEnc"),       total),
+            Fuente("MutualSer",     Sum("MutualSerEnc"),   Sum("MutualSerNoEnc"),   total),
+            Fuente("Sura (ARL)",    Sum("SuraEnc"),        Sum("SuraNoEnc"),        total),
+            Fuente("Positiva Emp.", Sum("PosEmpEnc"),      Sum("PosEmpNoEnc"),      total),
+            Fuente("RUES",          Sum("RuesEnc"),        Sum("RuesNoEnc"),        total),
+            Fuente("SIMIT",         Sum("SimitEnc"),       Sum("SimitNoEnc"),       total),
+            Fuente("RGM",           Sum("RgmEnc"),         Sum("RgmNoEnc"),         total),
         ];
 
         static LocalizacionFuente Fuente(string nombre, int enc, int noEnc, int tot) => new()
@@ -625,25 +604,5 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             NoEncontrados   = noEnc,
             FaltanPorBuscar = tot - enc - noEnc,
         };
-    }
-
-    // DTO interno para mapear el resultado del SQL de localización
-    private sealed class LocalizacionResumenRaw
-    {
-        public int CajacopiEnc    { get; set; } public int CajacopiNoEnc    { get; set; }
-        public int CamaraEnc      { get; set; } public int CamaraNoEnc      { get; set; }
-        public int SaludTotalEnc  { get; set; } public int SaludTotalNoEnc  { get; set; }
-        public int FosygaEnc      { get; set; } public int FosygaNoEnc      { get; set; }
-        public int CompensadosEnc { get; set; } public int CompensadosNoEnc { get; set; }
-        public int PositivaEnc    { get; set; } public int PositivaNoEnc    { get; set; }
-        public int TigoEnc        { get; set; } public int TigoNoEnc        { get; set; }
-        public int SosEnc         { get; set; } public int SosNoEnc         { get; set; }
-        public int ClaroEnc       { get; set; } public int ClaroNoEnc       { get; set; }
-        public int MutualSerEnc   { get; set; } public int MutualSerNoEnc   { get; set; }
-        public int SuraEnc        { get; set; } public int SuraNoEnc        { get; set; }
-        public int PosEmpEnc      { get; set; } public int PosEmpNoEnc      { get; set; }
-        public int RuesEnc        { get; set; } public int RuesNoEnc        { get; set; }
-        public int SimitEnc       { get; set; } public int SimitNoEnc       { get; set; }
-        public int RgmEnc         { get; set; } public int RgmNoEnc         { get; set; }
     }
 }
