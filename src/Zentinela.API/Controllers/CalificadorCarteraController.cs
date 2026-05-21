@@ -33,10 +33,12 @@ public class CalificadorCarteraController : ControllerBase
 
     /// <summary>
     /// Calcula todas las métricas para la asignación Cartera+Líder indicada.
+    /// Si <paramref name="liderID"/> se omite, se evalúa la cartera completa
+    /// (todos los líderes asociados).
     /// </summary>
-    [HttpGet("{carteraID:int}/{liderID:int}")]
+    [HttpGet("{carteraID:int}/{liderID:int?}")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
-    public async Task<IActionResult> Calificar(int carteraID, int liderID)
+    public async Task<IActionResult> Calificar(int carteraID, int? liderID)
     {
         var resultado = await _service.CalificarAsync(carteraID, liderID);
         return Ok(resultado);

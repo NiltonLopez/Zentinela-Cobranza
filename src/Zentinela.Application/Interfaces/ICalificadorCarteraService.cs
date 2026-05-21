@@ -11,7 +11,9 @@ public interface ICalificadorCarteraService
     Task<IEnumerable<CarteraLiderDropdownDto>> ObtenerOpcionesAsync(ContextoUsuario contexto);
 
     /// <summary>
-    /// Calcula todas las métricas para una asignación Cartera+Líder específica.
+    /// Calcula todas las métricas para una asignación Cartera+Líder específica,
+    /// o para una "Cartera Completa" (todos los líderes de la cartera) cuando
+    /// <paramref name="liderID"/> es null.
     /// </summary>
-    Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int liderID);
+    Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID);
 }

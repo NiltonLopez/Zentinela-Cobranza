@@ -84,12 +84,16 @@ export const MODULOS: Modulo[] = [
   },
 ];
 
-/// Devuelve la ruta inicial post-login según el rol. Los roles externos no tienen
-/// Dashboard, así que aterrizan directamente en el defaultPath de su módulo permitido.
+/// Devuelve la ruta inicial post-login según el rol.
+/// Los roles externos tienen caso especial (no tienen módulo Home). Para los demás
+/// roles, retorna el `defaultPath` del primer módulo permitido — así, p. ej.,
+/// Auxiliar de Sistemas aterriza en `/administracion/gestion` y no en `/home`
+/// (al que no tiene acceso).
 export function rutaInicialPorRol(rol: string | undefined): string {
   if (rol === 'Líder Externo')  return '/cartera/creador';
   if (rol === 'Asesor Externo') return '/consultas/integrada';
-  return '/home';
+  const modulo = MODULOS.find(m => m.rolesPermitidos.includes(rol as Rol));
+  return modulo?.defaultPath ?? '/home';
 }
 
 // Dado un pathname, devuelve el módulo activo

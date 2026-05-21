@@ -121,14 +121,16 @@ export function CalificadorCarteraPage() {
     queryFn: obtenerOpcionesCalificador,
   });
 
-  const [carteraID, liderID] = seleccion
-    ? seleccion.split('_').map(Number)
-    : [null, null];
+  // El value del select es "carteraID_liderID" o "carteraID_" cuando es Cartera Completo
+  // (liderID null en el backend). El segundo segmento vacío se convierte a NaN → null.
+  const [carteraIDRaw, liderIDRaw] = seleccion ? seleccion.split('_') : ['', ''];
+  const carteraID: number | null = carteraIDRaw ? Number(carteraIDRaw) : null;
+  const liderID:   number | null = liderIDRaw   ? Number(liderIDRaw)   : null;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['calificador', carteraID, liderID],
-    queryFn: () => calificarCartera(carteraID!, liderID!),
-    enabled: carteraID != null && liderID != null,
+    queryFn: () => calificarCartera(carteraID!, liderID),
+    enabled: carteraID != null,
   });
 
   return (
@@ -169,7 +171,7 @@ export function CalificadorCarteraPage() {
           >
             <option value="">— Selecciona una cartera —</option>
             {opciones?.map((o) => (
-              <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
+              <option key={`${o.carteraID}_${o.liderID ?? ''}`} value={`${o.carteraID}_${o.liderID ?? ''}`}>
                 {o.etiqueta}
               </option>
             ))}

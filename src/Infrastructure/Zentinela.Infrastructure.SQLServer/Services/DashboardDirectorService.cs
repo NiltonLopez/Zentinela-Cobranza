@@ -246,26 +246,52 @@ public class DashboardDirectorService : IDashboardDirectorService
     private async Task<List<FilaLiderDto>> ConstruirFilasLiderAsync(
         List<(int CarteraID, int? AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
     {
-        // Mapear CarteraID → LiderID usando LiderCartera
-        var liderCarteras = await _callCenter.LiderCarteras
-            .Include(lc => lc.Lider)
+        // Resolver LiderID por agente real (Cartera_Agente), no por "primer líder
+        // de la cartera". Cuando varias relaciones existen para la misma cartera
+        // (carteras compartidas), atribuir al líder cuyo agente hizo la gestión
+        // — esto alinea el agregado con el drill-down "Ver detalle", que filtra
+        // por agentes del líder. Filas con AgenteID NULL o sin asignación en
+        // Cartera_Agente quedan fuera del desglose por líder (no hay responsable).
+        var pares = registros
+            .Where(r => r.AgenteID.HasValue)
+            .Select(r => new { r.AgenteID, r.CarteraID })
+            .Distinct()
+            .ToList();
+
+        if (pares.Count == 0) return [];
+
+        // CarteraAgente.AgenteID es long; UltimoEstadoTitular.AgenteID es int? (FK lógica
+        // hacia Agente.AgenteID que en BD es bigint). Convertimos a long para el filtro.
+        var agenteIDs   = pares.Select(p => (long)p.AgenteID!.Value).Distinct().ToList();
+        var carteraIDs  = pares.Select(p => p.CarteraID).Distinct().ToList();
+
+        var carteraAgentes = await _callCenter.CarteraAgentes
+            .Where(ca => agenteIDs.Contains(ca.AgenteID) && carteraIDs.Contains(ca.CarteraID))
             .AsNoTracking()
             .ToListAsync();
 
-        // Si una cartera pertenece a varios líderes tomamos el primero registrado
-        var carteraALider = liderCarteras
-            .GroupBy(lc => lc.CarteraID)
-            .ToDictionary(g => g.Key, g => g.First());
+        // (AgenteID, CarteraID) → LiderID asignado en Cartera_Agente.
+        // Si un agente aparece varias veces para el mismo par (raro), se toma el primero.
+        var paresALider = carteraAgentes
+            .GroupBy(ca => (AgenteID: ca.AgenteID, ca.CarteraID))
+            .ToDictionary(g => g.Key, g => g.First().LiderID);
+
+        // Cargar nombres de los líderes referenciados
+        var liderIDs   = paresALider.Values.Distinct().ToList();
+        var lideres    = await _callCenter.Lideres
+            .Where(l => liderIDs.Contains(l.ID))
+            .AsNoTracking()
+            .ToDictionaryAsync(l => l.ID, l => l.Nombre);
 
         var porLider = registros
-            .Where(r => carteraALider.ContainsKey(r.CarteraID))
-            .GroupBy(r => carteraALider[r.CarteraID].LiderID)
+            .Where(r => r.AgenteID.HasValue
+                     && paresALider.ContainsKey(((long)r.AgenteID.Value, r.CarteraID)))
+            .GroupBy(r => paresALider[((long)r.AgenteID!.Value, r.CarteraID)])
             .ToList();
 
         return porLider
             .Select(grp =>
             {
-                var lc        = carteraALider.Values.First(x => x.LiderID == grp.Key);
                 var total     = grp.Count();
                 var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
@@ -276,7 +302,7 @@ public class DashboardDirectorService : IDashboardDirectorService
                 return new FilaLiderDto
                 {
                     LiderID             = grp.Key,
-                    NombreLider         = lc.Lider.Nombre,
+                    NombreLider         = lideres.TryGetValue(grp.Key, out var nom) ? nom : $"Líder {grp.Key}",
                     TotalGestiones      = total,
                     TasaContactabilidad = total > 0
                         ? Math.Round((decimal)contactos / total, 4) : 0,

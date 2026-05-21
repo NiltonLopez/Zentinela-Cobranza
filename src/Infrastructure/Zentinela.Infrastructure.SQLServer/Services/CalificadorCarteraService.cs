@@ -30,7 +30,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     {
         if (contexto.Rol == Roles.Lider && contexto.LiderID.HasValue)
         {
-            // Líder: solo sus combinaciones expuestas en vw_BaseMadre
+            // Líder: solo sus combinaciones expuestas en vw_BaseMadre.
+            // No incluye "Cartera Completo" — un líder no puede ver datos de otros líderes.
             var lid = contexto.LiderID.Value;
             return await _db.BaseMadreRows
                 .Where(b => b.LiderID == lid)
@@ -54,17 +55,43 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 .ToListAsync();
         }
 
-        // Director / Admin: todas las asignaciones activas de Lider_Cartera
-        return await _db.LiderCarteras
-            .Select(lc => new CarteraLiderDropdownDto
+        // Director / Admin: combinaciones individuales líder-cartera +
+        // una entrada agregada "{NombreCartera} Completo" por cartera (LiderID = null).
+        // Mismo patrón que CreadorZentinelaService.
+        var combinaciones = await _db.LiderCarteras
+            .Select(lc => new
             {
-                CarteraID = lc.CarteraID,
-                LiderID   = lc.LiderID,
-                Etiqueta  = lc.Cartera.NombreCartera + " — " + lc.Lider.Nombre,
+                lc.CarteraID,
+                lc.LiderID,
+                NombreCartera = lc.Cartera.NombreCartera,
+                NombreLider   = lc.Lider.Nombre,
             })
-            .OrderBy(o => o.Etiqueta)
             .AsNoTracking()
             .ToListAsync();
+
+        var resultado = new List<CarteraLiderDropdownDto>();
+        foreach (var grupo in combinaciones.GroupBy(c => new { c.CarteraID, c.NombreCartera }))
+        {
+            foreach (var c in grupo)
+            {
+                resultado.Add(new CarteraLiderDropdownDto
+                {
+                    CarteraID = c.CarteraID,
+                    LiderID   = c.LiderID,
+                    Etiqueta  = c.NombreCartera + " — " + c.NombreLider,
+                });
+            }
+
+            // Entrada agregada de la cartera completa (sin discriminación por líder)
+            resultado.Add(new CarteraLiderDropdownDto
+            {
+                CarteraID = grupo.Key.CarteraID,
+                LiderID   = null,
+                Etiqueta  = grupo.Key.NombreCartera + " Completo",
+            });
+        }
+
+        return resultado.OrderBy(o => o.Etiqueta).ToList();
     }
 
     // ── Métricas ──────────────────────────────────────────────────────────────
@@ -254,7 +281,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     // ADO.NET y EF Core no alcanza — subimos a 3 min para dar margen.
     private const int CommandTimeoutSegundos = 180;
 
-    public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int liderID)
+    public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID)
     {
         // Aplica al SqlQuery<> de ObtenerLocalizacionAsync (que viaja por EF Core).
         _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
@@ -272,7 +299,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 cmd.CommandText    = SqlAgregados;
                 cmd.CommandTimeout = CommandTimeoutSegundos;
                 AddParam(cmd, "@CarteraID", carteraID);
-                AddParam(cmd, "@LiderID",   liderID);
+                // null → DBNull para que fn_BaseMadrePorCartera reciba NULL y omita el filtro de líder
+                AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
 
                 await using var reader = await cmd.ExecuteReaderAsync();
 
@@ -364,8 +392,12 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     /// de "falta buscar" (no existe fila).
     /// </summary>
     private async Task<List<LocalizacionFuente>> ObtenerLocalizacionAsync(
-        int carteraID, int liderID, int total)
+        int carteraID, int? liderID, int total)
     {
+        // El TVF acepta NULL → sin filtro de líder (cartera completa).
+        // Para que la interpolación de SqlQuery serialice NULL correctamente
+        // tomamos (object?)liderID — si es null se pasa como DBNull al parámetro.
+        var liderParam = (object?)liderID ?? DBNull.Value;
         var r = await _db.Database.SqlQuery<LocalizacionResumenRaw>($"""
             SELECT
                 SUM(CASE WHEN NULLIF(NULLIF(b.CelularCajacopi,''),'0') IS NOT NULL
@@ -546,7 +578,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     CASE WHEN ru.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRUES,
                     CASE WHEN si.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnSIMIT,
                     CASE WHEN rg.TitularID IS NOT NULL THEN 1 ELSE 0 END AS EnRGM
-                FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderID}) v
+                FROM dbo.fn_BaseMadrePorCartera({carteraID}, {liderParam}) v
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Cajacopi)         cj ON cj.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM Camara)           cm ON cm.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)
                 LEFT JOIN (SELECT DISTINCT TitularID FROM SaludTotal)       st ON st.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)

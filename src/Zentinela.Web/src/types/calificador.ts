@@ -1,6 +1,8 @@
 export interface CarteraLiderDropdownDto {
   carteraID: number;
-  liderID: number;
+  // null = "Cartera Completo" — agrega todos los líderes de la cartera.
+  // Solo lo devuelve el backend para Admin/Director.
+  liderID: number | null;
   etiqueta: string;
 }
 

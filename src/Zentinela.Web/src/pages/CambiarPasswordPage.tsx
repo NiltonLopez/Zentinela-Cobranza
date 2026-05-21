@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { cambiarPassword } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 import { ZButton } from '../components/ZButton';
-import { MODULOS } from '../config/navigation';
-import type { Rol } from '../types/auth';
+import { rutaInicialPorRol } from '../config/navigation';
 
 export function CambiarPasswordPage() {
   const { usuario, actualizarUsuario, cerrarSesion } = useAuth();
@@ -49,9 +48,8 @@ export function CambiarPasswordPage() {
       await cambiarPassword({ passwordActual, nuevoPassword });
       // Desactiva el flag localmente sin forzar un nuevo login
       actualizarUsuario({ requiereCambioPassword: false });
-      // Redirige al primer módulo accesible según el rol (mismo patrón que LoginPage)
-      const primerModulo = MODULOS.find(m => m.rolesPermitidos.includes(usuario?.rol as Rol));
-      navigate(primerModulo?.defaultPath ?? '/home');
+      // Mismo helper que LoginPage para que el aterrizaje sea consistente
+      navigate(rutaInicialPorRol(usuario?.rol));
     } catch (err: unknown) {
       const errores = (err as { response?: { data?: { errores?: string[] } } })
         ?.response?.data?.errores;

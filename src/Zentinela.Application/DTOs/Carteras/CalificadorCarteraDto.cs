@@ -3,8 +3,13 @@ namespace Zentinela.Application.DTOs.Carteras;
 public class CarteraLiderDropdownDto
 {
     public int    CarteraID { get; set; }
-    public int    LiderID   { get; set; }
-    public string Etiqueta  { get; set; } = ""; // "NombreCartera — NombreLider"
+    /// <summary>
+    /// LiderID concreto = combinación líder-cartera específica.
+    /// null = "Cartera Completa" — agrega todos los líderes de esa cartera
+    /// (igual que en el Creador Zentinela). Visible solo a Admin/Director.
+    /// </summary>
+    public int?   LiderID   { get; set; }
+    public string Etiqueta  { get; set; } = ""; // "NombreCartera — NombreLider" o "NombreCartera Completo"
 }
 
 public class CalificadorCarteraDto

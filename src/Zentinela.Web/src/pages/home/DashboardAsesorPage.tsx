@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { obtenerDashboardAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ThOrdenable } from '../../components/ThOrdenable';
+import { useSort } from '../../hooks/useSort';
 import type { AcuerdoVigenteDto, PagosConfirmadosDto } from '../../types/dashboard';
 
 // ── Helpers de formato ────────────────────────────────────────────────────────
@@ -42,6 +44,34 @@ const SEMAFORO: Record<string, { bg: string; border: string; badge: string; labe
 };
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
+
+function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
+  const { items, sort, toggle } = useSort<AcuerdoVigenteDto>(
+    acuerdos,
+    { key: 'fechaPromesa', dir: 'asc' },
+    (a, k) => (a as unknown as Record<string, string | number | null>)[k],
+  );
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ background: 'var(--z-bg-page)' }}>
+          <ThOrdenable label="Titular"       sortKey="nombreTitular" sort={sort} onSort={toggle} />
+          <ThOrdenable label="Tipificación"  sortKey="ultimoPerfil"  sort={sort} onSort={toggle} />
+          <ThOrdenable label="Fecha promesa" sortKey="fechaPromesa"  sort={sort} onSort={toggle} />
+          <ThOrdenable label="Promesa"       sortKey="valorPromesa"  sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Saldo"         sortKey="saldoTotal"    sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Estado"        sortKey="semaforo"      sort={sort} onSort={toggle} align="center" />
+        </tr>
+      </thead>
+      <tbody>
+        {items.map(a => (
+          <FilaAcuerdo key={`${a.titularID}`} acuerdo={a} />
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
   const color = SEMAFORO[acuerdo.semaforo] ?? SEMAFORO.verde;
@@ -298,29 +328,7 @@ export function DashboardAsesorPage() {
               No tienes acuerdos de pago vigentes.
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--z-bg-page)' }}>
-                  {['Titular', 'Tipificación', 'Fecha promesa', 'Promesa', 'Saldo', 'Estado'].map(col => (
-                    <th key={col} style={{
-                      padding: '10px 14px', textAlign: (col === 'Promesa' || col === 'Saldo') ? 'right' : col === 'Estado' ? 'center' : 'left',
-                      fontSize: '11px', fontWeight: 600,
-                      color: 'var(--z-text-muted)',
-                      borderBottom: '0.5px solid var(--z-border)',
-                      letterSpacing: '0.04em',
-                      textTransform: 'uppercase',
-                    }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.acuerdosVigentes.map(a => (
-                  <FilaAcuerdo key={`${a.titularID}`} acuerdo={a} />
-                ))}
-              </tbody>
-            </table>
+            <TablaAcuerdos acuerdos={data.acuerdosVigentes} />
           )}
         </div>
       </section>

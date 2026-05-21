@@ -7,6 +7,8 @@ import {
 } from '../../api/dashboardApi';
 import type { FilaLiderDto, FilaAsesorDto } from '../../types/dashboard';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ThOrdenable } from '../../components/ThOrdenable';
+import { useSort } from '../../hooks/useSort';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -178,6 +180,12 @@ function TablaLideres({ filas, onSeleccionar }: {
   filas: FilaLiderDto[];
   onSeleccionar: (liderID: number, nombre: string) => void;
 }) {
+  const { items, sort, toggle } = useSort<FilaLiderDto>(
+    filas,
+    { key: 'totalGestiones', dir: 'desc' },
+    (f, k) => (f as unknown as Record<string, string | number>)[k],
+  );
+
   if (filas.length === 0) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
@@ -190,21 +198,16 @@ function TablaLideres({ filas, onSeleccionar }: {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: 'var(--z-bg-page)' }}>
-          {['Líder', 'Gestiones', 'Contactabilidad', 'Efectividad', 'Proyección', ''].map((col, i) => (
-            <th key={i} style={{
-              padding: '10px 14px',
-              textAlign: i === 0 ? 'left' : i === 5 ? 'center' : 'right',
-              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
-              borderBottom: '0.5px solid var(--z-border)',
-              letterSpacing: '0.04em', textTransform: 'uppercase',
-            }}>
-              {col}
-            </th>
-          ))}
+          <ThOrdenable label="Líder"           sortKey="nombreLider"         sort={sort} onSort={toggle} />
+          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="" align="center" />
         </tr>
       </thead>
       <tbody>
-        {filas.map(f => (
+        {items.map(f => (
           <tr key={f.liderID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreLider}
@@ -241,6 +244,12 @@ function TablaLideres({ filas, onSeleccionar }: {
 }
 
 function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
+  const { items, sort, toggle } = useSort<FilaAsesorDto>(
+    filas,
+    { key: 'totalGestiones', dir: 'desc' },
+    (f, k) => (f as unknown as Record<string, string | number>)[k],
+  );
+
   if (filas.length === 0) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
@@ -253,21 +262,15 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: 'var(--z-bg-page)' }}>
-          {['Asesor', 'Gestiones', 'Contactabilidad', 'Efectividad', 'Proyección'].map((col, i) => (
-            <th key={i} style={{
-              padding: '10px 14px',
-              textAlign: i === 0 ? 'left' : 'right',
-              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
-              borderBottom: '0.5px solid var(--z-border)',
-              letterSpacing: '0.04em', textTransform: 'uppercase',
-            }}>
-              {col}
-            </th>
-          ))}
+          <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} />
+          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
         </tr>
       </thead>
       <tbody>
-        {filas.map(f => (
+        {items.map(f => (
           <tr key={f.agenteID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreAsesor}
