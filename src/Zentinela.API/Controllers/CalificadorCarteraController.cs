@@ -44,6 +44,35 @@ public class CalificadorCarteraController : ControllerBase
         return Ok(resultado);
     }
 
+    /// <summary>
+    /// Descarga CSV con (Cédula, Nombre, Última Consulta) de los titulares que
+    /// clasifican en la celda indicada de la tabla "Porcentajes de Localización".
+    /// </summary>
+    /// <param name="fuente">Slug: cajacopi, camara, salud-total, fosyga, compensados, positiva, tigo, sos, claro, mutualser, sura, positiva-empresa, rues, simit, rgm.</param>
+    /// <param name="categoria">encontrado | no-encontrado | falta.</param>
+    /// <param name="liderID">Opcional. Omitir para "Cartera Completo".</param>
+    [HttpGet("{carteraID:int}/localizacion/{fuente}/{categoria}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
+    public async Task DescargarLocalizacionCsv(
+        int carteraID,
+        string fuente,
+        string categoria,
+        [FromQuery] int? liderID = null)
+    {
+        // Resolver el nombre de archivo antes de empezar a escribir el body
+        // (Content-Disposition es header).
+        var nombreArchivo = await _service.ResolverNombreArchivoLocalizacionAsync(
+            carteraID, liderID, fuente, categoria);
+
+        Response.ContentType = "text/csv; charset=utf-8";
+        Response.Headers.Append(
+            "Content-Disposition",
+            $"attachment; filename=\"{nombreArchivo}\"");
+
+        await _service.EscribirLocalizacionCsvAsync(
+            carteraID, liderID, fuente, categoria, Response.Body, HttpContext.RequestAborted);
+    }
+
     private ContextoUsuario ObtenerContexto() => new(
         Rol:     User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
         LiderID: int.TryParse(User.FindFirstValue("liderID"), out var id) ? id : null);

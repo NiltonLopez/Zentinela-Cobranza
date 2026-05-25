@@ -1,5 +1,7 @@
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
@@ -606,4 +608,248 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             FaltanPorBuscar = tot - enc - noEnc,
         };
     }
+
+    // ── Descarga CSV de localización ──────────────────────────────────────────
+    //
+    // Detrás de cada cifra (encontrado / no encontrado / falta por buscar) de la
+    // tabla "Porcentajes de Localización" se puede descargar la lista de titulares
+    // (Cédula, Nombre, Última Consulta) que clasifican en esa celda. La consulta
+    // reusa fn_BaseMadrePorCartera para acotar la cartera por líder y replica
+    // exactamente los predicados del result set 9 del batch principal — la única
+    // forma de garantizar que el conteo de pantalla coincide con la fila
+    // descargada es derivar ambos del mismo predicado.
+
+    private record FuenteMeta(
+        string Slug,
+        string Etiqueta,        // para nombrar el archivo
+        string TablaFuente,     // dbo.Cajacopi, dbo.DatosClaro, etc.
+        string ColumnaFecha,    // FechaConsulta o FechaInsercion (DatosClaro)
+        string SelectDataCols,  // proyección dentro de la CTE #t
+        string PredicadoEncontrado); // condición "encontrado" (alias t.xxx)
+
+    // Metadata de las 15 fuentes — espeja result set 9 de SqlAgregados. El orden
+    // y los nombres de alias en SelectDataCols son los mismos que ahí, para que
+    // la categorización aquí coincida exactamente con los conteos mostrados.
+    private static readonly Dictionary<string, FuenteMeta> Fuentes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["cajacopi"] = new("cajacopi", "Cajacopi", "Cajacopi", "FechaConsulta",
+            "[Celular Cajacopi] AS CelCajacopi, [Email CajaCopi] AS EmCajacopi, [Edad CajaCopi] AS EdadCajacopi",
+            "NULLIF(NULLIF(t.CelCajacopi,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmCajacopi,''),'0') IS NOT NULL " +
+            "OR (t.EdadCajacopi IS NOT NULL AND t.EdadCajacopi != 0)"),
+
+        ["camara"] = new("camara", "Camara", "Camara", "FechaConsulta",
+            "[Celular Camara] AS CelCamara, [Email Camara] AS EmCamara",
+            "NULLIF(NULLIF(t.CelCamara,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmCamara,''),'0') IS NOT NULL"),
+
+        ["salud-total"] = new("salud-total", "SaludTotal", "SaludTotal", "FechaConsulta",
+            "[Celular Salud Total] AS CelSaludTotal, [Email Salud Total] AS EmSaludTotal, " +
+            "[NIT Salud Total] AS NITSaludTotal, [Empresa Salud Total] AS EmpresaSaludTotal",
+            "NULLIF(NULLIF(t.CelSaludTotal,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmSaludTotal,''),'0') IS NOT NULL " +
+            "OR (t.NITSaludTotal IS NOT NULL AND t.NITSaludTotal != 0) " +
+            "OR NULLIF(NULLIF(t.EmpresaSaludTotal,''),'0') IS NOT NULL"),
+
+        ["fosyga"] = new("fosyga", "Fosyga", "Fosyga", "FechaConsulta",
+            "EPS, Regimen, [Tipo Afiliado] AS TipoAfiliado",
+            "NULLIF(NULLIF(t.EPS,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.Regimen,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.TipoAfiliado,''),'0') IS NOT NULL"),
+
+        ["compensados"] = new("compensados", "Compensados", "Compensados", "FechaConsulta",
+            "[EPS en Compensados] AS EPSCompensados, [Tipo Afiliado Compensados] AS TipoAfiliadoCompensados",
+            "NULLIF(NULLIF(t.EPSCompensados,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.TipoAfiliadoCompensados,''),'0') IS NOT NULL"),
+
+        ["positiva"] = new("positiva", "Positiva", "Positiva", "FechaConsulta",
+            "[Celular Positiva] AS CelPositiva, [Email Positiva] AS EmPositiva, [Edad Positiva] AS EdadPositiva",
+            "NULLIF(NULLIF(t.CelPositiva,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmPositiva,''),'0') IS NOT NULL " +
+            "OR (t.EdadPositiva IS NOT NULL AND t.EdadPositiva != 0)"),
+
+        ["tigo"] = new("tigo", "Tigo", "Tigo", "FechaConsulta",
+            "[Celular Tigo] AS CelTigo, [Email Tigo] AS EmTigo",
+            "NULLIF(NULLIF(t.CelTigo,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmTigo,''),'0') IS NOT NULL"),
+
+        ["sos"] = new("sos", "SOS", "SOS", "FechaConsulta",
+            "[Celular SOS] AS CelSOS, [Nit Sos] AS NitSOS, [Empresa SOS] AS EmpresaSOS",
+            "NULLIF(NULLIF(t.CelSOS,''),'0') IS NOT NULL " +
+            "OR (t.NitSOS IS NOT NULL AND t.NitSOS != 0) " +
+            "OR NULLIF(NULLIF(t.EmpresaSOS,''),'0') IS NOT NULL"),
+
+        // DatosClaro es el único que usa FechaInsercion (la tabla no tiene FechaConsulta).
+        ["claro"] = new("claro", "Claro", "DatosClaro", "FechaInsercion",
+            "[Celular Claro] AS CelClaro, [Email Claro] AS EmClaro",
+            "NULLIF(NULLIF(t.CelClaro,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmClaro,''),'0') IS NOT NULL"),
+
+        ["mutualser"] = new("mutualser", "MutualSer", "MutualSer", "FechaConsulta",
+            "[Celular MutualSer] AS CelMutualSer, [Celular 2 MutualSer] AS CelMutualSer2, " +
+            "[Email MutualSer] AS EmMutualSer, " +
+            "[Departamento MutualSer] AS DepartamentoMutualSer, [Municipio MutualSer] AS MunicipioMutualSer",
+            "NULLIF(NULLIF(t.CelMutualSer,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.CelMutualSer2,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmMutualSer,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.DepartamentoMutualSer,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.MunicipioMutualSer,''),'0') IS NOT NULL"),
+
+        ["sura"] = new("sura", "Sura", "ARLSura", "FechaConsulta",
+            "[NIT Sura] AS NITSura, [Empresa Sura] AS EmpresaSura",
+            "(t.NITSura IS NOT NULL AND t.NITSura != 0) " +
+            "OR NULLIF(NULLIF(t.EmpresaSura,''),'0') IS NOT NULL"),
+
+        ["positiva-empresa"] = new("positiva-empresa", "PositivaEmpresa", "PositivaEmpresas", "FechaConsulta",
+            "[NIT Positiva] AS NITPositiva, [Empresa Positiva] AS EmpresaPositiva",
+            "(t.NITPositiva IS NOT NULL AND t.NITPositiva != 0) " +
+            "OR NULLIF(NULLIF(t.EmpresaPositiva,''),'0') IS NOT NULL"),
+
+        ["rues"] = new("rues", "RUES", "RUES", "FechaConsulta",
+            "[Empresa RUES] AS EmpresaRUES",
+            "NULLIF(NULLIF(t.EmpresaRUES,''),'0') IS NOT NULL"),
+
+        ["simit"] = new("simit", "SIMIT", "SIMIT", "FechaConsulta",
+            "[PLACA SIMIT] AS PlacaSIMIT",
+            "NULLIF(NULLIF(t.PlacaSIMIT,''),'0') IS NOT NULL"),
+
+        ["rgm"] = new("rgm", "RGM", "RGM", "FechaConsulta",
+            "Marca, Modelo, Placa",
+            "NULLIF(NULLIF(t.Marca,''),'0') IS NOT NULL " +
+            "OR (t.Modelo IS NOT NULL AND t.Modelo != 0) " +
+            "OR NULLIF(NULLIF(t.Placa,''),'0') IS NOT NULL"),
+    };
+
+    private static readonly HashSet<string> CategoriasValidas =
+        new(StringComparer.OrdinalIgnoreCase) { "encontrado", "no-encontrado", "falta" };
+
+    public async Task EscribirLocalizacionCsvAsync(
+        int carteraID, int? liderID,
+        string fuenteSlug, string categoria,
+        Stream output, CancellationToken ct = default)
+    {
+        if (!Fuentes.TryGetValue(fuenteSlug ?? string.Empty, out var meta))
+            throw new ArgumentException($"Fuente desconocida: {fuenteSlug}", nameof(fuenteSlug));
+
+        if (categoria is null || !CategoriasValidas.Contains(categoria))
+            throw new ArgumentException($"Categoría inválida: {categoria}", nameof(categoria));
+
+        // Predicado por categoría:
+        //   encontrado    → la cartera tiene datos para esa fuente en este titular.
+        //   no-encontrado → no hay datos en la cartera para la fuente, pero el
+        //                   titular sí existe en la tabla fuente (se consultó y
+        //                   no se halló o quedó vacío).
+        //   falta         → no hay datos y el titular tampoco aparece en la tabla
+        //                   fuente — todavía no se ha consultado.
+        //
+        // Existencia se determina con `src.Existe IS NOT NULL` y NO con la fecha
+        // — DatosClaro permite FechaInsercion NULL, así que un MAX nulo no
+        // implica ausencia de fila (espeja el `dc.TitularID IS NOT NULL` del
+        // result set 9 del batch principal).
+        var predicado = categoria.ToLowerInvariant() switch
+        {
+            "encontrado"    => meta.PredicadoEncontrado,
+            "no-encontrado" => $"NOT ({meta.PredicadoEncontrado}) AND src.Existe IS NOT NULL",
+            "falta"         => $"NOT ({meta.PredicadoEncontrado}) AND src.Existe IS NULL",
+            _ => throw new ArgumentException(categoria, nameof(categoria)),
+        };
+
+        var sql = $"""
+            SET NOCOUNT ON;
+            WITH t AS (
+                SELECT
+                    TRY_CAST([Numero Documento] AS bigint) AS TitularID,
+                    {meta.SelectDataCols}
+                FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            ),
+            src AS (
+                SELECT TitularID,
+                       MAX({meta.ColumnaFecha}) AS UltimaConsulta,
+                       CAST(1 AS bit)           AS Existe
+                FROM dbo.{meta.TablaFuente}
+                GROUP BY TitularID
+            )
+            SELECT t.TitularID, ti.Nombre, src.UltimaConsulta
+            FROM t
+            LEFT JOIN src        ON src.TitularID  = t.TitularID
+            LEFT JOIN dbo.Titular ti ON ti.NumeroDocumento = t.TitularID
+            WHERE {predicado}
+            ORDER BY t.TitularID;
+            """;
+
+        _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
+
+        var conn = _db.Database.GetDbConnection();
+        var wasOpen = conn.State == ConnectionState.Open;
+        if (!wasOpen) await conn.OpenAsync(ct);
+
+        // BOM UTF-8 para que Excel ES-CO detecte el encoding con tildes (mismo patrón que Creador).
+        await output.WriteAsync(BomUtf8, ct);
+
+        await using var writer = new StreamWriter(output, new UTF8Encoding(false), leaveOpen: true);
+        await writer.WriteLineAsync("Cédula;Nombre;Última Consulta");
+
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText    = sql;
+            cmd.CommandTimeout = CommandTimeoutSegundos;
+            AddParam(cmd, "@CarteraID", carteraID);
+            AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var titularID = reader.GetInt64(0);
+                var nombre    = await reader.IsDBNullAsync(1, ct) ? string.Empty : reader.GetString(1);
+                var fecha     = await reader.IsDBNullAsync(2, ct) ? (DateTime?)null : reader.GetDateTime(2);
+
+                await writer.WriteAsync(titularID.ToString(CultureInfo.InvariantCulture));
+                await writer.WriteAsync(';');
+                await writer.WriteAsync(EscaparCsv(nombre));
+                await writer.WriteAsync(';');
+                if (fecha.HasValue)
+                    await writer.WriteAsync(fecha.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture));
+                await writer.WriteAsync('\n');
+            }
+
+            await writer.FlushAsync(ct);
+        }
+        finally
+        {
+            if (!wasOpen) await conn.CloseAsync();
+        }
+    }
+
+    public async Task<string> ResolverNombreArchivoLocalizacionAsync(
+        int carteraID, int? liderID, string fuenteSlug, string categoria)
+    {
+        if (!Fuentes.TryGetValue(fuenteSlug ?? string.Empty, out var meta))
+            throw new ArgumentException($"Fuente desconocida: {fuenteSlug}", nameof(fuenteSlug));
+
+        var nombreCartera = await _db.Carteras
+            .Where(c => c.ID == carteraID)
+            .Select(c => c.NombreCartera)
+            .FirstOrDefaultAsync() ?? $"Cartera{carteraID}";
+
+        var nombreLider = liderID.HasValue
+            ? (await _db.Lideres.Where(l => l.ID == liderID.Value).Select(l => l.Nombre).FirstOrDefaultAsync()
+               ?? $"Lider{liderID.Value}")
+            : "Completo";
+
+        return $"Localizacion_{Sanitizar(nombreCartera)}_{Sanitizar(nombreLider)}_{meta.Etiqueta}_{categoria}_{DateTime.Today:yyyyMMdd}.csv";
+    }
+
+    private static readonly byte[] BomUtf8 = [0xEF, 0xBB, 0xBF];
+
+    private static string EscaparCsv(string valor)
+    {
+        if (string.IsNullOrEmpty(valor)) return string.Empty;
+        var requiereQuoting = valor.IndexOfAny([';', '"', '\n', '\r']) >= 0;
+        if (!requiereQuoting) return valor;
+        return $"\"{valor.Replace("\"", "\"\"")}\"";
+    }
+
+    private static string Sanitizar(string nombre) =>
+        string.Concat(nombre.Split(Path.GetInvalidFileNameChars())).Replace(' ', '_');
 }

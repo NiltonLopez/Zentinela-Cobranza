@@ -1,8 +1,49 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { calificarCartera, obtenerOpcionesCalificador } from '../../api/calificadorApi';
+import {
+  calificarCartera,
+  obtenerOpcionesCalificador,
+  descargarLocalizacionCsv,
+  type CategoriaLocalizacion,
+} from '../../api/calificadorApi';
 import type { CalificadorCarteraDto, DesglosePar, LocalizacionFuente } from '../../types/calificador';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+
+// Mapa etiqueta de fuente (UI) → slug que entiende el backend para descargar
+// (Cédula, Nombre, Última Consulta) de la celda correspondiente.
+const FUENTE_SLUG: Record<string, string> = {
+  'Cajacopi':       'cajacopi',
+  'Cámara':         'camara',
+  'Salud Total':    'salud-total',
+  'Fosyga':         'fosyga',
+  'Compensados':    'compensados',
+  'Positiva':       'positiva',
+  'Tigo':           'tigo',
+  'SOS':            'sos',
+  'Claro':          'claro',
+  'MutualSer':      'mutualser',
+  'Sura (ARL)':     'sura',
+  'Positiva Emp.':  'positiva-empresa',
+  'RUES':           'rues',
+  'SIMIT':          'simit',
+  'RGM':            'rgm',
+};
+
+// Ícono de descarga minimalista (16×16, currentColor). Mismo enfoque que IconoLapiz
+// en GestionPersonalPage: solo se ve en hover y hereda color del padre.
+function IconoDescarga({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 16 16" fill="none"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2v8" />
+      <path d="M4 7l4 4 4-4" />
+      <path d="M2.5 13.5h11" />
+    </svg>
+  );
+}
 
 // ── Helpers de formato ────────────────────────────────────────────────────────
 
@@ -213,7 +254,17 @@ export function CalificadorCarteraPage() {
       )}
 
       {/* Métricas */}
-      {data && <Metricas d={data} />}
+      {data && carteraID != null && (
+        <Metricas
+          d={data}
+          carteraID={carteraID}
+          liderID={liderID}
+          etiquetaCartera={
+            opciones?.find(o => o.carteraID === carteraID && (o.liderID ?? null) === liderID)?.etiqueta
+              ?? `Cartera_${carteraID}`
+          }
+        />
+      )}
     </div>
   );
 }
@@ -242,12 +293,114 @@ const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: st
 function TablaLocalizacion({
   filas,
   total,
+  carteraID,
+  liderID,
+  etiquetaCartera,
 }: {
   filas: LocalizacionFuente[];
   total: number;
+  carteraID: number;
+  liderID: number | null;
+  etiquetaCartera: string;
 }) {
+  // Identificador único de la celda en hover: "{fuente}|{categoria}".
+  // null = ninguna celda con hover. Cambia el cursor + revela el ícono.
+  const [celdaHover, setCeldaHover] = useState<string | null>(null);
+
+  // Slug de la celda en descarga (mismo formato). Se usa para mostrar
+  // un spinner y desactivar el click mientras corre la consulta.
+  const [celdaDescargando, setCeldaDescargando] = useState<string | null>(null);
+
   if (filas.length === 0)
     return <p style={{ color: 'var(--z-text-muted)', fontSize: 13 }}>Sin datos</p>;
+
+  // Lanza la descarga del CSV de una celda. Usa el nombre que envía el
+  // backend en Content-Disposition; como fallback construye uno con la
+  // etiqueta de la cartera. Mismo patrón que Creador → dispararDescarga.
+  const descargar = async (fuente: string, categoria: CategoriaLocalizacion) => {
+    const slug = FUENTE_SLUG[fuente];
+    if (!slug) return;
+
+    const cellKey = `${fuente}|${categoria}`;
+    if (celdaDescargando) return; // no permitir disparos en paralelo
+    setCeldaDescargando(cellKey);
+
+    try {
+      const blob = await descargarLocalizacionCsv(carteraID, liderID, slug, categoria);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download =
+        `Localizacion_${etiquetaCartera.replace(/\s+/g, '_')}_${slug}_${categoria}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setCeldaDescargando(null);
+    }
+  };
+
+  // Celda numérica reutilizable: muestra la cifra + porcentaje y revela el
+  // ícono de descarga al hacer hover. Click sobre el ícono (o sobre toda
+  // la celda) dispara el CSV de esa intersección (fuente, categoría).
+  const CeldaCifra = ({
+    fuente,
+    categoria,
+    valor,
+    porcentaje,
+    colorTexto,
+    porcentajeMuted = true,
+  }: {
+    fuente: string;
+    categoria: CategoriaLocalizacion;
+    valor: number;
+    porcentaje: number;
+    colorTexto: string;
+    porcentajeMuted?: boolean;
+  }) => {
+    const cellKey = `${fuente}|${categoria}`;
+    const hover = celdaHover === cellKey;
+    const descargando = celdaDescargando === cellKey;
+    const habilitado = FUENTE_SLUG[fuente] !== undefined && valor > 0;
+
+    return (
+      <td
+        style={{
+          padding: '8px 10px',
+          textAlign: 'center',
+          color: colorTexto,
+          cursor: habilitado ? 'pointer' : 'default',
+          position: 'relative',
+        }}
+        onMouseEnter={() => habilitado && setCeldaHover(cellKey)}
+        onMouseLeave={() => setCeldaHover(prev => (prev === cellKey ? null : prev))}
+        onClick={() => habilitado && !descargando && descargar(fuente, categoria)}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          {fmt(valor)}
+          <span style={{ color: porcentajeMuted ? 'var(--z-text-muted)' : 'inherit' }}>
+            ({porcentaje.toFixed(1)}%)
+          </span>
+          {habilitado && (
+            <span
+              aria-label={`Descargar ${categoria} de ${fuente}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: colorTexto,
+                opacity: hover || descargando ? 1 : 0,
+                transition: 'opacity 0.15s',
+                marginLeft: 2,
+              }}
+            >
+              {descargando ? '…' : <IconoDescarga />}
+            </span>
+          )}
+        </span>
+      </td>
+    );
+  };
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -298,26 +451,24 @@ function TablaLocalizacion({
                   )}
                 </td>
 
-                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#15803D' }}>
-                  {fmt(f.encontrados)}
-                  <span style={{ color: 'var(--z-text-muted)', marginLeft: 4 }}>
-                    ({pctEnc.toFixed(1)}%)
-                  </span>
-                </td>
+                <CeldaCifra
+                  fuente={f.fuente} categoria="encontrado"
+                  valor={f.encontrados} porcentaje={pctEnc}
+                  colorTexto="#15803D"
+                />
 
-                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#B45309' }}>
-                  {fmt(f.noEncontrados)}
-                  <span style={{ color: 'var(--z-text-muted)', marginLeft: 4 }}>
-                    ({pctNoEnc.toFixed(1)}%)
-                  </span>
-                </td>
+                <CeldaCifra
+                  fuente={f.fuente} categoria="no-encontrado"
+                  valor={f.noEncontrados} porcentaje={pctNoEnc}
+                  colorTexto="#B45309"
+                />
 
-                <td style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--z-text-muted)' }}>
-                  {fmt(f.faltanPorBuscar)}
-                  <span style={{ marginLeft: 4 }}>
-                    ({pctFalta.toFixed(1)}%)
-                  </span>
-                </td>
+                <CeldaCifra
+                  fuente={f.fuente} categoria="falta"
+                  valor={f.faltanPorBuscar} porcentaje={pctFalta}
+                  colorTexto="var(--z-text-muted)"
+                  porcentajeMuted={false}
+                />
 
                 {/* Barra apilada */}
                 <td style={{ padding: '8px 10px', minWidth: 120 }}>
@@ -352,11 +503,25 @@ function TablaLocalizacion({
           </span>
         ))}
       </div>
+
+      <p style={{ marginTop: 10, fontSize: 11, color: 'var(--z-text-muted)' }}>
+        Pasa el cursor sobre cualquier cifra y haz click para descargar la lista (Cédula, Nombre, Última Consulta).
+      </p>
     </div>
   );
 }
 
-function Metricas({ d }: { d: CalificadorCarteraDto }) {
+function Metricas({
+  d,
+  carteraID,
+  liderID,
+  etiquetaCartera,
+}: {
+  d: CalificadorCarteraDto;
+  carteraID: number;
+  liderID: number | null;
+  etiquetaCartera: string;
+}) {
   return (
     <div style={{
       display: 'grid',
@@ -497,7 +662,13 @@ function Metricas({ d }: { d: CalificadorCarteraDto }) {
 
       {/* Localización — ancho completo */}
       <Tarjeta titulo="Porcentajes de Localización" style={{ gridColumn: '1 / -1' }}>
-        <TablaLocalizacion filas={d.localizacion} total={d.totalTitulares} />
+        <TablaLocalizacion
+          filas={d.localizacion}
+          total={d.totalTitulares}
+          carteraID={carteraID}
+          liderID={liderID}
+          etiquetaCartera={etiquetaCartera}
+        />
       </Tarjeta>
 
     </div>

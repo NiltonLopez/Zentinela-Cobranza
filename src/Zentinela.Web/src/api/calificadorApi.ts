@@ -17,3 +17,22 @@ export const calificarCartera = async (
   const response = await api.get<CalificadorCarteraDto>(url);
   return response.data;
 };
+
+export type CategoriaLocalizacion = 'encontrado' | 'no-encontrado' | 'falta';
+
+// Descarga CSV (streaming, BOM UTF-8 + separador ;) con (Cédula, Nombre,
+// Última Consulta) de los titulares que clasifican en la celda indicada de la
+// tabla "Porcentajes de Localización".
+export const descargarLocalizacionCsv = async (
+  carteraID: number,
+  liderID: number | null,
+  fuenteSlug: string,
+  categoria: CategoriaLocalizacion,
+): Promise<Blob> => {
+  const params = liderID == null ? '' : `?liderID=${liderID}`;
+  const res = await api.get(
+    `/api/calificador/${carteraID}/localizacion/${fuenteSlug}/${categoria}${params}`,
+    { responseType: 'blob' },
+  );
+  return res.data as Blob;
+};
