@@ -31,9 +31,10 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     public async Task<IEnumerable<CarteraLiderDropdownDto>> ObtenerOpcionesAsync(
         ContextoUsuario contexto)
     {
-        if (contexto.Rol == Roles.Lider && contexto.LiderID.HasValue)
+        if (contexto.LiderID.HasValue
+            && contexto.Rol is Roles.Lider or Roles.LiderExterno)
         {
-            // Líder: solo sus combinaciones expuestas en vw_BaseMadre.
+            // Líder (interno o externo): solo sus combinaciones expuestas en vw_BaseMadre.
             // No incluye "Cartera Completo" — un líder no puede ver datos de otros líderes.
             var lid = contexto.LiderID.Value;
             return await _db.BaseMadreRows

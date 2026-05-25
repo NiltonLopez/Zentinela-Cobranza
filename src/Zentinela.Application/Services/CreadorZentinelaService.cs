@@ -30,8 +30,9 @@ public class CreadorZentinelaService : ICreadorZentinelaService
 
     public async Task<IEnumerable<OpcionCarteraDto>> ObtenerOpcionesAsync(ContextoUsuario contexto)
     {
-        // Líder: una entrada por cartera asignada (etiqueta = NombreCartera).
-        if (contexto.Rol == Roles.Lider && contexto.LiderID.HasValue)
+        // Líder (interno o externo): una entrada por cartera asignada (etiqueta = NombreCartera).
+        if (contexto.LiderID.HasValue
+            && contexto.Rol is Roles.Lider or Roles.LiderExterno)
         {
             var carteras = await _carteraRepo.ObtenerPorLiderAsync(contexto.LiderID.Value);
             return carteras.Select(c => new OpcionCarteraDto
@@ -198,13 +199,16 @@ public class CreadorZentinelaService : ICreadorZentinelaService
     private static readonly byte[] Bom = [0xEF, 0xBB, 0xBF];
 
     /// <summary>
-    /// Líder → siempre su LiderID del JWT, ignorando lo que mande el cliente
-    /// (guard de seguridad: un líder no puede ver titulares de otro líder).
+    /// Líder (interno o externo) → siempre su LiderID del JWT, ignorando lo que
+    /// mande el cliente (guard de seguridad: un líder no puede ver titulares
+    /// de otro líder, ni siquiera con un request crafted).
     /// Admin / Director → respeta el LiderID del filtro: un valor concreto
     /// restringe la consulta a ese líder; null = "Cartera Completo" (todos).
     /// </summary>
     private static int? ResolverLiderID(ContextoUsuario contexto, int? liderIDDelFiltro) =>
-        contexto.Rol == Roles.Lider ? contexto.LiderID : liderIDDelFiltro;
+        contexto.Rol is Roles.Lider or Roles.LiderExterno
+            ? contexto.LiderID
+            : liderIDDelFiltro;
 
     private static IEnumerable<ColumnaBaseMadre> ResolverColumnas(List<string> seleccionadas) =>
         seleccionadas.Count == 0

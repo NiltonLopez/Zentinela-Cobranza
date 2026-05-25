@@ -29,7 +29,8 @@ public class ComparadorCarterasService : IComparadorCarterasService
     public async Task<IEnumerable<CarteraDropdownDto>> ObtenerOpcionesAsync(
         ContextoUsuario contexto)
     {
-        if (contexto.Rol == Roles.Lider && contexto.LiderID.HasValue)
+        if (contexto.LiderID.HasValue
+            && contexto.Rol is Roles.Lider or Roles.LiderExterno)
         {
             var lid = contexto.LiderID.Value;
             return await _db.LiderCarteras

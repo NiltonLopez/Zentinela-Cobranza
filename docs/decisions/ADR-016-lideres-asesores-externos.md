@@ -144,3 +144,24 @@ El DTO backend serializa `nombreSupervisor` pero el tipo TypeScript declaraba `s
 - Asignar el rol `Líder Externo` / `Asesor Externo` a usuarios existentes se hace desde **Gestión de Personal → Cambiar rol**.
 - Marcar una relación como externa se hace desde **Gestión de Líderes y Carteras → + Crear Cartera** (checkbox "Cartera externa"); aplica también al asociar una cartera existente. Cambiar el flag de una relación ya creada se hace por SQL directo (decisión administrativa fuera de la UI).
 - Migración aplicada el 2026-05-20 en `DBCallCenter`. Backup previo: `Lider_Cartera_BAK_20260520`.
+
+---
+
+## Addendum 2026-05-25 — Fuga de visibilidad en dropdowns del módulo Cartera
+
+**Síntoma**: una `Líder Externo` (Evely) veía en el selector del Calificador, Comparador y Creador **todas las carteras de la empresa**, no solo las suyas.
+
+**Causa**: los tres servicios filtran la lista de combinaciones cuando el rol es `Roles.Lider` y caen al branch Admin/Director en caso contrario. La condición se escribió antes de existir el rol `LiderExterno` y nunca se amplió. El branch Admin/Director devuelve cada `(Cartera × Líder)` más una entrada `"Cartera Completo"` por cartera.
+
+**Puntos corregidos**
+
+| Archivo | Línea | Cambio |
+|---|---|---|
+| `CalificadorCarteraService.ObtenerOpcionesAsync` | servicio SQL | `Roles.Lider` → `Roles.Lider or Roles.LiderExterno` |
+| `ComparadorCarterasService.ObtenerOpcionesAsync` | servicio SQL | idem |
+| `CreadorZentinelaService.ObtenerOpcionesAsync` | servicio Application | idem |
+| `CreadorZentinelaService.ResolverLiderID` | guard de seguridad | idem — sin esto un externo podía mandar `liderID` ajeno en el body de `/preview`, `/exportar`, `/exportar-csv` y descargar Base Madre de otra relación |
+
+**Por qué no se detectó antes**: el lote original (commit `e3e75d0`) revisó autorización de endpoints (`[Authorize(Roles=…)]`) y filtros administrativos contra `Lider_Cartera.EsExterna`, pero no auditó los checks `Rol == Roles.Lider` que ya existían en los servicios self-service del módulo Cartera. Estos son ortogonales al flag `EsExterna`: filtran por **identidad del usuario**, no por marca de la relación.
+
+**Regla a futuro**: cualquier rama de código que actualmente verifique `contexto.Rol == Roles.Lider` para filtrar a "sus propias carteras" debe incluir también `Roles.LiderExterno`. Idealmente expresarlo como `contexto.Rol is Roles.Lider or Roles.LiderExterno` (pattern matching) para que el lector vea ambos casos juntos.
