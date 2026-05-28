@@ -231,7 +231,7 @@ public class CarguePagosService : ICarguePagosService
         };
     }
 
-    public async Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, int usuarioControlID)
+    public async Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, string usuarioRegistro)
     {
         var ahora = DateTime.UtcNow;
 
@@ -245,7 +245,7 @@ public class CarguePagosService : ICarguePagosService
             LiderID          = f.LiderID,
             AgenteControlID  = f.AgenteControlID,
             CarteraID        = request.CarteraID,
-            UsuarioControlID = usuarioControlID,
+            UsuarioRegistro  = usuarioRegistro,
             FechaRegistro    = ahora,
         }).ToList();
 

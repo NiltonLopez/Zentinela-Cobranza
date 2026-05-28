@@ -17,9 +17,9 @@ CREATE TABLE Pago (
     Honorarios       DECIMAL(18,2)     NOT NULL,
     LiderID          INT               NOT NULL,
     CarteraID        INT               NOT NULL,
-    -- UsuarioControlID referencia ApplicationUser.Id en DBZentinela.
-    -- No se crea FK de base de datos porque es cross-database.
-    UsuarioControlID INT               NOT NULL,
+    -- UsuarioRegistro guarda el UserName (ApplicationUser.UserName de DBZentinela)
+    -- del usuario que confirmó el cargue. No se crea FK por ser cross-database.
+    UsuarioRegistro  NVARCHAR(256)     NOT NULL,
     FechaRegistro    DATETIME2         NOT NULL DEFAULT GETDATE(),
 
     CONSTRAINT PK_Pago         PRIMARY KEY (PagoID),

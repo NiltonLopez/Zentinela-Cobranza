@@ -239,14 +239,16 @@ WHERE NOT EXISTS (
 );
 
 -- ── 1.9 Pagos — abril 2026 (2-3 pagos por asesor) ──────────
--- UsuarioControlID = ID del líder en DBZentinela.AspNetUsers
+-- UsuarioRegistro = UserName del líder; v.usr trae su ID en DBZentinela.AspNetUsers
+-- y se traduce a UserName en el SELECT.
 --   Cartera 9001 → 90021 · Cartera 9002 → 90022 · Cartera 9003 → 90023
 -- Honorarios = 10% del ValorPagado (calculado en el INSERT)
 
 INSERT INTO dbo.Pago
     (CedulaTitular, NombreCliente, ValorPagado, FechaPago,
-     Honorarios, LiderID, CarteraID, UsuarioControlID, AgenteControlID)
-SELECT v.ced, v.nom, v.valor, CONVERT(date,v.fecha,23), ROUND(v.valor * 0.10, 0), v.lid, v.car, v.usr, v.age
+     Honorarios, LiderID, CarteraID, UsuarioRegistro, AgenteControlID)
+SELECT v.ced, v.nom, v.valor, CONVERT(date,v.fecha,23), ROUND(v.valor * 0.10, 0), v.lid, v.car,
+       (SELECT u.UserName FROM DBZentinela.dbo.AspNetUsers u WHERE u.Id = v.usr), v.age
 FROM (VALUES
     -- Asesor 1
     (70000001,'Deudor Ejemplo 01', 900000.00,'2026-04-05',9001,9001,90021,90000001),

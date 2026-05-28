@@ -18,9 +18,10 @@ public interface ICarguePagosService
     /// <summary>
     /// Inserta en bloque las filas válidas en la tabla Pago.
     /// El LiderID de cada fila viene resuelto desde la validación.
+    /// <paramref name="usuarioRegistro"/> es el UserName del usuario autenticado que confirma el cargue.
     /// Retorna el número de registros insertados.
     /// </summary>
-    Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, int usuarioControlID);
+    Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, string usuarioRegistro);
 
     /// <summary>Genera la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
     byte[] GenerarPlantilla();

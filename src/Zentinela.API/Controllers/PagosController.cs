@@ -95,7 +95,7 @@ public class PagosController : ControllerBase
     /// <summary>
     /// Inserta en bloque las filas válidas en la tabla Pago.
     /// El LiderID viene resuelto por fila desde la validación previa.
-    /// El UsuarioControlID se obtiene del token JWT del usuario autenticado.
+    /// El UsuarioRegistro (UserName) se obtiene del token JWT del usuario autenticado.
     /// </summary>
     [HttpPost("confirmar")]
     public async Task<IActionResult> Confirmar([FromBody] ConfirmarPagosRequest request)
@@ -103,11 +103,11 @@ public class PagosController : ControllerBase
         if (request.FilasValidas.Count == 0)
             return BadRequest(new { mensaje = "No hay filas válidas para confirmar." });
 
-        var usuarioIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!int.TryParse(usuarioIdStr, out var usuarioControlID))
+        var usuarioRegistro = User.FindFirstValue("userName");
+        if (string.IsNullOrWhiteSpace(usuarioRegistro))
             return Unauthorized(new { mensaje = "No se pudo identificar al usuario." });
 
-        var insertados = await _service.ConfirmarCargueAsync(request, usuarioControlID);
+        var insertados = await _service.ConfirmarCargueAsync(request, usuarioRegistro);
         return Ok(new { insertados, mensaje = $"Se cargaron {insertados} pagos correctamente." });
     }
 }

@@ -1131,7 +1131,7 @@ El sistema busca columnas por nombre (no por posición). Acepta mayúsculas, til
 
 ## POST /api/pagos/confirmar
 
-Inserta en la tabla `Pago` las filas válidas devueltas por `/validar`. El `UsuarioControlID` se toma del JWT del usuario autenticado.
+Inserta en la tabla `Pago` las filas válidas devueltas por `/validar`. El `UsuarioRegistro` (UserName del usuario autenticado) se toma del JWT.
 
 **Autenticación requerida:** Sí — `Admin`
 

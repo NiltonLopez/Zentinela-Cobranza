@@ -6,6 +6,7 @@ namespace Zentinela.Application.DTOs.Auth;
 /// </summary>
 public record TokenPayload(
     int UsuarioID,
+    string UserName,
     string Email,
     string NombreCompleto,
     string Rol,

@@ -25,7 +25,8 @@ public class PagoMapping : IEntityTypeConfiguration<Pago>
         builder.Property(p => p.Honorarios).HasColumnType("decimal(18,2)").IsRequired();
         builder.Property(p => p.LiderID).IsRequired();
         builder.Property(p => p.CarteraID).IsRequired();
-        builder.Property(p => p.UsuarioControlID).IsRequired();
+        // UsuarioRegistro guarda el UserName (no el Id); ver migración 2026-05-27_pago_usuarioregistro.sql
+        builder.Property(p => p.UsuarioRegistro).HasMaxLength(256).IsRequired();
         // AgenteControlID nullable: ver migración 2026-05-21_pago_agentecontrolid_nullable.sql
         builder.Property(p => p.AgenteControlID);
         builder.Property(p => p.FechaRegistro)

@@ -35,6 +35,7 @@ public class AuthService : IAuthService
 
         var payload = new TokenPayload(
             UsuarioID: usuario.Id,
+            UserName: usuario.UserName!,
             Email: usuario.Email!,
             NombreCompleto: usuario.NombreCompleto,
             Rol: rol,

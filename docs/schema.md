@@ -1354,13 +1354,13 @@ Pagos confirmados cargados manualmente por cartera desde la UI. Alimenta los inf
 | LiderID | int | NO | — | Lider_Cartera |
 | CarteraID | int | NO | — | Cartera |
 | AgenteControlID | bigint | SÍ | — | Agente (cross-DB ref) |
-| UsuarioControlID | int | NO | — | ApplicationUser (DBZentinela, sin FK) |
+| UsuarioRegistro | nvarchar(256) | NO | — | ApplicationUser.UserName (DBZentinela, sin FK) |
 | FechaRegistro | datetime | NO | — | — |
 
 **Notas:**
 - `LiderID` se resuelve automáticamente desde `Titular_Cartera` usando `(CedulaTitular, CarteraID)`. Si la cédula tiene múltiples líderes en la cartera, se desempata con `Cartera_Agente.LiderID` del agente resuelto (excepto en pagos BASE GENERAL, que requieren unicidad).
 - `AgenteControlID` se resuelve desde `Agente.UsuarioControlNext` (valor textual del CSV). **NULL** cuando el campo Usuario Control del CSV es `BASE GENERAL` (case-insensitive) — el pago se atribuye solo al líder. Ver ADR-018 y migración `2026-05-21_pago_agentecontrolid_nullable.sql`.
-- `UsuarioControlID` referencia a `ApplicationUser` en `DBZentinela` — no existe FK a nivel de BD por ser cross-database.
+- `UsuarioRegistro` guarda el `UserName` (login de Identity, `ApplicationUser.UserName`) del usuario que confirmó el cargue — no su `Id`. Reside en `DBZentinela`; no existe FK a nivel de BD por ser cross-database. Ver migración `2026-05-27_pago_usuarioregistro.sql`.
 - La tabla usa `ExcludeFromMigrations` en EF Core; el schema se gestiona con el script SQL manual.
 
 ---

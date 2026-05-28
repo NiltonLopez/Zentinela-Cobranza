@@ -186,6 +186,7 @@ El token generado por `AuthService.GenerarToken()` incluye los siguientes claims
 | Claim              | Nombre estándar / custom | Valor                                       |
 |--------------------|--------------------------|---------------------------------------------|
 | Subject            | `sub`                    | ID entero del usuario (`ApplicationUser.Id`)|
+| Nombre de usuario  | `userName` (custom)      | `ApplicationUser.UserName` (login de Identity) |
 | Email              | `email`                  | Dirección de correo del usuario             |
 | Rol                | `ClaimTypes.Role`        | Primer rol asignado en Identity             |
 | ID de líder        | `liderID` (custom)       | `LiderID` como string; vacío si es null     |
