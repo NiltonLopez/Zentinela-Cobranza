@@ -23,6 +23,11 @@ export interface CarteraDropdownDto {
   nombreCartera: string;
 }
 
+export interface LiderCarteraVinculoDto {
+  liderID: number;
+  carteraID: number;
+}
+
 export interface MetricasDirectorDto {
   fechaActualizacion: string | null;
   fechaDesde: string;  // ISO date "YYYY-MM-DD"

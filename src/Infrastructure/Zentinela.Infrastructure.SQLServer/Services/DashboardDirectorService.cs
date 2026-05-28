@@ -55,6 +55,43 @@ public class DashboardDirectorService : IDashboardDirectorService
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Todas las carteras internas (lista plana, sin filtrar por líder) para el dropdown
+    /// de cartera independiente del director. Excluye relaciones externas (universo admin).
+    /// </summary>
+    public async Task<List<CarteraDropdownDto>> ObtenerCarterasAsync()
+    {
+        return await _callCenter.LiderCarteras
+            .Where(lc => !lc.EsExterna)
+            .Select(lc => new CarteraDropdownDto
+            {
+                ID = lc.CarteraID,
+                NombreCartera = lc.Cartera.NombreCartera,
+            })
+            .Distinct()
+            .OrderBy(c => c.NombreCartera)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Pares internos líder↔cartera (Lider_Cartera con EsExterna = 0). El frontend los usa
+    /// para hacer dependientes entre sí los selectores de líder y cartera del director.
+    /// </summary>
+    public async Task<List<LiderCarteraVinculoDto>> ObtenerVinculosLiderCarteraAsync()
+    {
+        return await _callCenter.LiderCarteras
+            .Where(lc => !lc.EsExterna)
+            .Select(lc => new LiderCarteraVinculoDto
+            {
+                LiderID   = lc.LiderID,
+                CarteraID = lc.CarteraID,
+            })
+            .Distinct()
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
     // ── Dashboard principal ───────────────────────────────────────────────────
 
     public async Task<DashboardDirectorDto> ObtenerDashboardAsync(
@@ -364,16 +401,14 @@ public class DashboardDirectorService : IDashboardDirectorService
     public async Task<List<PagoDirectorDto>> ObtenerPagosAsync(
         int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
-        // Universo administrativo: pagos cuya combinación (Líder, Cartera) NO sea externa,
-        // salvo cuando el director seleccione una cartera explícita (el dropdown ya filtra).
+        // Universo administrativo: pagos cuya combinación (Líder, Cartera) NO sea externa.
+        // Cuando se elige un líder explícito se respeta esa relación (interna o no); pero la
+        // vista global y la "Cartera Completa" (líder=Todos) se mantienen solo en lo interno.
         var query = _callCenter.Pagos.AsQueryable();
 
         if (liderID.HasValue)    query = query.Where(p => p.LiderID   == liderID.Value);
-        if (carteraID.HasValue)
-        {
-            query = query.Where(p => p.CarteraID == carteraID.Value);
-        }
-        else
+        if (carteraID.HasValue)  query = query.Where(p => p.CarteraID == carteraID.Value);
+        if (!liderID.HasValue)
         {
             query = query.Where(p => !_callCenter.LiderCarteras.Any(lc =>
                 lc.LiderID == p.LiderID && lc.CarteraID == p.CarteraID && lc.EsExterna));

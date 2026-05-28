@@ -5,6 +5,7 @@ import type {
   DashboardDirectorDto,
   LiderDropdownDto,
   CarteraDropdownDto,
+  LiderCarteraVinculoDto,
   PagoDirectorDto,
 } from '../types/dashboard';
 
@@ -68,6 +69,16 @@ export const obtenerLideresDropdown = async (): Promise<LiderDropdownDto[]> => {
 
 export const obtenerCarterasLider = async (liderID: number): Promise<CarteraDropdownDto[]> => {
   const response = await api.get<CarteraDropdownDto[]>(`/api/dashboard/director/carteras/${liderID}`);
+  return response.data;
+};
+
+export const obtenerTodasCarterasDirector = async (): Promise<CarteraDropdownDto[]> => {
+  const response = await api.get<CarteraDropdownDto[]>('/api/dashboard/director/carteras');
+  return response.data;
+};
+
+export const obtenerVinculosLiderCartera = async (): Promise<LiderCarteraVinculoDto[]> => {
+  const response = await api.get<LiderCarteraVinculoDto[]>('/api/dashboard/director/vinculos');
   return response.data;
 };
 

@@ -151,6 +151,30 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// Todas las carteras internas (lista plana) para el dropdown de cartera independiente
+    /// del director en Pagos Confirmados. Permite filtrar por "Cartera Completa" (Líder=Todos).
+    /// </summary>
+    [HttpGet("director/carteras")]
+    [Authorize(Roles = $"{Roles.Director},{Roles.Admin}")]
+    public async Task<IActionResult> ObtenerTodasCarteras()
+    {
+        var carteras = await _directorService.ObtenerCarterasAsync();
+        return Ok(carteras);
+    }
+
+    /// <summary>
+    /// Pares internos líder↔cartera. El frontend de Pagos Confirmados los usa para que los
+    /// selectores de líder y cartera se filtren mutuamente (dropdowns dependientes).
+    /// </summary>
+    [HttpGet("director/vinculos")]
+    [Authorize(Roles = $"{Roles.Director},{Roles.Admin}")]
+    public async Task<IActionResult> ObtenerVinculosLiderCartera()
+    {
+        var vinculos = await _directorService.ObtenerVinculosLiderCarteraAsync();
+        return Ok(vinculos);
+    }
+
+    /// <summary>
     /// Dashboard del director.
     /// - Sin parámetros: vista global con desglose por líder.
     /// - Con liderID: métricas del líder con desglose por asesor.

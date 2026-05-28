@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   obtenerPagosDirector,
   obtenerLideresDropdown,
-  obtenerCarterasLider,
+  obtenerTodasCarterasDirector,
+  obtenerVinculosLiderCartera,
 } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import type { PagoDirectorDto } from '../../types/dashboard';
@@ -214,7 +215,7 @@ export function PagosConfirmadosDirectorPage() {
 
   const rango = calcularRango(preset, customDesde, customHasta);
 
-  // Dropdowns
+  // Dropdowns dependientes: Líder y Cartera se filtran mutuamente según los vínculos internos.
   const { data: lideres = [] } = useQuery({
     queryKey: ['director-lideres'],
     queryFn: obtenerLideresDropdown,
@@ -222,11 +223,37 @@ export function PagosConfirmadosDirectorPage() {
   });
 
   const { data: carteras = [] } = useQuery({
-    queryKey: ['director-carteras', liderID],
-    queryFn: () => obtenerCarterasLider(liderID!),
-    enabled: liderID !== null,
-    staleTime: 5 * 60 * 1000,
+    queryKey: ['director-carteras-todas'],
+    queryFn: obtenerTodasCarterasDirector,
+    staleTime: 10 * 60 * 1000,
   });
+
+  const { data: vinculos = [] } = useQuery({
+    queryKey: ['director-vinculos'],
+    queryFn: obtenerVinculosLiderCartera,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Conjunto de pares válidos "liderID-carteraID" para resolver la dependencia entre selectores.
+  const vinculoSet = useMemo(
+    () => new Set(vinculos.map(v => `${v.liderID}-${v.carteraID}`)),
+    [vinculos],
+  );
+
+  // Si hay una cartera elegida, el selector de líder solo ofrece los líderes de esa cartera; y viceversa.
+  const lideresFiltrados = useMemo(
+    () => carteraID == null
+      ? lideres
+      : lideres.filter(l => vinculoSet.has(`${l.id}-${carteraID}`)),
+    [lideres, carteraID, vinculoSet],
+  );
+
+  const carterasFiltradas = useMemo(
+    () => liderID == null
+      ? carteras
+      : carteras.filter(c => vinculoSet.has(`${liderID}-${c.id}`)),
+    [carteras, liderID, vinculoSet],
+  );
 
   const { data: pagos = [], isLoading, isError } = useQuery({
     queryKey: ['director-pagos', liderID, carteraID, rango.desde, rango.hasta],
@@ -250,22 +277,30 @@ export function PagosConfirmadosDirectorPage() {
   const totalRecaudo    = pagos.reduce((s, p) => s + p.valorPagado, 0);
   const totalHonorarios = pagos.reduce((s, p) => s + p.honorarios, 0);
 
+  // Selectores dependientes: al elegir un líder, si la cartera actual no le pertenece, se descarta.
   const handleCambiarLider = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = Number(e.target.value);
     if (!val) {
       setLiderID(null);
       setLiderNombre('');
-      setCarteraID(null);
-    } else {
-      const lider = lideres.find(l => l.id === val);
-      setLiderID(val);
-      setLiderNombre(lider?.nombre ?? '');
+      return;
+    }
+    const lider = lideres.find(l => l.id === val);
+    setLiderID(val);
+    setLiderNombre(lider?.nombre ?? '');
+    if (carteraID != null && !vinculoSet.has(`${val}-${carteraID}`)) {
       setCarteraID(null);
     }
   };
 
+  // Al elegir una cartera, si el líder actual no la atiende, se descarta.
   const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setCarteraID(Number(e.target.value) || null);
+    const val = Number(e.target.value) || null;
+    setCarteraID(val);
+    if (val != null && liderID != null && !vinculoSet.has(`${liderID}-${val}`)) {
+      setLiderID(null);
+      setLiderNombre('');
+    }
   };
 
   const limpiarFiltros = () => {
@@ -326,29 +361,27 @@ export function PagosConfirmadosDirectorPage() {
         borderRadius: '8px', padding: '16px 20px',
         display: 'flex', flexDirection: 'column', gap: '14px',
       }}>
-        {/* Fila 1: Líder + Cartera + Limpiar */}
+        {/* Fila 1: Líder + Cartera (independientes) + Limpiar */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
             <label style={labelStyle}>Líder</label>
             <select value={liderID ?? ''} onChange={handleCambiarLider} style={selectStyle}>
               <option value="">Todos los líderes</option>
-              {lideres.map(l => (
+              {lideresFiltrados.map(l => (
                 <option key={l.id} value={l.id}>{l.nombre}</option>
               ))}
             </select>
           </div>
 
-          {liderID !== null && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
-              <label style={labelStyle}>Cartera</label>
-              <select value={carteraID ?? ''} onChange={handleCambiarCartera} style={selectStyle}>
-                <option value="">Todas las carteras</option>
-                {carteras.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
+            <label style={labelStyle}>Cartera</label>
+            <select value={carteraID ?? ''} onChange={handleCambiarCartera} style={selectStyle}>
+              <option value="">Todas las carteras</option>
+              {carterasFiltradas.map(c => (
+                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
+              ))}
+            </select>
+          </div>
 
           {hayFiltrosActivos && (
             <button

@@ -50,6 +50,16 @@ public class CarteraDropdownDto
     public string NombreCartera  { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Vínculo interno líder↔cartera (Lider_Cartera con EsExterna = 0). Permite que el
+/// frontend filtre los selectores de líder y cartera de forma dependiente entre sí.
+/// </summary>
+public class LiderCarteraVinculoDto
+{
+    public int LiderID   { get; set; }
+    public int CarteraID { get; set; }
+}
+
 public class DashboardDirectorDto
 {
     public MetricasDirectorDto Metricas    { get; set; } = new();
