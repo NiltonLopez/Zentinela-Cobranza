@@ -194,7 +194,7 @@ export function PagosConfirmadosDirectorPage() {
         borderRadius: '8px', padding: '16px 20px',
         display: 'flex', flexDirection: 'column', gap: '14px',
       }}>
-        {/* Fila 1: Líder + Cartera (independientes) + Limpiar */}
+        {/* Fila 1: Líder + Cartera (dependientes bidireccionales) + Limpiar */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
             <label style={labelStyle}>Líder</label>
