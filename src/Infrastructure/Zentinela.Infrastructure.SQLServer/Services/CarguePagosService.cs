@@ -13,6 +13,10 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// Cargue de pagos confirmados desde CSV por cartera.
 /// Flujo: ValidarCsvAsync (parse + validación sin persistir) → ConfirmarCargueAsync (bulk insert).
 ///
+/// Deduplicación: una fila válida se omite (no se inserta) si su combinación
+/// (cédula, fecha, valor) ya existe en la tabla Pago para esa cartera, o si se repite
+/// dentro del mismo archivo. Las omitidas se devuelven en Duplicados, no en Errores.
+///
 /// El CSV puede tener las columnas en cualquier orden y puede incluir columnas extra.
 /// El servicio localiza cada columna por nombre (case-insensitive, sin tildes ni espacios).
 /// Columnas requeridas y alias aceptados:
@@ -217,18 +221,64 @@ public class CarguePagosService : ICarguePagosService
             }
         }
 
-        var validas = filas.Where(f => f.EsValida).ToList();
-        var errores = filas.Where(f => !f.EsValida).ToList();
+        // ── Detección de duplicados (cédula, fecha, valor) por cartera ────────
+        // Una fila válida se marca como duplicada si:
+        //   a) ya existe esa combinación en la tabla Pago para esta cartera, o
+        //   b) se repite dentro del mismo archivo (se conserva la primera ocurrencia).
+        // Las duplicadas NO se insertan: se reportan aparte para que el usuario sepa qué se omitió.
+        var candidatas       = filas.Where(f => f.EsValida).ToList();
+        var combosExistentes = await ObtenerCombosExistentesAsync(candidatas, carteraID);
+
+        var vistosEnArchivo = new HashSet<(long, DateOnly, decimal)>();
+        foreach (var fila in candidatas)
+        {
+            var clave = (fila.CedulaTitular, fila.FechaPago, decimal.Round(fila.ValorPagado, 2));
+            if (combosExistentes.Contains(clave) || !vistosEnArchivo.Add(clave))
+            {
+                fila.EsDuplicado  = true;
+                fila.ErrorMensaje = "Pago ya cargado (misma cédula, fecha y valor).";
+            }
+        }
+
+        var validas    = candidatas.Where(f => !f.EsDuplicado).ToList();
+        var duplicados = candidatas.Where(f =>  f.EsDuplicado).ToList();
+        var errores    = filas.Where(f => !f.EsValida).ToList();
 
         return new ValidarPagosResponse
         {
-            TotalFilas      = filas.Count,
-            CantidadValidas = validas.Count,
-            CantidadErrores = errores.Count,
-            Preview         = validas.Take(10).ToList(),
-            Errores         = errores,
-            TodasLasValidas = validas,
+            TotalFilas         = filas.Count,
+            CantidadValidas    = validas.Count,
+            CantidadDuplicados = duplicados.Count,
+            CantidadErrores    = errores.Count,
+            Preview            = validas.Take(10).ToList(),
+            Duplicados         = duplicados,
+            Errores            = errores,
+            TodasLasValidas    = validas,
         };
+    }
+
+    /// <summary>
+    /// Devuelve el conjunto de combinaciones (cédula, fecha, valor) ya presentes en la tabla
+    /// Pago para la cartera indicada, restringido a las cédulas de las filas candidatas.
+    /// El valor se redondea a 2 decimales para alinear con el tipo decimal(18,2) de la columna.
+    /// </summary>
+    private async Task<HashSet<(long, DateOnly, decimal)>> ObtenerCombosExistentesAsync(
+        List<PagoFilaDto> candidatas, int carteraID)
+    {
+        if (candidatas.Count == 0)
+            return [];
+
+        var cedulas = candidatas.Select(f => f.CedulaTitular).Distinct().ToList();
+
+        var existentes = await _context.Pagos
+            .Where(p => p.CarteraID == carteraID && cedulas.Contains(p.CedulaTitular))
+            .Select(p => new { p.CedulaTitular, p.FechaPago, p.ValorPagado })
+            .AsNoTracking()
+            .ToListAsync();
+
+        return existentes
+            .Select(p => (p.CedulaTitular, p.FechaPago, decimal.Round(p.ValorPagado, 2)))
+            .ToHashSet();
     }
 
     public async Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, string usuarioRegistro)

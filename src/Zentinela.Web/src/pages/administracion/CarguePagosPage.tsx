@@ -166,6 +166,84 @@ function PanelErrores({ filas }: { filas: PagoFila[] }) {
   );
 }
 
+// ── Panel de duplicados (ya cargados — se omiten) ───────────────────────────────
+
+function PanelDuplicados({ filas }: { filas: PagoFila[] }) {
+  if (filas.length === 0) return null;
+
+  return (
+    <div style={{
+      background: '#fffbeb', border: '1px solid #fcd34d',
+      borderRadius: '8px', overflow: 'hidden',
+    }}>
+      {/* Encabezado */}
+      <div style={{
+        padding: '14px 18px', borderBottom: '1px solid #fcd34d',
+        display: 'flex', alignItems: 'baseline', gap: '10px',
+      }}>
+        <span style={{ fontSize: 24, fontWeight: 700, color: '#b45309', lineHeight: 1 }}>
+          {filas.length.toLocaleString('es-CO')}
+        </span>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#92400e' }}>
+          {filas.length === 1
+            ? 'pago ya cargado — se omitirá'
+            : 'pagos ya cargados — se omitirán'}
+        </p>
+      </div>
+
+      {/* Tabla registro por registro */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#fef3c7' }}>
+              {['#', 'Cédula', 'Nombre', 'Valor pagado', 'Fecha', 'Motivo'].map((col, i) => (
+                <th key={i} style={{
+                  padding: '8px 14px', textAlign: 'left',
+                  fontSize: '11px', fontWeight: 600, color: '#92400e',
+                  borderBottom: '1px solid #fcd34d',
+                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((fila, idx) => (
+              <tr
+                key={idx}
+                style={{
+                  borderBottom: idx < filas.length - 1 ? '0.5px solid #fde68a' : 'none',
+                  background: idx % 2 === 0 ? 'transparent' : '#fffaf0',
+                }}
+              >
+                <td style={{ padding: '8px 14px', fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>
+                  {idx + 1}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {fila.cedulaTitular}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
+                  {fila.nombreCliente || '—'}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {cop(fila.valorPagado)}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
+                  {fila.fechaPago}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#b45309' }}>
+                  {fila.errorMensaje ?? 'Pago ya cargado'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Tabla de preview ──────────────────────────────────────────────────────────
 
 function TablaPreview({ filas, totalValidas }: { filas: PagoFila[]; totalValidas: number }) {
@@ -259,8 +337,9 @@ export function CarguePagosPage() {
   const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
 
   // Toggles para los detalles asociados a cada chip de conteo
-  const [verErrores, setVerErrores] = useState(false);
-  const [verValidos, setVerValidos] = useState(false);
+  const [verErrores,    setVerErrores]    = useState(false);
+  const [verValidos,    setVerValidos]    = useState(false);
+  const [verDuplicados, setVerDuplicados] = useState(false);
 
   const { data: carteras = [] } = useQuery({
     queryKey: ['pagos-carteras'],
@@ -275,9 +354,10 @@ export function CarguePagosPage() {
     onSuccess: (data) => {
       setPreview(data);
       setErrorMensaje('');
-      // Si hay errores, abrir el panel de errores por defecto para que sean visibles;
+      // Si hay errores o duplicados, abrir esos paneles por defecto para que sean visibles;
       // los válidos quedan colapsados (memory: vista previa máx. 10).
       setVerErrores(data.cantidadErrores > 0);
+      setVerDuplicados(data.cantidadDuplicados > 0);
       setVerValidos(false);
       setEtapa('preview');
     },
@@ -318,6 +398,7 @@ export function CarguePagosPage() {
     setErrorMensaje('');
     setVerErrores(false);
     setVerValidos(false);
+    setVerDuplicados(false);
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -498,6 +579,15 @@ export function CarguePagosPage() {
               onClick={preview.cantidadValidas > 0 ? () => setVerValidos(v => !v) : undefined}
               abierto={verValidos}
             />
+            {preview.cantidadDuplicados > 0 && (
+              <ChipConteo
+                numero={preview.cantidadDuplicados}
+                label="ya cargados — se omitirán"
+                bg="#fffbeb" border="#fcd34d" colorNum="#b45309" colorLabel="#92400e"
+                onClick={() => setVerDuplicados(v => !v)}
+                abierto={verDuplicados}
+              />
+            )}
             {preview.cantidadErrores > 0 && (
               <ChipConteo
                 numero={preview.cantidadErrores}
@@ -509,6 +599,9 @@ export function CarguePagosPage() {
             )}
           </div>
 
+          {/* Panel de duplicados — TODOS los ya cargados (click en el chip ámbar) */}
+          {verDuplicados && <PanelDuplicados filas={preview.duplicados} />}
+
           {/* Panel de errores — TODOS los errores (click en el chip rojo) */}
           {verErrores && <PanelErrores filas={preview.errores} />}
 
@@ -518,14 +611,18 @@ export function CarguePagosPage() {
           )}
 
           {/* Aviso */}
-          <div style={{
-            background: '#fffbeb', border: '0.5px solid #fcd34d',
-            borderRadius: '8px', padding: '12px 16px',
-            fontSize: '13px', color: '#92400e',
-          }}>
-            <strong>Atención:</strong> los {preview.cantidadValidas} pagos válidos se insertarán
-            directamente en la tabla <strong>Pago</strong>. Esta acción no se puede deshacer.
-          </div>
+          {preview.cantidadValidas > 0 && (
+            <div style={{
+              background: '#eff6ff', border: '0.5px solid #93c5fd',
+              borderRadius: '8px', padding: '12px 16px',
+              fontSize: '13px', color: '#1e40af',
+            }}>
+              <strong>Atención:</strong> los {preview.cantidadValidas} pagos válidos se insertarán
+              directamente en la tabla <strong>Pago</strong>. Esta acción no se puede deshacer.
+              {preview.cantidadDuplicados > 0 &&
+                ` Los ${preview.cantidadDuplicados} pagos ya cargados se omitirán automáticamente.`}
+            </div>
+          )}
 
           {/* Acciones */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -554,7 +651,9 @@ export function CarguePagosPage() {
             </button>
             {preview.cantidadValidas === 0 && (
               <p style={{ fontSize: '13px', color: '#dc2626', margin: 0 }}>
-                No hay pagos válidos. Corrige los errores y vuelve a subir el archivo.
+                {preview.cantidadErrores === 0 && preview.cantidadDuplicados > 0
+                  ? 'No hay pagos nuevos: todos los del archivo ya estaban cargados.'
+                  : 'No hay pagos válidos. Corrige los errores y vuelve a subir el archivo.'}
               </p>
             )}
           </div>

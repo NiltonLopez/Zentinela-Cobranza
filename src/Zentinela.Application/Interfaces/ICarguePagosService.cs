@@ -11,6 +11,8 @@ public interface ICarguePagosService
     /// <summary>
     /// Parsea el archivo (CSV o XLSX) y valida cada fila contra la BD.
     /// Por cada fila válida, resuelve el LiderID desde TitularCartera (CedulaTitular + CarteraID).
+    /// Marca como duplicadas las filas cuya combinación (cédula, fecha, valor) ya existe en la
+    /// cartera o se repite en el archivo; estas se reportan aparte y no se insertan.
     /// No persiste nada — solo retorna el preview y las filas válidas para la UI.
     /// </summary>
     Task<ValidarPagosResponse> ValidarArchivoAsync(Stream archivo, int carteraID, string extension);

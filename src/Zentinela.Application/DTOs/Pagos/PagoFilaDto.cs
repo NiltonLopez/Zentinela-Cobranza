@@ -26,6 +26,12 @@ public class PagoFilaDto
     public int      LiderID          { get; set; }
     /// <summary>True si la fila es BASE GENERAL (sin asesor). UI puede usarla para etiquetar visualmente.</summary>
     public bool     EsBaseGeneral    { get; set; }
+    /// <summary>
+    /// True si el pago ya existe (misma cédula, fecha y valor en la cartera) o se repite
+    /// dentro del mismo archivo. Las filas duplicadas son válidas pero NO se insertan:
+    /// se reportan aparte para que el usuario sepa qué se omitió. ErrorMensaje contiene el motivo.
+    /// </summary>
+    public bool     EsDuplicado      { get; set; }
     public bool     EsValida         { get; set; }
     public string?  ErrorMensaje     { get; set; }
 }
