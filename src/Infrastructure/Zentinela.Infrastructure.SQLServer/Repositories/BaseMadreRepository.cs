@@ -115,12 +115,23 @@ public class BaseMadreRepository : IBaseMadreRepository
             rotacionMaxima, saldoMinimo, tipoAfiliado, estadoFosyga,
             fuentesCelular, coincidenciasCelular, fuentesEmail, coincidenciasEmail);
 
-        // Proyección explícita: solo los campos pedidos. Si el catálogo no tiene
-        // alias para alguno (no debería pasar), se omite — evitamos un SELECT
-        // vacío con un fallback mínimo a [Numero Documento].
+        // Proyección explícita: solo los campos pedidos. SqlAlias es una lista
+        // espejo de ColumnasMadre — si alguien agrega una fuente al catálogo y
+        // olvida el alias aquí, el SELECT tendría MENOS columnas que las que el
+        // llamador (CSV/Excel) escribe como encabezado, y el reader reventaría
+        // con IndexOutOfRange a media transmisión (cuerpo ya iniciado, status 200
+        // → ERR_INCOMPLETE_CHUNKED_ENCODING). Por eso fallamos fuerte y temprano,
+        // ANTES de abrir el reader, con un mensaje que apunta exactamente al gap.
+        var sinAlias = propiedadesSeleccionadas
+            .Where(p => !SqlAlias.ContainsKey(p))
+            .ToList();
+        if (sinAlias.Count > 0)
+            throw new InvalidOperationException(
+                $"Columnas sin alias SQL en BaseMadreRepository.SqlAlias: {string.Join(", ", sinAlias)}. " +
+                "Agrega su mapeo (paralelo a ColumnasMadre / la TVF fn_BaseMadrePorCartera).");
+
         var aliasesSql = propiedadesSeleccionadas
-            .Select(p => SqlAlias.TryGetValue(p, out var s) ? s : null)
-            .Where(s => s != null)
+            .Select(p => SqlAlias[p])
             .ToList();
 
         if (aliasesSql.Count == 0)
@@ -294,6 +305,10 @@ public class BaseMadreRepository : IBaseMadreRepository
             ["CelularClaro"]               = "[Celular Claro]",
             ["EmailClaro"]                 = "[Email Claro]",
             ["UltimaInsercionClaro"]       = "[Ultima Insercion Claro]",
+            ["CelularMiVacuna"]            = "[Celular MiVacuna]",
+            ["EmailMiVacuna"]              = "[Email MiVacuna]",
+            ["FechaExpedicionMiVacuna"]    = "[Fecha Expedicion MiVacuna]",
+            ["EstadoMiVacuna"]             = "[Estado MiVacuna]",
             ["CelularMutualSer"]           = "[Celular MutualSer]",
             ["Celular2MutualSer"]          = "[Celular 2 MutualSer]",
             ["TelefonoFijoMutualSer"]      = "[Telefono Fijo MutualSer]",
