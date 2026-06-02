@@ -11,8 +11,14 @@ import type {
 
 // ── Asesor ────────────────────────────────────────────────────────────────────
 
-export const obtenerDashboardAsesor = async (): Promise<DashboardAsesorDto> => {
-  const response = await api.get<DashboardAsesorDto>('/api/dashboard/asesor');
+export const obtenerDashboardAsesor = async (
+  fechaDesde?: string,
+  fechaHasta?: string,
+): Promise<DashboardAsesorDto> => {
+  const params: Record<string, string> = {};
+  if (fechaDesde) params.fechaDesde = fechaDesde;
+  if (fechaHasta) params.fechaHasta = fechaHasta;
+  const response = await api.get<DashboardAsesorDto>('/api/dashboard/asesor', { params });
   return response.data;
 };
 

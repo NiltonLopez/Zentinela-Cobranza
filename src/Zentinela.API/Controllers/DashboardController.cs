@@ -28,7 +28,9 @@ public class DashboardController : ControllerBase
     /// </summary>
     [HttpGet("asesor")]
     [Authorize(Roles = Roles.Asesor)]
-    public async Task<IActionResult> ObtenerDashboardAsesor()
+    public async Task<IActionResult> ObtenerDashboardAsesor(
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta)
     {
         var numDocClaim = User.FindFirst("numeroDocumento")?.Value;
         if (!long.TryParse(numDocClaim, out var numeroDocumento) || numeroDocumento == 0)
@@ -36,7 +38,7 @@ public class DashboardController : ControllerBase
 
         try
         {
-            var resultado = await _asesorService.ObtenerDashboardAsync(numeroDocumento);
+            var resultado = await _asesorService.ObtenerDashboardAsync(numeroDocumento, fechaDesde, fechaHasta);
             return Ok(resultado);
         }
         catch (Exception ex)

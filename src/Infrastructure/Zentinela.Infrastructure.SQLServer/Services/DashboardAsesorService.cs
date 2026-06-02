@@ -24,7 +24,7 @@ public class DashboardAsesorService : IDashboardAsesorService
         _rrhh = rrhh;
     }
 
-    public async Task<DashboardAsesorDto> ObtenerDashboardAsync(long numeroDocumento)
+    public async Task<DashboardAsesorDto> ObtenerDashboardAsync(long numeroDocumento, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
         // AgenteID en UltimoEstadoTitular / HistoricoEstadoTitular es INT en la BD operacional
         var agenteID = (int)numeroDocumento;
@@ -34,8 +34,8 @@ public class DashboardAsesorService : IDashboardAsesorService
         var supervisorTask = ObtenerNombreSupervisorAsync(numeroDocumento);
 
         var acuerdos         = await ObtenerAcuerdosVigentesAsync(agenteID);
-        var rendimiento      = await ObtenerRendimientoAsync(agenteID);
-        var pagosConfirmados = await ObtenerPagosConfirmadosAsync(agenteID);
+        var rendimiento      = await ObtenerRendimientoAsync(agenteID, fechaDesde, fechaHasta);
+        var pagosConfirmados = await ObtenerPagosConfirmadosAsync(agenteID, fechaDesde, fechaHasta);
 
         return new DashboardAsesorDto
         {
@@ -97,42 +97,98 @@ public class DashboardAsesorService : IDashboardAsesorService
     }
 
     // ── Rendimiento ───────────────────────────────────────────────────────────
-    private async Task<RendimientoAsesorDto> ObtenerRendimientoAsync(int agenteID)
+    private async Task<RendimientoAsesorDto> ObtenerRendimientoAsync(int agenteID, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
-        // Fecha del reporte = último día con gestión registrada para este agente
+        if (fechaDesde.HasValue && fechaHasta.HasValue)
+        {
+            // Filtro por período: usar HistoricoEstadoTitular filtrado por FechaUltimaGestion
+            var fechaActualizacion = await _callCenter.HistoricoEstadosTitular
+                .Where(h => h.AgenteID == agenteID
+                         && h.FechaUltimaGestion >= fechaDesde.Value
+                         && h.FechaUltimaGestion <= fechaHasta.Value)
+                .MaxAsync(h => (DateTime?)h.FechaActualizacion);
+
+            var perfiles = await _callCenter.HistoricoEstadosTitular
+                .AsNoTracking()
+                .Where(h => h.AgenteID == agenteID
+                         && h.FechaUltimaGestion >= fechaDesde.Value
+                         && h.FechaUltimaGestion <= fechaHasta.Value)
+                .Select(h => h.UltimoPerfil)
+                .ToListAsync();
+
+            var totalGestiones    = perfiles.Count;
+            var contactosPos      = perfiles.Count(p => Tipificaciones.ContactoPositivo.Contains(p ?? string.Empty));
+            var acuerdosAbonos    = perfiles.Count(p => Tipificaciones.AcuerdoAbono.Contains(p ?? string.Empty));
+
+            // Proyección del ciclo: suma de ValorPromesa con FechaPromesa dentro del período
+            var proyeccionCiclo = await _callCenter.HistoricoEstadosTitular
+                .AsNoTracking()
+                .Where(h => h.AgenteID == agenteID
+                         && h.FechaPromesa.HasValue
+                         && h.ValorPromesa.HasValue
+                         && h.FechaPromesa >= fechaDesde.Value
+                         && h.FechaPromesa <= fechaHasta.Value
+                         && Tipificaciones.AcuerdosVigentes.Contains(h.UltimoPerfil ?? string.Empty))
+                .SumAsync(h => (decimal?)h.ValorPromesa) ?? 0m;
+
+            return new RendimientoAsesorDto
+            {
+                FechaActualizacion  = fechaActualizacion,
+                TotalGestiones      = totalGestiones,
+                TasaContactabilidad = totalGestiones > 0
+                    ? Math.Round((decimal)contactosPos / totalGestiones, 4) : 0,
+                TasaEfectividad = contactosPos > 0
+                    ? Math.Round((decimal)acuerdosAbonos / contactosPos, 4) : 0,
+                ProyeccionCiclo = proyeccionCiclo,
+            };
+        }
+
+        // Sin filtro: último día con gestión (comportamiento original)
         var ultimaFechaGestion = await _callCenter.UltimosEstadosTitular
             .Where(u => u.AgenteID == agenteID)
             .MaxAsync(u => u.FechaUltimaGestion);
 
         // FechaActualizacion es solo informativa (cuándo corrió el ETL)
-        var fechaActualizacion = await _callCenter.UltimosEstadosTitular
+        var fechaActualizacionDefault = await _callCenter.UltimosEstadosTitular
             .Where(u => u.AgenteID == agenteID)
             .MaxAsync(u => (DateTime?)u.FechaActualizacion);
 
         if (ultimaFechaGestion is null)
-            return new RendimientoAsesorDto { FechaActualizacion = fechaActualizacion };
+            return new RendimientoAsesorDto { FechaActualizacion = fechaActualizacionDefault };
 
         // Métricas: UltimoEstadoTitular filtrado por agente y último día gestionado
-        var perfiles = await _callCenter.UltimosEstadosTitular
+        var perfilesDefault = await _callCenter.UltimosEstadosTitular
             .AsNoTracking()
             .Where(u => u.AgenteID == agenteID && u.FechaUltimaGestion == ultimaFechaGestion)
             .Select(u => u.UltimoPerfil)
             .ToListAsync();
 
-        var totalGestiones = perfiles.Count;
-        var contactosPositivos = perfiles.Count(p => Tipificaciones.ContactoPositivo.Contains(p ?? string.Empty));
-        var acuerdosAbonos = perfiles.Count(p => Tipificaciones.AcuerdoAbono.Contains(p ?? string.Empty));
+        var totalGestionesD = perfilesDefault.Count;
+        var contactosPosD   = perfilesDefault.Count(p => Tipificaciones.ContactoPositivo.Contains(p ?? string.Empty));
+        var acuerdosAbD     = perfilesDefault.Count(p => Tipificaciones.AcuerdoAbono.Contains(p ?? string.Empty));
+
+        // Proyección del ciclo actual: acuerdos con FechaPromesa en el mes en curso
+        var hoyDefault  = DateOnly.FromDateTime(DateTime.Today);
+        var inicioMes   = new DateOnly(hoyDefault.Year, hoyDefault.Month, 1);
+        var proyeccionD = await _callCenter.UltimosEstadosTitular
+            .AsNoTracking()
+            .Where(u => u.AgenteID == agenteID
+                     && u.FechaPromesa.HasValue
+                     && u.ValorPromesa.HasValue
+                     && u.FechaPromesa >= inicioMes
+                     && u.FechaPromesa <= hoyDefault
+                     && Tipificaciones.AcuerdosVigentes.Contains(u.UltimoPerfil ?? string.Empty))
+            .SumAsync(u => (decimal?)u.ValorPromesa) ?? 0m;
 
         return new RendimientoAsesorDto
         {
-            FechaActualizacion = fechaActualizacion,
-            TotalGestiones = totalGestiones,
-            TasaContactabilidad = totalGestiones > 0
-                ? Math.Round((decimal)contactosPositivos / totalGestiones, 4)
-                : 0,
-            TasaEfectividad = contactosPositivos > 0
-                ? Math.Round((decimal)acuerdosAbonos / contactosPositivos, 4)
-                : 0,
+            FechaActualizacion  = fechaActualizacionDefault,
+            TotalGestiones      = totalGestionesD,
+            TasaContactabilidad = totalGestionesD > 0
+                ? Math.Round((decimal)contactosPosD / totalGestionesD, 4) : 0,
+            TasaEfectividad = contactosPosD > 0
+                ? Math.Round((decimal)acuerdosAbD / contactosPosD, 4) : 0,
+            ProyeccionCiclo = proyeccionD,
         };
     }
 
@@ -166,14 +222,15 @@ public class DashboardAsesorService : IDashboardAsesorService
     }
 
     // ── Pagos confirmados (resumen dashboard) ─────────────────────────────────
-    private async Task<PagosConfirmadosDto> ObtenerPagosConfirmadosAsync(int agenteID)
+    private async Task<PagosConfirmadosDto> ObtenerPagosConfirmadosAsync(int agenteID, DateOnly? fechaDesde, DateOnly? fechaHasta)
     {
-        var hoy = DateTime.Today;
+        // Rango efectivo para filtrar pagos
+        var queryPagos = _callCenter.Pagos.Where(p => p.AgenteControlID == agenteID);
+        if (fechaDesde.HasValue) queryPagos = queryPagos.Where(p => p.FechaPago >= fechaDesde.Value);
+        if (fechaHasta.HasValue) queryPagos = queryPagos.Where(p => p.FechaPago <= fechaHasta.Value);
 
-        // FechaActualizacion: para cada cartera del asesor, tomar el MAX(FechaRegistro),
-        // luego exponer el MIN de esos máximos para evidenciar la cartera más desactualizada.
-        var maxFechasPorCartera = await _callCenter.Pagos
-            .Where(p => p.AgenteControlID == agenteID)
+        // FechaActualizacion: cartera más desactualizada del asesor en el período
+        var maxFechasPorCartera = await queryPagos
             .GroupBy(p => p.CarteraID)
             .Select(g => g.Max(p => p.FechaRegistro))
             .ToListAsync();
@@ -182,9 +239,8 @@ public class DashboardAsesorService : IDashboardAsesorService
             ? maxFechasPorCartera.Min()
             : (DateTime?)null;
 
-        // Totales de recaudo y honorarios (todos los pagos del asesor)
-        var totales = await _callCenter.Pagos
-            .Where(p => p.AgenteControlID == agenteID)
+        // Totales de recaudo y honorarios en el período
+        var totales = await queryPagos
             .GroupBy(p => 1)
             .Select(g => new
             {
@@ -193,29 +249,35 @@ public class DashboardAsesorService : IDashboardAsesorService
             })
             .FirstOrDefaultAsync();
 
-        // Meta de honorarios del mes actual
+        // Meta de honorarios: usar el mes del período seleccionado
+        var refDate = fechaDesde.HasValue
+            ? fechaDesde.Value
+            : DateOnly.FromDateTime(DateTime.Today);
+
         var meta = await _callCenter.MetaAgentesMes
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.AgenteID == agenteID
-                                   && m.Año == (short)hoy.Year
-                                   && m.Mes == (byte)hoy.Month);
+                                   && m.Año == (short)refDate.Year
+                                   && m.Mes == (byte)refDate.Month);
 
-        // Efectividad = acuerdos/abonos sobre total gestiones
-        var perfiles = await _callCenter.UltimosEstadosTitular
+        // Efectividad = acuerdos/abonos sobre total gestiones del período
+        var queryRendimiento = _callCenter.HistoricoEstadosTitular
             .AsNoTracking()
-            .Where(u => u.AgenteID == agenteID)
-            .Select(u => u.UltimoPerfil)
-            .ToListAsync();
+            .Where(h => h.AgenteID == agenteID);
+        if (fechaDesde.HasValue) queryRendimiento = queryRendimiento.Where(h => h.FechaUltimaGestion >= fechaDesde.Value);
+        if (fechaHasta.HasValue) queryRendimiento = queryRendimiento.Where(h => h.FechaUltimaGestion <= fechaHasta.Value);
+
+        var perfiles = await queryRendimiento.Select(h => h.UltimoPerfil).ToListAsync();
 
         var totalGestiones = perfiles.Count;
         var acuerdosAbonos = perfiles.Count(p => Tipificaciones.AcuerdoAbono.Contains(p ?? string.Empty));
 
         return new PagosConfirmadosDto
         {
-            FechaActualizacion   = fechaActualizacion,
-            TotalRecaudo         = totales?.Recaudo    ?? 0,
-            TotalHonorarios      = totales?.Honorarios ?? 0,
-            MetaHonorarios       = meta?.TipoMeta == 1 ? meta.ValorMeta : 0,
+            FechaActualizacion    = fechaActualizacion,
+            TotalRecaudo          = totales?.Recaudo    ?? 0,
+            TotalHonorarios       = totales?.Honorarios ?? 0,
+            MetaHonorarios        = meta?.TipoMeta == 1 ? meta.ValorMeta : 0,
             PorcentajeEfectividad = totalGestiones > 0
                 ? Math.Round((decimal)acuerdosAbonos / totalGestiones, 4)
                 : 0,

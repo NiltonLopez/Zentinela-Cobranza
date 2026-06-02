@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listarRelaciones, listarLideres, buscarCarteras,
-  crearRelacion, eliminarRelacion,
+  crearRelacion, eliminarRelacion, descargarAsignacion,
 } from '../../api/gestionCarterasApi';
 import type { RelacionLiderCartera, LiderDropdown, CarteraAutocomplete } from '../../types/gestionCarteras';
 
@@ -352,11 +352,15 @@ function TarjetaRelacion({
   activa,
   onSeleccionar,
   onEliminar,
+  onDescargar,
+  estaDescargando,
 }: {
   relacion: RelacionLiderCartera;
   activa: boolean;
   onSeleccionar: () => void;
   onEliminar: (r: RelacionLiderCartera) => void;
+  onDescargar: (r: RelacionLiderCartera) => void;
+  estaDescargando: boolean;
 }) {
   return (
     <div
@@ -373,28 +377,54 @@ function TarjetaRelacion({
         userSelect: 'none',
       }}
     >
-      {/* Botón X — visible solo cuando la tarjeta está activa */}
+      {/* Botones de acción — visibles solo cuando la tarjeta está activa */}
       {activa && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onEliminar(relacion); }}
+        <div
           style={{
             position: 'absolute', top: '8px', right: '8px',
-            width: '22px', height: '22px',
-            borderRadius: '50%', border: 'none',
-            background: '#dc2626', color: 'white',
-            fontSize: '13px', fontWeight: 700,
-            cursor: 'pointer', lineHeight: 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', gap: '4px',
           }}
+          onClick={(e) => e.stopPropagation()}
         >
-          ×
-        </button>
+          {relacion.totalAsignaciones > 0 && (
+            <button
+              title={estaDescargando ? 'Descargando...' : 'Descargar asignación actual'}
+              onClick={() => !estaDescargando && onDescargar(relacion)}
+              style={{
+                width: '22px', height: '22px',
+                borderRadius: '50%', border: 'none',
+                background: estaDescargando ? '#93c5fd' : '#2563eb',
+                color: 'white',
+                fontSize: '12px', fontWeight: 700,
+                cursor: estaDescargando ? 'not-allowed' : 'pointer',
+                lineHeight: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              ↓
+            </button>
+          )}
+          <button
+            title="Eliminar relación"
+            onClick={() => onEliminar(relacion)}
+            style={{
+              width: '22px', height: '22px',
+              borderRadius: '50%', border: 'none',
+              background: '#dc2626', color: 'white',
+              fontSize: '13px', fontWeight: 700,
+              cursor: 'pointer', lineHeight: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            ×
+          </button>
+        </div>
       )}
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: '6px',
         marginBottom: '6px',
-        paddingRight: activa ? '24px' : '0',
+        paddingRight: activa ? '54px' : '0',
       }}>
         <p style={{
           fontSize: '13px', fontWeight: 600,
@@ -452,6 +482,7 @@ export function GestionCarterasPage() {
   const [mostrarCrear, setMostrarCrear] = useState(false);
   const [errorCrear, setErrorCrear] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
+  const [descargando, setDescargando] = useState<string | null>(null); // key de la tarjeta en descarga
   const queryClient = useQueryClient();
 
   const { data: relaciones = [], isLoading, isError } = useQuery({
@@ -598,8 +629,20 @@ export function GestionCarterasPage() {
                 key={key}
                 relacion={r}
                 activa={tarjetaActiva === key}
+                estaDescargando={descargando === key}
                 onSeleccionar={() => setTarjetaActiva(tarjetaActiva === key ? null : key)}
                 onEliminar={(rel) => { setRelacionAEliminar(rel); setTarjetaActiva(null); }}
+                onDescargar={async (rel) => {
+                  if (descargando) return;
+                  setDescargando(key);
+                  try {
+                    await descargarAsignacion(rel.liderID, rel.carteraID, rel.nombreCartera, rel.nombreLider);
+                  } catch {
+                    setFeedback({ tipo: 'error', texto: 'No se pudo descargar la asignación.' });
+                  } finally {
+                    setDescargando(null);
+                  }
+                }}
               />
             );
           })}

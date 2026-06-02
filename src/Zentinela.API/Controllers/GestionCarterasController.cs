@@ -57,6 +57,16 @@ public class GestionCarterasController : ControllerBase
         }
     }
 
+    /// <summary>Descarga un Excel con las asignaciones actuales (Cédula + Nombre) de la cartera.</summary>
+    [HttpGet("relaciones/{liderID:int}/{carteraID:int}/asignacion")]
+    public async Task<IActionResult> DescargarAsignacion(int liderID, int carteraID)
+    {
+        var bytes = await _service.DescargarAsignacionAsync(liderID, carteraID);
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"asignacion_{carteraID}_{liderID}.xlsx");
+    }
+
     /// <summary>Elimina una relación Líder_Cartera. No elimina los Titular_Cartera asociados.</summary>
     [HttpDelete("relaciones/{liderID:int}/{carteraID:int}")]
     public async Task<IActionResult> EliminarRelacion(int liderID, int carteraID)

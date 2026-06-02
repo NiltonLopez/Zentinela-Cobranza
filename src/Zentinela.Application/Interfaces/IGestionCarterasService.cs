@@ -28,4 +28,11 @@ public interface IGestionCarterasService
     /// No elimina los registros de Titular_Cartera — deben reasignarse manualmente.
     /// </summary>
     Task EliminarRelacionAsync(int liderID, int carteraID);
+
+    /// <summary>
+    /// Genera un Excel con las asignaciones actuales (NumeroDocumento + Nombre)
+    /// de una cartera+líder. El formato es compatible con la plantilla de cargue masivo,
+    /// permitiendo descargarlo, editarlo y re-subirlo directamente.
+    /// </summary>
+    Task<byte[]> DescargarAsignacionAsync(int liderID, int carteraID);
 }

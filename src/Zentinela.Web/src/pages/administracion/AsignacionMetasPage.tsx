@@ -250,6 +250,7 @@ export function AsignacionMetasPage() {
   const [tab,         setTab]        = useState<TabMeta>('lider');
   const [soloSinMeta, setSoloSinMeta] = useState(false);
   const [busqueda,    setBusqueda]   = useState('');
+  const [liderFiltro, setLiderFiltro] = useState('');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['metas-mes-actual'],
@@ -261,6 +262,16 @@ export function AsignacionMetasPage() {
   const labelMes = data ? `${MESES[data.mes - 1]} ${data.año}` : '…';
 
   // ── Filtros ───────────────────────────────────────────────────────────────
+
+  // Líderes únicos que tienen al menos un agente — para el select del tab Agentes
+  const lideresConAgentes = useMemo(() => {
+    if (!data) return [];
+    const vistos = new Set<string>();
+    return data.agentes
+      .map(f => f.nombreLider ?? '')
+      .filter(n => n && !vistos.has(n) && vistos.add(n))
+      .sort();
+  }, [data]);
 
   const filasFiltradas = useMemo(() => {
     if (!data) return { lider: [], agente: [] };
@@ -275,6 +286,7 @@ export function AsignacionMetasPage() {
 
     const agente = data.agentes.filter(f => {
       if (soloSinMeta && f.tieneMeta) return false;
+      if (liderFiltro && f.nombreLider !== liderFiltro) return false;
       if (termino && !f.nombreAgente.toLowerCase().includes(termino)) return false;
       return true;
     });
@@ -333,7 +345,7 @@ export function AsignacionMetasPage() {
             {([['lider', 'Líderes-Carteras'], ['agente', 'Agentes']] as [TabMeta, string][]).map(([id, label]) => (
               <button
                 key={id}
-                onClick={() => { setTab(id); setBusqueda(''); }}
+                onClick={() => { setTab(id); setBusqueda(''); setLiderFiltro(''); }}
                 style={{
                   padding: '9px 20px', fontSize: 13,
                   fontWeight: tab === id ? 600 : 400,
@@ -382,6 +394,24 @@ export function AsignacionMetasPage() {
             >
               {soloSinMeta ? '▪ Solo sin meta' : 'Solo sin meta'}
             </button>
+
+            {tab === 'agente' && lideresConAgentes.length > 0 && (
+              <select
+                value={liderFiltro}
+                onChange={e => setLiderFiltro(e.target.value)}
+                style={{
+                  padding: '7px 10px', borderRadius: 6, border: '1px solid var(--z-border)',
+                  background: 'var(--z-bg-card)',
+                  color: liderFiltro ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+                  fontSize: 13, outline: 'none', cursor: 'pointer', minWidth: 180,
+                }}
+              >
+                <option value="">— Todos los líderes —</option>
+                {lideresConAgentes.map(nombre => (
+                  <option key={nombre} value={nombre}>{nombre}</option>
+                ))}
+              </select>
+            )}
 
             <input
               type="text"

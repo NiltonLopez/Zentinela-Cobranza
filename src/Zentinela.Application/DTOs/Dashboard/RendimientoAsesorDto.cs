@@ -16,4 +16,10 @@ public class RendimientoAsesorDto
 
     /// <summary>Acuerdos+abonos / contactos positivos.</summary>
     public decimal TasaEfectividad { get; set; }
+
+    /// <summary>
+    /// Suma de ValorPromesa de todos los acuerdos cuya FechaPromesa cae en el ciclo seleccionado.
+    /// Representa la proyección de recaudo esperada para el período.
+    /// </summary>
+    public decimal ProyeccionCiclo { get; set; }
 }

@@ -167,6 +167,9 @@ public class AsignacionMasivaService : IAsignacionMasivaService
                     Estado          = EstadoValidacion.YaAsignado,
                     Razon           = "Ya asignado a esta cartera",
                 });
+                // Incluir en validos para que el confirm los re-inserte tras el delete masivo.
+                // Sin esta línea, el reemplazo los borraría al no estar en TitularIDsValidos.
+                validos.Add(numDoc);
                 continue;
             }
 

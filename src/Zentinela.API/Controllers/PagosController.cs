@@ -31,7 +31,14 @@ public class PagosController : ControllerBase
     public async Task<IActionResult> ObtenerUltimaActualizacion(int carteraID)
     {
         var fecha = await _service.ObtenerUltimaActualizacionAsync(carteraID);
-        return Ok(new { fechaActualizacion = fecha });
+        // FechaRegistro se almacena como DateTime.UtcNow; EF devuelve Kind=Unspecified
+        // desde SQL Server. Sin SpecifyKind, System.Text.Json serializa sin "Z" y el
+        // navegador interpreta la hora como local en lugar de UTC, causando un diff
+        // negativo que muestra "hace menos de un minuto" incorrectamente.
+        var fechaUtc = fecha.HasValue
+            ? (DateTime?)DateTime.SpecifyKind(fecha.Value, DateTimeKind.Utc)
+            : null;
+        return Ok(new { fechaActualizacion = fechaUtc });
     }
 
     /// <summary>Descarga la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>

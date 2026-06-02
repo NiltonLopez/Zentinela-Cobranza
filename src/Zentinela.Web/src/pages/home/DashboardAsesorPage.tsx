@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -6,6 +7,34 @@ import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import type { AcuerdoVigenteDto, PagosConfirmadosDto } from '../../types/dashboard';
+
+// ── Selector de período ───────────────────────────────────────────────────────
+
+type MesOffset = 0 | -1 | -2;
+
+const OPCIONES_MES: { value: MesOffset; label: string }[] = [
+  { value:  0, label: 'Este mes'      },
+  { value: -1, label: 'Mes pasado'    },
+  { value: -2, label: '2 meses atrás' },
+];
+
+function calcularRangoMes(offset: MesOffset): { desde: string; hasta: string; label: string } {
+  const hoy    = new Date();
+  const año    = hoy.getFullYear();
+  const mes    = hoy.getMonth() + offset; // puede ser negativo → Date lo ajusta
+
+  const primerDia = new Date(año, mes, 1);
+  const ultimoDia = offset === 0
+    ? hoy                                       // este mes → hasta hoy
+    : new Date(año, mes + 1, 0);                // meses pasados → último día del mes
+
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const labelMes = primerDia.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+  return { desde: fmt(primerDia), hasta: fmt(ultimoDia), label: labelMes };
+}
 
 // ── Helpers de formato ────────────────────────────────────────────────────────
 
@@ -53,8 +82,15 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
   );
 
   return (
+    <div style={{
+      overflowX: 'auto',
+      overflowY: 'auto',
+      maxHeight: '344px',
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'var(--z-border) transparent',
+    }}>
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead>
+      <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
         <tr style={{ background: 'var(--z-bg-page)' }}>
           <ThOrdenable label="Titular"       sortKey="nombreTitular" sort={sort} onSort={toggle} />
           <ThOrdenable label="Tipificación"  sortKey="ultimoPerfil"  sort={sort} onSort={toggle} />
@@ -70,6 +106,7 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -267,9 +304,13 @@ function SeccionPagosConfirmados({ pagos, isLoading }: { pagos?: PagosConfirmado
 
 export function DashboardAsesorPage() {
   const { usuario } = useAuth();
+  const [mesOffset, setMesOffset] = useState<MesOffset>(0);
+
+  const rango = useMemo(() => calcularRangoMes(mesOffset), [mesOffset]);
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['dashboard-asesor'],
-    queryFn: obtenerDashboardAsesor,
+    queryKey: ['dashboard-asesor', rango.desde, rango.hasta],
+    queryFn: () => obtenerDashboardAsesor(rango.desde, rango.hasta),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -335,16 +376,41 @@ export function DashboardAsesorPage() {
 
       {/* ── Rendimiento ───────────────────────────────────────────────────── */}
       <section>
-        <div style={{ marginBottom: '12px' }}>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '2px' }}>
-            Rendimiento
-          </h2>
-          <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-            Actualizado última vez:{' '}
-            <span style={{ fontWeight: 500, color: 'var(--z-text-primary)' }}>
-              {isLoading ? '...' : formatearFechaActualizacion(data?.rendimiento.fechaActualizacion ?? null)}
-            </span>
-          </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '2px' }}>
+              Rendimiento
+            </h2>
+            <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
+              Actualizado última vez:{' '}
+              <span style={{ fontWeight: 500, color: 'var(--z-text-primary)' }}>
+                {isLoading ? '...' : formatearFechaActualizacion(data?.rendimiento.fechaActualizacion ?? null)}
+              </span>
+            </p>
+          </div>
+
+          {/* Selector de período */}
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {OPCIONES_MES.map(op => (
+              <button
+                key={op.value}
+                onClick={() => setMesOffset(op.value)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: '0.5px solid var(--z-border)',
+                  background: mesOffset === op.value ? 'var(--z-brand)' : 'var(--z-bg-page)',
+                  color: mesOffset === op.value ? '#fff' : 'var(--z-text-muted)',
+                  fontSize: '12px',
+                  fontWeight: mesOffset === op.value ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                {op.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {!isLoading && data && (
@@ -362,10 +428,27 @@ export function DashboardAsesorPage() {
             <TarjetaMetrica
               label="Productividad"
               valor={String(data.rendimiento.totalGestiones)}
-              sub={`Gestiones del ${data.rendimiento.fechaActualizacion
-                ? new Date(data.rendimiento.fechaActualizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
-                : 'día'}`}
+              sub={`Gestiones de ${rango.label}`}
             />
+            {/* Proyección del ciclo: suma de ValorPromesa con FechaPromesa en el período */}
+            <div style={{
+              background: 'var(--z-bg-card)',
+              border: '1px solid var(--z-brand)',
+              borderRadius: '8px',
+              padding: '20px',
+              flex: '1 1 160px',
+              minWidth: '160px',
+            }}>
+              <p style={{ fontSize: '12px', color: 'var(--z-brand)', fontWeight: 600, marginBottom: '8px', opacity: 0.8 }}>
+                Proyección del ciclo
+              </p>
+              <p style={{ fontSize: '18px', fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
+                {formatearMoneda(data.rendimiento.proyeccionCiclo)}
+              </p>
+              <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>
+                Promesas con vencimiento en {rango.label}
+              </p>
+            </div>
           </div>
         )}
 

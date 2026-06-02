@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.Interfaces;
@@ -146,6 +147,46 @@ public class GestionCarterasService : IGestionCarterasService
             EsExterna         = dto.EsExterna,
             TotalAsignaciones = 0,
         };
+    }
+
+    public async Task<byte[]> DescargarAsignacionAsync(int liderID, int carteraID)
+    {
+        var titulares = await _context.TitularCarteras
+            .Where(tc => tc.LiderID == liderID && tc.CarteraID == carteraID)
+            .Join(_context.Titulares,
+                  tc => tc.TitularID,
+                  t  => t.NumeroDocumento,
+                  (_, t) => new { t.NumeroDocumento, t.Nombre })
+            .OrderBy(x => x.Nombre)
+            .AsNoTracking()
+            .ToListAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Asignacion");
+
+        // Encabezados en el formato exacto de la plantilla de cargue masivo
+        // para que el archivo descargado pueda re-subirse directamente.
+        ws.Cell(1, 1).Value = "NumeroDocumento";
+        ws.Cell(1, 2).Value = "Nombre";
+
+        var headerRange = ws.Range(1, 1, 1, 2);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#2563EB");
+        headerRange.Style.Font.FontColor       = XLColor.White;
+
+        for (int i = 0; i < titulares.Count; i++)
+        {
+            var r = i + 2;
+            ws.Cell(r, 1).Value = titulares[i].NumeroDocumento;
+            ws.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            ws.Cell(r, 2).Value = titulares[i].Nombre;
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
     }
 
     public async Task EliminarRelacionAsync(int liderID, int carteraID)

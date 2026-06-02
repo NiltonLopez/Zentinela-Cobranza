@@ -81,6 +81,7 @@ export interface RendimientoAsesorDto {
   totalGestiones: number;
   tasaContactabilidad: number; // 0-1
   tasaEfectividad: number;     // 0-1
+  proyeccionCiclo: number;     // suma de ValorPromesa con FechaPromesa en el ciclo
 }
 
 export interface PagoAsesorDto {

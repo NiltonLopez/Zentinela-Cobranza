@@ -1,58 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { obtenerPagosAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { FiltrosPeriodo, calcularRango } from '../../components/pagos/FiltrosPeriodo';
+import { TarjetaResumenPagos } from '../../components/pagos/TarjetaResumenPagos';
+import { formatearMoneda, formatearFecha, formatearFechaHora } from '../../utils/formatters';
+import type { Preset } from '../../components/pagos/FiltrosPeriodo';
 import type { PagoAsesorDto } from '../../types/dashboard';
-
-function primerDiaMes(): string {
-  const hoy = new Date();
-  return new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
-}
-
-function hoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatearMoneda(valor: number): string {
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency', currency: 'COP', maximumFractionDigits: 0,
-  }).format(valor);
-}
-
-function formatearFecha(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-CO', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  });
-}
-
-function formatearFechaHora(iso: string): string {
-  return new Date(iso).toLocaleString('es-CO', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-// ── Tarjetas de resumen ───────────────────────────────────────────────────────
-
-function TarjetaResumen({ label, valor }: { label: string; valor: string }) {
-  return (
-    <div style={{
-      background: 'var(--z-bg-card)',
-      border: '0.5px solid var(--z-border)',
-      borderRadius: '8px',
-      padding: '16px 20px',
-      flex: '1 1 160px',
-      minWidth: '160px',
-    }}>
-      <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        {label}
-      </p>
-      <p style={{ fontSize: '20px', fontWeight: 600, color: 'var(--z-text-primary)', wordBreak: 'break-word' }}>
-        {valor}
-      </p>
-    </div>
-  );
-}
 
 // ── Fila de tabla ─────────────────────────────────────────────────────────────
 
@@ -91,30 +45,36 @@ function FilaPago({ pago, idx }: { pago: PagoAsesorDto; idx: number }) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function PagosConfirmadosAsesorPage() {
-  const [fechaDesde, setFechaDesde] = useState(primerDiaMes);
-  const [fechaHasta, setFechaHasta] = useState(hoyISO);
+  const [preset,       setPreset]       = useState<Preset>('ciclo');
+  const [customDesde,  setCustomDesde]  = useState('');
+  const [customHasta,  setCustomHasta]  = useState('');
+  const [carteraFiltro, setCarteraFiltro] = useState('');
+
+  const rango = calcularRango(preset, customDesde, customHasta);
 
   const { data: pagos = [], isLoading, isError } = useQuery({
-    queryKey: ['asesor-pagos-detalle', fechaDesde, fechaHasta],
-    queryFn: () => obtenerPagosAsesor(fechaDesde || undefined, fechaHasta || undefined),
+    queryKey: ['asesor-pagos-detalle', rango.desde, rango.hasta],
+    queryFn: () => obtenerPagosAsesor(rango.desde, rango.hasta),
     staleTime: 5 * 60 * 1000,
   });
 
-  const totalRecaudo    = pagos.reduce((s, p) => s + p.valorPagado, 0);
-  const totalHonorarios = pagos.reduce((s, p) => s + p.honorarios, 0);
+  // Carteras únicas derivadas del resultado — para el selector client-side
+  const carteras = useMemo(() => {
+    const vistas = new Set<string>();
+    return pagos
+      .map(p => p.nombreCartera)
+      .filter(n => n && !vistas.has(n) && vistas.add(n))
+      .sort();
+  }, [pagos]);
+
+  const pagosFiltrados = carteraFiltro
+    ? pagos.filter(p => p.nombreCartera === carteraFiltro)
+    : pagos;
+
+  const totalRecaudo    = pagosFiltrados.reduce((s, p) => s + p.valorPagado, 0);
+  const totalHonorarios = pagosFiltrados.reduce((s, p) => s + p.honorarios, 0);
 
   const COLS = ['Cliente', 'Cartera', 'Fecha de pago', 'Valor pagado', 'Honorarios', 'Registrado'];
-
-  const inputStyle: React.CSSProperties = {
-    padding: '6px 10px', fontSize: '13px', borderRadius: '6px',
-    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-    color: 'var(--z-text-primary)', outline: 'none',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
-    textTransform: 'uppercase', letterSpacing: '0.04em',
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1100px' }}>
@@ -131,28 +91,38 @@ export function PagosConfirmadosAsesorPage() {
         </div>
       </div>
 
-      {/* Filtro de fechas */}
-      <div style={{
-        background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
-        borderRadius: '8px', padding: '14px 20px',
-        display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label style={labelStyle}>Fecha desde</label>
-          <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={inputStyle} />
+      {/* Filtros */}
+      <div style={{ background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)', borderRadius: '8px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Cartera (client-side) */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '220px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
+            <select value={carteraFiltro} onChange={e => setCarteraFiltro(e.target.value)}
+              style={{ padding: '7px 10px', fontSize: '13px', borderRadius: '6px', border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }}>
+              <option value="">Todas mis carteras</option>
+              {carteras.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          {carteraFiltro && (
+            <button onClick={() => setCarteraFiltro('')}
+              style={{ padding: '7px 14px', borderRadius: '6px', border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-muted)', fontSize: '12px', cursor: 'pointer' }}>
+              Ver todas
+            </button>
+          )}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label style={labelStyle}>Fecha hasta</label>
-          <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={inputStyle} />
-        </div>
+        <FiltrosPeriodo
+          preset={preset}           onPresetChange={setPreset}
+          customDesde={customDesde} onCustomDesdeChange={setCustomDesde}
+          customHasta={customHasta} onCustomHastaChange={setCustomHasta}
+        />
       </div>
 
       {/* Resumen */}
       {!isLoading && (
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <TarjetaResumen label="Total pagos" valor={String(pagos.length)} />
-          <TarjetaResumen label="Recaudo total" valor={formatearMoneda(totalRecaudo)} />
-          <TarjetaResumen label="Honorarios totales" valor={formatearMoneda(totalHonorarios)} />
+          <TarjetaResumenPagos label="Total pagos"        valor={pagosFiltrados.length.toLocaleString('es-CO')} />
+          <TarjetaResumenPagos label="Recaudo total"      valor={formatearMoneda(totalRecaudo)} />
+          <TarjetaResumenPagos label="Honorarios totales" valor={formatearMoneda(totalHonorarios)} />
         </div>
       )}
 
@@ -176,9 +146,9 @@ export function PagosConfirmadosAsesorPage() {
       }}>
         {isLoading ? (
           <CargandoSpiral mensaje="Cargando pagos..." />
-        ) : pagos.length === 0 ? (
+        ) : pagosFiltrados.length === 0 ? (
           <div style={{ padding: '48px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
-            No tienes pagos confirmados registrados.
+            No tienes pagos confirmados con los filtros seleccionados.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -202,7 +172,7 @@ export function PagosConfirmadosAsesorPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagos.map((p, i) => (
+                {pagosFiltrados.map((p, i) => (
                   <FilaPago key={p.pagoID} pago={p} idx={i} />
                 ))}
               </tbody>

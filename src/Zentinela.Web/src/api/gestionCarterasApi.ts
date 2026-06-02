@@ -31,3 +31,23 @@ export const crearRelacion = async (payload: {
 export const eliminarRelacion = async (liderID: number, carteraID: number): Promise<void> => {
   await api.delete(`/api/gestion-carteras/relaciones/${liderID}/${carteraID}`);
 };
+
+export const descargarAsignacion = async (
+  liderID: number,
+  carteraID: number,
+  nombreCartera: string,
+  nombreLider: string,
+): Promise<void> => {
+  const res = await api.get(
+    `/api/gestion-carteras/relaciones/${liderID}/${carteraID}/asignacion`,
+    { responseType: 'blob' },
+  );
+  const url      = URL.createObjectURL(res.data as Blob);
+  const cartera  = nombreCartera.replace(/\s+/g, '_');
+  const lider    = nombreLider.replace(/\s+/g, '_');
+  const link     = document.createElement('a');
+  link.href      = url;
+  link.download  = `asignacion_${cartera}_${lider}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
