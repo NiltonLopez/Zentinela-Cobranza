@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.Interfaces;
@@ -64,10 +65,13 @@ public class CalificadorCarteraController : ControllerBase
         var nombreArchivo = await _service.ResolverNombreArchivoLocalizacionAsync(
             carteraID, liderID, fuente, categoria);
 
+        // El nombre puede traer tildes o Ñ (p. ej. "...CAMAÑO..."). Los valores de header
+        // HTTP deben ser ASCII, así que se usa ContentDispositionHeaderValue: emite un
+        // filename ASCII de respaldo y un filename* (RFC 5987, UTF-8) para el nombre real.
         Response.ContentType = "text/csv; charset=utf-8";
-        Response.Headers.Append(
-            "Content-Disposition",
-            $"attachment; filename=\"{nombreArchivo}\"");
+        var contentDisposition = new ContentDispositionHeaderValue("attachment");
+        contentDisposition.SetHttpFileName(nombreArchivo);
+        Response.Headers.Append("Content-Disposition", contentDisposition.ToString());
 
         await _service.EscribirLocalizacionCsvAsync(
             carteraID, liderID, fuente, categoria, Response.Body, HttpContext.RequestAborted);

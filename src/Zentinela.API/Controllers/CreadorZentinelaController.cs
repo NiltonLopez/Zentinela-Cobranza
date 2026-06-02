@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.DTOs.CreadorZentinela;
@@ -86,10 +87,13 @@ public class CreadorZentinelaController : ControllerBase
         // ligera (lista de carteras, ya cacheada en EF Core).
         var nombreArchivo = await _service.ResolverNombreArchivoAsync(filtro.CarteraID, "csv");
 
+        // El nombre puede traer tildes o Ñ. Los valores de header HTTP deben ser ASCII,
+        // así que se usa ContentDispositionHeaderValue: filename ASCII de respaldo +
+        // filename* (RFC 5987, UTF-8) con el nombre real.
         Response.ContentType = "text/csv; charset=utf-8";
-        Response.Headers.Append(
-            "Content-Disposition",
-            $"attachment; filename=\"{nombreArchivo}\"");
+        var contentDisposition = new ContentDispositionHeaderValue("attachment");
+        contentDisposition.SetHttpFileName(nombreArchivo);
+        Response.Headers.Append("Content-Disposition", contentDisposition.ToString());
 
         await _service.EscribirCsvAsync(
             contexto, filtro, Response.Body, HttpContext.RequestAborted);
