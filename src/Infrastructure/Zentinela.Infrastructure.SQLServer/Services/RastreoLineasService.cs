@@ -12,7 +12,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// alineadas con el bloque Localización del Calificador de Cartera) y devuelve,
 /// agrupado por tabla, los titulares asociados.
 ///
-/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer.
+/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer, MiVacuna.
 /// NO incluye auditorías, listas negras, directorios, ni logs salientes — esas
 /// no son fuentes de localización.
 ///
@@ -196,6 +196,14 @@ public class RastreoLineasService : IRastreoLineasService
               FROM dbo.MutualSer x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
              WHERE x.NumeroTelefonoFijo = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- MiVacuna (celular)
+            SELECT 'MiVacuna', 'MiVacuna (celular)',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.MiVacuna x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.Celular = @numero
              GROUP BY x.TitularID, t.Nombre
         )
         SELECT Tabla, Etiqueta, NumeroDocumento, Nombre, Apariciones

@@ -132,6 +132,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Celular Claro]                   AS CelClaro,
             [Celular MutualSer]               AS CelMutualSer,
             [Celular 2 MutualSer]             AS CelMutualSer2,
+            [Celular MiVacuna]                AS CelMiVacuna,
             [Email CajaCopi]                  AS EmCajacopi,
             [Email Camara]                    AS EmCamara,
             [Email Salud Total]               AS EmSaludTotal,
@@ -139,6 +140,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Email Tigo]                      AS EmTigo,
             [Email Claro]                     AS EmClaro,
             [Email MutualSer]                 AS EmMutualSer,
+            [Email MiVacuna]                  AS EmMiVacuna,
             [Edad Registraduria]              AS EdadReg,
             TRY_CAST([Saldo]                       AS decimal(18,2))  AS _Saldo,
             TRY_CAST(NULLIF([Valor Promesa], '0')  AS decimal(18,2))  AS _ValorPromesa,
@@ -193,32 +195,32 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                    OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
                    OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                    OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
-                   OR CelMutualSer2 NOT IN ('','0'))                                AS ConCelular,
+                   OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna  NOT IN ('','0')) AS ConCelular,
             (SELECT COUNT(*) FROM #t
                 WHERE EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                    OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
                    OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
-                   OR EmMutualSer  NOT IN ('','0'))                                 AS ConEmail,
+                   OR EmMutualSer  NOT IN ('','0') OR EmMiVacuna NOT IN ('','0'))   AS ConEmail,
             (SELECT COUNT(*) FROM #t
                 WHERE (CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
                     OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
                     OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                     OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
-                    OR CelMutualSer2 NOT IN ('','0'))
+                    OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0'))
                   AND (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                     OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
                     OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
-                    OR EmMutualSer  NOT IN ('','0'))) AS ConCelularYEmail,
+                    OR EmMutualSer  NOT IN ('','0') OR EmMiVacuna NOT IN ('','0'))) AS ConCelularYEmail,
             (SELECT COUNT(*) FROM #t
                 WHERE NOT (CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
                         OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
                         OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                         OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
-                        OR CelMutualSer2 NOT IN ('','0'))
+                        OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0'))
                   AND NOT (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                         OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
                         OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
-                        OR EmMutualSer  NOT IN ('','0'))) AS SinContacto,
+                        OR EmMutualSer  NOT IN ('','0') OR EmMiVacuna NOT IN ('','0'))) AS SinContacto,
             (SELECT COUNT(*) FROM #t WHERE EdadReg > 0)                             AS ConEdadRegistraduria,
             CASE WHEN (SELECT COUNT(*) FROM #t WHERE EdadReg > 0) > 0
                  THEN (SELECT CAST(ROUND(AVG(CAST(EdadReg AS decimal(18,4))), 1) AS decimal(10,1))
@@ -297,6 +299,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             UNION ALL SELECT 'Claro',      SUM(CASE WHEN CelClaro      NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'MutualSer (1)', SUM(CASE WHEN CelMutualSer  NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'MutualSer (2)', SUM(CASE WHEN CelMutualSer2 NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'MiVacuna',      SUM(CASE WHEN CelMiVacuna   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
         )
         SELECT Fuente AS Etiqueta, Cantidad,
                CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje

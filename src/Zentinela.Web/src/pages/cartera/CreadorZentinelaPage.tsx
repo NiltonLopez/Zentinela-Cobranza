@@ -35,6 +35,7 @@ const FUENTES_EMAIL = [
   { key: 'Positiva',      label: 'Positiva'       },
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'Claro',         label: 'Claro'          },
+  { key: 'MiVacuna',      label: 'MiVacuna'       },
   { key: 'MutualSer',     label: 'MutualSer'      },
 ];
 
@@ -48,6 +49,7 @@ const FUENTES_CELULAR = [
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'SOS',           label: 'SOS'            },
   { key: 'Claro',         label: 'Claro'          },
+  { key: 'MiVacuna',      label: 'MiVacuna'       },
   { key: 'MutualSer',     label: 'MutualSer (1)'  },
   { key: 'MutualSer2',    label: 'MutualSer (2)'  },
 ];

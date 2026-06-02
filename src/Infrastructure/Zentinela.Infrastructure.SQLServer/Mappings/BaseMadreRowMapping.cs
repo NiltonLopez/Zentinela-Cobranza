@@ -51,6 +51,10 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.CelularClaro)            .HasColumnName("Celular Claro");
         builder.Property(b => b.EmailClaro)              .HasColumnName("Email Claro");
         builder.Property(b => b.UltimaInsercionClaro)    .HasColumnName("Ultima Insercion Claro");
+        builder.Property(b => b.CelularMiVacuna)         .HasColumnName("Celular MiVacuna");
+        builder.Property(b => b.EmailMiVacuna)           .HasColumnName("Email MiVacuna");
+        builder.Property(b => b.FechaExpedicionMiVacuna) .HasColumnName("Fecha Expedicion MiVacuna");
+        builder.Property(b => b.EstadoMiVacuna)          .HasColumnName("Estado MiVacuna");
         builder.Property(b => b.CelularMutualSer)        .HasColumnName("Celular MutualSer");
         builder.Property(b => b.Celular2MutualSer)       .HasColumnName("Celular 2 MutualSer");
         builder.Property(b => b.TelefonoFijoMutualSer)   .HasColumnName("Telefono Fijo MutualSer");

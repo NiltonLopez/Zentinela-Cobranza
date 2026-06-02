@@ -47,6 +47,10 @@ public class BaseMadreRow
     public string? CelularClaro             { get; set; }
     public string? EmailClaro               { get; set; }
     public DateOnly? UltimaInsercionClaro   { get; set; }
+    public string? CelularMiVacuna          { get; set; }
+    public string? EmailMiVacuna            { get; set; }
+    public DateOnly? FechaExpedicionMiVacuna { get; set; }
+    public string? EstadoMiVacuna           { get; set; }
     public string? CelularMutualSer         { get; set; }
     public string? Celular2MutualSer        { get; set; }
     public string? TelefonoFijoMutualSer    { get; set; }

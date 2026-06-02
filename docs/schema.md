@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-05-07  
+> Generado: 2026-04-02 — Actualizado: 2026-05-29  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -322,6 +322,20 @@ Datos de afiliacion al SGSSS (Fosyga/ADRES).
 | Municipio | varchar(50) | SI | — | — |
 | EstadoEnFosyga | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
+
+### MiVacuna
+Contactabilidad proveniente de la plataforma MiVacuna. Cardinalidad 1:1 por `TitularID` (36.985 filas == titulares únicos). Tabla heap (sin PK ni índices nativos) — la migración `2026-05-29_mivacuna_in_basemadre.sql` crea `IX_MiVacuna_TitularID_FechaConsulta` para soportar el JOIN del iTVF. Tabla espejo `MiVacunaAuxiliar` (staging).
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | NO | — | Titular |
+| FechaExpedicion | date | SI | — | — |
+| Celular | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| EstadoEnMiVacuna | bit | SI | — | — |
+| FechaConsulta | date | SI | — | — |
+
+> **Expuesta en `vw_BaseMadre` + `fn_BaseMadrePorCartera`** con alias `[Celular MiVacuna]`, `[Email MiVacuna]`, `[Fecha Expedicion MiVacuna]`, `[Estado MiVacuna]` (bit → VARCHAR(1), patrón MutualSer). `Celular` entra al switch `ColumnaCelular` y `Email` al `ColumnaEmail` (clave `MiVacuna`). `FechaConsulta` queda como metadato interno (no se expone). No aporta localización. Sí entra al `UNION ALL` de Rastreo de Líneas (columna `Celular`).
 
 ### MutualSer
 Contactabilidad y calificación socioeconómica del afiliado a MutualSer EPS. Cardinalidad 1:1 por `TitularID` (614.145 filas == titulares únicos). Tabla heap (sin PK ni índices nativos) — la migración `2026-05-07_mutualser_in_basemadre.sql` crea `IX_MutualSer_TitularID_FechaConsulta` para soportar el JOIN del iTVF. Tabla espejo `MutualSerAuxiliar` (staging).

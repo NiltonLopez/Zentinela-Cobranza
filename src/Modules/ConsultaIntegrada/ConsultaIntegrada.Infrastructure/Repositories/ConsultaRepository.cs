@@ -225,6 +225,20 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        // MiVacuna es 1:1 por TitularID — entidad simple, sin aplanar múltiples filas.
+        var miVacuna = await _context.MiVacunas.FirstOrDefaultAsync(m => m.TitularId == titular.NumeroDocumento);
+        if (miVacuna != null)
+        {
+            contactabilidad["MiVacuna"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"]   = miVacuna.Celular ?? "N/A",
+                ["Email"]             = miVacuna.Email   ?? "N/A",
+                ["Fecha Expedición"]  = FormatDateOnly(miVacuna.FechaExpedicion),
+                ["Estado"]            = miVacuna.EstadoEnMiVacuna == true ? "Activo" : "Inactivo",
+                ["Última Consulta"]   = FormatDateOnly(miVacuna.FechaConsulta),
+            };
+        }
+
         if (contactabilidad.Any())
             resultado.Datos["Contactabilidad"] = contactabilidad;
     }
