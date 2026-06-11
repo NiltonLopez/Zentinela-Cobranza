@@ -183,7 +183,11 @@ public class AsignacionMasivaService : IAsignacionMasivaService
             validos.Add(numDoc);
         }
 
-        var totalOk     = todasLasFilas.Count(f => f.Estado == EstadoValidacion.Ok);
+        // "Listos para asignar" (chip verde) = TODO lo que quedará asignado tras el
+        // reemplazo: nuevos, ya-asignados (se conservan) y los Ok. Es decir, el universo
+        // completo de `validos` — no solo los Ok. Así el conteo coincide con el botón
+        // "Reemplazar con N" y con lo que realmente se sobrescribe. `totalNuevos` es un
+        // sub-desglose informativo (de esos válidos, cuántos se crean en BD).
         var totalNuevos = nuevosTitulares.Count;
         var totalError  = todasLasFilas.Count(f => f.Estado == EstadoValidacion.Error);
 
@@ -198,7 +202,7 @@ public class AsignacionMasivaService : IAsignacionMasivaService
             FilasConError     = todasLasFilas
                                     .Where(f => f.Estado == EstadoValidacion.Error)
                                     .ToList(),
-            TotalValidos      = totalOk,
+            TotalValidos      = validos.Count,
             TotalNuevos       = totalNuevos,
             TotalErrores      = totalError,
             TitularIDsValidos = validos,
