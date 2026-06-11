@@ -29,3 +29,35 @@ export interface CarteraDropdown {
   id: number;
   nombre: string;
 }
+
+// ── Pago individual ────────────────────────────────────────────────────────────
+
+export interface RegistrarPagoIndividualRequest {
+  carteraID: number;
+  cedulaTitular: number;
+  nombreCliente: string;
+  valorPagado: number;
+  fechaPago: string;            // "YYYY-MM-DD"
+  honorarios: number;
+  usuarioControl: string | null; // username del asesor; null/ignorado si esBaseGeneral
+  esBaseGeneral: boolean;
+}
+
+export interface RegistrarPagoIndividualResponse {
+  pagoID: number;
+  liderID: number;
+  liderNombre: string;
+  agenteControlID: number | null;
+  esBaseGeneral: boolean;
+}
+
+export interface AsesorCartera {
+  agenteID: number;
+  nombre: string;
+  usuarioControl: string;
+}
+
+export interface TitularEnCartera {
+  existe: boolean;
+  nombre: string | null;
+}

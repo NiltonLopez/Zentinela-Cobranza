@@ -117,4 +117,64 @@ public class PagosController : ControllerBase
         var insertados = await _service.ConfirmarCargueAsync(request, usuarioRegistro);
         return Ok(new { insertados, mensaje = $"Se cargaron {insertados} pagos correctamente." });
     }
+
+    /// <summary>
+    /// Registra UN pago desde el formulario de "Pago individual". Valida y persiste en un solo paso,
+    /// reutilizando la resolución de líder/agente del cargue masivo. Devuelve el líder resuelto, o
+    /// 400 con el motivo si la fila no es válida o está duplicada.
+    /// </summary>
+    [HttpPost("registrar-individual")]
+    public async Task<IActionResult> RegistrarIndividual([FromBody] RegistrarPagoIndividualRequest request)
+    {
+        if (request.CarteraID <= 0)
+            return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
+        if (request.CedulaTitular <= 0)
+            return BadRequest(new { mensaje = "La cédula del titular es obligatoria." });
+        if (string.IsNullOrWhiteSpace(request.NombreCliente))
+            return BadRequest(new { mensaje = "El nombre del cliente es obligatorio." });
+        if (request.ValorPagado <= 0)
+            return BadRequest(new { mensaje = "El valor pagado debe ser mayor a cero." });
+        if (request.Honorarios < 0)
+            return BadRequest(new { mensaje = "Los honorarios no pueden ser negativos." });
+        if (!request.EsBaseGeneral && string.IsNullOrWhiteSpace(request.UsuarioControl))
+            return BadRequest(new { mensaje = "Selecciona el asesor o marca BASE GENERAL." });
+
+        var usuarioRegistro = User.FindFirstValue("userName");
+        if (string.IsNullOrWhiteSpace(usuarioRegistro))
+            return Unauthorized(new { mensaje = "No se pudo identificar al usuario." });
+
+        try
+        {
+            var resultado = await _service.RegistrarPagoIndividualAsync(request, usuarioRegistro);
+            return Ok(resultado);
+        }
+        catch (PagoIndividualException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>Asesores de una cartera para el autocomplete del pago individual (filtra por nombre).</summary>
+    [HttpGet("asesores")]
+    public async Task<IActionResult> BuscarAsesores([FromQuery] int carteraID, [FromQuery] string q = "")
+    {
+        if (carteraID <= 0)
+            return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
+
+        var asesores = await _service.BuscarAsesoresAsync(carteraID, q);
+        return Ok(asesores);
+    }
+
+    /// <summary>Busca un titular por cédula dentro de una cartera (para autocompletar su nombre).</summary>
+    [HttpGet("titular")]
+    public async Task<IActionResult> BuscarTitular([FromQuery] int carteraID, [FromQuery] long cedula)
+    {
+        if (carteraID <= 0)
+            return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
+        if (cedula <= 0)
+            return BadRequest(new { mensaje = "Cédula inválida." });
+
+        var titular = await _service.BuscarTitularAsync(carteraID, cedula);
+        return Ok(titular);
+    }
 }

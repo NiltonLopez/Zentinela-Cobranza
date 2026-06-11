@@ -1170,6 +1170,90 @@ Inserta en la tabla `Pago` las filas válidas devueltas por `/validar`. El `Usua
 
 ---
 
+## POST /api/pagos/registrar-individual
+
+Registra **un** pago desde el formulario "Pago individual" (tab del módulo Cargue de Pagos). Valida e inserta en un solo paso, reutilizando exactamente la misma resolución de líder/agente y detección de duplicados del cargue masivo (ADR-023). El `UsuarioRegistro` se toma del JWT.
+
+**Autenticación requerida:** Sí — `Admin`, `Auxiliar de Sistemas`
+
+### Request body
+
+```json
+{
+  "carteraID": 1,
+  "cedulaTitular": 1020304050,
+  "nombreCliente": "PEREZ JUAN",
+  "valorPagado": 500000,
+  "fechaPago": "2026-06-11",
+  "honorarios": 75000,
+  "usuarioControl": "jperez",
+  "esBaseGeneral": false
+}
+```
+
+- `usuarioControl` — username del asesor (Agente.UsuarioControlNext). Se ignora si `esBaseGeneral = true`.
+- `esBaseGeneral` — `true` ⇒ pago sin asesor; `agenteControlID` queda NULL y el líder debe ser único.
+
+### Response body — 200 OK
+
+```json
+{ "pagoID": 12345, "liderID": 3, "liderNombre": "ANA LÓPEZ", "agenteControlID": 98765, "esBaseGeneral": false }
+```
+
+### Códigos HTTP
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Pago registrado |
+| `400 Bad Request` | Campos inválidos, o la fila no resuelve (cédula no asignada, asesor no encontrado, ambigüedad de líder, pago duplicado) — `{ mensaje }` con el motivo |
+| `401 Unauthorized` | Sin claim `userName` en el token |
+
+---
+
+## GET /api/pagos/asesores
+
+Asesores de una cartera para el autocomplete del pago individual: agentes en `Cartera_Agente` con `UsuarioControlNext`, con nombre desde DBRecursosHumanos. Filtra por `q` sobre el nombre (máx. 10).
+
+**Autenticación requerida:** Sí — `Admin`, `Auxiliar de Sistemas`
+
+### Query params
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `carteraID` | `int` | Cartera seleccionada |
+| `q` | `string` | Texto de búsqueda por nombre (opcional) |
+
+### Response body — 200 OK
+
+```json
+[ { "agenteID": 98765, "nombre": "JUAN PEREZ", "usuarioControl": "jperez" } ]
+```
+
+---
+
+## GET /api/pagos/titular
+
+Busca un titular por cédula dentro de una cartera, para autocompletar su nombre en el pago individual.
+
+**Autenticación requerida:** Sí — `Admin`, `Auxiliar de Sistemas`
+
+### Query params
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `carteraID` | `int` | Cartera seleccionada |
+| `cedula` | `long` | Cédula del titular |
+
+### Response body — 200 OK
+
+```json
+{ "existe": true, "nombre": "PEREZ JUAN" }
+```
+
+`existe = false` cuando la cédula no está asignada a la cartera (el pago no resolvería líder).
+
+---
+
 ## GET /api/reportes/plantilla
 
 Descarga la plantilla Excel para Cargue de Reportes.  

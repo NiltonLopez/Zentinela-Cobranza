@@ -44,11 +44,16 @@ public class CarguePagosService : ICarguePagosService
     private const string BaseGeneralKeyword = "BASE GENERAL";
 
     private readonly CallCenterDbContext _context;
+    private readonly RecursosHumanosDbContext _rrhh;
     private readonly ICalificadorCarteraCache _calificadorCache;
 
-    public CarguePagosService(CallCenterDbContext context, ICalificadorCarteraCache calificadorCache)
+    public CarguePagosService(
+        CallCenterDbContext context,
+        RecursosHumanosDbContext rrhh,
+        ICalificadorCarteraCache calificadorCache)
     {
         _context          = context;
+        _rrhh             = rrhh;
         _calificadorCache = calificadorCache;
     }
 
@@ -103,6 +108,17 @@ public class CarguePagosService : ICarguePagosService
             filas.Add(ParsearPartes(partes, i + 1, idx));
         }
 
+        return await ResolverFilasAsync(filas, carteraID);
+    }
+
+    /// <summary>
+    /// Resuelve y deduplica un conjunto de filas YA parseadas (mutación + partición): marca
+    /// BASE GENERAL, resuelve AgenteControlID y LiderID (con desempate multi-líder vía
+    /// Cartera_Agente, ADR-018) y marca duplicados (cédula, fecha, valor en BD o repetidos en el
+    /// lote). Reutilizado por el cargue masivo (ValidarArchivoAsync) y el registro de pago individual.
+    /// </summary>
+    private async Task<ValidarPagosResponse> ResolverFilasAsync(List<PagoFilaDto> filas, int carteraID)
+    {
         var filasValidas = filas.Where(f => f.EsValida).ToList();
 
         // ── Marcar filas BASE GENERAL ─────────────────────────────────────────
@@ -308,6 +324,136 @@ public class CarguePagosService : ICarguePagosService
         _calificadorCache.InvalidarTodo();
 
         return pagos.Count;
+    }
+
+    // ── Pago individual ───────────────────────────────────────────────────────
+
+    public async Task<RegistrarPagoIndividualResponse> RegistrarPagoIndividualAsync(
+        RegistrarPagoIndividualRequest request, string usuarioRegistro)
+    {
+        // El pago individual es, conceptualmente, una fila del cargue masivo: se modela como
+        // PagoFilaDto y se valida/resuelve con EXACTAMENTE la misma lógica (ResolverFilasAsync).
+        // Para BASE GENERAL se envía la palabra clave como UsuarioControl; si no, el username del
+        // asesor seleccionado en el autocomplete.
+        var fila = new PagoFilaDto
+        {
+            CedulaTitular  = request.CedulaTitular,
+            NombreCliente  = request.NombreCliente,
+            ValorPagado    = request.ValorPagado,
+            FechaPago      = request.FechaPago,
+            Honorarios     = request.Honorarios,
+            UsuarioControl = request.EsBaseGeneral
+                                ? BaseGeneralKeyword
+                                : (request.UsuarioControl ?? string.Empty).Trim(),
+            EsValida       = true,
+        };
+
+        var resultado = await ResolverFilasAsync([fila], request.CarteraID);
+
+        // Una sola fila: cae en Errores (resolución falló), Duplicados (ya cargado) o TodasLasValidas.
+        if (resultado.Errores.Count > 0)
+            throw new PagoIndividualException(resultado.Errores[0].ErrorMensaje ?? "No se pudo validar el pago.");
+        if (resultado.Duplicados.Count > 0)
+            throw new PagoIndividualException(resultado.Duplicados[0].ErrorMensaje ?? "El pago ya está registrado.");
+
+        var valida = resultado.TodasLasValidas[0];
+
+        var pago = new Pago
+        {
+            CedulaTitular   = valida.CedulaTitular,
+            NombreCliente   = valida.NombreCliente.Trim(),
+            ValorPagado     = valida.ValorPagado,
+            FechaPago       = valida.FechaPago,
+            Honorarios      = valida.Honorarios,
+            LiderID         = valida.LiderID,
+            AgenteControlID = valida.AgenteControlID,
+            CarteraID       = request.CarteraID,
+            UsuarioRegistro = usuarioRegistro,
+            FechaRegistro   = DateTime.UtcNow,
+        };
+
+        _context.Pagos.Add(pago);
+        await _context.SaveChangesAsync();
+        _calificadorCache.InvalidarTodo(); // paridad con el cargue masivo
+
+        var liderNombre = await _context.Lideres
+            .Where(l => l.ID == valida.LiderID)
+            .Select(l => l.Nombre)
+            .FirstOrDefaultAsync() ?? string.Empty;
+
+        return new RegistrarPagoIndividualResponse
+        {
+            PagoID          = pago.PagoID,
+            LiderID         = valida.LiderID,
+            LiderNombre     = liderNombre,
+            AgenteControlID = valida.AgenteControlID,
+            EsBaseGeneral   = valida.EsBaseGeneral,
+        };
+    }
+
+    /// <summary>
+    /// Asesores de una cartera para el autocomplete del pago individual: los agentes asignados
+    /// en Cartera_Agente que tienen UsuarioControlNext (sin él no se puede atribuir el pago).
+    /// Nombres desde DBRecursosHumanos (cross-DB), filtrando empleados retirados. Filtra por
+    /// <paramref name="q"/> sobre el nombre y limita a 10 resultados.
+    /// </summary>
+    public async Task<List<AsesorCarteraDto>> BuscarAsesoresAsync(int carteraID, string? q)
+    {
+        var agentes = await _context.CarteraAgentes
+            .Where(ca => ca.CarteraID == carteraID)
+            .Join(_context.Agentes,
+                  ca => ca.AgenteID,
+                  a  => a.AgenteID,
+                  (ca, a) => new { a.AgenteID, a.UsuarioControlNext })
+            .Where(x => x.UsuarioControlNext != null)
+            .Distinct()
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (agentes.Count == 0)
+            return [];
+
+        var ids = agentes.Select(a => a.AgenteID).ToList();
+        var nombres = await _rrhh.Empleados
+            .Where(e => e.EstadoEmpleado && ids.Contains(e.NumeroDocumento))
+            .AsNoTracking()
+            .ToDictionaryAsync(e => e.NumeroDocumento, e => $"{e.Nombre} {e.Apellidos}".Trim());
+
+        var termino = q?.Trim();
+        return agentes
+            .Where(a => nombres.ContainsKey(a.AgenteID))
+            .Select(a => new AsesorCarteraDto
+            {
+                AgenteID       = a.AgenteID,
+                Nombre         = nombres[a.AgenteID],
+                UsuarioControl = a.UsuarioControlNext!,
+            })
+            .Where(a => string.IsNullOrEmpty(termino)
+                     || a.Nombre.Contains(termino, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(a => a.Nombre)
+            .Take(10)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Busca un titular por cédula dentro de una cartera (para autocompletar el nombre en el pago
+    /// individual). Existe = false si la cédula no está asignada a la cartera — en ese caso el pago
+    /// no resolvería líder.
+    /// </summary>
+    public async Task<TitularEnCarteraDto> BuscarTitularAsync(int carteraID, long cedula)
+    {
+        var asignado = await _context.TitularCarteras
+            .AnyAsync(tc => tc.TitularID == cedula && tc.CarteraID == carteraID);
+
+        if (!asignado)
+            return new TitularEnCarteraDto { Existe = false };
+
+        var nombre = await _context.Titulares
+            .Where(t => t.NumeroDocumento == cedula)
+            .Select(t => t.Nombre)
+            .FirstOrDefaultAsync();
+
+        return new TitularEnCarteraDto { Existe = true, Nombre = nombre };
     }
 
     // ── Última actualización ──────────────────────────────────────────────────

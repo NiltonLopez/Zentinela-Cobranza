@@ -25,6 +25,21 @@ public interface ICarguePagosService
     /// </summary>
     Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, string usuarioRegistro);
 
+    /// <summary>
+    /// Registra UN pago desde el formulario individual, reutilizando la misma resolución de
+    /// líder/agente y detección de duplicados del cargue masivo. Lanza
+    /// <see cref="Zentinela.Application.DTOs.Pagos.PagoIndividualException"/> con el motivo si la
+    /// fila no es válida o está duplicada. <paramref name="usuarioRegistro"/> = UserName autenticado.
+    /// </summary>
+    Task<RegistrarPagoIndividualResponse> RegistrarPagoIndividualAsync(
+        RegistrarPagoIndividualRequest request, string usuarioRegistro);
+
+    /// <summary>Asesores de una cartera (con UsuarioControlNext) para el autocomplete, filtrados por nombre.</summary>
+    Task<List<AsesorCarteraDto>> BuscarAsesoresAsync(int carteraID, string? q);
+
+    /// <summary>Busca un titular por cédula dentro de una cartera para autocompletar su nombre.</summary>
+    Task<TitularEnCarteraDto> BuscarTitularAsync(int carteraID, long cedula);
+
     /// <summary>Genera la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
     byte[] GenerarPlantilla();
 
