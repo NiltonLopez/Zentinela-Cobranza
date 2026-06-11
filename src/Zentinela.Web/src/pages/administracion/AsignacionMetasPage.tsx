@@ -292,7 +292,7 @@ export function AsignacionMetasPage() {
     });
 
     return { lider, agente };
-  }, [data, soloSinMeta, busqueda]);
+  }, [data, soloSinMeta, busqueda, liderFiltro]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
