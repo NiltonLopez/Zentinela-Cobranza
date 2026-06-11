@@ -34,10 +34,11 @@ public class AsignacionMetasService : IAsignacionMetasService
     private async Task<List<FilaMetaLiderCarteraDto>> ObtenerFilasLiderCarteraAsync(short año, byte mes)
     {
         // Metas administrativas: excluye relaciones externas (Lider_Cartera.EsExterna = 1)
+        // e inactivadas (Lider_Cartera.Activo = 0, ADR-022).
         var combinaciones = await _callCenter.LiderCarteras
             .Include(lc => lc.Lider)
             .Include(lc => lc.Cartera)
-            .Where(lc => lc.Lider.Activo && lc.Cartera.Activa && !lc.EsExterna)
+            .Where(lc => lc.Lider.Activo && lc.Cartera.Activa && !lc.EsExterna && lc.Activo)
             .AsNoTracking()
             .ToListAsync();
 

@@ -40,7 +40,11 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             // No incluye "Cartera Completo" — un líder no puede ver datos de otros líderes.
             var lid = contexto.LiderID.Value;
             return await _db.BaseMadreRows
-                .Where(b => b.LiderID == lid)
+                // Excluye combinaciones de relaciones inactivadas (ADR-022): aunque la
+                // vista conserve filas históricas, una relación retirada no se ofrece.
+                .Where(b => b.LiderID == lid
+                         && _db.LiderCarteras.Any(lc =>
+                                lc.LiderID == b.LiderID && lc.CarteraID == b.CarteraID && lc.Activo))
                 .Select(b => new { b.CarteraID, b.LiderID })
                 .Distinct()
                 .Join(_db.Carteras,
@@ -63,8 +67,9 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
         // Director / Admin: combinaciones individuales líder-cartera +
         // una entrada agregada "{NombreCartera} Completo" por cartera (LiderID = null).
-        // Mismo patrón que CreadorZentinelaService.
+        // Mismo patrón que CreadorZentinelaService. Solo relaciones activas (ADR-022).
         var combinaciones = await _db.LiderCarteras
+            .Where(lc => lc.Activo)
             .Select(lc => new
             {
                 lc.CarteraID,

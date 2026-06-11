@@ -34,7 +34,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         {
             var lid = contexto.LiderID.Value;
             return await _db.LiderCarteras
-                .Where(lc => lc.LiderID == lid)
+                .Where(lc => lc.LiderID == lid && lc.Activo)
                 .Select(lc => new CarteraDropdownDto
                 {
                     CarteraID     = lc.CarteraID,
@@ -47,6 +47,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         }
 
         return await _db.LiderCarteras
+            .Where(lc => lc.Activo)
             .Select(lc => new CarteraDropdownDto
             {
                 CarteraID     = lc.CarteraID,

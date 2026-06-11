@@ -47,8 +47,11 @@ Relación muchos-a-muchos entre Lider y Cartera.
 | LiderID | int | NO | SI | Lider |
 | CarteraID | int | NO | SI | Cartera |
 | EsExterna | bit | NO | — | — |
+| Activo | bit | NO | — | — (default 1) |
 
 `EsExterna = 1` marca la relación como operada por agencia externa o personal externo. Vive en la relación (no en `Cartera`) porque la misma cartera puede tener simultáneamente relaciones internas y externas según el líder que la trabaje. Las relaciones externas quedan excluidas de informes administrativos, metas, Dashboard Director, Comparador de Carteras y selector de Cargue de Pagos; se listan en `Informes → Agencias Externas`. Ortogonal al rol del usuario (`LiderExterno` / `AsesorExterno`). Migración: `docs/sql/migrations/2026-05-20_lider_cartera_es_externa.sql`.
+
+`Activo = 0` retira (soft-delete) la relación sin borrarla, conservando el histórico anclado a `(LiderID, CarteraID)` —pagos, metas, mensajería, IVR— que el borrado físico rompería. Una relación inactiva desaparece de lo **operativo** (generación de bases, selectores, dashboards, metas) pero sigue visible en lo **histórico**: `InformesRecaudoService` NO filtra por `Activo`. Reversible (Reactivar). Ortogonal a `EsExterna`. La X de "Gestión de Líderes y Carteras" inactiva si hay histórico y elimina físicamente solo si la relación está limpia. Migración: `docs/sql/migrations/2026-06-11_lider_cartera_activo.sql` (aplicada 2026-06-11). Ver ADR-022.
 
 ### Titular_Cartera
 Asignación de titulares a carteras y líderes. Tabla pivote principal del negocio.

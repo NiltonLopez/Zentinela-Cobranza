@@ -2,13 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listarRelaciones, listarLideres, buscarCarteras,
-  crearRelacion, eliminarRelacion, descargarAsignacion,
+  crearRelacion, eliminarRelacion, inactivarRelacion, reactivarRelacion, descargarAsignacion,
 } from '../../api/gestionCarterasApi';
 import type { RelacionLiderCartera, LiderDropdown, CarteraAutocomplete } from '../../types/gestionCarteras';
 
-// ─── Modal: Confirmar eliminación ──────────────────────────────────────────────
+// ─── Modal: Retirar relación (X inteligente) ────────────────────────────────────
+// Una sola X decide la acción según el histórico de la relación (ADR-022):
+//   - Con histórico (pagos/metas/mensajería/IVR) ⇒ INACTIVAR (soft): conserva el
+//     histórico, vacía titulares, reversible. No se ofrece borrar — rompería la
+//     trazabilidad del recaudo.
+//   - Sin histórico ⇒ ELIMINAR (hard): borrado físico real, salida de escape para
+//     un alta creada por error.
 
-function ModalEliminar({
+function ModalRetirar({
   relacion,
   onConfirmar,
   onCancelar,
@@ -19,6 +25,14 @@ function ModalEliminar({
   onCancelar: () => void;
   cargando: boolean;
 }) {
+  const esSoft = relacion.tieneHistorico;
+  const titulo = esSoft ? 'Inactivar relación' : 'Eliminar relación';
+  const verboInf = esSoft ? 'inactivar' : 'eliminar';
+  const colorAccion = esSoft ? '#d97706' : '#dc2626';
+  const textoBoton = cargando
+    ? (esSoft ? 'Inactivando...' : 'Eliminando...')
+    : (esSoft ? 'Inactivar' : 'Eliminar');
+
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -36,31 +50,37 @@ function ModalEliminar({
         boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
       }}>
         <p style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px', color: 'var(--z-text-primary)' }}>
-          Eliminar relación
+          {titulo}
         </p>
         <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', lineHeight: 1.6, marginBottom: '14px' }}>
-          ¿Está seguro que desea eliminar{' '}
+          ¿Está seguro que desea {verboInf}{' '}
           <strong style={{ color: 'var(--z-text-primary)' }}>{relacion.nombreCartera}</strong>{' '}
           de{' '}
           <strong style={{ color: 'var(--z-text-primary)' }}>{relacion.nombreLider}</strong>?
         </p>
-        {relacion.totalAsignaciones > 0 && (
+        {esSoft ? (
           <div style={{
-            padding: '10px 14px',
-            borderRadius: '8px',
-            fontSize: '12px',
-            background: '#fffbeb',
-            border: '0.5px solid #fde68a',
-            color: '#92400e',
-            marginBottom: '20px',
-            lineHeight: 1.5,
+            padding: '10px 14px', borderRadius: '8px', fontSize: '12px',
+            background: '#fffbeb', border: '0.5px solid #fde68a',
+            color: '#92400e', marginBottom: '20px', lineHeight: 1.5,
           }}>
-            Esta cartera tiene{' '}
-            <strong>{relacion.totalAsignaciones.toLocaleString('es-CO')}</strong>{' '}
-            asignaciones en Titular_Cartera, recuerde reasignarlas.
+            Esta relación tiene histórico (pagos, metas o envíos) que debe conservarse.
+            Se <strong>inactivará</strong>: desaparece de lo operativo
+            {relacion.totalAsignaciones > 0 && (
+              <> y se vacían sus <strong>{relacion.totalAsignaciones.toLocaleString('es-CO')}</strong> asignaciones</>
+            )}
+            , pero su histórico queda intacto. Podrás reactivarla cuando quieras.
+          </div>
+        ) : (
+          <div style={{
+            padding: '10px 14px', borderRadius: '8px', fontSize: '12px',
+            background: '#fff5f5', border: '0.5px solid #fecaca',
+            color: '#991b1b', marginBottom: '20px', lineHeight: 1.5,
+          }}>
+            Esta relación no tiene histórico, se <strong>eliminará permanentemente</strong>.
+            Esta acción no se puede deshacer.
           </div>
         )}
-        {relacion.totalAsignaciones === 0 && <div style={{ marginBottom: '20px' }} />}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button
             onClick={onCancelar}
@@ -78,13 +98,13 @@ function ModalEliminar({
             disabled={cargando}
             style={{
               padding: '8px 16px', borderRadius: '6px',
-              border: 'none', background: '#dc2626',
+              border: 'none', background: colorAccion,
               color: 'white', fontSize: '13px', fontWeight: 600,
               cursor: cargando ? 'not-allowed' : 'pointer',
               opacity: cargando ? 0.7 : 1,
             }}
           >
-            {cargando ? 'Eliminando...' : 'Eliminar'}
+            {textoBoton}
           </button>
         </div>
       </div>
@@ -352,22 +372,27 @@ function TarjetaRelacion({
   activa,
   onSeleccionar,
   onEliminar,
+  onReactivar,
   onDescargar,
   estaDescargando,
+  estaReactivando,
 }: {
   relacion: RelacionLiderCartera;
   activa: boolean;
   onSeleccionar: () => void;
   onEliminar: (r: RelacionLiderCartera) => void;
+  onReactivar: (r: RelacionLiderCartera) => void;
   onDescargar: (r: RelacionLiderCartera) => void;
   estaDescargando: boolean;
+  estaReactivando: boolean;
 }) {
+  const inactiva = !relacion.activo;
   return (
     <div
       onClick={onSeleccionar}
       style={{
         position: 'relative',
-        background: 'var(--z-bg-card)',
+        background: inactiva ? 'var(--z-bg-surface)' : 'var(--z-bg-card)',
         border: `0.5px solid ${activa ? 'var(--z-brand)' : 'var(--z-border)'}`,
         borderRadius: '10px',
         padding: '16px',
@@ -375,9 +400,10 @@ function TarjetaRelacion({
         transition: 'border-color 0.15s, box-shadow 0.15s',
         boxShadow: activa ? '0 0 0 2px rgba(37,99,235,0.12)' : 'none',
         userSelect: 'none',
+        opacity: inactiva ? 0.72 : 1,
       }}
     >
-      {/* Botones de acción — visibles solo cuando la tarjeta está activa */}
+      {/* Botones de acción — visibles solo cuando la tarjeta está activa (seleccionada) */}
       {activa && (
         <div
           style={{
@@ -386,38 +412,60 @@ function TarjetaRelacion({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {relacion.totalAsignaciones > 0 && (
+          {inactiva ? (
+            // Relación retirada: única acción es Reactivar (ADR-022).
             <button
-              title={estaDescargando ? 'Descargando...' : 'Descargar asignación actual'}
-              onClick={() => !estaDescargando && onDescargar(relacion)}
+              title={estaReactivando ? 'Reactivando...' : 'Reactivar relación'}
+              onClick={() => !estaReactivando && onReactivar(relacion)}
               style={{
-                width: '22px', height: '22px',
-                borderRadius: '50%', border: 'none',
-                background: estaDescargando ? '#93c5fd' : '#2563eb',
-                color: 'white',
-                fontSize: '12px', fontWeight: 700,
-                cursor: estaDescargando ? 'not-allowed' : 'pointer',
+                height: '22px', padding: '0 10px',
+                borderRadius: '11px', border: 'none',
+                background: estaReactivando ? '#86efac' : '#16a34a',
+                color: 'white', fontSize: '11px', fontWeight: 700,
+                cursor: estaReactivando ? 'not-allowed' : 'pointer',
                 lineHeight: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              ↓
+              ↻ Reactivar
             </button>
+          ) : (
+            <>
+              {relacion.totalAsignaciones > 0 && (
+                <button
+                  title={estaDescargando ? 'Descargando...' : 'Descargar asignación actual'}
+                  onClick={() => !estaDescargando && onDescargar(relacion)}
+                  style={{
+                    width: '22px', height: '22px',
+                    borderRadius: '50%', border: 'none',
+                    background: estaDescargando ? '#93c5fd' : '#2563eb',
+                    color: 'white',
+                    fontSize: '12px', fontWeight: 700,
+                    cursor: estaDescargando ? 'not-allowed' : 'pointer',
+                    lineHeight: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  ↓
+                </button>
+              )}
+              <button
+                // Título adaptativo: con histórico la X inactiva (soft), sin histórico elimina (hard).
+                title={relacion.tieneHistorico ? 'Inactivar relación (conserva histórico)' : 'Eliminar relación'}
+                onClick={() => onEliminar(relacion)}
+                style={{
+                  width: '22px', height: '22px',
+                  borderRadius: '50%', border: 'none',
+                  background: relacion.tieneHistorico ? '#d97706' : '#dc2626', color: 'white',
+                  fontSize: '13px', fontWeight: 700,
+                  cursor: 'pointer', lineHeight: 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                ×
+              </button>
+            </>
           )}
-          <button
-            title="Eliminar relación"
-            onClick={() => onEliminar(relacion)}
-            style={{
-              width: '22px', height: '22px',
-              borderRadius: '50%', border: 'none',
-              background: '#dc2626', color: 'white',
-              fontSize: '13px', fontWeight: 700,
-              cursor: 'pointer', lineHeight: 1,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
         </div>
       )}
 
@@ -432,6 +480,17 @@ function TarjetaRelacion({
         }}>
           {relacion.nombreCartera}
         </p>
+        {inactiva && (
+          <span title="Relación inactivada — retirada de lo operativo, histórico conservado" style={{
+            fontSize: '10px', fontWeight: 600,
+            padding: '1px 6px', borderRadius: '4px',
+            background: '#F5F5F4', color: '#78716C',
+            textTransform: 'uppercase', letterSpacing: '0.04em',
+            flexShrink: 0,
+          }}>
+            Inactiva
+          </span>
+        )}
         {relacion.esExterna && (
           <span title="Cartera externa — agencias/personal externo" style={{
             fontSize: '10px', fontWeight: 600,
@@ -478,11 +537,12 @@ function TarjetaRelacion({
 export function GestionCarterasPage() {
   const [busqueda, setBusqueda] = useState('');
   const [tarjetaActiva, setTarjetaActiva] = useState<string | null>(null);
-  const [relacionAEliminar, setRelacionAEliminar] = useState<RelacionLiderCartera | null>(null);
+  const [relacionARetirar, setRelacionARetirar] = useState<RelacionLiderCartera | null>(null);
   const [mostrarCrear, setMostrarCrear] = useState(false);
   const [errorCrear, setErrorCrear] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
-  const [descargando, setDescargando] = useState<string | null>(null); // key de la tarjeta en descarga
+  const [descargando, setDescargando] = useState<string | null>(null);  // key de la tarjeta en descarga
+  const [reactivando, setReactivando] = useState<string | null>(null);  // key de la tarjeta reactivándose
   const queryClient = useQueryClient();
 
   const { data: relaciones = [], isLoading, isError } = useQuery({
@@ -496,20 +556,43 @@ export function GestionCarterasPage() {
     enabled: mostrarCrear,
   });
 
-  const mutacionEliminar = useMutation({
-    mutationFn: ({ liderID, carteraID }: { liderID: number; carteraID: number }) =>
-      eliminarRelacion(liderID, carteraID),
-    onSuccess: () => {
+  // Retirar (X inteligente): inactiva si la relación tiene histórico, elimina si no (ADR-022).
+  const mutacionRetirar = useMutation({
+    mutationFn: (rel: RelacionLiderCartera) =>
+      rel.tieneHistorico
+        ? inactivarRelacion(rel.liderID, rel.carteraID)
+        : eliminarRelacion(rel.liderID, rel.carteraID),
+    onSuccess: (_data, rel) => {
       queryClient.invalidateQueries({ queryKey: ['gestion-carteras-relaciones'] });
-      setFeedback({ tipo: 'exito', texto: 'Relación eliminada correctamente.' });
-      setRelacionAEliminar(null);
+      setFeedback({
+        tipo: 'exito',
+        texto: rel.tieneHistorico
+          ? 'Relación inactivada. Su histórico se conserva.'
+          : 'Relación eliminada correctamente.',
+      });
+      setRelacionARetirar(null);
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { mensaje?: string } } })
-        ?.response?.data?.mensaje ?? 'No se pudo eliminar la relación. Intenta de nuevo.';
+        ?.response?.data?.mensaje ?? 'No se pudo completar la acción. Intenta de nuevo.';
       setFeedback({ tipo: 'error', texto: msg });
-      setRelacionAEliminar(null);
+      setRelacionARetirar(null);
     },
+  });
+
+  const mutacionReactivar = useMutation({
+    mutationFn: (rel: RelacionLiderCartera) => reactivarRelacion(rel.liderID, rel.carteraID),
+    onMutate: (rel) => setReactivando(`${rel.liderID}-${rel.carteraID}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gestion-carteras-relaciones'] });
+      setFeedback({ tipo: 'exito', texto: 'Relación reactivada correctamente.' });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { mensaje?: string } } })
+        ?.response?.data?.mensaje ?? 'No se pudo reactivar la relación.';
+      setFeedback({ tipo: 'error', texto: msg });
+    },
+    onSettled: () => setReactivando(null),
   });
 
   const mutacionCrear = useMutation({
@@ -630,8 +713,10 @@ export function GestionCarterasPage() {
                 relacion={r}
                 activa={tarjetaActiva === key}
                 estaDescargando={descargando === key}
+                estaReactivando={reactivando === key}
                 onSeleccionar={() => setTarjetaActiva(tarjetaActiva === key ? null : key)}
-                onEliminar={(rel) => { setRelacionAEliminar(rel); setTarjetaActiva(null); }}
+                onEliminar={(rel) => { setRelacionARetirar(rel); setTarjetaActiva(null); }}
+                onReactivar={(rel) => mutacionReactivar.mutate(rel)}
                 onDescargar={async (rel) => {
                   if (descargando) return;
                   setDescargando(key);
@@ -649,16 +734,13 @@ export function GestionCarterasPage() {
         </div>
       )}
 
-      {/* Modal eliminar */}
-      {relacionAEliminar && (
-        <ModalEliminar
-          relacion={relacionAEliminar}
-          cargando={mutacionEliminar.isPending}
-          onConfirmar={() => mutacionEliminar.mutate({
-            liderID: relacionAEliminar.liderID,
-            carteraID: relacionAEliminar.carteraID,
-          })}
-          onCancelar={() => setRelacionAEliminar(null)}
+      {/* Modal retirar (X inteligente: inactivar si hay histórico, eliminar si no) */}
+      {relacionARetirar && (
+        <ModalRetirar
+          relacion={relacionARetirar}
+          cargando={mutacionRetirar.isPending}
+          onConfirmar={() => mutacionRetirar.mutate(relacionARetirar)}
+          onCancelar={() => setRelacionARetirar(null)}
         />
       )}
 

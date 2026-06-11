@@ -67,7 +67,10 @@ public class GestionCarterasController : ControllerBase
             $"asignacion_{carteraID}_{liderID}.xlsx");
     }
 
-    /// <summary>Elimina una relación Líder_Cartera. No elimina los Titular_Cartera asociados.</summary>
+    /// <summary>
+    /// Elimina FÍSICAMENTE una relación Líder_Cartera (solo si no tiene histórico).
+    /// No elimina los Titular_Cartera asociados de forma manual — los limpia el servicio.
+    /// </summary>
     [HttpDelete("relaciones/{liderID:int}/{carteraID:int}")]
     public async Task<IActionResult> EliminarRelacion(int liderID, int carteraID)
     {
@@ -75,6 +78,39 @@ public class GestionCarterasController : ControllerBase
         {
             await _service.EliminarRelacionAsync(liderID, carteraID);
             return Ok(new { mensaje = "Relación eliminada correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Inactiva (soft-delete) una relación con histórico: vacía sus titulares y la retira
+    /// de lo operativo conservando pagos/metas/mensajería/IVR. Reversible. Ver ADR-022.
+    /// </summary>
+    [HttpPut("relaciones/{liderID:int}/{carteraID:int}/inactivar")]
+    public async Task<IActionResult> InactivarRelacion(int liderID, int carteraID)
+    {
+        try
+        {
+            await _service.InactivarRelacionAsync(liderID, carteraID);
+            return Ok(new { mensaje = "Relación inactivada. Su histórico se conserva." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>Reactiva una relación previamente inactivada. Ver ADR-022.</summary>
+    [HttpPut("relaciones/{liderID:int}/{carteraID:int}/reactivar")]
+    public async Task<IActionResult> ReactivarRelacion(int liderID, int carteraID)
+    {
+        try
+        {
+            await _service.ReactivarRelacionAsync(liderID, carteraID);
+            return Ok(new { mensaje = "Relación reactivada correctamente." });
         }
         catch (InvalidOperationException ex)
         {

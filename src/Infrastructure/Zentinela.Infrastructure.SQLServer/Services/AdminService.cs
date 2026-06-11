@@ -354,9 +354,10 @@ public class AdminService : IAdminService
             };
         }
 
-        // Carteras del líder + flag de asignación al agente.
+        // Carteras del líder + flag de asignación al agente. Solo relaciones activas:
+        // no se ofrece asignar asesores a una relación retirada (ADR-022).
         var carterasLider = await _callCenter.LiderCarteras
-            .Where(lc => lc.LiderID == lider.ID)
+            .Where(lc => lc.LiderID == lider.ID && lc.Activo)
             .Select(lc => new { lc.CarteraID, Nombre = lc.Cartera.NombreCartera })
             .ToListAsync();
 

@@ -49,6 +49,63 @@ public class CarteraRepositoryTests
     }
 
     [Fact]
+    public async Task ObtenerPorLiderAsync_ExcluyeRelacionesInactivas()
+    {
+        // ADR-022: una relación retirada (Activo = false) no debe aparecer en lo operativo,
+        // aunque su cartera siga activa. El líder 1 tiene 2 carteras: una de ellas inactivada.
+        var opts = Opciones();
+        using (var ctx = new CallCenterDbContext(opts))
+        {
+            ctx.Carteras.AddRange(
+                new Cartera { ID = 1, NombreCartera = "Cartera A", Activa = true },
+                new Cartera { ID = 2, NombreCartera = "Cartera B", Activa = true }
+            );
+            ctx.LiderCarteras.AddRange(
+                new LiderCartera { LiderID = LiderUno, CarteraID = 1, Activo = true },
+                new LiderCartera { LiderID = LiderUno, CarteraID = 2, Activo = false }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        using var ctxR = new CallCenterDbContext(opts);
+        var repo       = new CarteraRepository(ctxR);
+        var resultado  = (await repo.ObtenerPorLiderAsync(LiderUno)).ToList();
+
+        Assert.Single(resultado);
+        Assert.Equal("Cartera A", resultado[0].NombreCartera);
+    }
+
+    [Fact]
+    public async Task ObtenerCombinacionesActivasAsync_ExcluyeRelacionesInactivas()
+    {
+        // La relación inactivada se excluye de las combinaciones operativas (ADR-022).
+        var opts = Opciones();
+        using (var ctx = new CallCenterDbContext(opts))
+        {
+            ctx.Lideres.AddRange(
+                new Lider { ID = LiderUno, Nombre = "Líder Uno", Activo = true },
+                new Lider { ID = LiderDos, Nombre = "Líder Dos", Activo = true }
+            );
+            ctx.Carteras.AddRange(
+                new Cartera { ID = 1, NombreCartera = "Cartera A", Activa = true },
+                new Cartera { ID = 2, NombreCartera = "Cartera B", Activa = true }
+            );
+            ctx.LiderCarteras.AddRange(
+                new LiderCartera { LiderID = LiderUno, CarteraID = 1, Activo = true },
+                new LiderCartera { LiderID = LiderDos, CarteraID = 2, Activo = false }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        using var ctxR = new CallCenterDbContext(opts);
+        var repo       = new CarteraRepository(ctxR);
+        var resultado  = (await repo.ObtenerCombinacionesActivasAsync()).ToList();
+
+        Assert.Single(resultado);
+        Assert.Equal(LiderUno, resultado[0].LiderID);
+    }
+
+    [Fact]
     public async Task ObtenerPorLiderAsync_CuandoNoHayCarteras_DevuelveListaVacia()
     {
         var opts = Opciones();

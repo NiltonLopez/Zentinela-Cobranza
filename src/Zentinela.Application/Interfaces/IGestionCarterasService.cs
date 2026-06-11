@@ -24,10 +24,20 @@ public interface IGestionCarterasService
     Task<RelacionLiderCarteraDto> CrearRelacionAsync(CrearRelacionDto dto);
 
     /// <summary>
-    /// Elimina una relación Líder_Cartera.
-    /// No elimina los registros de Titular_Cartera — deben reasignarse manualmente.
+    /// Elimina FÍSICAMENTE una relación Líder_Cartera. Solo permitido cuando la relación
+    /// no tiene dependientes (pagos, asesores, metas, mensajería, IVR). Para relaciones
+    /// con histórico usar <see cref="InactivarRelacionAsync"/>. Ver ADR-022.
     /// </summary>
     Task EliminarRelacionAsync(int liderID, int carteraID);
+
+    /// <summary>
+    /// Retira (soft-delete) una relación Líder_Cartera: vacía sus Titular_Cartera y la
+    /// marca Activo = false, conservando intacto su histórico. Reversible. Ver ADR-022.
+    /// </summary>
+    Task InactivarRelacionAsync(int liderID, int carteraID);
+
+    /// <summary>Reactiva una relación previamente inactivada (Activo = true). Ver ADR-022.</summary>
+    Task ReactivarRelacionAsync(int liderID, int carteraID);
 
     /// <summary>
     /// Genera un Excel con las asignaciones actuales (NumeroDocumento + Nombre)

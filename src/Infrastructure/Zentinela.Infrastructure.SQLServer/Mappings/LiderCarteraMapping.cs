@@ -17,6 +17,11 @@ public class LiderCarteraMapping : IEntityTypeConfiguration<LiderCartera>
             t.HasTrigger("TR_LiderCartera"); // indica a EF Core que hay triggers → evita OUTPUT clause
         });
         builder.HasKey(lc => new { lc.LiderID, lc.CarteraID });
+        // Soft-delete de la relación (ADR-022). La columna se crea por migración SQL
+        // manual (la tabla está ExcludeFromMigrations); aquí solo se mapea.
+        builder.Property(lc => lc.Activo)
+               .HasColumnName("Activo")
+               .HasDefaultValue(true);
         builder.HasOne(lc => lc.Lider)
                .WithMany()
                .HasForeignKey(lc => lc.LiderID);

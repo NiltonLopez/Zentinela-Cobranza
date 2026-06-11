@@ -33,8 +33,13 @@ public class GestionCarterasService : IGestionCarterasService
         if (!incluirExternas)
             query = query.Where(lc => !lc.EsExterna);
 
+        // Se listan activas e inactivas; la UI distingue por el flag Activo y muestra
+        // las retiradas con badge gris + botón Reactivar (ADR-022). TieneHistorico
+        // resume si hay pagos/metas/mensajería/IVR (lo que impide el borrado físico) para
+        // que la X del frontend decida entre Inactivar (soft) y Eliminar (hard).
         return await query
-            .OrderBy(lc => lc.Cartera.NombreCartera)
+            .OrderByDescending(lc => lc.Activo)
+            .ThenBy(lc => lc.Cartera.NombreCartera)
             .ThenBy(lc => lc.Lider.Nombre)
             .Select(lc => new RelacionLiderCarteraDto
             {
@@ -43,10 +48,16 @@ public class GestionCarterasService : IGestionCarterasService
                 NombreLider       = lc.Lider.Nombre,
                 NombreCartera     = lc.Cartera.NombreCartera,
                 EsExterna         = lc.EsExterna,
+                Activo            = lc.Activo,
                 TotalAsignaciones = _context.TitularCarteras
                     .Count(tc => tc.LiderID == lc.LiderID && tc.CarteraID == lc.CarteraID),
                 TotalAsesores     = _context.CarteraAgentes
                     .Count(ca => ca.LiderID == lc.LiderID && ca.CarteraID == lc.CarteraID),
+                TieneHistorico    =
+                    _context.Pagos.Any(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID)
+                 || _context.MetaLiderCarteraMes.Any(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID)
+                 || _context.MensajeriaEnviadas.Any(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID)
+                 || _context.IVREnviados.Any(i => i.LiderID == lc.LiderID && i.CarteraID == lc.CarteraID),
             })
             .AsNoTracking()
             .ToListAsync();
@@ -195,33 +206,16 @@ public class GestionCarterasService : IGestionCarterasService
             .FirstOrDefaultAsync(lc => lc.LiderID == liderID && lc.CarteraID == carteraID)
             ?? throw new InvalidOperationException("La relación no existe.");
 
-        // Pre-validación: Lider_Cartera tiene FK entrantes desde varias tablas.
-        // Si existe data dependiente (asesores, pagos, metas, mensajería, IVR), SQL
-        // rechaza el DELETE. Aquí lo detectamos antes y devolvemos un mensaje claro
-        // listando exactamente qué bloquea, en vez de un error genérico de FK.
-        var asesores       = await _context.CarteraAgentes
-                                .CountAsync(ca => ca.LiderID == liderID && ca.CarteraID == carteraID);
-        var pagos          = await _context.Pagos
-                                .CountAsync(p => p.LiderID == liderID && p.CarteraID == carteraID);
-        var metas          = await _context.MetaLiderCarteraMes
-                                .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
-        var mensajeria     = await _context.MensajeriaEnviadas
-                                .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
-        var ivr            = await _context.IVREnviados
-                                .CountAsync(i => i.LiderID == liderID && i.CarteraID == carteraID);
-
-        var bloqueantes = new List<string>();
-        if (asesores   > 0) bloqueantes.Add($"{asesores} asesor(es) asignado(s)");
-        if (pagos      > 0) bloqueantes.Add($"{pagos} pago(s) registrado(s)");
-        if (metas      > 0) bloqueantes.Add($"{metas} meta(s) mensual(es)");
-        if (mensajeria > 0) bloqueantes.Add($"{mensajeria} envío(s) de mensajería");
-        if (ivr        > 0) bloqueantes.Add($"{ivr} envío(s) de IVR");
-
+        // Borrado FÍSICO: solo permitido si NO hay histórico. Una relación con pagos,
+        // metas, mensajería o IVR nunca se elimina (rompería la trazabilidad del recaudo
+        // anclada a LiderID+CarteraID) — para esos casos existe InactivarRelacionAsync.
+        // El listado de bloqueantes da un mensaje claro en vez de un error de FK. (ADR-022)
+        var bloqueantes = await ObtenerBloqueantesAsync(liderID, carteraID);
         if (bloqueantes.Count > 0)
         {
             throw new InvalidOperationException(
                 $"No se puede eliminar la relación porque tiene: {string.Join(", ", bloqueantes)}. " +
-                "Reasigna o elimina esos registros primero.");
+                "Inactívala para conservar el histórico, o reasigna/elimina esos registros primero.");
         }
 
         // Sin dependientes bloqueantes — eliminamos Titular_Cartera (FK no bloqueante,
@@ -232,5 +226,64 @@ public class GestionCarterasService : IGestionCarterasService
 
         _context.LiderCarteras.Remove(relacion);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task InactivarRelacionAsync(int liderID, int carteraID)
+    {
+        var relacion = await _context.LiderCarteras
+            .FirstOrDefaultAsync(lc => lc.LiderID == liderID && lc.CarteraID == carteraID)
+            ?? throw new InvalidOperationException("La relación no existe.");
+
+        if (!relacion.Activo)
+            throw new InvalidOperationException("La relación ya está inactiva.");
+
+        // Soft-delete (ADR-022): se vacía Titular_Cartera (asignación OPERATIVA, no
+        // histórica — el histórico vive en Pago/Meta/Mensajería/IVR y se conserva intacto)
+        // y se marca Activo = false. Reversible vía ReactivarRelacionAsync.
+        await _context.TitularCarteras
+            .Where(tc => tc.LiderID == liderID && tc.CarteraID == carteraID)
+            .ExecuteDeleteAsync();
+
+        relacion.Activo = false;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task ReactivarRelacionAsync(int liderID, int carteraID)
+    {
+        var relacion = await _context.LiderCarteras
+            .FirstOrDefaultAsync(lc => lc.LiderID == liderID && lc.CarteraID == carteraID)
+            ?? throw new InvalidOperationException("La relación no existe.");
+
+        if (relacion.Activo)
+            throw new InvalidOperationException("La relación ya está activa.");
+
+        relacion.Activo = true;
+        await _context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Lista los dependientes que impiden el borrado FÍSICO de una relación (asesores,
+    /// pagos, metas, mensajería, IVR), con su conteo en texto. Vacío ⇒ se puede eliminar.
+    /// </summary>
+    private async Task<List<string>> ObtenerBloqueantesAsync(int liderID, int carteraID)
+    {
+        var asesores   = await _context.CarteraAgentes
+                            .CountAsync(ca => ca.LiderID == liderID && ca.CarteraID == carteraID);
+        var pagos      = await _context.Pagos
+                            .CountAsync(p => p.LiderID == liderID && p.CarteraID == carteraID);
+        var metas      = await _context.MetaLiderCarteraMes
+                            .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
+        var mensajeria = await _context.MensajeriaEnviadas
+                            .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
+        var ivr        = await _context.IVREnviados
+                            .CountAsync(i => i.LiderID == liderID && i.CarteraID == carteraID);
+
+        var bloqueantes = new List<string>();
+        if (asesores   > 0) bloqueantes.Add($"{asesores} asesor(es) asignado(s)");
+        if (pagos      > 0) bloqueantes.Add($"{pagos} pago(s) registrado(s)");
+        if (metas      > 0) bloqueantes.Add($"{metas} meta(s) mensual(es)");
+        if (mensajeria > 0) bloqueantes.Add($"{mensajeria} envío(s) de mensajería");
+        if (ivr        > 0) bloqueantes.Add($"{ivr} envío(s) de IVR");
+        return bloqueantes;
     }
 }

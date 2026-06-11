@@ -32,6 +32,15 @@ export const eliminarRelacion = async (liderID: number, carteraID: number): Prom
   await api.delete(`/api/gestion-carteras/relaciones/${liderID}/${carteraID}`);
 };
 
+// Soft-delete: retira la relación conservando su histórico (ADR-022).
+export const inactivarRelacion = async (liderID: number, carteraID: number): Promise<void> => {
+  await api.put(`/api/gestion-carteras/relaciones/${liderID}/${carteraID}/inactivar`);
+};
+
+export const reactivarRelacion = async (liderID: number, carteraID: number): Promise<void> => {
+  await api.put(`/api/gestion-carteras/relaciones/${liderID}/${carteraID}/reactivar`);
+};
+
 export const descargarAsignacion = async (
   liderID: number,
   carteraID: number,

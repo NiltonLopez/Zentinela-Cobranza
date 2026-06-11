@@ -6,6 +6,10 @@ export interface RelacionLiderCartera {
   totalAsignaciones: number;
   totalAsesores: number;
   esExterna: boolean;
+  /** Relación activa (true) o retirada/inactivada (false). Ver ADR-022. */
+  activo: boolean;
+  /** True si tiene histórico (pagos/metas/mensajería/IVR) ⇒ la X inactiva en vez de eliminar. */
+  tieneHistorico: boolean;
 }
 
 export interface LiderDropdown {

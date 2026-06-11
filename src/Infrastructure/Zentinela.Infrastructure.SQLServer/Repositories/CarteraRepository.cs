@@ -17,7 +17,7 @@ public class CarteraRepository : ICarteraRepository
     public async Task<IEnumerable<Cartera>> ObtenerPorLiderAsync(int liderID)
     {
         return await _context.LiderCarteras
-            .Where(lc => lc.LiderID == liderID)
+            .Where(lc => lc.LiderID == liderID && lc.Activo)
             .Select(lc => lc.Cartera)
             .Where(c => c.Activa)
             .OrderBy(c => c.NombreCartera)
@@ -39,7 +39,7 @@ public class CarteraRepository : ICarteraRepository
         return await _context.LiderCarteras
             .Include(lc => lc.Cartera)
             .Include(lc => lc.Lider)
-            .Where(lc => lc.Cartera.Activa)
+            .Where(lc => lc.Cartera.Activa && lc.Activo)
             .OrderBy(lc => lc.Cartera.NombreCartera)
             .ThenBy(lc => lc.Lider.Nombre)
             .AsNoTracking()

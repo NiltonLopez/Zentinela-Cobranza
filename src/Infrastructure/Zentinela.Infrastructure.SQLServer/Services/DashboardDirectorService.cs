@@ -34,7 +34,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     {
         return await _callCenter.Lideres
             .Where(l => l.Activo
-                     && _callCenter.LiderCarteras.Any(lc => lc.LiderID == l.ID && !lc.EsExterna))
+                     && _callCenter.LiderCarteras.Any(lc => lc.LiderID == l.ID && !lc.EsExterna && lc.Activo))
             .OrderBy(l => l.Nombre)
             .Select(l => new LiderDropdownDto { ID = l.ID, Nombre = l.Nombre })
             .AsNoTracking()
@@ -44,7 +44,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     public async Task<List<CarteraDropdownDto>> ObtenerCarterasLiderAsync(int liderID)
     {
         return await _callCenter.LiderCarteras
-            .Where(lc => lc.LiderID == liderID && !lc.EsExterna)
+            .Where(lc => lc.LiderID == liderID && !lc.EsExterna && lc.Activo)
             .Select(lc => new CarteraDropdownDto
             {
                 ID = lc.CarteraID,
@@ -62,7 +62,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     public async Task<List<CarteraDropdownDto>> ObtenerCarterasAsync()
     {
         return await _callCenter.LiderCarteras
-            .Where(lc => !lc.EsExterna)
+            .Where(lc => !lc.EsExterna && lc.Activo)
             .Select(lc => new CarteraDropdownDto
             {
                 ID = lc.CarteraID,
@@ -81,7 +81,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     public async Task<List<LiderCarteraVinculoDto>> ObtenerVinculosLiderCarteraAsync()
     {
         return await _callCenter.LiderCarteras
-            .Where(lc => !lc.EsExterna)
+            .Where(lc => !lc.EsExterna && lc.Activo)
             .Select(lc => new LiderCarteraVinculoDto
             {
                 LiderID   = lc.LiderID,
