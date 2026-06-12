@@ -23,6 +23,14 @@ public interface IInformesRecaudoService
     Task<InformeLideresResponse> GetInformeLideresAsync(int año, int mes);
 
     /// <summary>
+    /// Desglose especial de una cartera de "BASE GENERAL": una fila por líder que participó,
+    /// atribuyendo cada pago al líder del asesor que lo registró (aunque ese líder no tenga la
+    /// cartera asignada), más una fila agregada "BASE GENERAL" para los pagos sin asesor.
+    /// Reutiliza el shape de InformeLideresResponse.
+    /// </summary>
+    Task<InformeLideresResponse> GetInformeCarteraBaseGeneralAsync(int carteraID, int año, int mes);
+
+    /// <summary>
     /// Sub-informes 3 y 4: comparativo de recaudo y honorarios por cartera
     /// entre el período A y el período B (cualquier combinación mes/año).
     /// </summary>

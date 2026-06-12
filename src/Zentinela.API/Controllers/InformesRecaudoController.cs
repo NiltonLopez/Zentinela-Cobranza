@@ -39,6 +39,19 @@ public class InformesRecaudoController : ControllerBase
     }
 
     /// <summary>
+    /// Desglose de una cartera de "BASE GENERAL": líderes participantes según el asesor que
+    /// registró cada pago, más una fila agregada para los pagos sin asesor.
+    /// </summary>
+    [HttpGet("cartera-base-general")]
+    public async Task<IActionResult> GetCarteraBaseGeneral(
+        [FromQuery] int carteraID, [FromQuery] int año, [FromQuery] int mes)
+    {
+        if (mes < 1 || mes > 12) return BadRequest(new { mensaje = "Mes inválido." });
+        var resultado = await _service.GetInformeCarteraBaseGeneralAsync(carteraID, año, mes);
+        return Ok(resultado);
+    }
+
+    /// <summary>
     /// Sub-informes de carteras y comparativo: recaudo por cartera entre dos períodos.
     /// Para "mes actual vs anterior" pasa los dos períodos deseados.
     /// </summary>

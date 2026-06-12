@@ -28,6 +28,18 @@ export const getInformeLideres = async (
   return data;
 };
 
+export const getInformeCarteraBaseGeneral = async (
+  carteraID: number,
+  año: number,
+  mes: number,
+): Promise<InformeLideresResponse> => {
+  const { data } = await api.get<InformeLideresResponse>(
+    '/api/informes/recaudo/cartera-base-general',
+    { params: { carteraID, año, mes } },
+  );
+  return data;
+};
+
 export const getInformeCarteras = async (
   añoA: number,
   mesA: number,

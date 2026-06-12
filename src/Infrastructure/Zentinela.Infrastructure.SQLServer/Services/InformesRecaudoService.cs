@@ -265,6 +265,160 @@ public class InformesRecaudoService : IInformesRecaudoService
         };
     }
 
+    // ── Desglose BASE GENERAL: líderes participantes en una cartera ───────────
+
+    /// <summary>
+    /// Para una cartera asignada al líder genérico "BASE GENERAL", arma el desglose de los
+    /// líderes que realmente participaron, atribuyendo cada pago al líder del ASESOR que lo
+    /// registró (AgenteControlID → Cartera_Agente → LiderID), aunque ese líder no tenga la
+    /// cartera asignada en Lider_Cartera. Los pagos sin asesor (AgenteControlID NULL, cargados
+    /// como "BASE GENERAL") se agrupan en una fila agregada aparte. Reutiliza el shape de
+    /// InformeLideresResponse para que el frontend renderice la tabla igual que el informe normal.
+    /// </summary>
+    public async Task<InformeLideresResponse> GetInformeCarteraBaseGeneralAsync(int carteraID, int año, int mes)
+    {
+        var (diasDelMes, diasTranscurridos)        = CalcularDias(año, mes);
+        var (diasHabilesDelMes, diasHabilesTransc) = CalcularDiasHabiles(año, mes);
+
+        var nombreCartera = await _callCenter.Carteras
+            .Where(c => c.ID == carteraID)
+            .Select(c => c.NombreCartera)
+            .FirstOrDefaultAsync() ?? string.Empty;
+
+        var pagos = await _callCenter.Pagos
+            .Where(p => p.CarteraID == carteraID && p.FechaPago.Year == año && p.FechaPago.Month == mes)
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (pagos.Count == 0)
+            return new InformeLideresResponse { LiderCarteras = new List<InformeLiderCarteraDto>() };
+
+        // Mapa asesor → líderes en esta cartera (Cartera_Agente). Un asesor podría tener >1
+        // líder asignado en la cartera; se guarda el conjunto para desempatar más abajo.
+        var agentesPago = pagos.Where(p => p.AgenteControlID.HasValue)
+                               .Select(p => p.AgenteControlID!.Value).Distinct().ToList();
+
+        var asesorLideres = await _callCenter.CarteraAgentes
+            .Where(ca => ca.CarteraID == carteraID && agentesPago.Contains(ca.AgenteID))
+            .Select(ca => new { ca.AgenteID, ca.LiderID })
+            .AsNoTracking()
+            .ToListAsync();
+        var lideresPorAsesor = asesorLideres
+            .GroupBy(x => x.AgenteID)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.LiderID).Distinct().ToList());
+
+        // Acumular recaudo/honorarios y asesores distintos por líder participante.
+        var acumPorLider        = new Dictionary<int, (decimal Recaudo, decimal Honorarios, HashSet<long> Asesores)>();
+        decimal recaudoSinAsesor = 0m, honorariosSinAsesor = 0m;
+
+        foreach (var p in pagos)
+        {
+            if (!p.AgenteControlID.HasValue)
+            {
+                recaudoSinAsesor    += p.ValorPagado;
+                honorariosSinAsesor += p.Honorarios;
+                continue;
+            }
+
+            var agenteID = p.AgenteControlID.Value;
+            int liderID;
+            if (lideresPorAsesor.TryGetValue(agenteID, out var lids) && lids.Count > 0)
+                // Desempate: si el líder ya resuelto en el pago es uno de los del asesor, usarlo; si no, el primero.
+                liderID = lids.Contains(p.LiderID) ? p.LiderID : lids[0];
+            else
+                // Asesor sin asignación viva en Cartera_Agente para esta cartera → usar el líder del pago.
+                liderID = p.LiderID;
+
+            if (!acumPorLider.TryGetValue(liderID, out var acc))
+                acc = (0m, 0m, new HashSet<long>());
+            acc.Recaudo    += p.ValorPagado;
+            acc.Honorarios += p.Honorarios;
+            acc.Asesores.Add(agenteID);
+            acumPorLider[liderID] = acc;
+        }
+
+        var liderIDs = acumPorLider.Keys.ToList();
+        var nombresLider = await _callCenter.Lideres
+            .Where(l => liderIDs.Contains(l.ID))
+            .AsNoTracking()
+            .ToDictionaryAsync(l => l.ID, l => l.Nombre);
+
+        var metas = await _callCenter.MetaLiderCarteraMes
+            .Where(m => m.Año == año && m.Mes == mes && m.CarteraID == carteraID && liderIDs.Contains(m.LiderID))
+            .AsNoTracking()
+            .ToListAsync();
+
+        var capacidades = await _callCenter.TitularCarteras
+            .Where(tc => tc.CarteraID == carteraID && liderIDs.Contains(tc.LiderID))
+            .GroupBy(tc => tc.LiderID)
+            .Select(g => new { LiderID = g.Key, Capacidad = g.Count() })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var filas = new List<InformeLiderCarteraDto>();
+        foreach (var kv in acumPorLider)
+        {
+            var liderID = kv.Key;
+            var (recaudo, honorarios, asesores) = kv.Value;
+            var meta      = metas.FirstOrDefault(m => m.LiderID == liderID);
+            var valorMeta = meta?.ValorMeta ?? 0m;
+            var tipoMeta  = meta == null ? null : (meta.TipoMeta == 1 ? "Honorarios" : "Recaudo");
+            var capacidad = capacidades.FirstOrDefault(c => c.LiderID == liderID)?.Capacidad ?? 0;
+
+            var deberiaHoy = diasHabilesDelMes > 0 ? valorMeta * diasHabilesTransc / diasHabilesDelMes : 0m;
+            var proyeccion = diasTranscurridos > 0 ? recaudo / diasTranscurridos * diasDelMes : 0m;
+
+            filas.Add(new InformeLiderCarteraDto
+            {
+                LiderID          = liderID,
+                NombreLider      = nombresLider.TryGetValue(liderID, out var n) ? n : $"Líder {liderID}",
+                CarteraID        = carteraID,
+                NombreCartera    = nombreCartera,
+                TotalAsesores    = asesores.Count,
+                ValorMeta        = valorMeta,
+                TipoMeta         = tipoMeta,
+                TieneMeta        = meta != null,
+                Capacidad        = capacidad,
+                Recaudo          = recaudo,
+                Honorarios       = honorarios,
+                DeberiaLlevarHoy = deberiaHoy,
+                ProyeccionCierre = proyeccion,
+            });
+        }
+
+        // Fila agregada "BASE GENERAL" para los pagos sin asesor (si los hay).
+        if (recaudoSinAsesor != 0m || honorariosSinAsesor != 0m)
+        {
+            var proyeccionBG = diasTranscurridos > 0 ? recaudoSinAsesor / diasTranscurridos * diasDelMes : 0m;
+            filas.Add(new InformeLiderCarteraDto
+            {
+                LiderID          = 25, // líder genérico BASE GENERAL
+                NombreLider      = "BASE GENERAL",
+                CarteraID        = carteraID,
+                NombreCartera    = nombreCartera,
+                TotalAsesores    = 0,
+                ValorMeta        = 0m,
+                TipoMeta         = null,
+                TieneMeta        = false,
+                Capacidad        = 0,
+                Recaudo          = recaudoSinAsesor,
+                Honorarios       = honorariosSinAsesor,
+                DeberiaLlevarHoy = 0m,
+                ProyeccionCierre = proyeccionBG,
+            });
+        }
+
+        filas = filas.OrderBy(f => f.NombreLider).ToList();
+
+        return new InformeLideresResponse
+        {
+            TotalRecaudo  = filas.Sum(f => f.Recaudo),
+            TotalMeta     = filas.Sum(f => f.ValorMeta),
+            TotalLideres  = filas.Select(f => f.LiderID).Distinct().Count(),
+            LiderCarteras = filas,
+        };
+    }
+
     // ── Informe de Carteras (comparativo) ─────────────────────────────────────
 
     public async Task<InformeCarterasResponse> GetInformeCarterasAsync(
@@ -495,7 +649,7 @@ public class InformesRecaudoService : IInformesRecaudoService
 
         DateOnly limite;
         if (año == hoy.Year && mes == hoy.Month)
-            limite = hoy;
+            limite = hoy.AddDays(-1); // mes vigente: días hábiles transcurridos NO incluyen hoy
         else if (new DateOnly(año, mes, 1) < new DateOnly(hoy.Year, hoy.Month, 1))
             limite = new DateOnly(año, mes, totalDias);
         else

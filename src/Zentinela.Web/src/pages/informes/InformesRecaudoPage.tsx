@@ -15,6 +15,7 @@ import {
   getInformeAgentes,
   getInformeLideres,
   getInformeCarteras,
+  getInformeCarteraBaseGeneral,
 } from '../../api/informesRecaudoApi';
 import type {
   InformeAgenteMes,
@@ -335,6 +336,14 @@ function useSortable<T extends Record<string, unknown>>(items: T[]) {
   return { sorted, sortKey: key, sortDir: dir, handleSort };
 }
 
+// Props de ordenamiento que el padre (dueño del estado de orden) pasa a la tabla hija.
+// Mantener el estado en el padre permite que la descarga PDF use el mismo orden visible.
+interface SortHandlers {
+  sortKey: string | null;
+  sortDir: SortDir;
+  onSort:  (k: string) => void;
+}
+
 function ThSort({ label, k, sortKey, sortDir, onSort, align = 'right' }: {
   label: string; k: string;
   sortKey: string | null; sortDir: SortDir;
@@ -417,7 +426,7 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
   const [busqueda,      setBusqueda]      = useState('');
   const refGrafico = useRef<HTMLDivElement>(null);
   // Ref siempre actualizado: la fn de descarga lo lee en el momento del clic (datos frescos)
-  const latestRef  = useRef<{ agentesVisibles: InformeAgenteMes[]; esLider: boolean }>({ agentesVisibles: [], esLider: false });
+  const latestRef  = useRef<{ agentesVisibles: (InformeAgenteMes & { caida: number })[]; esLider: boolean }>({ agentesVisibles: [], esLider: false });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-agentes', año, mes],
@@ -436,8 +445,22 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
     });
   }, [data, filtroLider, filtroCartera, busqueda]);
 
-  // Actualizar ref en cada render para que la descarga siempre use el filtro actual
-  latestRef.current = { agentesVisibles, esLider };
+  // Filas con cumplimiento calculado para poder ordenar por esa columna.
+  // El estado de orden vive aquí (no en la tabla hija) para que la descarga lo respete.
+  const rowsAgentes = useMemo(() => agentesVisibles.map(a => {
+    const valorActual = a.tipoMeta === 'Honorarios' ? a.honorarios : a.recaudo;
+    return {
+      ...a,
+      cumplimiento: a.valorMeta > 0 ? valorActual / a.valorMeta : 0,
+      // Caída = dinero que falta para lo que debería llevar HOY (0 si ya lo alcanzó)
+      caida: a.tieneMeta ? Math.max(0, a.deberiaLlevarHoy - valorActual) : 0,
+    };
+  }), [agentesVisibles]);
+  const sortAgentes      = useSortable(rowsAgentes as unknown as Record<string, unknown>[]);
+  const agentesOrdenados = sortAgentes.sorted as unknown as (InformeAgenteMes & { cumplimiento: number; caida: number })[];
+
+  // Actualizar ref en cada render para que la descarga use el filtro Y el orden actual
+  latestRef.current = { agentesVisibles: agentesOrdenados, esLider };
 
   useEffect(() => {
     if (!onRegisterDownload) return;
@@ -448,7 +471,7 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
 
       const headCols = ['#', 'Agente', ...(esLider ? [] : ['Líder']), 'Cartera',
         'Gestionado', 'Recaudo', 'Honorarios', 'Tipo Meta',
-        'Meta', 'Debería hoy', 'Falta', 'Prom./día', 'Cump.'];
+        'Meta', 'Debería hoy', 'Caída', 'Prom./día', 'Cump.'];
       const cumpColIndex = headCols.length - 1;
       const body = agentesVisibles.map((a, i) => {
         const valorActual = a.tipoMeta === 'Honorarios' ? a.honorarios : a.recaudo;
@@ -460,7 +483,7 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
           a.tipoMeta ?? '—',
           a.tieneMeta ? cop(a.valorMeta) : '—',
           a.tieneMeta ? cop(a.deberiaLlevarHoy) : '—',
-          a.tieneMeta ? cop(a.faltaParaMeta) : '—',
+          a.tieneMeta ? cop(a.caida) : '—',
           cop(a.promedioPagoDia),
           a.valorMeta > 0 ? valorActual / a.valorMeta : -1,
         ];
@@ -469,11 +492,12 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
       const colStyles: Record<number, { halign: 'left' | 'center' | 'right' }> = {
         0: { halign: 'center' },
         1: { halign: 'left' },
-        ...(esLider ? {} : { 2: { halign: 'left' } }),
         [2 + offset]: { halign: 'left' },
         [3 + offset]: { halign: 'center' },
         [6 + offset]: { halign: 'center' },
       };
+      // Columna "Líder" (índice 2) alineada a la izquierda solo cuando es visible
+      if (!esLider) colStyles[2] = { halign: 'left' };
       return buildExportarPDF({
         tituloArchivo: `Informe_Agentes_${nombreMes}_${año}`,
         tituloPDF:     `Informe Agentes — ${nombreMes} ${año}`,
@@ -592,21 +616,19 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
       </div>
 
       {/* Tabla */}
-      <TablaAgentes agentes={agentesVisibles} esLider={esLider} />
+      <TablaAgentes
+        agentes={agentesOrdenados} esLider={esLider}
+        sortKey={sortAgentes.sortKey} sortDir={sortAgentes.sortDir} onSort={sortAgentes.handleSort}
+      />
     </div>
   );
 }
 
-function TablaAgentes({ agentes, esLider }: { agentes: InformeAgenteMes[]; esLider: boolean }) {
-  type Row = InformeAgenteMes & { cumplimiento: number };
-  const rows: Row[] = agentes.map(a => {
-    const valorActual = a.tipoMeta === 'Honorarios' ? a.honorarios : a.recaudo;
-    return { ...a, cumplimiento: a.valorMeta > 0 ? valorActual / a.valorMeta : 0 };
-  }) as unknown as Row[];
-
-  const { sorted, sortKey, sortDir, handleSort } = useSortable(rows as unknown as Record<string, unknown>[]);
+function TablaAgentes({ agentes, esLider, sortKey, sortDir, onSort }: {
+  agentes: (InformeAgenteMes & { cumplimiento: number; caida: number })[]; esLider: boolean;
+} & SortHandlers) {
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
-    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+    <ThSort label={label} k={k} sortKey={sortKey} sortDir={sortDir} onSort={onSort} align={align} />
   );
 
   return (
@@ -625,13 +647,13 @@ function TablaAgentes({ agentes, esLider }: { agentes: InformeAgenteMes[]; esLid
               <th style={{ ...TH, textAlign: 'center' }}>Tipo Meta</th>
               {th('Meta',        'valorMeta')}
               {th('Debería hoy', 'deberiaLlevarHoy')}
-              {th('Falta',       'faltaParaMeta')}
+              {th('Caída',       'caida')}
               {th('Prom./día',   'promedioPagoDia')}
               {th('Cump.',       'cumplimiento',    'center')}
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as Row[]).map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} esLider={esLider} />)}
+            {agentes.map((a, i) => <FilaAgente key={a.agenteID} a={a} pos={i + 1} esLider={esLider} />)}
           </tbody>
         </table>
       </div>
@@ -639,7 +661,7 @@ function TablaAgentes({ agentes, esLider }: { agentes: InformeAgenteMes[]; esLid
   );
 }
 
-function FilaAgente({ a, pos, esLider }: { a: InformeAgenteMes; pos: number; esLider: boolean }) {
+function FilaAgente({ a, pos, esLider }: { a: InformeAgenteMes & { caida: number }; pos: number; esLider: boolean }) {
   return (
     <tr>
       <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{pos}</td>
@@ -658,8 +680,8 @@ function FilaAgente({ a, pos, esLider }: { a: InformeAgenteMes; pos: number; esL
       <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>
         {a.tieneMeta ? cop(a.deberiaLlevarHoy) : '—'}
       </td>
-      <td style={{ ...TD, textAlign: 'right', color: a.faltaParaMeta > 0 ? C.rojo : C.verde }}>
-        {a.tieneMeta ? cop(a.faltaParaMeta) : '—'}
+      <td style={{ ...TD, textAlign: 'right', color: a.caida > 0 ? C.rojo : C.verde }}>
+        {a.tieneMeta ? cop(a.caida) : '—'}
       </td>
       <td style={{ ...TD, textAlign: 'right' }}>{cop(a.promedioPagoDia)}</td>
       <td style={{ ...TD, textAlign: 'center' }}>
@@ -689,6 +711,7 @@ interface LiderAgregado {
   proyeccionCierre: number;
   tieneMeta:        boolean;
   cumplimiento:     number;
+  caida:            number;
 }
 
 function TabLideres({ año, mes, onRegisterDownload }: {
@@ -728,16 +751,23 @@ function TabLideres({ año, mes, onRegisterDownload }: {
           capacidad: f.capacidad, valorMeta: f.valorMeta, tipoMeta: f.tipoMeta,
           recaudo: f.recaudo, honorarios: f.honorarios,
           deberiaLlevarHoy: f.deberiaLlevarHoy, proyeccionCierre: f.proyeccionCierre,
-          tieneMeta: f.tieneMeta, cumplimiento: 0,
+          tieneMeta: f.tieneMeta, cumplimiento: 0, caida: 0,
         });
       }
     }
     return Array.from(porLider.values()).map(l => ({
-      ...l, cumplimiento: l.valorMeta > 0 ? l.honorarios / l.valorMeta : 0,
+      ...l,
+      cumplimiento: l.valorMeta > 0 ? l.honorarios / l.valorMeta : 0,
+      // Caída = dinero que falta para lo que debería llevar HOY (0 si ya lo alcanzó)
+      caida: l.tieneMeta ? Math.max(0, l.deberiaLlevarHoy - (l.tipoMeta === 'Honorarios' ? l.honorarios : l.recaudo)) : 0,
     }));
   }, [data]);
 
-  latestRef.current = { lideres };
+  // Orden gobernado en el padre para que la descarga PDF use el mismo orden visible
+  const sortLideres      = useSortable(lideres as unknown as Record<string, unknown>[]);
+  const lideresOrdenados = sortLideres.sorted as unknown as LiderAgregado[];
+
+  latestRef.current = { lideres: lideresOrdenados };
 
   useEffect(() => {
     if (!onRegisterDownload) return;
@@ -747,7 +777,7 @@ function TabLideres({ año, mes, onRegisterDownload }: {
       if (lideres.length === 0) return Promise.resolve();
 
       const headCols = ['Líder', 'Carteras', 'Asesores', 'Asignaciones',
-        'Recaudo', 'Honorarios', 'Tipo Meta', 'Meta', 'Debería hoy', 'Proyección', 'Cump.'];
+        'Recaudo', 'Honorarios', 'Tipo Meta', 'Meta', 'Debería hoy', 'Caída', 'Proyección', 'Cump.'];
       const cumpColIndex = headCols.length - 1;
       const body = lideres.map(l => [
         l.nombreLider, l.carteras, l.asesores,
@@ -756,6 +786,7 @@ function TabLideres({ año, mes, onRegisterDownload }: {
         l.tipoMeta ?? '—',
         l.tieneMeta ? cop(l.valorMeta) : '—',
         l.tieneMeta ? cop(l.deberiaLlevarHoy) : '—',
+        l.tieneMeta ? cop(l.caida) : '—',
         cop(l.proyeccionCierre),
         l.valorMeta > 0 ? l.honorarios / l.valorMeta : -1,
       ]);
@@ -870,16 +901,19 @@ function TabLideres({ año, mes, onRegisterDownload }: {
       </div>
 
       {/* Tabla */}
-      <TablaLideres lideres={lideres} />
+      <TablaLideres
+        lideres={lideresOrdenados}
+        sortKey={sortLideres.sortKey} sortDir={sortLideres.sortDir} onSort={sortLideres.handleSort}
+      />
     </div>
   );
 }
 
-function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
-  const { sorted, sortKey, sortDir, handleSort } =
-    useSortable(lideres as unknown as Record<string, unknown>[]);
+function TablaLideres({ lideres, sortKey, sortDir, onSort }: {
+  lideres: LiderAgregado[];
+} & SortHandlers) {
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
-    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+    <ThSort label={label} k={k} sortKey={sortKey} sortDir={sortDir} onSort={onSort} align={align} />
   );
 
   return (
@@ -897,12 +931,13 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
               <th style={{ ...TH, textAlign: 'center' }}>Tipo Meta</th>
               {th('Meta',              'valorMeta')}
               {th('Debería hoy',       'deberiaLlevarHoy')}
+              {th('Caída',             'caida')}
               {th('Proyección cierre', 'proyeccionCierre')}
               {th('Cump.',             'cumplimiento',    'center')}
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as LiderAgregado[]).map(l => {
+            {lideres.map(l => {
               const proyOk = l.proyeccionCierre >= l.valorMeta && l.valorMeta > 0;
               return (
                 <tr key={l.liderID}>
@@ -915,6 +950,7 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
                   <td style={{ ...TD, textAlign: 'center' }}><ChipTipoMeta tipo={l.tipoMeta} /></td>
                   <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.valorMeta) : '—'}</td>
                   <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.deberiaLlevarHoy) : '—'}</td>
+                  <td style={{ ...TD, textAlign: 'right', color: l.caida > 0 ? C.rojo : C.verde }}>{l.tieneMeta ? cop(l.caida) : '—'}</td>
                   <td style={{ ...TD, textAlign: 'right', color: proyOk ? C.verde : C.naranja, fontWeight: 600 }}>{cop(l.proyeccionCierre)}</td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     <Semaforo valorActual={l.honorarios} valorMeta={l.valorMeta} />
@@ -934,7 +970,7 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 type VistaCarteras = 'lider-cartera' | 'cartera';
 
-const COSTO_ASESOR = 4_100_000;
+const COSTO_ASESOR = 4_700_000;
 
 interface CarteraAgregada {
   carteraID:        number;
@@ -951,6 +987,19 @@ interface CarteraAgregada {
   tieneMeta:        boolean;
   cumplimiento:     number;
   centroCostos:     number;
+  caida:            number;
+}
+
+// Enriquece una fila líder-cartera del backend con los campos derivados de la tabla.
+// Se usa tanto para las filas normales como para el desglose de BASE GENERAL.
+function aFilaLC(f: InformeLiderCartera): InformeLiderCartera & { cumplimiento: number; centroCostos: number; caida: number } {
+  return {
+    ...f,
+    cumplimiento: f.valorMeta > 0 ? f.honorarios / f.valorMeta : 0,
+    centroCostos: f.totalAsesores * COSTO_ASESOR,
+    // Caída = dinero que falta para lo que debería llevar HOY (0 si ya lo alcanzó)
+    caida: f.tieneMeta ? Math.max(0, f.deberiaLlevarHoy - (f.tipoMeta === 'Honorarios' ? f.honorarios : f.recaudo)) : 0,
+  };
 }
 
 function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
@@ -962,8 +1011,9 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
   const [metricaC,  setMetricaC]  = useState<'honorarios' | 'recaudo'>('honorarios');
   const [criterioC, setCriterioC] = useState<'valor' | 'proyeccion' | 'meta'>('valor');
   const [filtroLider, setFiltroLider] = useState(() => esLider ? String(usuario?.liderID ?? '') : '');
+  const [filtroCartera, setFiltroCartera] = useState('');
   const refGrafico = useRef<HTMLDivElement>(null);
-  type FilaLC = InformeLiderCartera & { cumplimiento: number; centroCostos: number };
+  type FilaLC = InformeLiderCartera & { cumplimiento: number; centroCostos: number; caida: number };
   const latestRef  = useRef<{ filasPorLiderCartera: FilaLC[]; filasCartera: CarteraAgregada[]; vista: VistaCarteras; esLider: boolean }>({ filasPorLiderCartera: [], filasCartera: [], vista: 'lider-cartera', esLider: false });
 
   const { data, isLoading, isError } = useQuery({
@@ -971,23 +1021,46 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
     queryFn:  () => getInformeLideres(año, mes),
   });
 
-  const { optsLider, filasPorLiderCartera, filasCartera } = useMemo(() => {
-    if (!data) return { optsLider: [], filasPorLiderCartera: [], filasCartera: [] };
+  // Carteras cuyo líder asignado es "BASE GENERAL" → habilitan el desglose especial por asesor.
+  const bgCarteraIDs = useMemo(() => {
+    const s = new Set<number>();
+    data?.liderCarteras.forEach(f => {
+      if (f.liderID === 25 || f.nombreLider === 'BASE GENERAL') s.add(f.carteraID);
+    });
+    return s;
+  }, [data]);
+
+  // Solo en vista líder-cartera y cuando la cartera seleccionada es de BASE GENERAL.
+  const esBaseGeneralSel = vista === 'lider-cartera' && !!filtroCartera && bgCarteraIDs.has(Number(filtroCartera));
+
+  const bgQuery = useQuery({
+    queryKey: ['inf-cartera-bg', Number(filtroCartera), año, mes],
+    queryFn:  () => getInformeCarteraBaseGeneral(Number(filtroCartera), año, mes),
+    enabled:  esBaseGeneralSel,
+  });
+
+  const { optsLider, optsCartera, filasPorLiderCarteraNormal, filasCartera } = useMemo(() => {
+    if (!data) return { optsLider: [], optsCartera: [], filasPorLiderCarteraNormal: [], filasCartera: [] };
 
     const optsLider = Array.from(
       new Map(data.liderCarteras.map(f => [f.liderID, f.nombreLider])).entries()
     ).map(([value, label]) => ({ value: String(value), label }));
 
-    const fuenteFiltrada = filtroLider
-      ? data.liderCarteras.filter(f => String(f.liderID) === filtroLider)
-      : data.liderCarteras;
+    // Carteras disponibles, restringidas al líder filtrado (igual patrón que el tab Agentes)
+    const optsCartera = Array.from(
+      new Map(
+        data.liderCarteras
+          .filter(f => !filtroLider || String(f.liderID) === filtroLider)
+          .map(f => [f.carteraID, f.nombreCartera])
+      ).entries()
+    ).map(([value, label]) => ({ value: String(value), label }));
+
+    const fuenteFiltrada = data.liderCarteras.filter(f =>
+      (!filtroLider   || String(f.liderID)   === filtroLider) &&
+      (!filtroCartera || String(f.carteraID) === filtroCartera));
 
     // ── Vista Líder-Cartera ────────────────────────────────────────────────────
-    const filasPorLiderCartera = fuenteFiltrada.map(f => ({
-      ...f,
-      cumplimiento: f.valorMeta > 0 ? f.honorarios / f.valorMeta : 0,
-      centroCostos: f.totalAsesores * COSTO_ASESOR,
-    }));
+    const filasPorLiderCarteraNormal = fuenteFiltrada.map(aFilaLC);
 
     // ── Vista Cartera (agrupar todos los líderes de una misma cartera) ─────────
     const porCartera = new Map<number, CarteraAgregada>();
@@ -1008,19 +1081,35 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
           valorMeta: f.valorMeta, tipoMeta: f.tipoMeta,
           recaudo: f.recaudo, honorarios: f.honorarios,
           deberiaLlevarHoy: f.deberiaLlevarHoy, proyeccionCierre: f.proyeccionCierre,
-          tieneMeta: f.tieneMeta, cumplimiento: 0,
+          tieneMeta: f.tieneMeta, cumplimiento: 0, caida: 0,
           centroCostos: f.totalAsesores * COSTO_ASESOR,
         });
       }
     }
     const filasCartera: CarteraAgregada[] = Array.from(porCartera.values()).map(c => ({
-      ...c, cumplimiento: c.valorMeta > 0 ? c.honorarios / c.valorMeta : 0,
+      ...c,
+      cumplimiento: c.valorMeta > 0 ? c.honorarios / c.valorMeta : 0,
+      // Caída = dinero que falta para lo que debería llevar HOY (0 si ya lo alcanzó)
+      caida: c.tieneMeta ? Math.max(0, c.deberiaLlevarHoy - (c.tipoMeta === 'Honorarios' ? c.honorarios : c.recaudo)) : 0,
     }));
 
-    return { optsLider, filasPorLiderCartera, filasCartera };
-  }, [data, filtroLider]);
+    return { optsLider, optsCartera, filasPorLiderCarteraNormal, filasCartera };
+  }, [data, filtroLider, filtroCartera]);
 
-  latestRef.current = { filasPorLiderCartera, filasCartera, vista, esLider };
+  // Filas efectivas de la vista líder-cartera: desglose por asesor si la cartera es BASE GENERAL,
+  // de lo contrario el filtrado normal por líder/cartera.
+  const filasPorLiderCartera = useMemo(
+    () => esBaseGeneralSel ? (bgQuery.data?.liderCarteras ?? []).map(aFilaLC) : filasPorLiderCarteraNormal,
+    [esBaseGeneralSel, bgQuery.data, filasPorLiderCarteraNormal],
+  );
+
+  // Una instancia de orden por vista; el padre conserva el orden para que la descarga lo respete
+  const sortLC   = useSortable(filasPorLiderCartera as unknown as Record<string, unknown>[]);
+  const sortCart = useSortable(filasCartera         as unknown as Record<string, unknown>[]);
+  const filasLCOrdenadas   = sortLC.sorted   as unknown as (InformeLiderCartera & { cumplimiento: number; centroCostos: number; caida: number })[];
+  const filasCartOrdenadas = sortCart.sorted as unknown as CarteraAgregada[];
+
+  latestRef.current = { filasPorLiderCartera: filasLCOrdenadas, filasCartera: filasCartOrdenadas, vista, esLider };
 
   useEffect(() => {
     if (!onRegisterDownload) return;
@@ -1036,7 +1125,7 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
       if (vista === 'lider-cartera') {
         headCols = [...(esLider ? [] : ['Líder']), 'Cartera', 'Asesores',
           'Centro Costos', 'Asignaciones', 'Recaudo', 'Honorarios',
-          'Tipo Meta', 'Meta', 'Debería hoy', 'Proyección', 'Cump.'];
+          'Tipo Meta', 'Meta', 'Debería hoy', 'Caída', 'Proyección', 'Cump.'];
         body = filasPorLiderCartera.map(f => [
           ...(esLider ? [] : [f.nombreLider]),
           f.nombreCartera, f.totalAsesores,
@@ -1045,12 +1134,13 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
           f.tipoMeta ?? '—',
           f.tieneMeta ? cop(f.valorMeta) : '—',
           f.tieneMeta ? cop(f.deberiaLlevarHoy) : '—',
+          f.tieneMeta ? cop(f.caida) : '—',
           cop(f.proyeccionCierre),
           f.valorMeta > 0 ? f.honorarios / f.valorMeta : -1,
         ]);
       } else {
         headCols = ['Cartera', 'Líderes', 'Asesores', 'Centro Costos', 'Asignaciones',
-          'Recaudo', 'Honorarios', 'Tipo Meta', 'Meta', 'Debería hoy', 'Proyección', 'Cump.'];
+          'Recaudo', 'Honorarios', 'Tipo Meta', 'Meta', 'Debería hoy', 'Caída', 'Proyección', 'Cump.'];
         body = filasCartera.map(c => [
           c.nombreCartera, c.lideres, c.asesores,
           cop(c.centroCostos), c.capacidad.toLocaleString('es-CO'),
@@ -1058,6 +1148,7 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
           c.tipoMeta ?? '—',
           c.tieneMeta ? cop(c.valorMeta) : '—',
           c.tieneMeta ? cop(c.deberiaLlevarHoy) : '—',
+          c.tieneMeta ? cop(c.caida) : '—',
           cop(c.proyeccionCierre),
           c.valorMeta > 0 ? c.honorarios / c.valorMeta : -1,
         ]);
@@ -1142,9 +1233,19 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
               <FiltroSelect
                 label="Líder:"
                 value={filtroLider}
-                onChange={setFiltroLider}
+                onChange={v => { setFiltroLider(v); setFiltroCartera(''); }}
                 options={optsLider}
                 placeholder="Todos los líderes"
+              />
+            )}
+
+            {vista === 'lider-cartera' && (
+              <FiltroSelect
+                label="Cartera:"
+                value={filtroCartera}
+                onChange={setFiltroCartera}
+                options={optsCartera}
+                placeholder="Todas las carteras"
               />
             )}
 
@@ -1202,17 +1303,20 @@ function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
 
       {/* Tabla */}
       {vista === 'lider-cartera'
-        ? <TablaCarterasLiderCartera filas={filasPorLiderCartera} esLider={esLider} />
-        : <TablaCarterasAgrupada     filas={filasCartera} />
+        ? <TablaCarterasLiderCartera filas={filasLCOrdenadas} esLider={esLider}
+            sortKey={sortLC.sortKey} sortDir={sortLC.sortDir} onSort={sortLC.handleSort} />
+        : <TablaCarterasAgrupada     filas={filasCartOrdenadas}
+            sortKey={sortCart.sortKey} sortDir={sortCart.sortDir} onSort={sortCart.handleSort} />
       }
     </div>
   );
 }
 
-function TablaCarterasLiderCartera({ filas, esLider }: { filas: (InformeLiderCartera & { cumplimiento: number })[]; esLider: boolean }) {
-  const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
+function TablaCarterasLiderCartera({ filas, esLider, sortKey, sortDir, onSort }: {
+  filas: (InformeLiderCartera & { cumplimiento: number; centroCostos: number; caida: number })[]; esLider: boolean;
+} & SortHandlers) {
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
-    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+    <ThSort label={label} k={k} sortKey={sortKey} sortDir={sortDir} onSort={onSort} align={align} />
   );
   return (
     <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
@@ -1230,12 +1334,13 @@ function TablaCarterasLiderCartera({ filas, esLider }: { filas: (InformeLiderCar
               <th style={{ ...TH, textAlign: 'center' }}>Tipo Meta</th>
               {th('Meta',              'valorMeta')}
               {th('Debería hoy',       'deberiaLlevarHoy')}
+              {th('Caída',             'caida')}
               {th('Proyección',        'proyeccionCierre')}
               {th('Cump.',             'cumplimiento',    'center')}
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as (InformeLiderCartera & { cumplimiento: number; centroCostos: number })[]).map(f => (
+            {filas.map(f => (
               <tr key={`${f.liderID}-${f.carteraID}`}>
                 {!esLider && <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>}
                 <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{f.nombreCartera}</td>
@@ -1247,6 +1352,7 @@ function TablaCarterasLiderCartera({ filas, esLider }: { filas: (InformeLiderCar
                 <td style={{ ...TD, textAlign: 'center' }}><ChipTipoMeta tipo={f.tipoMeta} /></td>
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{f.tieneMeta ? cop(f.valorMeta) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{f.tieneMeta ? cop(f.deberiaLlevarHoy) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: f.caida > 0 ? C.rojo : C.verde }}>{f.tieneMeta ? cop(f.caida) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', color: f.proyeccionCierre >= f.valorMeta && f.valorMeta > 0 ? C.verde : C.naranja, fontWeight: 600 }}>{cop(f.proyeccionCierre)}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>
                   <Semaforo valorActual={f.honorarios} valorMeta={f.valorMeta} />
@@ -1260,10 +1366,11 @@ function TablaCarterasLiderCartera({ filas, esLider }: { filas: (InformeLiderCar
   );
 }
 
-function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
-  const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
+function TablaCarterasAgrupada({ filas, sortKey, sortDir, onSort }: {
+  filas: CarteraAgregada[];
+} & SortHandlers) {
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
-    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+    <ThSort label={label} k={k} sortKey={sortKey} sortDir={sortDir} onSort={onSort} align={align} />
   );
   return (
     <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
@@ -1281,12 +1388,13 @@ function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
               <th style={{ ...TH, textAlign: 'center' }}>Tipo Meta</th>
               {th('Meta',              'valorMeta')}
               {th('Debería hoy',       'deberiaLlevarHoy')}
+              {th('Caída',             'caida')}
               {th('Proyección',        'proyeccionCierre')}
               {th('Cump.',             'cumplimiento',    'center')}
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as CarteraAgregada[]).map(c => (
+            {filas.map(c => (
               <tr key={c.carteraID}>
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{c.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{c.lideres}</td>
@@ -1298,6 +1406,7 @@ function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
                 <td style={{ ...TD, textAlign: 'center' }}><ChipTipoMeta tipo={c.tipoMeta} /></td>
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{c.tieneMeta ? cop(c.valorMeta) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{c.tieneMeta ? cop(c.deberiaLlevarHoy) : '—'}</td>
+                <td style={{ ...TD, textAlign: 'right', color: c.caida > 0 ? C.rojo : C.verde }}>{c.tieneMeta ? cop(c.caida) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', color: c.proyeccionCierre >= c.valorMeta && c.valorMeta > 0 ? C.verde : C.naranja, fontWeight: 600 }}>{cop(c.proyeccionCierre)}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>
                   <Semaforo valorActual={c.honorarios} valorMeta={c.valorMeta} />
@@ -1377,7 +1486,11 @@ function TabComparativo({ onRegisterDownload }: { onRegisterDownload?: DownloadR
     return Array.from(map.values());
   }, [qAB.data, qBC.data, numPeriodos]);
 
-  latestRef.current = { filas, labelA, labelB, labelC, numPeriodos };
+  // Orden gobernado en el padre para que la descarga PDF use el mismo orden visible
+  const sortComp       = useSortable(filas as unknown as Record<string, unknown>[]);
+  const filasOrdenadas = sortComp.sorted as unknown as FilaComparativo[];
+
+  latestRef.current = { filas: filasOrdenadas, labelA, labelB, labelC, numPeriodos };
 
   useEffect(() => {
     if (!onRegisterDownload) return;
@@ -1523,19 +1636,21 @@ function TabComparativo({ onRegisterDownload }: { onRegisterDownload?: DownloadR
             </div>
           </div>
 
-          <TablaComparativo filas={filas} labelA={labelA} labelB={labelB} labelC={numPeriodos === 3 ? labelC : null} />
+          <TablaComparativo
+            filas={filasOrdenadas} labelA={labelA} labelB={labelB} labelC={numPeriodos === 3 ? labelC : null}
+            sortKey={sortComp.sortKey} sortDir={sortComp.sortDir} onSort={sortComp.handleSort}
+          />
         </>
       )}
     </div>
   );
 }
 
-function TablaComparativo({ filas, labelA, labelB, labelC }: {
+function TablaComparativo({ filas, labelA, labelB, labelC, sortKey, sortDir, onSort }: {
   filas: FilaComparativo[]; labelA: string; labelB: string; labelC: string | null;
-}) {
-  const { sorted, sortKey, sortDir, handleSort } = useSortable(filas as unknown as Record<string, unknown>[]);
+} & SortHandlers) {
   const th = (label: string, k: string, align?: 'left' | 'right' | 'center') => (
-    <ThSort label={label} k={k} sortKey={sortKey as string | null} sortDir={sortDir} onSort={handleSort} align={align} />
+    <ThSort label={label} k={k} sortKey={sortKey} sortDir={sortDir} onSort={onSort} align={align} />
   );
   return (
     <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
@@ -1555,7 +1670,7 @@ function TablaComparativo({ filas, labelA, labelB, labelC }: {
             </tr>
           </thead>
           <tbody>
-            {(sorted as unknown as FilaComparativo[]).map(f => {
+            {filas.map(f => {
               const varAB = f.valA > 0 ? ((f.valB - f.valA) / f.valA * 100) : null;
               const varBC = f.valB > 0 ? ((f.valC - f.valB) / f.valB * 100) : null;
               return (
