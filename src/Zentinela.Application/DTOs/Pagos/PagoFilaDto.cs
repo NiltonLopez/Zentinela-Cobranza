@@ -32,6 +32,11 @@ public class PagoFilaDto
     /// se reportan aparte para que el usuario sepa qué se omitió. ErrorMensaje contiene el motivo.
     /// </summary>
     public bool     EsDuplicado      { get; set; }
+    /// <summary>
+    /// True si la cédula no existe en la tabla maestra Titular: la fila es válida pero al
+    /// confirmar se creará el titular (NumeroDocumento + Nombre). La UI la resalta en amarillo.
+    /// </summary>
+    public bool     TitularNuevo     { get; set; }
     public bool     EsValida         { get; set; }
     public string?  ErrorMensaje     { get; set; }
 }

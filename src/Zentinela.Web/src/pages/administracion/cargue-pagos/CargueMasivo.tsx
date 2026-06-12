@@ -20,7 +20,18 @@ const cop = (v: number) =>
 
 // ── Badge de estado ───────────────────────────────────────────────────────────
 
-function BadgePago({ esValida }: { esValida: boolean }) {
+function BadgePago({ esValida, titularNuevo }: { esValida: boolean; titularNuevo?: boolean }) {
+  if (esValida && titularNuevo) {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+        fontSize: 11, fontWeight: 600,
+        background: '#fffbeb', color: '#b45309', border: '1px solid #fcd34d',
+      }}>
+        Titular nuevo
+      </span>
+    );
+  }
   if (esValida) {
     return (
       <span style={{
@@ -244,6 +255,82 @@ function PanelDuplicados({ filas }: { filas: PagoFila[] }) {
   );
 }
 
+// ── Panel de titulares nuevos (se crearán al confirmar) ─────────────────────────
+
+function PanelTitularesNuevos({ filas }: { filas: PagoFila[] }) {
+  if (filas.length === 0) return null;
+
+  return (
+    <div style={{
+      background: '#fffbeb', border: '1px solid #fcd34d',
+      borderRadius: '8px', overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '14px 18px', borderBottom: '1px solid #fcd34d',
+        display: 'flex', alignItems: 'baseline', gap: '10px',
+      }}>
+        <span style={{ fontSize: 24, fontWeight: 700, color: '#b45309', lineHeight: 1 }}>
+          {filas.length.toLocaleString('es-CO')}
+        </span>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#92400e' }}>
+          {filas.length === 1
+            ? 'titular nuevo — se creará al cargar'
+            : 'titulares nuevos — se crearán al cargar'}
+        </p>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#fef3c7' }}>
+              {['#', 'Cédula', 'Nombre', 'Valor pagado', 'Fecha', 'Usuario Control'].map((col, i) => (
+                <th key={i} style={{
+                  padding: '8px 14px', textAlign: 'left',
+                  fontSize: '11px', fontWeight: 600, color: '#92400e',
+                  borderBottom: '1px solid #fcd34d',
+                  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+                }}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((fila, idx) => (
+              <tr
+                key={idx}
+                style={{
+                  borderBottom: idx < filas.length - 1 ? '0.5px solid #fde68a' : 'none',
+                  background: idx % 2 === 0 ? 'transparent' : '#fffaf0',
+                }}
+              >
+                <td style={{ padding: '8px 14px', fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>
+                  {idx + 1}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {fila.cedulaTitular}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
+                  {fila.nombreCliente || '—'}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {cop(fila.valorPagado)}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
+                  {fila.fechaPago}
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: '12px', color: '#b45309', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {fila.esBaseGeneral ? 'BASE GENERAL' : (fila.usuarioControl || '—')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Tabla de preview ──────────────────────────────────────────────────────────
 
 function TablaPreview({ filas, totalValidas }: { filas: PagoFila[]; totalValidas: number }) {
@@ -311,7 +398,7 @@ function TablaPreview({ filas, totalValidas }: { filas: PagoFila[]; totalValidas
                   )}
                 </td>
                 <td style={{ padding: '9px 14px' }}>
-                  <BadgePago esValida={fila.esValida} />
+                  <BadgePago esValida={fila.esValida} titularNuevo={fila.titularNuevo} />
                 </td>
               </tr>
             ))}
@@ -337,9 +424,10 @@ export function CargueMasivo() {
   const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
 
   // Toggles para los detalles asociados a cada chip de conteo
-  const [verErrores,    setVerErrores]    = useState(false);
-  const [verValidos,    setVerValidos]    = useState(false);
-  const [verDuplicados, setVerDuplicados] = useState(false);
+  const [verErrores,         setVerErrores]         = useState(false);
+  const [verValidos,         setVerValidos]         = useState(false);
+  const [verDuplicados,      setVerDuplicados]      = useState(false);
+  const [verTitularesNuevos, setVerTitularesNuevos] = useState(false);
 
   const { data: carteras = [] } = useQuery({
     queryKey: ['pagos-carteras'],
@@ -358,6 +446,7 @@ export function CargueMasivo() {
       // los válidos quedan colapsados (memory: vista previa máx. 10).
       setVerErrores(data.cantidadErrores > 0);
       setVerDuplicados(data.cantidadDuplicados > 0);
+      setVerTitularesNuevos(data.cantidadTitularesNuevos > 0);
       setVerValidos(false);
       setEtapa('preview');
     },
@@ -399,6 +488,7 @@ export function CargueMasivo() {
     setVerErrores(false);
     setVerValidos(false);
     setVerDuplicados(false);
+    setVerTitularesNuevos(false);
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -576,6 +666,15 @@ export function CargueMasivo() {
                 abierto={verDuplicados}
               />
             )}
+            {preview.cantidadTitularesNuevos > 0 && (
+              <ChipConteo
+                numero={preview.cantidadTitularesNuevos}
+                label="titulares nuevos — se crearán"
+                bg="#fffbeb" border="#fcd34d" colorNum="#b45309" colorLabel="#92400e"
+                onClick={() => setVerTitularesNuevos(v => !v)}
+                abierto={verTitularesNuevos}
+              />
+            )}
             {preview.cantidadErrores > 0 && (
               <ChipConteo
                 numero={preview.cantidadErrores}
@@ -589,6 +688,9 @@ export function CargueMasivo() {
 
           {/* Panel de duplicados — TODOS los ya cargados (click en el chip ámbar) */}
           {verDuplicados && <PanelDuplicados filas={preview.duplicados} />}
+
+          {/* Panel de titulares nuevos — se crearán al confirmar (click en el chip ámbar) */}
+          {verTitularesNuevos && <PanelTitularesNuevos filas={preview.titularesNuevos} />}
 
           {/* Panel de errores — TODOS los errores (click en el chip rojo) */}
           {verErrores && <PanelErrores filas={preview.errores} />}
@@ -609,6 +711,8 @@ export function CargueMasivo() {
               directamente en la tabla <strong>Pago</strong>. Esta acción no se puede deshacer.
               {preview.cantidadDuplicados > 0 &&
                 ` Los ${preview.cantidadDuplicados} pagos ya cargados se omitirán automáticamente.`}
+              {preview.cantidadTitularesNuevos > 0 &&
+                ` Se crearán ${preview.cantidadTitularesNuevos} titular(es) nuevo(s) que no existían en la base.`}
             </div>
           )}
 

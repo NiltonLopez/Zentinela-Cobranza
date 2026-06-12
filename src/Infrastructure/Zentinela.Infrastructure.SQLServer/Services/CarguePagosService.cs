@@ -43,6 +43,13 @@ public class CarguePagosService : ICarguePagosService
     /// </summary>
     private const string BaseGeneralKeyword = "BASE GENERAL";
 
+    /// <summary>
+    /// LiderID del líder genérico "BASE GENERAL". Se usa como fallback cuando un pago con
+    /// asesor no se puede atribuir a ningún líder (titular fuera de la cartera y asesor que
+    /// tampoco pertenece a ella): se acredita al asesor pero el líder queda en BASE GENERAL.
+    /// </summary>
+    private const int LiderBaseGeneralID = 25;
+
     private readonly CallCenterDbContext _context;
     private readonly RecursosHumanosDbContext _rrhh;
     private readonly ICalificadorCarteraCache _calificadorCache;
@@ -197,13 +204,46 @@ public class CarguePagosService : ICarguePagosService
                 .DistinctBy(x => x.AgenteID)
                 .ToDictionary(x => x.AgenteID, x => x.LiderID);
 
+        // ── Lookup 4: existencia del titular en la tabla maestra ──────────────
+        // El pago exige que la cédula exista en Titular (FK_Pago_Titular). Se usa en el
+        // fallback de titulares no asignados a la cartera para no romper la FK al confirmar.
+        var cedulasExistentes = (await _context.Titulares
+                .Where(t => cedulas.Contains(t.NumeroDocumento))
+                .AsNoTracking()
+                .Select(t => t.NumeroDocumento)
+                .ToListAsync())
+            .ToHashSet();
+
         // ── Resolver LiderID para cada fila ───────────────────────────────────
         foreach (var fila in filasValidas.Where(f => f.EsValida))
         {
+            // Titular SIN asignación en esta cartera: para pagos normales con asesor se
+            // atribuye al líder del asesor (Cartera_Agente). BASE GENERAL o asesor que no
+            // pertenece a la cartera → no hay forma de resolver el líder y se rechaza.
             if (!lideresPorCedula.TryGetValue(fila.CedulaTitular, out var lideres) || lideres.Count == 0)
             {
-                fila.EsValida     = false;
-                fila.ErrorMensaje = $"Cédula {fila.CedulaTitular} no está asignada a ningún líder en esta cartera.";
+                // El titular no está asignado a esta cartera y tampoco existe en la maestra
+                // Titular: la fila sigue siendo válida y se marca como NUEVO — al confirmar se
+                // crea el titular (NumeroDocumento + Nombre). La resolución de líder continúa abajo.
+                if (!cedulasExistentes.Contains(fila.CedulaTitular))
+                {
+                    fila.TitularNuevo = true;
+                    fila.ErrorMensaje = "Titular nuevo — se creará al cargar.";
+                }
+                // BASE GENERAL (sin asesor): AgenteControlID queda NULL y el pago se atribuye
+                // solo a la cartera, bajo el líder BASE GENERAL (LiderID 25).
+                if (fila.EsBaseGeneral)
+                {
+                    fila.LiderID = LiderBaseGeneralID;
+                    continue;
+                }
+                // Pago normal con asesor: se acredita al asesor y el líder sale de su Cartera_Agente
+                // en esta cartera; si el asesor tampoco pertenece a ella (no mapea por ningún lado),
+                // se atribuye a BASE GENERAL (LiderID 25) conservando el crédito del asesor.
+                fila.LiderID = fila.AgenteControlID.HasValue &&
+                               liderPorAgenteDict.TryGetValue(fila.AgenteControlID.Value, out var liderAgente)
+                    ? liderAgente
+                    : LiderBaseGeneralID;
                 continue;
             }
 
@@ -256,20 +296,23 @@ public class CarguePagosService : ICarguePagosService
             }
         }
 
-        var validas    = candidatas.Where(f => !f.EsDuplicado).ToList();
-        var duplicados = candidatas.Where(f =>  f.EsDuplicado).ToList();
-        var errores    = filas.Where(f => !f.EsValida).ToList();
+        var validas         = candidatas.Where(f => !f.EsDuplicado).ToList();
+        var duplicados      = candidatas.Where(f =>  f.EsDuplicado).ToList();
+        var errores         = filas.Where(f => !f.EsValida).ToList();
+        var titularesNuevos = validas.Where(f => f.TitularNuevo).ToList();
 
         return new ValidarPagosResponse
         {
-            TotalFilas         = filas.Count,
-            CantidadValidas    = validas.Count,
-            CantidadDuplicados = duplicados.Count,
-            CantidadErrores    = errores.Count,
-            Preview            = validas.Take(10).ToList(),
-            Duplicados         = duplicados,
-            Errores            = errores,
-            TodasLasValidas    = validas,
+            TotalFilas              = filas.Count,
+            CantidadValidas         = validas.Count,
+            CantidadDuplicados      = duplicados.Count,
+            CantidadErrores         = errores.Count,
+            CantidadTitularesNuevos = titularesNuevos.Count,
+            Preview                 = validas.Take(10).ToList(),
+            Duplicados              = duplicados,
+            Errores                 = errores,
+            TitularesNuevos         = titularesNuevos,
+            TodasLasValidas         = validas,
         };
     }
 
@@ -301,6 +344,25 @@ public class CarguePagosService : ICarguePagosService
     {
         var ahora = DateTime.UtcNow;
 
+        // Crear los titulares que aún no existen en la maestra (el cargue permite titulares
+        // nuevos). Se re-verifica contra la BD para no depender solo del flag del cliente.
+        var cedulas = request.FilasValidas.Select(f => f.CedulaTitular).Distinct().ToList();
+        var existentes = (await _context.Titulares
+                .Where(t => cedulas.Contains(t.NumeroDocumento))
+                .Select(t => t.NumeroDocumento)
+                .ToListAsync())
+            .ToHashSet();
+
+        var nuevosTitulares = request.FilasValidas
+            .Where(f => !existentes.Contains(f.CedulaTitular))
+            .GroupBy(f => f.CedulaTitular)
+            .Select(g => new Titular
+            {
+                NumeroDocumento = g.Key,
+                Nombre          = g.First().NombreCliente.Trim(),
+            })
+            .ToList();
+
         var pagos = request.FilasValidas.Select(f => new Pago
         {
             CedulaTitular    = f.CedulaTitular,
@@ -315,8 +377,22 @@ public class CarguePagosService : ICarguePagosService
             FechaRegistro    = ahora,
         }).ToList();
 
+        // Los titulares nuevos deben existir ANTES de insertar los pagos (FK_Pago_Titular).
+        // La relación Pago→Titular no está mapeada en el modelo EF (Pago no tiene navegación a
+        // Titular), por lo que EF no ordena los inserts por sí solo y el MERGE de los pagos
+        // violaría la FK. Se persiste en dos fases dentro de una misma transacción.
+        await using var tx = await _context.Database.BeginTransactionAsync();
+
+        if (nuevosTitulares.Count > 0)
+        {
+            _context.Titulares.AddRange(nuevosTitulares);
+            await _context.SaveChangesAsync();
+        }
+
         _context.Pagos.AddRange(pagos);
         await _context.SaveChangesAsync();
+
+        await tx.CommitAsync();
 
         // Persistencia exitosa — los pagos no alteran las agregaciones actuales del
         // Calificador, pero sí podrían influir en versiones futuras del DTO (recaudo

@@ -9,6 +9,7 @@ export interface PagoFila {
   liderID: number;           // resuelto desde TitularCartera (o CarteraAgente como desempate)
   esBaseGeneral: boolean;    // true cuando UsuarioControl = "BASE GENERAL"
   esDuplicado: boolean;      // true cuando el pago ya estaba cargado o se repite en el archivo — se omite
+  titularNuevo: boolean;     // true cuando la cédula no existe en Titular — se creará al confirmar (amarillo)
   esValida: boolean;
   errorMensaje?: string;
 }
@@ -18,9 +19,11 @@ export interface ValidarPagosResponse {
   cantidadValidas: number;
   cantidadDuplicados: number;
   cantidadErrores: number;
+  cantidadTitularesNuevos: number;  // cuántas válidas crearán un titular nuevo (subconjunto)
   preview: PagoFila[];        // primeras 10 filas válidas (no duplicadas) para vista previa
   duplicados: PagoFila[];     // TODAS las filas ya cargadas / repetidas — se omiten
   errores: PagoFila[];        // TODAS las filas con error
+  titularesNuevos: PagoFila[]; // TODAS las válidas cuyo titular se creará al confirmar
   todasLasValidas: PagoFila[];
   todasLasInvalidas?: PagoFila[];
 }
