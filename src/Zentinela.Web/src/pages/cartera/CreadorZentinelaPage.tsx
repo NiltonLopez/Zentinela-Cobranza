@@ -52,6 +52,7 @@ const FUENTES_CELULAR = [
   { key: 'MiVacuna',      label: 'MiVacuna'       },
   { key: 'MutualSer',     label: 'MutualSer (1)'  },
   { key: 'MutualSer2',    label: 'MutualSer (2)'  },
+  { key: 'NuevaEps',      label: 'NuevaEps'       },
 ];
 
 const inputStyle: React.CSSProperties = {

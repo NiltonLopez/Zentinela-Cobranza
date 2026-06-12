@@ -138,6 +138,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Celular MutualSer]               AS CelMutualSer,
             [Celular 2 MutualSer]             AS CelMutualSer2,
             [Celular MiVacuna]                AS CelMiVacuna,
+            [Celular NuevaEps]                AS CelNuevaEps,
             [Email CajaCopi]                  AS EmCajacopi,
             [Email Camara]                    AS EmCamara,
             [Email Salud Total]               AS EmSaludTotal,
@@ -163,6 +164,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Empresa SOS]                 AS EmpresaSOS,
             [Departamento MutualSer]      AS DepartamentoMutualSer,
             [Municipio MutualSer]         AS MunicipioMutualSer,
+            [Departamento NuevaEps]       AS DepartamentoNuevaEps,
+            [Municipio NuevaEps]          AS MunicipioNuevaEps,
             [NIT Sura]                    AS NITSura,
             [Empresa Sura]                AS EmpresaSura,
             [NIT Positiva]                AS NITPositiva,
@@ -200,7 +203,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                    OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
                    OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                    OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
-                   OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna  NOT IN ('','0')) AS ConCelular,
+                   OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna  NOT IN ('','0')
+                   OR CelNuevaEps   NOT IN ('','0')) AS ConCelular,
             (SELECT COUNT(*) FROM #t
                 WHERE EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                    OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
@@ -211,7 +215,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                     OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
                     OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                     OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
-                    OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0'))
+                    OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0')
+                    OR CelNuevaEps   NOT IN ('','0'))
                   AND (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                     OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
                     OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
@@ -221,7 +226,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                         OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
                         OR CelTigo       NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                         OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
-                        OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0'))
+                        OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0')
+                        OR CelNuevaEps   NOT IN ('','0'))
                   AND NOT (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                         OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
                         OR EmTigo       NOT IN ('','0') OR EmClaro    NOT IN ('','0')
@@ -305,6 +311,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             UNION ALL SELECT 'MutualSer (1)', SUM(CASE WHEN CelMutualSer  NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'MutualSer (2)', SUM(CASE WHEN CelMutualSer2 NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'MiVacuna',      SUM(CASE WHEN CelMiVacuna   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'NuevaEps',      SUM(CASE WHEN CelNuevaEps   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
         )
         SELECT Fuente AS Etiqueta, Cantidad,
                CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
@@ -403,6 +410,15 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                       AND NULLIF(NULLIF(t.MunicipioMutualSer,   ''),'0') IS NULL
                       AND ms.TitularID IS NOT NULL
                      THEN 1 ELSE 0 END) AS MutualSerNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelNuevaEps,         ''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.DepartamentoNuevaEps,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.MunicipioNuevaEps,   ''),'0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS NuevaEpsEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelNuevaEps,         ''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.DepartamentoNuevaEps,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.MunicipioNuevaEps,   ''),'0') IS NULL
+                      AND ne.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS NuevaEpsNoEnc,
             SUM(CASE WHEN (t.NITSura IS NOT NULL AND t.NITSura != 0)
                        OR NULLIF(NULLIF(t.EmpresaSura,''), '0') IS NOT NULL
                      THEN 1 ELSE 0 END) AS SuraEnc,
@@ -447,6 +463,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM MutualSer)        ms ON ms.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TRY_CAST(TitularID AS BIGINT) AS TitularID FROM NuevaEps) ne ON ne.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM PositivaEmpresas) pe ON pe.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM RUES)             ru ON ru.TitularID = t.TitularID
@@ -601,6 +618,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Fuente("SOS",           Sum("SosEnc"),         Sum("SosNoEnc"),         total),
             Fuente("Claro",         Sum("ClaroEnc"),       Sum("ClaroNoEnc"),       total),
             Fuente("MutualSer",     Sum("MutualSerEnc"),   Sum("MutualSerNoEnc"),   total),
+            Fuente("NuevaEps",      Sum("NuevaEpsEnc"),    Sum("NuevaEpsNoEnc"),    total),
             Fuente("Sura (ARL)",    Sum("SuraEnc"),        Sum("SuraNoEnc"),        total),
             Fuente("Positiva Emp.", Sum("PosEmpEnc"),      Sum("PosEmpNoEnc"),      total),
             Fuente("RUES",          Sum("RuesEnc"),        Sum("RuesNoEnc"),        total),
@@ -702,6 +720,15 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             "OR NULLIF(NULLIF(t.EmMutualSer,''),'0') IS NOT NULL " +
             "OR NULLIF(NULLIF(t.DepartamentoMutualSer,''),'0') IS NOT NULL " +
             "OR NULLIF(NULLIF(t.MunicipioMutualSer,''),'0') IS NOT NULL"),
+
+        // NuevaEps.TitularID es varchar (todos numericos): la conversion implicita en
+        // el JOIN del src CTE es segura.
+        ["nuevaeps"] = new("nuevaeps", "NuevaEps", "NuevaEps", "FechaConsulta",
+            "[Celular NuevaEps] AS CelNuevaEps, " +
+            "[Departamento NuevaEps] AS DepartamentoNuevaEps, [Municipio NuevaEps] AS MunicipioNuevaEps",
+            "NULLIF(NULLIF(t.CelNuevaEps,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.DepartamentoNuevaEps,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.MunicipioNuevaEps,''),'0') IS NOT NULL"),
 
         ["sura"] = new("sura", "Sura", "ARLSura", "FechaConsulta",
             "[NIT Sura] AS NITSura, [Empresa Sura] AS EmpresaSura",

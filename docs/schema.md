@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-05-29  
+> Generado: 2026-04-02 — Actualizado: 2026-06-12  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -358,6 +358,23 @@ Contactabilidad y calificación socioeconómica del afiliado a MutualSer EPS. Ca
 | FechaConsulta | date | NO | — | — |
 
 > **Excepción al patrón "1 fuente = 1 entrada en switch celular"**: MutualSer expone 2 celulares como columnas independientes (no por prioridad). El switch `BaseMadreRepository.ColumnaCelular` admite las claves `MutualSer` y `MutualSer2`. El `NumeroTelefonoFijo` se expone como columna pero NO entra al selector — el switch existe para marcado masivo a móviles. Ver `docs/para-tener-en-cuenta.md`.
+
+### NuevaEps
+Contactabilidad + localización + afiliación a Nueva EPS. Cardinalidad 1:1 por `TitularID` (3.557 filas == titulares únicos). Tabla heap — la migración `2026-06-12_nuevaeps_in_basemadre.sql` crea `IX_NuevaEps_TitularID_FechaConsulta`. Tabla espejo `NuevaEpsAuxiliar` (staging).
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | varchar(30) | NO | — | (Titular, vía TRY_CAST a bigint) |
+| NumeroTelefono | varchar(10) | SI | — | — |
+| EstadoAfiliacion | varchar(30) | SI | — | — |
+| TipoAfiliado | varchar(50) | SI | — | — |
+| FechaNacimiento | date | SI | — | — |
+| Departamento | varchar(50) | SI | — | — |
+| Municipio | varchar(50) | SI | — | — |
+| EstadoEnNuevaEps | bit | NO | — | — |
+| FechaConsulta | date | NO | — | — |
+
+> **Expuesta en `vw_BaseMadre` + `fn_BaseMadrePorCartera`** (migración `2026-06-12_nuevaeps_in_basemadre.sql`, tras MutualSer) con alias `[Celular NuevaEps]`, `[Estado Afiliacion NuevaEps]`, `[Tipo Afiliado NuevaEps]`, `[Fecha Nacimiento NuevaEps]`, `[Departamento NuevaEps]`, `[Municipio NuevaEps]`, `[Estado NuevaEps]` (bit→VARCHAR(1)), `[Ultima Consulta NuevaEps]`. **Excepción: `TitularID` es `varchar(30)`** (las demás fuentes son bigint) → se usa `TRY_CAST(TitularID AS BIGINT)` en CTE/JOINs/Rastreo. `NumeroTelefono` entra al switch `ColumnaCelular` (clave `NuevaEps`); **sin email**. Aporta **localización** (Departamento/Municipio en el panel del Calificador) y entra al `UNION ALL` de Rastreo de Líneas. Ver `docs/para-tener-en-cuenta.md`.
 
 ### Positiva
 Datos de afiliacion a Positiva (ARL) por titular.

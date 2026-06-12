@@ -225,6 +225,24 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        // NuevaEps es 1:1 por TitularID (varchar) — se compara como string.
+        var cedulaTexto = titular.NumeroDocumento.ToString();
+        var nuevaEps = await _context.NuevaEpsSet.FirstOrDefaultAsync(n => n.TitularID == cedulaTexto);
+        if (nuevaEps != null)
+        {
+            contactabilidad["NuevaEps"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"]    = nuevaEps.NumeroTelefono   ?? "N/A",
+                ["Estado Afiliación"]  = nuevaEps.EstadoAfiliacion ?? "N/A",
+                ["Tipo Afiliado"]      = nuevaEps.TipoAfiliado     ?? "N/A",
+                ["Fecha Nacimiento"]   = nuevaEps.FechaNacimiento.HasValue ? FormatDateOnly(nuevaEps.FechaNacimiento.Value) : "N/A",
+                ["Departamento"]       = nuevaEps.Departamento     ?? "N/A",
+                ["Municipio"]          = nuevaEps.Municipio        ?? "N/A",
+                ["Estado"]             = nuevaEps.EstadoEnNuevaEps ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = FormatDateOnly(nuevaEps.FechaConsulta),
+            };
+        }
+
         // MiVacuna es 1:1 por TitularID — entidad simple, sin aplanar múltiples filas.
         var miVacuna = await _context.MiVacunas.FirstOrDefaultAsync(m => m.TitularId == titular.NumeroDocumento);
         if (miVacuna != null)

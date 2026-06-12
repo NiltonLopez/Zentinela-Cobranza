@@ -178,3 +178,13 @@ del proyecto (más clientes, más equipo, más ambientes, mucho más volumen).
   Cubierto en sección de resueltos solo para firmas públicas y bloques de
   código que se leen a diario. Renombrar `idx` y similares en loops cortos
   genera churn que ensucia git blame sin aportar legibilidad real.
+
+- **NuevaEps: `TitularID` es `varchar(30)`, no `bigint`** (2026-06-12)
+  Única fuente de base madre cuyo `TitularID` es texto. Se usa
+  `TRY_CAST(TitularID AS BIGINT)` en el CTE de `vw_BaseMadre`/
+  `fn_BaseMadrePorCartera`, en los JOIN de localización de
+  `CalificadorCarteraService` y en el UNION de `RastreoLineasService`. Todos
+  los valores son numéricos (verificado), así que la conversión es segura.
+  En ConsultaIntegrada la entidad usa `string? TitularID` y compara contra
+  `titular.NumeroDocumento.ToString()`. Si se añade otra fuente con TitularID
+  varchar, replicar este patrón. Sin email (solo 1 celular).

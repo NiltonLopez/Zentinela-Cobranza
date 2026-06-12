@@ -319,6 +319,14 @@ public class BaseMadreRepository : IBaseMadreRepository
             ["MunicipioMutualSer"]         = "[Municipio MutualSer]",
             ["EstadoMutualSer"]            = "[Estado MutualSer]",
             ["UltimaConsultaMutualSer"]    = "[Ultima Consulta MutualSer]",
+            ["CelularNuevaEps"]            = "[Celular NuevaEps]",
+            ["EstadoAfiliacionNuevaEps"]   = "[Estado Afiliacion NuevaEps]",
+            ["TipoAfiliadoNuevaEps"]       = "[Tipo Afiliado NuevaEps]",
+            ["FechaNacimientoNuevaEps"]    = "[Fecha Nacimiento NuevaEps]",
+            ["DepartamentoNuevaEps"]       = "[Departamento NuevaEps]",
+            ["MunicipioNuevaEps"]          = "[Municipio NuevaEps]",
+            ["EstadoNuevaEps"]             = "[Estado NuevaEps]",
+            ["UltimaConsultaNuevaEps"]     = "[Ultima Consulta NuevaEps]",
             ["NITSura"]                    = "[NIT Sura]",
             ["EmpresaSura"]                = "[Empresa Sura]",
             ["NITPositiva"]                = "[NIT Positiva]",
@@ -354,6 +362,7 @@ public class BaseMadreRepository : IBaseMadreRepository
         // ver docs/para-tener-en-cuenta.md (excepción a "1 fuente = 1 entrada").
         "MutualSer"  => "[Celular MutualSer]",
         "MutualSer2" => "[Celular 2 MutualSer]",
+        "NuevaEps"   => "[Celular NuevaEps]",
         _            => null,
     };
 

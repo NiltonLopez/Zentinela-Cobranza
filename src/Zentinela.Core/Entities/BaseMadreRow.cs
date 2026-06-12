@@ -61,6 +61,14 @@ public class BaseMadreRow
     public string? MunicipioMutualSer       { get; set; }
     public string? EstadoMutualSer          { get; set; }
     public DateOnly? UltimaConsultaMutualSer { get; set; }
+    public string?   CelularNuevaEps          { get; set; }
+    public string?   EstadoAfiliacionNuevaEps { get; set; }
+    public string?   TipoAfiliadoNuevaEps     { get; set; }
+    public DateOnly? FechaNacimientoNuevaEps  { get; set; }
+    public string?   DepartamentoNuevaEps     { get; set; }
+    public string?   MunicipioNuevaEps        { get; set; }
+    public string?   EstadoNuevaEps           { get; set; }
+    public DateOnly? UltimaConsultaNuevaEps   { get; set; }
     public long?   NITSura                  { get; set; }
     public string? EmpresaSura              { get; set; }
     public long?   NITPositiva              { get; set; }

@@ -29,6 +29,7 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<DatosClaro> DatosClaros { get; set; }
     public virtual DbSet<MiVacuna> MiVacunas { get; set; }
     public virtual DbSet<MutualSer> MutualSers { get; set; }
+    public virtual DbSet<NuevaEps> NuevaEpsSet { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -66,6 +67,7 @@ public partial class ApplicationDbContext : DbContext
         modelBuilder.Entity<DatosClaro>().HasNoKey().ToTable("DatosClaro");
         modelBuilder.Entity<MiVacuna>().HasNoKey().ToTable("MiVacuna");
         modelBuilder.Entity<MutualSer>().HasNoKey().ToTable("MutualSer");
+        modelBuilder.Entity<NuevaEps>().HasNoKey().ToTable("NuevaEps");
 
         OnModelCreatingPartial(modelBuilder);
     }

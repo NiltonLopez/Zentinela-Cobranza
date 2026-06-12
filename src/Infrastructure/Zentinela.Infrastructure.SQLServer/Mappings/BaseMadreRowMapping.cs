@@ -65,6 +65,14 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.MunicipioMutualSer)      .HasColumnName("Municipio MutualSer");
         builder.Property(b => b.EstadoMutualSer)         .HasColumnName("Estado MutualSer");
         builder.Property(b => b.UltimaConsultaMutualSer) .HasColumnName("Ultima Consulta MutualSer");
+        builder.Property(b => b.CelularNuevaEps)          .HasColumnName("Celular NuevaEps");
+        builder.Property(b => b.EstadoAfiliacionNuevaEps) .HasColumnName("Estado Afiliacion NuevaEps");
+        builder.Property(b => b.TipoAfiliadoNuevaEps)     .HasColumnName("Tipo Afiliado NuevaEps");
+        builder.Property(b => b.FechaNacimientoNuevaEps)  .HasColumnName("Fecha Nacimiento NuevaEps");
+        builder.Property(b => b.DepartamentoNuevaEps)     .HasColumnName("Departamento NuevaEps");
+        builder.Property(b => b.MunicipioNuevaEps)        .HasColumnName("Municipio NuevaEps");
+        builder.Property(b => b.EstadoNuevaEps)           .HasColumnName("Estado NuevaEps");
+        builder.Property(b => b.UltimaConsultaNuevaEps)   .HasColumnName("Ultima Consulta NuevaEps");
         builder.Property(b => b.NITSura)                 .HasColumnName("NIT Sura");
         builder.Property(b => b.EmpresaSura)             .HasColumnName("Empresa Sura");
         builder.Property(b => b.NITPositiva)             .HasColumnName("NIT Positiva");
