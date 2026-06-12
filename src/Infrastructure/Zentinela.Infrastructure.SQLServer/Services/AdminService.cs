@@ -395,6 +395,24 @@ public class AdminService : IAdminService
             .AnyAsync(ca => ca.AgenteID == agenteID && ca.LiderID == lider.ID && ca.CarteraID == carteraID);
         if (yaExiste) return;
 
+        // Un agente solo puede pertenecer a carteras de un mismo líder (lo impone el trigger
+        // trg_CarteraAgente_LiderUnico). Si arrastra asignaciones bajo OTRO líder (p. ej. cambió de
+        // equipo y quedó la relación vieja), damos un mensaje claro en vez del error genérico de FK.
+        var otroLiderID = await _callCenter.CarteraAgentes
+            .Where(ca => ca.AgenteID == agenteID && ca.LiderID != lider.ID)
+            .Select(ca => (int?)ca.LiderID)
+            .FirstOrDefaultAsync();
+        if (otroLiderID != null)
+        {
+            var nombreOtro = await _callCenter.Lideres
+                .Where(l => l.ID == otroLiderID.Value)
+                .Select(l => l.Nombre)
+                .FirstOrDefaultAsync() ?? $"ID {otroLiderID}";
+            throw new InvalidOperationException(
+                $"El agente ya tiene carteras asignadas bajo el líder \"{nombreOtro}\". Un agente solo puede " +
+                $"pertenecer a un mismo líder; primero retira esas asignaciones o corrige su supervisor.");
+        }
+
         _callCenter.CarteraAgentes.Add(new CarteraAgente
         {
             AgenteID  = agenteID,
