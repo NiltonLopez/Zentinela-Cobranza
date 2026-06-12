@@ -12,7 +12,7 @@ import { useSort } from '../../hooks/useSort';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-type Preset = 'ultimo' | 'hoy' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
+type Preset = 'hoy' | 'ayer' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
 
 interface Rango { desde: string; hasta: string; }
 
@@ -26,13 +26,16 @@ function isoFecha(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Cuando preset es 'ultimo', desde y hasta son undefined → backend resuelve el último ciclo
 function calcularRango(preset: Preset, customDesde: string, customHasta: string): Rango | null {
-  if (preset === 'ultimo') return null; // sin fechas → backend usa MAX(FechaActualizacion)
   const hoy = new Date();
   switch (preset) {
     case 'hoy':
       return { desde: isoHoy(), hasta: isoHoy() };
+    case 'ayer': {
+      const ayer = new Date(hoy);
+      ayer.setDate(hoy.getDate() - 1);
+      return { desde: isoFecha(ayer), hasta: isoFecha(ayer) };
+    }
     case 'ciclo': {
       const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
       return { desde: isoFecha(inicio), hasta: isoHoy() };
@@ -82,9 +85,9 @@ function formatearFechaHora(iso: string | null): string {
 // ── Constantes de presets ─────────────────────────────────────────────────────
 
 const PRESETS: { valor: Preset; label: string }[] = [
-  { valor: 'ultimo',     label: 'Hasta cierre' },
-  { valor: 'hoy',        label: 'Hoy' },
   { valor: 'ciclo',      label: 'Este mes' },
+  { valor: 'hoy',        label: 'Hoy' },
+  { valor: 'ayer',       label: 'Ayer' },
   { valor: 'mes-pasado', label: 'Mes pasado' },
   { valor: '7d',         label: 'Últimos 7 días' },
   { valor: '30d',        label: 'Últimos 30 días' },
@@ -306,7 +309,7 @@ export function DashboardDirectorPage() {
   const [carteraNombre, setCarteraNombre] = useState<string>('');
 
   // Selector de fechas
-  const [preset,      setPreset]      = useState<Preset>('ultimo');
+  const [preset,      setPreset]      = useState<Preset>('ciclo');
   const [customDesde, setCustomDesde] = useState<string>('');
   const [customHasta, setCustomHasta] = useState<string>('');
 
@@ -494,13 +497,6 @@ export function DashboardDirectorPage() {
           </div>
 
           {/* Date pickers para rango personalizado */}
-          {/* Indicador visual del rango activo cuando lo resuelve el backend */}
-          {preset === 'ultimo' && data && (
-            <p style={{ fontSize: '12px', color: 'var(--z-text-muted)', marginTop: '8px' }}>
-              Datos del ciclo: <strong>{formatearFechaCorta(data.metricas.fechaDesde)}</strong>
-            </p>
-          )}
-
           {preset === 'custom' && (
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
