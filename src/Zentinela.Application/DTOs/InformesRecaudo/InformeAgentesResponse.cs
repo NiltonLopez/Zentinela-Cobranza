@@ -6,10 +6,11 @@ namespace Zentinela.Application.DTOs.InformesRecaudo;
 /// </summary>
 public class InformeAgentesResponse
 {
-    public decimal TotalRecaudo    { get; set; }
-    public decimal TotalHonorarios { get; set; }
-    public int     TotalAgentes    { get; set; }
-    public int     TotalGestionado { get; set; }
+    public decimal TotalRecaudo         { get; set; }
+    public decimal TotalHonorarios      { get; set; }
+    public int     TotalAgentes         { get; set; }
+    public int     TotalAgentesActivos  { get; set; }
+    public int     TotalGestionado      { get; set; }
 
     public List<InformeAgenteMesDto> Agentes { get; set; } = [];
 }

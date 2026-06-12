@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -76,8 +76,8 @@ function TooltipCOP({ active, payload, label }: any) {
 }
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, color }: {
-  label: string; value: string; sub?: string; color?: string;
+function KpiCard({ label, value, valueSuffix, sub, color }: {
+  label: string; value: string; valueSuffix?: string; sub?: string; color?: string;
 }) {
   return (
     <div style={{
@@ -89,6 +89,11 @@ function KpiCard({ label, value, sub, color }: {
       </p>
       <p style={{ fontSize: 22, fontWeight: 600, color: color ?? 'var(--z-text-primary)', margin: 0 }}>
         {value}
+        {valueSuffix && (
+          <span style={{ fontSize: 16, fontWeight: 400, color: '#94a3b8', marginLeft: 4 }}>
+            {valueSuffix}
+          </span>
+        )}
       </p>
       {sub && <p style={{ fontSize: 12, color: 'var(--z-text-muted)', marginTop: 2 }}>{sub}</p>}
     </div>
@@ -120,13 +125,13 @@ function SelectorPeriodo({ año, mes, onAño, onMes, label }: {
 }
 
 // ── Semáforo de cumplimiento ──────────────────────────────────────────────────
-function Semaforo({ valorActual, valorMeta, deberiaHoy }: {
-  valorActual: number; valorMeta: number; deberiaHoy: number;
+// Colorimetría: ≥100% verde · ≥90% amarillo · <90% rojo (basado en % vs meta total)
+function Semaforo({ valorActual, valorMeta }: {
+  valorActual: number; valorMeta: number;
 }) {
   if (valorMeta === 0) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>—</span>;
   const pctCump = (valorActual / valorMeta) * 100;
-  const pctHoy  = deberiaHoy > 0 ? (valorActual / deberiaHoy) * 100 : 100;
-  const color   = pctHoy >= 90 ? C.verde : pctHoy >= 70 ? C.naranja : C.rojo;
+  const color   = pctCump >= 100 ? '#16a34a' : pctCump >= 90 ? '#ca8a04' : '#dc2626';
   return (
     <span style={{ color, fontWeight: 600, fontSize: 13 }}>{pctCump.toFixed(1)}%</span>
   );
@@ -159,6 +164,149 @@ function ErrorMsg() {
       Error al cargar el informe. Verifica la conexión e inténtalo de nuevo.
     </div>
   );
+}
+
+// ── Descarga PDF ──────────────────────────────────────────────────────────────
+type DownloadRegistrar = (fn: () => Promise<void>) => void;
+
+// Estructura de datos para la tabla del PDF (renderizada con jspdf-autotable,
+// sin capturas DOM — garantiza alineación perfecta independiente de CSS).
+interface PdfTableData {
+  head:         string[][];
+  body:         (string | number | null)[][];
+  // Índice de la columna "Cump." que contiene el ratio crudo (0..1), -1 si no existe.
+  // didParseCell la formatea como % y aplica colorimetría verde/amarillo/rojo.
+  cumpColIndex: number;
+  colStyles?:   Record<number, { halign: 'left' | 'center' | 'right' }>;
+}
+
+async function buildExportarPDF(opts: {
+  tituloArchivo: string;
+  tituloPDF:     string;
+  subtitulo?:    string;
+  pdfTable:      PdfTableData;
+  refGrafico:    React.RefObject<HTMLDivElement | null>;
+}): Promise<void> {
+  const [{ default: jsPDF }, { default: html2canvas }, { autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas'),
+    import('jspdf-autotable'),  // v5: exporta autoTable como función standalone
+  ]);
+
+  const { tituloArchivo, tituloPDF, subtitulo, pdfTable, refGrafico } = opts;
+  const PW = 297; const PH = 210; const M = 10;
+  const HEADER_H = 28;
+  const FOOTER_H = 10;
+  const TOP      = HEADER_H + 5;
+  const MAX_CONT = PH - TOP - FOOTER_H;
+
+  const renderHeader = (pdf: InstanceType<typeof jsPDF>, pagina: number) => {
+    pdf.setFillColor(37, 99, 235);
+    pdf.rect(0, 0, PW, HEADER_H, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(18);
+    pdf.text(tituloPDF, M, 13);
+    if (subtitulo) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(186, 210, 255);
+      pdf.text(subtitulo, M, 21);
+    }
+    pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.3);
+    pdf.line(M, PH - FOOTER_H + 2, PW - M, PH - FOOTER_H + 2);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(100, 116, 139);
+    pdf.text('Zentinela · Sistema de Gestión de Recaudo', M, PH - 4);
+    pdf.text(`Página ${pagina}`, PW - M, PH - 4, { align: 'right' });
+  };
+
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  // ── Página 1: Tabla con jspdf-autotable (sin captura DOM, texto perfectamente centrado) ──
+  renderHeader(pdf, 1);
+  autoTable(pdf, {
+    startY: TOP,
+    head:   pdfTable.head,
+    body:   pdfTable.body,
+    styles: {
+      fontSize:    8,
+      cellPadding: 2.5,
+      valign:      'middle',
+      halign:      'right',
+      overflow:    'ellipsize',
+    },
+    headStyles: {
+      fillColor: [37, 99, 235],
+      textColor: 255,
+      fontStyle: 'bold',
+      halign:    'center',
+      fontSize:  8,
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles:       pdfTable.colStyles ?? {},
+    // Colorimetría de la columna Cump.: ≥100% verde · ≥90% amarillo · <90% rojo
+    didParseCell: (data: any) => {
+      if (pdfTable.cumpColIndex < 0) return;
+      if (data.section !== 'body' || data.column.index !== pdfTable.cumpColIndex) return;
+      const val = Number(data.cell.raw);
+      if (isNaN(val) || val < 0) {
+        data.cell.text              = ['—'];
+        data.cell.styles.textColor  = [148, 163, 184];
+        data.cell.styles.halign     = 'center';
+      } else {
+        const pctVal = val * 100;
+        data.cell.text = [`${pctVal.toFixed(1)}%`];
+        const color: [number, number, number] =
+          pctVal >= 100 ? [22, 163, 74] : pctVal >= 90 ? [202, 138, 4] : [220, 38, 38];
+        data.cell.styles.textColor = color;
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.halign    = 'center';
+      }
+    },
+    margin: { left: M, right: M, top: TOP, bottom: FOOTER_H + 4 },
+  });
+
+  // ── Página 2: Gráfico con html2canvas ────────────────────────────────────────
+  pdf.addPage();
+  renderHeader(pdf, 2);
+
+  if (refGrafico.current) {
+    // Resolver CSS vars leyendo estilos computados antes del clone
+    const origEls = [refGrafico.current, ...Array.from(refGrafico.current.querySelectorAll<HTMLElement>('*'))];
+    const snaps   = origEls.map(el => {
+      const cs = getComputedStyle(el);
+      return {
+        color: cs.color, bg: cs.backgroundColor,
+        btc: cs.borderTopColor, brc: cs.borderRightColor,
+        bbc: cs.borderBottomColor, blc: cs.borderLeftColor,
+      };
+    });
+    const c = await html2canvas(refGrafico.current, {
+      scale: 2, backgroundColor: '#ffffff', logging: false,
+      onclone: (_doc, cloned) => {
+        const clonedEls = [cloned, ...Array.from(cloned.querySelectorAll<HTMLElement>('*'))];
+        clonedEls.forEach((el, i) => {
+          const s = snaps[i]; if (!s) return;
+          el.style.color             = s.color;
+          el.style.backgroundColor   = s.bg;
+          el.style.borderTopColor    = s.btc;
+          el.style.borderRightColor  = s.brc;
+          el.style.borderBottomColor = s.bbc;
+          el.style.borderLeftColor   = s.blc;
+        });
+      },
+    });
+    const INNER_W = PW - M * 2;
+    const ratio   = (c.height / 2) / (c.width / 2);
+    const imgW    = INNER_W;
+    const imgH    = Math.min(imgW * ratio, MAX_CONT);
+    // Centrar vertical y horizontalmente dentro del área disponible
+    const x = (PW - imgW) / 2;
+    const y = TOP + Math.max(0, (MAX_CONT - imgH) / 2);
+    pdf.addImage(c.toDataURL('image/png'), 'PNG', x, y, imgW, imgH);
+  }
+
+  pdf.save(`${tituloArchivo}.pdf`);
 }
 
 // ── Ordenamiento de tablas ────────────────────────────────────────────────────
@@ -259,17 +407,82 @@ function FiltroSelect({ label, value, onChange, options, placeholder }: {
 // ╔══════════════════════════════════════════════════════════════════════════════╗
 // ║  TAB — AGENTES                                                              ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
-function TabAgentes({ año, mes }: { año: number; mes: number }) {
+function TabAgentes({ año, mes, onRegisterDownload }: {
+  año: number; mes: number; onRegisterDownload?: DownloadRegistrar;
+}) {
   const { usuario } = useAuth();
   const esLider = usuario?.rol === 'Líder';
   const [filtroLider,   setFiltroLider]   = useState(() => esLider ? String(usuario?.liderID ?? '') : '');
   const [filtroCartera, setFiltroCartera] = useState('');
   const [busqueda,      setBusqueda]      = useState('');
+  const refGrafico = useRef<HTMLDivElement>(null);
+  // Ref siempre actualizado: la fn de descarga lo lee en el momento del clic (datos frescos)
+  const latestRef  = useRef<{ agentesVisibles: InformeAgenteMes[]; esLider: boolean }>({ agentesVisibles: [], esLider: false });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-agentes', año, mes],
     queryFn:  () => getInformeAgentes(año, mes),
   });
+
+  // Filtrado cliente-lado
+  const agentesVisibles = useMemo(() => {
+    if (!data) return [];
+    const termino = busqueda.trim().toLowerCase();
+    return data.agentes.filter(a => {
+      if (filtroLider   && String(a.liderID) !== filtroLider)   return false;
+      if (filtroCartera && a.nombreCartera   !== filtroCartera) return false;
+      if (termino       && !a.nombreAgente.toLowerCase().includes(termino)) return false;
+      return true;
+    });
+  }, [data, filtroLider, filtroCartera, busqueda]);
+
+  // Actualizar ref en cada render para que la descarga siempre use el filtro actual
+  latestRef.current = { agentesVisibles, esLider };
+
+  useEffect(() => {
+    if (!onRegisterDownload) return;
+    const nombreMes = MESES[mes - 1];
+    onRegisterDownload(() => {
+      const { agentesVisibles, esLider } = latestRef.current;
+      if (agentesVisibles.length === 0) return Promise.resolve();
+
+      const headCols = ['#', 'Agente', ...(esLider ? [] : ['Líder']), 'Cartera',
+        'Gestionado', 'Recaudo', 'Honorarios', 'Tipo Meta',
+        'Meta', 'Debería hoy', 'Falta', 'Prom./día', 'Cump.'];
+      const cumpColIndex = headCols.length - 1;
+      const body = agentesVisibles.map((a, i) => {
+        const valorActual = a.tipoMeta === 'Honorarios' ? a.honorarios : a.recaudo;
+        return [
+          i + 1, a.nombreAgente,
+          ...(esLider ? [] : [a.nombreLider]),
+          a.nombreCartera, a.gestionado,
+          cop(a.recaudo), cop(a.honorarios),
+          a.tipoMeta ?? '—',
+          a.tieneMeta ? cop(a.valorMeta) : '—',
+          a.tieneMeta ? cop(a.deberiaLlevarHoy) : '—',
+          a.tieneMeta ? cop(a.faltaParaMeta) : '—',
+          cop(a.promedioPagoDia),
+          a.valorMeta > 0 ? valorActual / a.valorMeta : -1,
+        ];
+      });
+      const offset = esLider ? 0 : 1;
+      const colStyles: Record<number, { halign: 'left' | 'center' | 'right' }> = {
+        0: { halign: 'center' },
+        1: { halign: 'left' },
+        ...(esLider ? {} : { 2: { halign: 'left' } }),
+        [2 + offset]: { halign: 'left' },
+        [3 + offset]: { halign: 'center' },
+        [6 + offset]: { halign: 'center' },
+      };
+      return buildExportarPDF({
+        tituloArchivo: `Informe_Agentes_${nombreMes}_${año}`,
+        tituloPDF:     `Informe Agentes — ${nombreMes} ${año}`,
+        subtitulo:     `Generado el ${new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+        pdfTable: { head: [headCols], body, cumpColIndex, colStyles },
+        refGrafico,
+      });
+    });
+  }, [onRegisterDownload, año, mes]);
 
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
@@ -286,15 +499,6 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
         .map(a => [a.nombreCartera, a.nombreCartera])
     ).entries()
   ).map(([value, label]) => ({ value, label }));
-
-  // Filtrado cliente-lado
-  const termino = busqueda.trim().toLowerCase();
-  const agentesVisibles = data.agentes.filter(a => {
-    if (filtroLider   && String(a.liderID) !== filtroLider)   return false;
-    if (filtroCartera && a.nombreCartera   !== filtroCartera) return false;
-    if (termino       && !a.nombreAgente.toLowerCase().includes(termino)) return false;
-    return true;
-  });
 
   const chartData = agentesVisibles.map(a => ({
     nombre:           a.nombreAgente,
@@ -314,8 +518,8 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <KpiCard label="Total Recaudo"        value={cop(totalRecaudo)}    color={C.brand}      />
         <KpiCard label="Total Honorarios"     value={cop(totalHonorarios)} color={C.honorarios} />
-        <KpiCard label="Agentes"              value={String(agentesVisibles.length)} />
-        <KpiCard label="Cuentas Gestionadas"  value={totalGestionado.toLocaleString('es-CO')} />
+        <KpiCard label="Agentes con pagos"    value={String(agentesVisibles.length)} valueSuffix={data.totalAgentesActivos ? `/ ${data.totalAgentesActivos}` : undefined} />
+        <KpiCard label="Pagos Verificados"  value={totalGestionado.toLocaleString('es-CO')} />
       </div>
 
       {/* Gráfico horizontal — menor a mayor */}
@@ -370,17 +574,19 @@ function TabAgentes({ año, mes }: { año: number; mes: number }) {
         {agentesVisibles.length === 0
           ? <p style={{ textAlign: 'center', color: 'var(--z-text-muted)', fontSize: 13, padding: '32px 0' }}>Sin agentes para el filtro seleccionado.</p>
           : (
-            <ResponsiveContainer width="100%" height={Math.max(220, agentesVisibles.length * 44)}>
-              <BarChart layout="vertical" data={chartData} margin={{ left: 10, right: 50, top: 4, bottom: 4 }}>
-                <CartesianGrid horizontal={false} stroke="var(--z-border)" />
-                <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
-                <YAxis type="category" dataKey="nombre" width={160} tick={{ fontSize: 11, fill: 'var(--z-text-primary)' }} />
+            <div ref={refGrafico}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 70 }}>
+                <CartesianGrid vertical={false} stroke="var(--z-border)" />
+                <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: 'var(--z-text-muted)', angle: -35, textAnchor: 'end' }} interval={0} />
+                <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
                 <Tooltip content={<TooltipCOP />} />
-                <Bar dataKey="honorarios"       name="Honorarios"  fill={C.honorarios} radius={[0, 4, 4, 0]} barSize={10} />
-                <Bar dataKey="deberiaLlevarHoy" name="Debería hoy" fill={C.proyeccion} radius={[0, 4, 4, 0]} barSize={10} />
-                <Bar dataKey="valorMeta"         name="Meta"        fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
+                <Bar dataKey="honorarios"       name="Honorarios"  fill={C.honorarios} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="deberiaLlevarHoy" name="Debería hoy" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="valorMeta"         name="Meta"        fill={C.meta}       radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            </div>
           )
         }
       </div>
@@ -460,7 +666,6 @@ function FilaAgente({ a, pos, esLider }: { a: InformeAgenteMes; pos: number; esL
         <Semaforo
           valorActual={a.tipoMeta === 'Honorarios' ? a.honorarios : a.recaudo}
           valorMeta={a.valorMeta}
-          deberiaHoy={a.deberiaLlevarHoy}
         />
       </td>
     </tr>
@@ -486,7 +691,12 @@ interface LiderAgregado {
   cumplimiento:     number;
 }
 
-function TabLideres({ año, mes }: { año: number; mes: number }) {
+function TabLideres({ año, mes, onRegisterDownload }: {
+  año: number; mes: number; onRegisterDownload?: DownloadRegistrar;
+}) {
+  const refGrafico = useRef<HTMLDivElement>(null);
+  const latestRef  = useRef<{ lideres: LiderAgregado[] }>({ lideres: [] });
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-lideres', año, mes],
     queryFn:  () => getInformeLideres(año, mes),
@@ -495,44 +705,77 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
   const [metrica,  setMetrica]  = useState<'honorarios' | 'recaudo'>('honorarios');
   const [criterio, setCriterio] = useState<'valor' | 'proyeccion' | 'meta'>('valor');
 
+  // Agregar todas las carteras de cada líder
+  const lideres = useMemo<LiderAgregado[]>(() => {
+    if (!data) return [];
+    const porLider = new Map<number, LiderAgregado>();
+    for (const f of data.liderCarteras) {
+      const prev = porLider.get(f.liderID);
+      if (prev) {
+        prev.carteras         += 1;
+        prev.capacidad        += f.capacidad;
+        prev.valorMeta        += f.valorMeta;
+        if (!prev.tipoMeta && f.tipoMeta) prev.tipoMeta = f.tipoMeta;
+        prev.recaudo          += f.recaudo;
+        prev.honorarios       += f.honorarios;
+        prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
+        prev.proyeccionCierre += f.proyeccionCierre;
+        prev.tieneMeta         = prev.tieneMeta || f.tieneMeta;
+      } else {
+        porLider.set(f.liderID, {
+          liderID: f.liderID, nombreLider: f.nombreLider,
+          carteras: 1, asesores: f.totalAsesores,
+          capacidad: f.capacidad, valorMeta: f.valorMeta, tipoMeta: f.tipoMeta,
+          recaudo: f.recaudo, honorarios: f.honorarios,
+          deberiaLlevarHoy: f.deberiaLlevarHoy, proyeccionCierre: f.proyeccionCierre,
+          tieneMeta: f.tieneMeta, cumplimiento: 0,
+        });
+      }
+    }
+    return Array.from(porLider.values()).map(l => ({
+      ...l, cumplimiento: l.valorMeta > 0 ? l.honorarios / l.valorMeta : 0,
+    }));
+  }, [data]);
+
+  latestRef.current = { lideres };
+
+  useEffect(() => {
+    if (!onRegisterDownload) return;
+    const nombreMes = MESES[mes - 1];
+    onRegisterDownload(() => {
+      const { lideres } = latestRef.current;
+      if (lideres.length === 0) return Promise.resolve();
+
+      const headCols = ['Líder', 'Carteras', 'Asesores', 'Asignaciones',
+        'Recaudo', 'Honorarios', 'Tipo Meta', 'Meta', 'Debería hoy', 'Proyección', 'Cump.'];
+      const cumpColIndex = headCols.length - 1;
+      const body = lideres.map(l => [
+        l.nombreLider, l.carteras, l.asesores,
+        l.capacidad.toLocaleString('es-CO'),
+        cop(l.recaudo), cop(l.honorarios),
+        l.tipoMeta ?? '—',
+        l.tieneMeta ? cop(l.valorMeta) : '—',
+        l.tieneMeta ? cop(l.deberiaLlevarHoy) : '—',
+        cop(l.proyeccionCierre),
+        l.valorMeta > 0 ? l.honorarios / l.valorMeta : -1,
+      ]);
+      const colStyles: Record<number, { halign: 'left' | 'center' | 'right' }> = {
+        0: { halign: 'left' },
+        1: { halign: 'center' }, 2: { halign: 'center' },
+        3: { halign: 'center' }, 6: { halign: 'center' },
+      };
+      return buildExportarPDF({
+        tituloArchivo: `Informe_Lideres_${nombreMes}_${año}`,
+        tituloPDF:     `Informe Líderes — ${nombreMes} ${año}`,
+        subtitulo:     `Generado el ${new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+        pdfTable: { head: [headCols], body, cumpColIndex, colStyles },
+        refGrafico,
+      });
+    });
+  }, [onRegisterDownload, año, mes]);
+
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
-
-  // Agregar todas las carteras de cada líder en una sola fila
-  const porLider = new Map<number, LiderAgregado>();
-  for (const f of data.liderCarteras) {
-    const prev = porLider.get(f.liderID);
-    if (prev) {
-      prev.carteras         += 1;
-      prev.capacidad        += f.capacidad;
-      prev.valorMeta        += f.valorMeta;
-      if (!prev.tipoMeta && f.tipoMeta) prev.tipoMeta = f.tipoMeta;
-      prev.recaudo          += f.recaudo;
-      prev.honorarios       += f.honorarios;
-      prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
-      prev.proyeccionCierre += f.proyeccionCierre;
-      prev.tieneMeta         = prev.tieneMeta || f.tieneMeta;
-    } else {
-      porLider.set(f.liderID, {
-        liderID:          f.liderID,
-        nombreLider:      f.nombreLider,
-        carteras:         1,
-        asesores:         f.totalAsesores,
-        capacidad:        f.capacidad,
-        valorMeta:        f.valorMeta,
-        tipoMeta:         f.tipoMeta,
-        recaudo:          f.recaudo,
-        honorarios:       f.honorarios,
-        deberiaLlevarHoy: f.deberiaLlevarHoy,
-        proyeccionCierre: f.proyeccionCierre,
-        tieneMeta:        f.tieneMeta,
-        cumplimiento:     0,
-      });
-    }
-  }
-  const lideres: LiderAgregado[] = Array.from(porLider.values()).map(l => ({
-    ...l, cumplimiento: l.valorMeta > 0 ? l.honorarios / l.valorMeta : 0,
-  }));
 
   const lideresConMeta = lideres.filter(l => l.tieneMeta);
   const avgCumplimiento = lideresConMeta.length > 0
@@ -607,21 +850,23 @@ function TabLideres({ año, mes }: { año: number; mes: number }) {
             </div>
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 55 }}>
-            <CartesianGrid vertical={false} stroke="var(--z-border)" />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--z-text-muted)', angle: -25, textAnchor: 'end' }} interval={0} />
-            <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
-            <Tooltip content={<TooltipCOP />} />
-            <Bar dataKey="metricaValor" name={metrica === 'honorarios' ? 'Honorarios' : 'Recaudo'} fill={metrica === 'honorarios' ? C.honorarios : C.brand} radius={[4, 4, 0, 0]} />
-            <Bar dataKey="deberiaHoy"   name="Debería hoy" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
-            <Bar dataKey="valorMeta"    name="Meta"        fill={C.meta}       radius={[4, 4, 0, 0]} />
-            {promDeberiaHoy > 0 && (
-              <ReferenceLine y={promDeberiaHoy} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
-                label={{ value: `Prom. ${cop(promDeberiaHoy)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
-            )}
-          </BarChart>
-        </ResponsiveContainer>
+        <div ref={refGrafico}>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 55 }}>
+              <CartesianGrid vertical={false} stroke="var(--z-border)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--z-text-muted)', angle: -25, textAnchor: 'end' }} interval={0} />
+              <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
+              <Tooltip content={<TooltipCOP />} />
+              <Bar dataKey="metricaValor" name={metrica === 'honorarios' ? 'Honorarios' : 'Recaudo'} fill={metrica === 'honorarios' ? C.honorarios : C.brand} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="deberiaHoy"   name="Debería hoy" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="valorMeta"    name="Meta"        fill={C.meta}       radius={[4, 4, 0, 0]} />
+              {promDeberiaHoy > 0 && (
+                <ReferenceLine y={promDeberiaHoy} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
+                  label={{ value: `Prom. ${cop(promDeberiaHoy)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Tabla */}
@@ -672,7 +917,7 @@ function TablaLideres({ lideres }: { lideres: LiderAgregado[] }) {
                   <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{l.tieneMeta ? cop(l.deberiaLlevarHoy) : '—'}</td>
                   <td style={{ ...TD, textAlign: 'right', color: proyOk ? C.verde : C.naranja, fontWeight: 600 }}>{cop(l.proyeccionCierre)}</td>
                   <td style={{ ...TD, textAlign: 'center' }}>
-                    <Semaforo valorActual={l.honorarios} valorMeta={l.valorMeta} deberiaHoy={l.deberiaLlevarHoy} />
+                    <Semaforo valorActual={l.honorarios} valorMeta={l.valorMeta} />
                   </td>
                 </tr>
               );
@@ -708,75 +953,136 @@ interface CarteraAgregada {
   centroCostos:     number;
 }
 
-function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
+function TabCarterasDetalle({ año, mes, onRegisterDownload }: {
+  año: number; mes: number; onRegisterDownload?: DownloadRegistrar;
+}) {
   const { usuario } = useAuth();
   const esLider = usuario?.rol === 'Líder';
   const [vista, setVista] = useState<VistaCarteras>('lider-cartera');
   const [metricaC,  setMetricaC]  = useState<'honorarios' | 'recaudo'>('honorarios');
   const [criterioC, setCriterioC] = useState<'valor' | 'proyeccion' | 'meta'>('valor');
   const [filtroLider, setFiltroLider] = useState(() => esLider ? String(usuario?.liderID ?? '') : '');
+  const refGrafico = useRef<HTMLDivElement>(null);
+  type FilaLC = InformeLiderCartera & { cumplimiento: number; centroCostos: number };
+  const latestRef  = useRef<{ filasPorLiderCartera: FilaLC[]; filasCartera: CarteraAgregada[]; vista: VistaCarteras; esLider: boolean }>({ filasPorLiderCartera: [], filasCartera: [], vista: 'lider-cartera', esLider: false });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-lideres', año, mes],
     queryFn:  () => getInformeLideres(año, mes),
   });
 
+  const { optsLider, filasPorLiderCartera, filasCartera } = useMemo(() => {
+    if (!data) return { optsLider: [], filasPorLiderCartera: [], filasCartera: [] };
+
+    const optsLider = Array.from(
+      new Map(data.liderCarteras.map(f => [f.liderID, f.nombreLider])).entries()
+    ).map(([value, label]) => ({ value: String(value), label }));
+
+    const fuenteFiltrada = filtroLider
+      ? data.liderCarteras.filter(f => String(f.liderID) === filtroLider)
+      : data.liderCarteras;
+
+    // ── Vista Líder-Cartera ────────────────────────────────────────────────────
+    const filasPorLiderCartera = fuenteFiltrada.map(f => ({
+      ...f,
+      cumplimiento: f.valorMeta > 0 ? f.honorarios / f.valorMeta : 0,
+      centroCostos: f.totalAsesores * COSTO_ASESOR,
+    }));
+
+    // ── Vista Cartera (agrupar todos los líderes de una misma cartera) ─────────
+    const porCartera = new Map<number, CarteraAgregada>();
+    for (const f of fuenteFiltrada) {
+      const prev = porCartera.get(f.carteraID);
+      if (prev) {
+        prev.lideres += 1; prev.asesores += f.totalAsesores; prev.capacidad += f.capacidad;
+        prev.valorMeta += f.valorMeta;
+        if (!prev.tipoMeta && f.tipoMeta) prev.tipoMeta = f.tipoMeta;
+        prev.recaudo += f.recaudo; prev.honorarios += f.honorarios;
+        prev.deberiaLlevarHoy += f.deberiaLlevarHoy; prev.proyeccionCierre += f.proyeccionCierre;
+        prev.tieneMeta = prev.tieneMeta || f.tieneMeta;
+        prev.centroCostos += f.totalAsesores * COSTO_ASESOR;
+      } else {
+        porCartera.set(f.carteraID, {
+          carteraID: f.carteraID, nombreCartera: f.nombreCartera,
+          lideres: 1, asesores: f.totalAsesores, capacidad: f.capacidad,
+          valorMeta: f.valorMeta, tipoMeta: f.tipoMeta,
+          recaudo: f.recaudo, honorarios: f.honorarios,
+          deberiaLlevarHoy: f.deberiaLlevarHoy, proyeccionCierre: f.proyeccionCierre,
+          tieneMeta: f.tieneMeta, cumplimiento: 0,
+          centroCostos: f.totalAsesores * COSTO_ASESOR,
+        });
+      }
+    }
+    const filasCartera: CarteraAgregada[] = Array.from(porCartera.values()).map(c => ({
+      ...c, cumplimiento: c.valorMeta > 0 ? c.honorarios / c.valorMeta : 0,
+    }));
+
+    return { optsLider, filasPorLiderCartera, filasCartera };
+  }, [data, filtroLider]);
+
+  latestRef.current = { filasPorLiderCartera, filasCartera, vista, esLider };
+
+  useEffect(() => {
+    if (!onRegisterDownload) return;
+    const nombreMes = MESES[mes - 1];
+    onRegisterDownload(() => {
+      const { filasPorLiderCartera, filasCartera, vista, esLider } = latestRef.current;
+      const filas = vista === 'lider-cartera' ? filasPorLiderCartera : filasCartera;
+      if (filas.length === 0) return Promise.resolve();
+
+      let headCols: string[];
+      let body: (string | number | null)[][];
+
+      if (vista === 'lider-cartera') {
+        headCols = [...(esLider ? [] : ['Líder']), 'Cartera', 'Asesores',
+          'Centro Costos', 'Asignaciones', 'Recaudo', 'Honorarios',
+          'Tipo Meta', 'Meta', 'Debería hoy', 'Proyección', 'Cump.'];
+        body = filasPorLiderCartera.map(f => [
+          ...(esLider ? [] : [f.nombreLider]),
+          f.nombreCartera, f.totalAsesores,
+          cop(f.centroCostos), f.capacidad.toLocaleString('es-CO'),
+          cop(f.recaudo), cop(f.honorarios),
+          f.tipoMeta ?? '—',
+          f.tieneMeta ? cop(f.valorMeta) : '—',
+          f.tieneMeta ? cop(f.deberiaLlevarHoy) : '—',
+          cop(f.proyeccionCierre),
+          f.valorMeta > 0 ? f.honorarios / f.valorMeta : -1,
+        ]);
+      } else {
+        headCols = ['Cartera', 'Líderes', 'Asesores', 'Centro Costos', 'Asignaciones',
+          'Recaudo', 'Honorarios', 'Tipo Meta', 'Meta', 'Debería hoy', 'Proyección', 'Cump.'];
+        body = filasCartera.map(c => [
+          c.nombreCartera, c.lideres, c.asesores,
+          cop(c.centroCostos), c.capacidad.toLocaleString('es-CO'),
+          cop(c.recaudo), cop(c.honorarios),
+          c.tipoMeta ?? '—',
+          c.tieneMeta ? cop(c.valorMeta) : '—',
+          c.tieneMeta ? cop(c.deberiaLlevarHoy) : '—',
+          cop(c.proyeccionCierre),
+          c.valorMeta > 0 ? c.honorarios / c.valorMeta : -1,
+        ]);
+      }
+
+      const cumpColIndex = headCols.length - 1;
+      const offset = (vista === 'lider-cartera' && !esLider) ? 1 : 0;
+      const colStyles: Record<number, { halign: 'left' | 'center' | 'right' }> = {
+        [0 + offset]: { halign: 'left' },
+        [1 + offset]: { halign: 'center' },
+        [3 + offset]: { halign: 'center' },
+        [6 + offset]: { halign: 'center' },
+      };
+      return buildExportarPDF({
+        tituloArchivo: `Informe_Carteras_${nombreMes}_${año}`,
+        tituloPDF:     `Informe Carteras — ${nombreMes} ${año}`,
+        subtitulo:     `Generado el ${new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+        pdfTable: { head: [headCols], body, cumpColIndex, colStyles },
+        refGrafico,
+      });
+    });
+  }, [onRegisterDownload, año, mes]);
+
   if (isLoading) return <Cargando />;
   if (isError || !data) return <ErrorMsg />;
-
-  const optsLider = Array.from(
-    new Map(data.liderCarteras.map(f => [f.liderID, f.nombreLider])).entries()
-  ).map(([value, label]) => ({ value: String(value), label }));
-
-  const fuenteFiltrada = filtroLider
-    ? data.liderCarteras.filter(f => String(f.liderID) === filtroLider)
-    : data.liderCarteras;
-
-  // ── Vista Líder-Cartera ──────────────────────────────────────────────────────
-  const filasPorLiderCartera = fuenteFiltrada.map(f => ({
-    ...f,
-    cumplimiento:  f.valorMeta > 0 ? f.honorarios / f.valorMeta : 0,
-    centroCostos:  f.totalAsesores * COSTO_ASESOR,
-  }));
-
-  // ── Vista Cartera (agrupar todos los líderes de una misma cartera) ───────────
-  const porCartera = new Map<number, CarteraAgregada>();
-  for (const f of fuenteFiltrada) {
-    const prev = porCartera.get(f.carteraID);
-    if (prev) {
-      prev.lideres          += 1;
-      prev.asesores         += f.totalAsesores;
-      prev.capacidad        += f.capacidad;
-      prev.valorMeta        += f.valorMeta;
-      if (!prev.tipoMeta && f.tipoMeta) prev.tipoMeta = f.tipoMeta;
-      prev.recaudo          += f.recaudo;
-      prev.honorarios       += f.honorarios;
-      prev.deberiaLlevarHoy += f.deberiaLlevarHoy;
-      prev.proyeccionCierre += f.proyeccionCierre;
-      prev.tieneMeta         = prev.tieneMeta || f.tieneMeta;
-      prev.centroCostos     += f.totalAsesores * COSTO_ASESOR;
-    } else {
-      porCartera.set(f.carteraID, {
-        carteraID:        f.carteraID,
-        nombreCartera:    f.nombreCartera,
-        lideres:          1,
-        asesores:         f.totalAsesores,
-        capacidad:        f.capacidad,
-        valorMeta:        f.valorMeta,
-        tipoMeta:         f.tipoMeta,
-        recaudo:          f.recaudo,
-        honorarios:       f.honorarios,
-        deberiaLlevarHoy: f.deberiaLlevarHoy,
-        proyeccionCierre: f.proyeccionCierre,
-        tieneMeta:        f.tieneMeta,
-        cumplimiento:     0,
-        centroCostos:     f.totalAsesores * COSTO_ASESOR,
-      });
-    }
-  }
-  const filasCartera: CarteraAgregada[] = Array.from(porCartera.values()).map(c => ({
-    ...c, cumplimiento: c.valorMeta > 0 ? c.honorarios / c.valorMeta : 0,
-  }));
 
   const filas = vista === 'lider-cartera' ? filasPorLiderCartera : filasCartera;
   const totalHonorarios = filas.reduce((s: number, f: typeof filas[0]) => s + f.honorarios, 0);
@@ -875,22 +1181,23 @@ function TabCarterasDetalle({ año, mes }: { año: number; mes: number }) {
           </div>
         </div>
 
-        <ResponsiveContainer width="100%" height={Math.max(220, chartData.length * 44)}>
-          <BarChart layout="vertical" data={chartData} margin={{ left: 10, right: 50, top: 4, bottom: 4 }}>
-            <CartesianGrid horizontal={false} stroke="var(--z-border)" />
-            <XAxis type="number" tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} />
-            <YAxis type="category" dataKey="nombre" width={vista === 'lider-cartera' ? 200 : 150}
-              tick={{ fontSize: 11, fill: 'var(--z-text-primary)' }} />
-            <Tooltip content={<TooltipCOP />} />
-            <Bar dataKey="metricaValor"     name={metricaC === 'honorarios' ? 'Honorarios' : 'Recaudo'} fill={metricaC === 'honorarios' ? C.honorarios : C.brand} radius={[0, 4, 4, 0]} barSize={10} />
-            <Bar dataKey="deberiaLlevarHoy" name="Debería hoy" fill={C.proyeccion} radius={[0, 4, 4, 0]} barSize={10} />
-            <Bar dataKey="valorMeta"        name="Meta"        fill={C.meta}       radius={[0, 4, 4, 0]} barSize={10} />
-            {promDeberiaHoy > 0 && (
-              <ReferenceLine x={promDeberiaHoy} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
-                label={{ value: `Prom. ${cop(promDeberiaHoy)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
-            )}
-          </BarChart>
-        </ResponsiveContainer>
+        <div ref={refGrafico}>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 70 }}>
+              <CartesianGrid vertical={false} stroke="var(--z-border)" />
+              <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: 'var(--z-text-muted)', angle: -35, textAnchor: 'end' }} interval={0} />
+              <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
+              <Tooltip content={<TooltipCOP />} />
+              <Bar dataKey="metricaValor"     name={metricaC === 'honorarios' ? 'Honorarios' : 'Recaudo'} fill={metricaC === 'honorarios' ? C.honorarios : C.brand} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="deberiaLlevarHoy" name="Debería hoy" fill={C.proyeccion} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="valorMeta"        name="Meta"        fill={C.meta}       radius={[4, 4, 0, 0]} />
+              {promDeberiaHoy > 0 && (
+                <ReferenceLine y={promDeberiaHoy} stroke={C.proyeccion} strokeDasharray="4 3" strokeWidth={1.5}
+                  label={{ value: `Prom. ${cop(promDeberiaHoy)}`, position: 'insideTopRight', fontSize: 11, fill: C.proyeccion }} />
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Tabla */}
@@ -942,7 +1249,7 @@ function TablaCarterasLiderCartera({ filas, esLider }: { filas: (InformeLiderCar
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{f.tieneMeta ? cop(f.deberiaLlevarHoy) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', color: f.proyeccionCierre >= f.valorMeta && f.valorMeta > 0 ? C.verde : C.naranja, fontWeight: 600 }}>{cop(f.proyeccionCierre)}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>
-                  <Semaforo valorActual={f.honorarios} valorMeta={f.valorMeta} deberiaHoy={f.deberiaLlevarHoy} />
+                  <Semaforo valorActual={f.honorarios} valorMeta={f.valorMeta} />
                 </td>
               </tr>
             ))}
@@ -993,7 +1300,7 @@ function TablaCarterasAgrupada({ filas }: { filas: CarteraAgregada[] }) {
                 <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{c.tieneMeta ? cop(c.deberiaLlevarHoy) : '—'}</td>
                 <td style={{ ...TD, textAlign: 'right', color: c.proyeccionCierre >= c.valorMeta && c.valorMeta > 0 ? C.verde : C.naranja, fontWeight: 600 }}>{cop(c.proyeccionCierre)}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>
-                  <Semaforo valorActual={c.honorarios} valorMeta={c.valorMeta} deberiaHoy={c.deberiaLlevarHoy} />
+                  <Semaforo valorActual={c.honorarios} valorMeta={c.valorMeta} />
                 </td>
               </tr>
             ))}
@@ -1015,7 +1322,9 @@ interface FilaComparativo {
   valC:         number; honC: number;
 }
 
-function TabComparativo() {
+function TabComparativo({ onRegisterDownload }: { onRegisterDownload?: DownloadRegistrar }) {
+  const refGrafico = useRef<HTMLDivElement>(null);
+  const latestRef  = useRef<{ filas: FilaComparativo[]; labelA: string; labelB: string; labelC: string; numPeriodos: 2 | 3 }>({ filas: [], labelA: '', labelB: '', labelC: '', numPeriodos: 2 });
   const [numPeriodos, setNumPeriodos] = useState<2 | 3>(2);
   const [añoA, setAñoA] = useState(AÑO_DOS_ANTES);
   const [mesA,  setMesA]  = useState(MES_DOS_ANTES);
@@ -1068,8 +1377,54 @@ function TabComparativo() {
     return Array.from(map.values());
   }, [qAB.data, qBC.data, numPeriodos]);
 
+  latestRef.current = { filas, labelA, labelB, labelC, numPeriodos };
+
+  useEffect(() => {
+    if (!onRegisterDownload) return;
+    onRegisterDownload(() => {
+      const { filas, labelA, labelB, labelC, numPeriodos } = latestRef.current;
+      if (filas.length === 0) return Promise.resolve();
+
+      const partes = numPeriodos === 3 ? [labelA, labelB, labelC] : [labelA, labelB];
+      const tituloBase = partes.join('_vs_').replace(/\s/g, '_').replace(/[^a-zA-ZÀ-ÿ0-9_-]/g, '');
+      const headCols = [
+        'Cartera',
+        `Rec. ${labelA}`, `Hon. ${labelA}`,
+        `Rec. ${labelB}`, `Hon. ${labelB}`,
+        ...(numPeriodos === 3 ? [`Rec. ${labelC}`, `Hon. ${labelC}`] : []),
+        'Var. A→B',
+        ...(numPeriodos === 3 ? ['Var. B→C'] : []),
+      ];
+      const body = filas.map(f => {
+        const varAB = f.valA > 0 ? (f.valB - f.valA) / f.valA : null;
+        const varBC = f.valB > 0 ? (f.valC - f.valB) / f.valB : null;
+        return [
+          f.nombre,
+          cop(f.valA), cop(f.honA),
+          cop(f.valB), cop(f.honB),
+          ...(numPeriodos === 3 ? [cop(f.valC), cop(f.honC)] : []),
+          varAB !== null ? `${varAB > 0 ? '+' : ''}${(varAB * 100).toFixed(1)}%` : '—',
+          ...(numPeriodos === 3 ? [varBC !== null ? `${varBC > 0 ? '+' : ''}${(varBC * 100).toFixed(1)}%` : '—'] : []),
+        ];
+      });
+      const varABIdx = numPeriodos === 3 ? 7 : 5;
+      const colStyles: Record<number, { halign: 'left' | 'center' | 'right' }> = {
+        0: { halign: 'left' },
+        [varABIdx]: { halign: 'center' },
+        ...(numPeriodos === 3 ? { [varABIdx + 1]: { halign: 'center' } } : {}),
+      };
+      return buildExportarPDF({
+        tituloArchivo: `Informe_Comparativo_${tituloBase}`,
+        tituloPDF:     `Informe Comparativo — ${partes.join(' vs ')}`,
+        subtitulo:     `Generado el ${new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+        pdfTable: { head: [headCols], body, cumpColIndex: -1, colStyles },
+        refGrafico,
+      });
+    });
+  }, [onRegisterDownload]);
+
   const chartData = filas.map(f => ({
-    nombre:    f.nombre.length > 14 ? f.nombre.slice(0, 14) + '…' : f.nombre,
+    nombre:    f.nombre.length > 22 ? f.nombre.slice(0, 22) + '…' : f.nombre,
     [labelA]:  f.valA,
     [labelB]:  f.valB,
     ...(numPeriodos === 3 ? { [labelC]: f.valC } : {}),
@@ -1153,17 +1508,19 @@ function TabComparativo() {
             <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: 16 }}>
               Recaudo por cartera — {numPeriodos === 3 ? `${labelA} · ${labelB} · ${labelC}` : `${labelA} vs ${labelB}`}
             </p>
-            <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 60)}>
-              <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 50 }}>
-                <CartesianGrid vertical={false} stroke="var(--z-border)" />
-                <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} angle={-30} textAnchor="end" interval={0} />
-                <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
-                <Tooltip content={<TooltipCOP />} />
-                <Bar dataKey={labelA} fill={C.mesA} radius={[4, 4, 0, 0]} />
-                <Bar dataKey={labelB} fill={C.mesB} radius={[4, 4, 0, 0]} />
-                {numPeriodos === 3 && <Bar dataKey={labelC} fill={C.mesC} radius={[4, 4, 0, 0]} />}
-              </BarChart>
-            </ResponsiveContainer>
+            <div ref={refGrafico}>
+              <ResponsiveContainer width="100%" height={Math.max(280, chartData.length * 60)}>
+                <BarChart data={chartData} margin={{ left: 10, right: 10, top: 4, bottom: 50 }}>
+                  <CartesianGrid vertical={false} stroke="var(--z-border)" />
+                  <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} angle={-30} textAnchor="end" interval={0} />
+                  <YAxis tickFormatter={v => cop(v)} tick={{ fontSize: 11, fill: 'var(--z-text-muted)' }} width={110} />
+                  <Tooltip content={<TooltipCOP />} />
+                  <Bar dataKey={labelA} fill={C.mesA} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey={labelB} fill={C.mesB} radius={[4, 4, 0, 0]} />
+                  {numPeriodos === 3 && <Bar dataKey={labelC} fill={C.mesC} radius={[4, 4, 0, 0]} />}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
           <TablaComparativo filas={filas} labelA={labelA} labelB={labelB} labelC={numPeriodos === 3 ? labelC : null} />
@@ -1247,6 +1604,21 @@ export function InformesRecaudoPage() {
   const [tabActiva, setTabActiva] = useState<Tab>('agentes');
   const [año, setAño] = useState(AÑO_ACTUAL);
   const [mes, setMes] = useState(MES_ACTUAL);
+  const [descargando, setDescargando] = useState(false);
+  const downloadFnRef = useRef<(() => Promise<void>) | null>(null);
+
+  const handleRegisterDownload = useCallback((fn: () => Promise<void>) => {
+    downloadFnRef.current = fn;
+  }, []);
+
+  useEffect(() => { downloadFnRef.current = null; }, [tabActiva]);
+
+  const handleDescargar = async () => {
+    if (!downloadFnRef.current || descargando) return;
+    setDescargando(true);
+    try { await downloadFnRef.current(); }
+    finally { setDescargando(false); }
+  };
 
   const tabsVisibles = esLider ? TABS.filter(t => t.id === 'agentes') : TABS;
   const usaPeriodoGlobal = tabActiva === 'agentes' || tabActiva === 'lideres' || tabActiva === 'carteras';
@@ -1265,9 +1637,28 @@ export function InformesRecaudoPage() {
           </p>
         </div>
 
-        {usaPeriodoGlobal && (
-          <SelectorPeriodo año={año} mes={mes} onAño={setAño} onMes={setMes} />
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {usaPeriodoGlobal && (
+            <SelectorPeriodo año={año} mes={mes} onAño={setAño} onMes={setMes} />
+          )}
+          <button
+            onClick={handleDescargar}
+            disabled={descargando}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 7, fontSize: 13, fontWeight: 500,
+              background: descargando ? '#94a3b8' : C.brand,
+              color: '#fff', border: 'none',
+              cursor: descargando ? 'not-allowed' : 'pointer',
+              opacity: descargando ? 0.7 : 1,
+              transition: 'background 0.15s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: 14 }}>{descargando ? '⏳' : '↓'}</span>
+            {descargando ? 'Generando…' : 'Descargar Informe'}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -1295,10 +1686,10 @@ export function InformesRecaudoPage() {
       </div>
 
       {/* Contenido */}
-      {tabActiva === 'agentes'     && <TabAgentes     año={año} mes={mes} />}
-      {tabActiva === 'lideres'     && <TabLideres     año={año} mes={mes} />}
-      {tabActiva === 'carteras'    && <TabCarterasDetalle año={año} mes={mes} />}
-      {tabActiva === 'comparativo' && <TabComparativo />}
+      {tabActiva === 'agentes'     && <TabAgentes     año={año} mes={mes} onRegisterDownload={handleRegisterDownload} />}
+      {tabActiva === 'lideres'     && <TabLideres     año={año} mes={mes} onRegisterDownload={handleRegisterDownload} />}
+      {tabActiva === 'carteras'    && <TabCarterasDetalle año={año} mes={mes} onRegisterDownload={handleRegisterDownload} />}
+      {tabActiva === 'comparativo' && <TabComparativo onRegisterDownload={handleRegisterDownload} />}
     </div>
   );
 }

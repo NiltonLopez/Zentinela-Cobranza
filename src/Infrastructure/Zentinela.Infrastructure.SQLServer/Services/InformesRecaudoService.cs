@@ -141,13 +141,24 @@ public class InformesRecaudoService : IInformesRecaudoService
             .OrderBy(a => a.Recaudo)
             .ToList();
 
+        // Total de agentes activos en la empresa: asignados en CarteraAgentes con estado activo en RRHH
+        var todosAgenteIDs = await _callCenter.CarteraAgentes
+            .Select(ca => ca.AgenteID)
+            .Distinct()
+            .ToListAsync();
+
+        var totalActivos = await _rrhh.Empleados
+            .Where(e => todosAgenteIDs.Contains(e.NumeroDocumento) && e.EstadoEmpleado)
+            .CountAsync();
+
         return new InformeAgentesResponse
         {
-            TotalRecaudo    = agentes.Sum(a => a.Recaudo),
-            TotalHonorarios = agentes.Sum(a => a.Honorarios),
-            TotalAgentes    = agentes.Count,
-            TotalGestionado = agentes.Sum(a => a.Gestionado),
-            Agentes         = agentes,
+            TotalRecaudo        = agentes.Sum(a => a.Recaudo),
+            TotalHonorarios     = agentes.Sum(a => a.Honorarios),
+            TotalAgentes        = agentes.Count,
+            TotalAgentesActivos = totalActivos,
+            TotalGestionado     = agentes.Sum(a => a.Gestionado),
+            Agentes             = agentes,
         };
     }
 

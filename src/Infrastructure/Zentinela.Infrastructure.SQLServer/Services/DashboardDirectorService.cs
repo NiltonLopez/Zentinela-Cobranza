@@ -223,6 +223,16 @@ public class DashboardDirectorService : IDashboardDirectorService
     {
         var carteraIDs = await ResolverCarteraIDsAsync(liderID, carteraID);
         var query = AplicarFiltroCarteras(_callCenter.UltimosEstadosTitular, carteraID, carteraIDs);
+
+        // Cuando hay liderID, aplicar el mismo filtro por agentes que usa la query principal,
+        // para que el MAX date coincida exactamente con los registros que se van a cargar.
+        if (liderID.HasValue)
+        {
+            var lid = liderID.Value;
+            query = query.Where(u => _callCenter.CarteraAgentes.Any(ca =>
+                ca.AgenteID == u.AgenteID && ca.LiderID == lid));
+        }
+
         return await query.MaxAsync(u => u.FechaUltimaGestion);
     }
 

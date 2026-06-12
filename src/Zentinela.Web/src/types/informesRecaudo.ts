@@ -21,6 +21,7 @@ export interface InformeAgentesResponse {
   totalRecaudo: number;
   totalHonorarios: number;
   totalAgentes: number;
+  totalAgentesActivos: number;
   totalGestionado: number;
   agentes: InformeAgenteMes[];
 }
