@@ -9,6 +9,7 @@ import type { FilaLiderDto, FilaAsesorDto } from '../../types/dashboard';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
+import { formatearTiempoTranscurrido } from '../../utils/formatters';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -71,15 +72,6 @@ function formatearPesos(valor: number): string {
 function formatearFechaCorta(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
-}
-
-function formatearFechaHora(iso: string | null): string {
-  if (!iso) return 'Sin datos';
-  const fecha = new Date(iso);
-  return fecha.toLocaleDateString('es-CO', {
-    day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
 }
 
 // ── Constantes de presets ─────────────────────────────────────────────────────
@@ -556,7 +548,7 @@ export function DashboardDirectorPage() {
           </div>
           {data && (
             <span style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Actualizado: {formatearFechaHora(data.metricas.fechaActualizacion)}
+              Actualizado: {formatearTiempoTranscurrido(data.metricas.fechaActualizacion)}
             </span>
           )}
         </div>
