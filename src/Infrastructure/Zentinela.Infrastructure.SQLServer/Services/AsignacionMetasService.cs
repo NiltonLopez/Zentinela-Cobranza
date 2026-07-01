@@ -25,20 +25,30 @@ public class AsignacionMetasService : IAsignacionMetasService
         var año = (short)hoy.Year;
         var mes = (byte)hoy.Month;
 
-        var liderCarteras = await ObtenerFilasLiderCarteraAsync(año, mes);
+        var liderCarteras = await ObtenerFilasLiderCarteraAsync(año, mes, externas: false);
+        var externas      = await ObtenerFilasLiderCarteraAsync(año, mes, externas: true);
         var agentes       = await ObtenerFilasAgenteAsync(año, mes);
 
-        return new EstadoMetasMesDto { Año = año, Mes = mes, LiderCarteras = liderCarteras, Agentes = agentes };
+        return new EstadoMetasMesDto
+        {
+            Año = año, Mes = mes,
+            LiderCarteras        = liderCarteras,
+            LiderCarterasExternas = externas,
+            Agentes              = agentes,
+        };
     }
 
-    private async Task<List<FilaMetaLiderCarteraDto>> ObtenerFilasLiderCarteraAsync(short año, byte mes)
+    // Construye las filas de metas líder-cartera. Con externas=false devuelve las
+    // relaciones administrativas internas (las históricas); con externas=true devuelve
+    // las relaciones externas (Lider_Cartera.EsExterna = 1) — mismo destino de guardado.
+    private async Task<List<FilaMetaLiderCarteraDto>> ObtenerFilasLiderCarteraAsync(short año, byte mes, bool externas)
     {
-        // Metas administrativas: excluye relaciones externas (Lider_Cartera.EsExterna = 1)
-        // e inactivadas (Lider_Cartera.Activo = 0, ADR-022).
+        // Excluye relaciones inactivadas (Lider_Cartera.Activo = 0, ADR-022) y filtra
+        // por EsExterna según la pestaña solicitada.
         var combinaciones = await _callCenter.LiderCarteras
             .Include(lc => lc.Lider)
             .Include(lc => lc.Cartera)
-            .Where(lc => lc.Lider.Activo && lc.Cartera.Activa && !lc.EsExterna && lc.Activo)
+            .Where(lc => lc.Lider.Activo && lc.Cartera.Activa && lc.EsExterna == externas && lc.Activo)
             .AsNoTracking()
             .ToListAsync();
 

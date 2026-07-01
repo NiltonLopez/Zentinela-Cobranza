@@ -23,10 +23,11 @@ export interface FilaMetaAgenteDto {
 }
 
 export interface EstadoMetasMesDto {
-  año:           number;
-  mes:           number;
-  liderCarteras: FilaMetaLiderCarteraDto[];
-  agentes:       FilaMetaAgenteDto[];
+  año:                   number;
+  mes:                   number;
+  liderCarteras:         FilaMetaLiderCarteraDto[];
+  liderCarterasExternas: FilaMetaLiderCarteraDto[];
+  agentes:               FilaMetaAgenteDto[];
 }
 
 export interface GuardarMetaLiderRequest {

@@ -86,15 +86,22 @@ export interface FilaAgenciaExterna {
   nombreLider: string;
   carteraID: number;
   nombreCartera: string;
+  totalAsesores: number;
   recaudo: number;
   honorarios: number;
   totalAsignaciones: number;
+  valorMeta: number;
+  tipoMeta: 'Recaudo' | 'Honorarios' | null;
+  tieneMeta: boolean;
+  deberiaLlevarHoy: number;
+  proyeccionCierre: number;
 }
 
 export interface InformeAgenciasExternasResponse {
   totalRecaudo: number;
   totalHonorarios: number;
   totalAsignaciones: number;
+  totalMeta: number;
   totalAgencias: number;
   filas: FilaAgenciaExterna[];
 }
