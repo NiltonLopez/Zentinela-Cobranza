@@ -238,6 +238,7 @@ function ModalCarteras({
 
 export function GestionAgentesPage() {
   const [busqueda, setBusqueda] = useState('');
+  const [soloSinCartera, setSoloSinCartera] = useState(false);
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<AgenteAdmin | null>(null);
 
   const { data: agentes = [], isLoading, isError } = useQuery({
@@ -246,6 +247,7 @@ export function GestionAgentesPage() {
   });
 
   const agentesFiltrados = agentes.filter((a) => {
+    if (soloSinCartera && a.totalCarterasAsignadas > 0) return false;
     const q = busqueda.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -267,15 +269,16 @@ export function GestionAgentesPage() {
         </p>
       </div>
 
-      {/* Buscador */}
-      <div style={{ marginBottom: 16 }}>
+      {/* Buscador + filtro */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <input
           type="text"
           placeholder="Buscar por nombre, cédula o supervisor..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           style={{
-            width: '100%',
+            flex: 1,
+            minWidth: '240px',
             maxWidth: '380px',
             padding: '8px 12px',
             fontSize: '13px',
@@ -289,6 +292,18 @@ export function GestionAgentesPage() {
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
         />
+        <button
+          onClick={() => setSoloSinCartera(v => !v)}
+          style={{
+            padding: '8px 14px', borderRadius: 6, border: '1px solid var(--z-border)',
+            background: soloSinCartera ? '#fff7ed' : 'var(--z-bg-card)',
+            color: soloSinCartera ? '#ea580c' : 'var(--z-text-muted)',
+            fontSize: 12, fontWeight: soloSinCartera ? 600 : 400, cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {soloSinCartera ? '▪ Solo sin cartera' : 'Solo sin cartera'}
+        </button>
       </div>
 
       {/* Tabla */}
@@ -331,7 +346,9 @@ export function GestionAgentesPage() {
 
         {!isLoading && !isError && agentesFiltrados.length === 0 && (
           <div style={{ padding: '32px', textAlign: 'center', color: 'var(--z-text-muted)', fontSize: '13px' }}>
-            {busqueda ? 'Sin resultados para la búsqueda.' : 'No hay agentes activos.'}
+            {busqueda || soloSinCartera
+              ? (soloSinCartera && !busqueda ? 'Todos los agentes tienen al menos una cartera asignada.' : 'Sin resultados para la búsqueda.')
+              : 'No hay agentes activos.'}
           </div>
         )}
 
