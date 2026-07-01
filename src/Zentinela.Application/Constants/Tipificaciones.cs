@@ -14,6 +14,7 @@ public static class Tipificaciones
         "Acuerdo de pago abono", "Acuerdo de pago total", "Incumplido", "No hubo acuerdo",
         "Paz y salvo", "PQR", "Renuente", "Realizo abono", "Recordar",
         "Fraude o suplantacion", "Potencial acuerdo", "No gestionar", "Consignación por aplicar",
+        "Negociación vigente", "Caso especial",
     };
 
     /// <summary>
