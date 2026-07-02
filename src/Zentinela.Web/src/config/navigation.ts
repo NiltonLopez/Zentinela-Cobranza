@@ -50,9 +50,10 @@ export const MODULOS: Modulo[] = [
     rolesPermitidos: ['Admin', 'Líder', 'Director'],
     defaultPath: '/informes/recaudo',
     subModulos: [
-      { key: 'virtualidad',       label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Director'] },
-      { key: 'recaudo',           label: 'Informes de Recaudo',     path: '/informes/recaudo'     },
-      { key: 'agencias-externas', label: 'Agencias Externas',       path: '/informes/agencias-externas' },
+      { key: 'virtualidad',         label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Director'] },
+      { key: 'recaudo',             label: 'Informes de Recaudo',     path: '/informes/recaudo',     rolesPermitidos: ['Admin', 'Líder', 'Director'] },
+      { key: 'agencias-externas',   label: 'Agencias Externas',       path: '/informes/agencias-externas', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
+      { key: 'auditoria-gestiones', label: 'Auditoría de Gestiones',  path: '/informes/auditoria-gestiones', rolesPermitidos: ['Admin', 'Director'] },
     ],
   },
   {
@@ -93,7 +94,11 @@ export function rutaInicialPorRol(rol: string | undefined): string {
   if (rol === 'Líder Externo')  return '/cartera/creador';
   if (rol === 'Asesor Externo') return '/consultas/integrada';
   const modulo = MODULOS.find(m => m.rolesPermitidos.includes(rol as Rol));
-  return modulo?.defaultPath ?? '/home';
+  if (!modulo) return '/home';
+  // Aterrizar en el primer sub-módulo PERMITIDO (no en defaultPath fijo, que
+  // podría estar restringido para el rol y rebotar a "sin acceso").
+  const sub = modulo.subModulos.find(s => !s.rolesPermitidos || s.rolesPermitidos.includes(rol as Rol));
+  return sub?.path ?? modulo.defaultPath;
 }
 
 // Dado un pathname, devuelve el módulo activo

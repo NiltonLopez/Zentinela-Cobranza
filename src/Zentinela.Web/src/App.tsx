@@ -33,6 +33,7 @@ import { ComparadorCarterasPage } from './pages/cartera/ComparadorCarterasPage';
 import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPage';
 import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
 import { AgenciasExternasPage } from './pages/informes/AgenciasExternasPage';
+import { AuditoriaGestionesPage } from './pages/informes/AuditoriaGestionesPage';
 
 // Administración
 import { GestionAsignacionesPage } from './pages/administracion/GestionAsignacionesPage';
@@ -60,6 +61,18 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/registro" element={<RegisterPage />} />
             <Route path="/sin-permiso" element={<SinPermisoPage />} />
+
+            {/* TEMPORAL — preview sin auth de la página de Auditoría de Gestiones
+                (datos mock, no requiere API/BD). REVERTIR antes de mergear:
+                no debe quedar una ruta sin protección en producción. */}
+            <Route
+              path="/preview-auditoria"
+              element={
+                <div style={{ padding: '28px 32px', minHeight: '100vh', background: 'var(--z-bg-page)' }}>
+                  <AuditoriaGestionesPage />
+                </div>
+              }
+            />
 
             {/* Cambio de contraseña — requiere auth, sin layout principal */}
             <Route
@@ -157,6 +170,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
                     <AgenciasExternasPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/informes/auditoria-gestiones"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Director']}>
+                    <AuditoriaGestionesPage />
                   </RutaProtegida>
                 }
               />
