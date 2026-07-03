@@ -113,7 +113,7 @@ export const descargarAuditoriaCompleta = (informe: InformeAuditoria, dia?: stri
   bloquePalabra('PALABRA MÁS REPETIDA', informe.palabraMasRepetida.palabra, informe.palabraMasRepetida.conteo);
   bloquePalabra('PALABRA EN GESTIONES INCONSISTENTES', informe.palabraInconsistencias.palabra, informe.palabraInconsistencias.conteo);
 
-  secciones.push({ row: rr, c0: RIGHT, c1: RIGHT + 2 }); set(rr, RIGHT, 'TOP PALABRAS EN GESTIONES'); rr++;
+  secciones.push({ row: rr, c0: RIGHT, c1: RIGHT + 2 }); set(rr, RIGHT, 'PALABRAS MÁS REPETIDAS EN GESTIONES'); rr++;
   const topH = rr; set(rr, RIGHT, 'Palabra'); set(rr, RIGHT + 1, 'Apariciones'); rr++;
   for (const p of informe.topPalabras) { set(rr, RIGHT, p.palabra); set(rr, RIGHT + 1, p.conteo); rr++; }
   tablas.push({ row: topH, nDatos: informe.topPalabras.length, nCols: 2, col0: RIGHT });

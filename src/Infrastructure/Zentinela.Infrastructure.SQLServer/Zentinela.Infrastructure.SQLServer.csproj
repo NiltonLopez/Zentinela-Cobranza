@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.104.2" />
+    <PackageReference Include="Google.GenAI" Version="1.12.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.4" />

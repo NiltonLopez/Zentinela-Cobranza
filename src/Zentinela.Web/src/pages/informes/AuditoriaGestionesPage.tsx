@@ -27,6 +27,12 @@ const TIPO_LABEL: Record<TipoIncongruencia, string> = {
   'valor-bajo':        'Valor < 5 dígitos',
 };
 
+// Aclaración al pasar el mouse cuando el asesor no se pudo resolver (dos motivos distintos).
+const ASESOR_TIP: Record<string, string> = {
+  'Gestión sin agente':   'La gestión no tiene un agente asociado en el histórico.',
+  'No se encuentra agente': 'El agente tiene un ID registrado, pero puede que no esté en la base de datos de Recursos Humanos.',
+};
+
 // Metadatos por nivel de severidad (etiqueta + descripción + color).
 const SEV_META: Record<Severidad, { label: string; desc: string; color: string }> = {
   critico:  { label: 'Crítico',           desc: 'Inconsistencia perfil ↔ gestión (IA)',            color: '#dc2626' },  // rojo
@@ -248,7 +254,7 @@ export function AuditoriaGestionesPage() {
   // Card "Top palabras" (reubicable entre columnas según el masonry).
   const cardTopPalabras = informe && (
     <div style={cardStyle}>
-      <p style={cardLabel}>Top palabras en gestiones</p>
+      <p style={cardLabel}>Palabras más repetidas en gestiones</p>
       <div style={{ marginTop: 10 }}>
         {informe.topPalabras.map(p => {
           const max = informe.topPalabras[0].conteo;
@@ -327,174 +333,214 @@ export function AuditoriaGestionesPage() {
 
       {/* ── Panel de filtro (carteras + período) ──────────────────────────────── */}
       {!informe && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: 620, maxWidth: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 900 }}>
 
-          {/* Paso 1 — Carteras a comparar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 1 — Selecciona la cartera a auditar
-            </p>
-            {cargandoOpciones ? (
-              <p style={{ fontSize: 13, color: C.gray }}>Cargando carteras…</p>
-            ) : (
-              <div ref={dropdownRef} style={{ position: 'relative', maxWidth: 460 }}>
-                <button
-                  type="button"
-                  onClick={() => setMenuAbierto(o => !o)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                    padding: '10px 14px', fontSize: 13, borderRadius: 8, textAlign: 'left',
-                    border: `1px solid ${menuAbierto ? C.brand : 'var(--z-border)'}`,
-                    background: 'var(--z-bg-card)', cursor: 'pointer', outline: 'none',
-                    boxShadow: menuAbierto ? `0 0 0 3px ${C.brand}1f` : 'none',
-                    transition: 'border-color .15s ease, box-shadow .15s ease',
-                  }}
-                >
-                  <span style={{
-                    color: carteraSeleccionada ? 'var(--z-text-primary)' : C.gray,
-                    fontWeight: carteraSeleccionada ? 600 : 400,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
-                    {carteraSeleccionada ? carteraSeleccionada.cartera : 'Selecciona una cartera'}
-                  </span>
-                  <span style={{ color: C.gray, fontSize: 10, flexShrink: 0, transform: menuAbierto ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}>▼</span>
-                </button>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
 
-                {menuAbierto && (
-                  <div style={{
-                    position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 20,
-                    background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 8,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 320, overflowY: 'auto', padding: 4,
-                  }}>
-                    {carterasAgrupadas.map(g => {
-                      const sel = g.carteraID === carteraSel;
-                      return (
-                        <button
-                          key={g.carteraID}
-                          type="button"
-                          onClick={() => { setCarteraSel(g.carteraID); setMenuAbierto(false); }}
-                          onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'var(--z-bg-page)'; }}
-                          onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
-                          style={{
-                            width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2,
-                            padding: '9px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                            background: sel ? C.brandLight : 'transparent', transition: 'background .12s ease',
-                          }}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 600, color: sel ? C.brand : 'var(--z-text-primary)' }}>{g.cartera}</span>
-                          {g.lideres.length > 0 && (
-                            <span style={{ fontSize: 11, color: C.gray, lineHeight: 1.35 }}>
-                              {g.lideres.map(tituloCase).join(' · ')}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
+            {/* Columna izquierda — Paso 1 + Paso 2 */}
+            <div style={{
+              flex: '1 1 340px', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 16,
+              border: '1px solid var(--z-border)', borderRadius: 10, background: 'var(--z-bg-card)', padding: 18,
+            }}>
+              {/* Paso 1 — Carteras a comparar */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Paso 1 — Selecciona la cartera a auditar
+                </p>
+                {cargandoOpciones ? (
+                  <p style={{ fontSize: 13, color: C.gray }}>Cargando carteras…</p>
+                ) : (
+                  <div ref={dropdownRef} style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => setMenuAbierto(o => !o)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        padding: '10px 14px', fontSize: 13, borderRadius: 8, textAlign: 'left',
+                        border: `1px solid ${menuAbierto ? C.brand : 'var(--z-border)'}`,
+                        background: 'var(--z-bg-card)', cursor: 'pointer', outline: 'none',
+                        boxShadow: menuAbierto ? `0 0 0 3px ${C.brand}1f` : 'none',
+                        transition: 'border-color .15s ease, box-shadow .15s ease',
+                      }}
+                    >
+                      <span style={{
+                        color: carteraSeleccionada ? 'var(--z-text-primary)' : C.gray,
+                        fontWeight: carteraSeleccionada ? 600 : 400,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {carteraSeleccionada ? carteraSeleccionada.cartera : 'Selecciona una cartera'}
+                      </span>
+                      <span style={{ color: C.gray, fontSize: 10, flexShrink: 0, transform: menuAbierto ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease' }}>▼</span>
+                    </button>
+
+                    {menuAbierto && (
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 20,
+                        background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 8,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 320, overflowY: 'auto', padding: 4,
+                      }}>
+                        {carterasAgrupadas.map(g => {
+                          const sel = g.carteraID === carteraSel;
+                          return (
+                            <button
+                              key={g.carteraID}
+                              type="button"
+                              onClick={() => { setCarteraSel(g.carteraID); setMenuAbierto(false); }}
+                              onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+                              onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
+                              style={{
+                                width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2,
+                                padding: '9px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                background: sel ? C.brandLight : 'transparent', transition: 'background .12s ease',
+                              }}
+                            >
+                              <span style={{ fontSize: 13, fontWeight: 600, color: sel ? C.brand : 'var(--z-text-primary)' }}>{g.cartera}</span>
+                              {g.lideres.length > 0 && (
+                                <span style={{ fontSize: 11, color: C.gray, lineHeight: 1.35 }}>
+                                  {g.lideres.map(tituloCase).join(' · ')}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Paso 2 — Día a auditar */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Paso 2 — Día a auditar (Fecha Última Gestión)
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <input type="date" value={dia} max={hoyISO} onChange={e => setDia(e.target.value)}
+                    style={{ padding: '8px 12px', fontSize: 13, borderRadius: 7, maxWidth: 220, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
+                  <span style={{ fontSize: 11, color: C.gray }}>Se audita un solo día (cualquiera hasta hoy).</span>
+                </div>
+              </div>
+
+              {!puedeAnalizar && !analizar.isFetching && (
+                <span style={{ fontSize: 11, color: C.gray }}>Selecciona una cartera y el día a auditar.</span>
+              )}
+            </div>
+
+            {/* Columna derecha — Costo aproximado + botón (aparece tras elegir cartera + día) */}
+            {puedeAnalizar && (
+              <div style={{
+                flex: '1 1 260px', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 10,
+                border: `1px solid ${C.brand}30`, background: C.brandLight, borderRadius: 10, padding: '16px 18px',
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Costo aproximado de la auditoría con IA
+                </span>
+                {estimando ? (
+                  <span style={{ fontSize: 13, color: C.gray }}>Calculando…</span>
+                ) : errorEstimacion ? (
+                  <span style={{ fontSize: 13, color: C.danger }}>No se pudo estimar el costo.</span>
+                ) : estimacion ? (
+                  estimacion.registrosIA === 0 ? (
+                    <span style={{ fontSize: 13, color: 'var(--z-text-primary)' }}>
+                      Sin gestiones con texto para evaluar con IA en este día → <strong>{COP.format(0)}</strong>.
+                    </span>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 28, fontWeight: 700, color: C.brand, lineHeight: 1.1 }}>
+                        {COP.format(estimacion.costoTotal)}
+                      </span>
+                      <span style={{ fontSize: 12, color: C.gray }}>
+                        {estimacion.registrosIA.toLocaleString('es-CO')} gestiones totales
+                      </span>
+                    </>
+                  )
+                ) : null}
+
+                {!estimando && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                    <button
+                      onClick={() => { if (carteraSel != null) { setErrorMsg(null); setConsulta({ carteraID: carteraSel, dia }); } }}
+                      disabled={analizar.isFetching}
+                      style={{
+                        flex: 1, padding: '11px 18px', borderRadius: 8, border: 'none',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        background: analizar.isFetching ? 'var(--z-border)' : C.brand,
+                        color: '#fff', fontSize: 14, fontWeight: 600,
+                        cursor: analizar.isFetching ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {analizar.isFetching ? 'Analizando con IA…' : <>Auditar cartera con IA <span>→</span></>}
+                    </button>
+                    {analizar.isFetching && (
+                      <span aria-label="Cargando" style={{
+                        width: 18, height: 18, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
+                        border: `2px solid ${C.brand}33`, borderTopColor: C.brand,
+                        animation: 'z-spiral-cw 0.7s linear infinite',
+                      }} />
+                    )}
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Paso 2 — Día a auditar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 2 — Día a auditar (Fecha Última Gestión)
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <input type="date" value={dia} max={hoyISO} onChange={e => setDia(e.target.value)}
-                style={{ padding: '8px 12px', fontSize: 13, borderRadius: 7, maxWidth: 220, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }} />
-              <span style={{ fontSize: 11, color: C.gray }}>Se audita un solo día (cualquiera hasta hoy).</span>
-            </div>
-          </div>
-
-          {/* Costo aproximado de la evaluación con IA (tras elegir cartera + rango) */}
-          {puedeAnalizar && (
-            <div style={{
-              border: `1px solid ${C.brand}30`, background: C.brandLight, borderRadius: 8,
-              padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 460,
-            }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Costo aproximado de la auditoría con IA
-              </span>
-              {estimando ? (
-                <span style={{ fontSize: 13, color: C.gray }}>Calculando…</span>
-              ) : errorEstimacion ? (
-                <span style={{ fontSize: 13, color: C.danger }}>No se pudo estimar el costo.</span>
-              ) : estimacion ? (
-                estimacion.registrosIA === 0 ? (
-                  <span style={{ fontSize: 13, color: 'var(--z-text-primary)' }}>
-                    Sin gestiones con texto para evaluar con IA en este día → <strong>{COP.format(0)}</strong>.
-                  </span>
-                ) : (
-                  <>
-                    <span style={{ fontSize: 24, fontWeight: 700, color: C.brand, lineHeight: 1.1 }}>
-                      {COP.format(estimacion.costoTotal)}
-                    </span>
-                    <span style={{ fontSize: 12, color: C.gray }}>
-                      {estimacion.registrosIA.toLocaleString('es-CO')} gestiones · {(estimacion.tokensEntrada + estimacion.tokensSalida).toLocaleString('es-CO')} tokens
-                      {' '}(entrada {COP.format(estimacion.costoEntrada)} + salida {COP.format(estimacion.costoSalida)})
-                    </span>
-                  </>
-                )
-              ) : null}
-            </div>
-          )}
-
           {errorMsg && <ErrorPanel mensaje={`No se pudo analizar: ${errorMsg}`} />}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, alignSelf: 'flex-start' }}>
-            <button
-              onClick={() => { if (carteraSel != null) { setErrorMsg(null); setConsulta({ carteraID: carteraSel, dia }); } }}
-              disabled={!puedeAnalizar || analizar.isFetching}
-              style={{
-                padding: '11px 22px', borderRadius: 8, border: 'none',
-                background: (!puedeAnalizar || analizar.isFetching) ? 'var(--z-border)' : C.brand,
-                color: '#fff', fontSize: 14, fontWeight: 600,
-                cursor: (!puedeAnalizar || analizar.isFetching) ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {analizar.isFetching ? 'Analizando con IA…' : 'Auditar cartera con IA'}
-            </button>
-            {analizar.isFetching && (
-              <span aria-label="Cargando" style={{
-                width: 18, height: 18, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
-                border: `2px solid ${C.brand}33`, borderTopColor: C.brand,
-                animation: 'z-spiral-cw 0.7s linear infinite',
-              }} />
-            )}
-          </div>
-          {!puedeAnalizar && !analizar.isFetching && (
-            <span style={{ fontSize: 11, color: C.gray }}>Selecciona una cartera y el día a auditar.</span>
-          )}
+          {/* Reportes ya generados (compartidos entre usuarios, expiran a 48 h): una card por
+              cartera, con las fechas disponibles dentro. Una cartera sin fechas no se muestra. */}
+          {reportes.length > 0 && (() => {
+            const porCartera = new Map<number, { nombre: string; fechas: string[] }>();
+            for (const r of reportes) {
+              const nombre = carterasAgrupadas.find(g => g.carteraID === r.carteraID)?.cartera ?? `Cartera ${r.carteraID}`;
+              const grupo = porCartera.get(r.carteraID) ?? { nombre, fechas: [] };
+              grupo.fechas.push(r.dia);
+              porCartera.set(r.carteraID, grupo);
+            }
+            const grupos = [...porCartera.entries()].map(([carteraID, g]) => ({
+              carteraID, nombre: g.nombre, fechas: g.fechas.sort((a, b) => b.localeCompare(a)),
+            }));
 
-          {/* Reportes ya generados (compartidos entre usuarios, expiran a 48 h) */}
-          {reportes.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-              <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Reportes ya generados (disponibles)
-              </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {reportes.map(r => {
-                  const nom = carterasAgrupadas.find(g => g.carteraID === r.carteraID)?.cartera ?? `Cartera ${r.carteraID}`;
-                  return (
-                    <button
-                      key={`${r.carteraID}-${r.dia}`}
-                      type="button"
-                      onClick={() => { setCarteraSel(r.carteraID); setDia(r.dia); setConsulta({ carteraID: r.carteraID, dia: r.dia }); }}
-                      title="Abrir este reporte (ya generado)"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20,
-                        border: `1px solid ${C.brand}40`, background: '#fff', color: C.brand, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      }}
-                    >
-                      ✅ {nom} · {r.dia.split('-').reverse().join('/')}
-                    </button>
-                  );
-                })}
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Reportes ya generados (disponibles)
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {grupos.map(g => (
+                    <div key={g.carteraID} style={{
+                      border: '1px solid var(--z-border)', borderRadius: 10, background: 'var(--z-bg-card)',
+                      padding: '10px 14px', minWidth: 150,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 16, height: 16, borderRadius: '50%', background: '#dcfce7', color: C.success,
+                          fontSize: 10, flexShrink: 0,
+                        }}>✓</span>
+                        <strong style={{ fontSize: 13, color: 'var(--z-text-primary)' }}>{g.nombre}</strong>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {g.fechas.map(dia => (
+                          <button
+                            key={dia}
+                            type="button"
+                            onClick={() => { setCarteraSel(g.carteraID); setDia(dia); setConsulta({ carteraID: g.carteraID, dia }); }}
+                            title="Abrir este reporte (ya generado)"
+                            style={{
+                              padding: '4px 10px', borderRadius: 20, border: `1px solid ${C.brand}40`,
+                              background: '#fff', color: C.brand, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                            }}
+                          >
+                            {dia.split('-').reverse().join('/')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -514,22 +560,6 @@ export function AuditoriaGestionesPage() {
               </span>
             )}
           </div>
-
-          {/* Aviso: la IA solo evaluó una parte por el tope de costo (no cortar en silencio) */}
-          {informe.gestionesEvaluadasIA < informe.totalGestionesConTexto && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px',
-              borderRadius: 8, background: '#fffbeb', border: `1px solid ${C.warning}40`,
-              borderLeft: `4px solid ${C.warning}`, fontSize: 13, color: '#92400e',
-            }}>
-              <span style={{ fontSize: 15 }}>⚠</span>
-              <span>
-                Se auditaron con IA <strong>{informe.gestionesEvaluadasIA.toLocaleString('es-CO')}</strong> de{' '}
-                <strong>{informe.totalGestionesConTexto.toLocaleString('es-CO')}</strong> gestiones con texto (límite por costo).
-                Las reglas de promesa sí se aplicaron a todas.
-              </span>
-            </div>
-          )}
 
           {/* ── Distribución de cards estilo "Consistencia y Cartera" ───────────── */}
           <div style={{
@@ -567,21 +597,21 @@ export function AuditoriaGestionesPage() {
 
               <div style={{
                 background: C.brandLight, border: `1px solid ${C.brand}30`,
-                borderRadius: 8, padding: '22px 20px',
+                borderRadius: 8, padding: '14px 20px',
               }}>
                 <p style={cardLabel}>Palabra más repetida</p>
-                <div style={{ fontSize: 26, fontWeight: 700, color: C.brand, marginTop: 6 }}>“{informe.palabraMasRepetida.palabra}”</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: C.brand, marginTop: 4 }}>“{informe.palabraMasRepetida.palabra}”</div>
                 <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{informe.palabraMasRepetida.conteo} apariciones · todas las gestiones</div>
 
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.brand}30` }}>
+                <div style={{ marginTop: 8, paddingTop: 7, borderTop: `1px solid ${C.brand}30` }}>
                   <p style={{ ...cardLabel, marginBottom: 2 }}>En gestiones con inconsistencias</p>
                   {informe.palabraInconsistencias.palabra ? (
                     <>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: C.brand, marginTop: 4 }}>“{informe.palabraInconsistencias.palabra}”</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.brand, marginTop: 3 }}>“{informe.palabraInconsistencias.palabra}”</div>
                       <div style={{ fontSize: 12, color: C.gray, marginTop: 2 }}>{informe.palabraInconsistencias.conteo} apariciones</div>
                     </>
                   ) : (
-                    <div style={{ fontSize: 12, color: C.gray, marginTop: 4 }}>Sin palabras (gestiones sin texto)</div>
+                    <div style={{ fontSize: 12, color: C.gray, marginTop: 3 }}>Sin palabras (gestiones sin texto)</div>
                   )}
                 </div>
               </div>
@@ -595,17 +625,20 @@ export function AuditoriaGestionesPage() {
               <div ref={base2Ref} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={cardStyle}>
                 <p style={cardLabel}>Gestiones con incongruencias</p>
-                <div style={{ fontSize: 40, fontWeight: 700, color: C.brand, lineHeight: 1.05, marginTop: 4 }}>
-                  {informe.porcentajeIncongruencias.toFixed(1)}%
-                </div>
-                <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
-                  <div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 28, marginTop: 8 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: C.brand }}>{informe.totalCriticas + informe.totalMedias + informe.totalBajas + informe.totalRevision}</div>
+                    <div style={{ fontSize: 11, color: C.gray }}>Hallazgos alerta</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: C.brand, lineHeight: 1.05 }}>
+                      {informe.porcentajeIncongruencias.toFixed(1)}%
+                    </div>
+                    <div style={{ fontSize: 11, color: C.gray }}>Porcentaje</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#C0421C' }}>{informe.totalGestiones}</div>
                     <div style={{ fontSize: 11, color: C.gray }}>Total gestiones</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: C.brand }}>{informe.totalCriticas + informe.totalMedias + informe.totalBajas + informe.totalRevision}</div>
-                    <div style={{ fontSize: 11, color: C.gray }}>Hallazgos</div>
                   </div>
                 </div>
               </div>
@@ -614,7 +647,9 @@ export function AuditoriaGestionesPage() {
                 <p style={cardLabel}>Tipificaciones con más incongruencias</p>
                 <div style={{ marginTop: 10 }}>
                   {(() => {
-                    const ranking = [...informe.tipificacionesConMasIncongruencias].sort((a, b) => b.incongruencias - a.incongruencias);
+                    const ranking = [...informe.tipificacionesConMasIncongruencias]
+                      .sort((a, b) => b.incongruencias - a.incongruencias)
+                      .slice(0, 5);   // el dashboard solo muestra el top 5; el Excel descargable trae todas
                     const max = ranking[0]?.incongruencias || 1;
                     return ranking.map((t, i) => {
                       const pct = t.total > 0 ? (t.incongruencias / t.total) * 100 : 0;
@@ -681,7 +716,7 @@ export function AuditoriaGestionesPage() {
                                   style={{ cursor: 'pointer', background: abierta ? 'var(--z-bg-page)' : 'transparent' }}
                                 >
                                   <td style={tdStyle}>{abierta ? '▾' : '▸'} {it.identificacion}</td>
-                                  <td style={tdStyle}>{it.asesorGestion}</td>
+                                  <td style={tdStyle} title={ASESOR_TIP[it.asesorGestion]}>{it.asesorGestion}</td>
                                   <td style={tdStyle}>{it.cartera}</td>
                                   <td style={tdStyle}>{TIPO_LABEL[it.tipo]}</td>
                                   <td style={tdStyle}><SeveridadBadge severidad={severidadDe(it)} /></td>
@@ -693,7 +728,7 @@ export function AuditoriaGestionesPage() {
                                         <div><strong style={{ color: C.gray }}>Gestión: </strong><span style={{ color: 'var(--z-text-primary)', display: 'block', maxHeight: 110, overflowY: 'auto', overflowWrap: 'anywhere', whiteSpace: 'normal', marginTop: 2, lineHeight: 1.4 }}>“{it.gestion.replace(/,/g, ' ').replace(/\s+/g, ' ').trim()}”</span></div>
                                         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
                                           <span><strong style={{ color: C.gray }}>Último perfil: </strong>{it.ultimoPerfil}</span>
-                                          <span><strong style={{ color: C.gray }}>Asesor: </strong>{it.asesorGestion}</span>
+                                          <span title={ASESOR_TIP[it.asesorGestion]}><strong style={{ color: C.gray }}>Asesor: </strong>{it.asesorGestion}</span>
                                         </div>
                                         <div><strong style={{ color: C.gray }}>Detalle: </strong><span style={{ color: C.danger }}>{it.detalle}</span></div>
                                       </div>

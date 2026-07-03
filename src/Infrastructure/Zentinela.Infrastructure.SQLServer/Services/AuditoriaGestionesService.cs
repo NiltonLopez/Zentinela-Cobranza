@@ -224,8 +224,8 @@ public class AuditoriaGestionesService : IAuditoriaGestionesService
         }
         string Asesor(Registro r) =>
             r.AgenteID is int a && a > 0
-                ? (nombreAsesor.TryGetValue(a, out var an) ? an : $"Agente {a}")
-                : "—";
+                ? (nombreAsesor.TryGetValue(a, out var an) ? an : "No se encuentra agente")
+                : "Gestión sin agente";
 
         var hallazgos = new List<IncongruenciaFila>();
 
@@ -340,7 +340,6 @@ public class AuditoriaGestionesService : IAuditoriaGestionesService
                 Total          = totalPorPerfil.GetValueOrDefault(g.Key),
             })
             .OrderByDescending(x => x.Incongruencias)
-            .Take(8)
             .ToList();
 
         var (palabraTop, topPalabras) = CalcularPalabras(conGestion, Cartera);

@@ -1,5 +1,6 @@
-using System.Net.Http.Json;
 using System.Text.Json;
+using Google.GenAI;
+using Google.GenAI.Types;
 using Microsoft.Extensions.Configuration;
 using Zentinela.Application.DTOs.AuditoriaGestiones;
 using Zentinela.Application.Interfaces;
@@ -7,27 +8,29 @@ using Zentinela.Application.Interfaces;
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
-/// Evaluador de congruencia perfil ↔ gestión usando Gemini (API REST).
+/// Evaluador de congruencia perfil ↔ gestión usando Gemini vía Vertex AI Express Mode (SDK oficial Google.GenAI).
 /// Adaptación del prototipo Python: un lote de gestiones por llamada,
 /// salida JSON estructurada con un veredicto por registro.
-/// La API key vive en configuración ("Gemini:ApiKey"), nunca hardcodeada.
+/// Auth por API key de Express Mode ("Gemini:Vertex:ApiKey") — factura contra la cuenta de
+/// Google Cloud (postpago), no contra créditos prepago como AI Studio.
 /// </summary>
-public class EvaluadorCongruenciaGemini : IEvaluadorCongruencia
+public class EvaluadorCongruenciaGemini : IEvaluadorCongruencia, IDisposable
 {
-    private readonly HttpClient _http;
-    private readonly string _apiKey;
+    private readonly Client _client;
     private readonly string _modelo;
 
     private static readonly JsonSerializerOptions _jsonCaseInsensitive =
         new() { PropertyNameCaseInsensitive = true };
 
-    public EvaluadorCongruenciaGemini(HttpClient http, IConfiguration config)
+    public EvaluadorCongruenciaGemini(IConfiguration config)
     {
-        _http   = http;
-        _apiKey = config["Gemini:ApiKey"]
-                  ?? throw new InvalidOperationException("Falta 'Gemini:ApiKey' en la configuración.");
+        var apiKey = config["Gemini:Vertex:ApiKey"]
+                     ?? throw new InvalidOperationException("Falta 'Gemini:Vertex:ApiKey' en la configuración.");
         _modelo = config["Gemini:Modelo"] ?? "gemini-3.1-flash-lite";
+        _client = new Client(apiKey: apiKey, vertexAI: true);
     }
+
+    public void Dispose() => _client.Dispose();
 
     // Arma el prompt de auditoría para un lote (compartido por evaluación y conteo de tokens).
     private static string ConstruirPrompt(IReadOnlyList<GestionParaEvaluar> lote)
@@ -83,15 +86,12 @@ public class EvaluadorCongruenciaGemini : IEvaluadorCongruencia
         if (lote.Count == 0) return 0;
 
         var prompt = ConstruirPrompt(lote);
-        var body = new { contents = new[] { new { parts = new[] { new { text = prompt } } } } };
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_modelo}:countTokens?key={_apiKey}";
+        var contenido = new List<Content> { new() { Parts = [new Part { Text = prompt }] } };
 
         try
         {
-            using var resp = await _http.PostAsJsonAsync(url, body, ct);
-            resp.EnsureSuccessStatusCode();
-            var doc = await resp.Content.ReadFromJsonAsync<CountTokensResponse>(_jsonCaseInsensitive, ct);
-            return doc?.TotalTokens ?? prompt.Length / 4;
+            var resp = await _client.Models.CountTokensAsync(_modelo, contenido, cancellationToken: ct);
+            return resp.TotalTokens ?? prompt.Length / 4;
         }
         catch
         {
@@ -106,48 +106,42 @@ public class EvaluadorCongruenciaGemini : IEvaluadorCongruencia
 
         var prompt = ConstruirPrompt(lote);
 
-        var body = new
+        var config = new GenerateContentConfig
         {
-            contents = new[] { new { parts = new[] { new { text = prompt } } } },
-            generationConfig = new
+            ResponseMimeType = "application/json",
+            // Tope de seguridad holgado (no truncar el JSON): la justificación ya se
+            // limita por prompt a ~12 palabras; esto solo evita respuestas desbocadas.
+            MaxOutputTokens = lote.Count * 100 + 512,
+            ResponseJsonSchema = new
             {
-                responseMimeType = "application/json",
-                // Tope de seguridad holgado (no truncar el JSON): la justificación ya se
-                // limita por prompt a ~12 palabras; esto solo evita respuestas desbocadas.
-                maxOutputTokens = lote.Count * 100 + 512,
-                responseJsonSchema = new
+                type  = "array",
+                items = new
                 {
-                    type  = "array",
-                    items = new
+                    type       = "object",
+                    properties = new
                     {
-                        type       = "object",
-                        properties = new
-                        {
-                            indice        = new { type = "integer" },
-                            resultado     = new { type = "string" },
-                            justificacion = new { type = "string" },
-                        },
-                        required = new[] { "indice", "resultado", "justificacion" },
+                        indice        = new { type = "integer" },
+                        resultado     = new { type = "string" },
+                        justificacion = new { type = "string" },
                     },
+                    required = new[] { "indice", "resultado", "justificacion" },
                 },
             },
         };
 
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_modelo}:generateContent?key={_apiKey}";
-        using var resp = await _http.PostAsJsonAsync(url, body, ct);
-        resp.EnsureSuccessStatusCode();
+        GenerateContentResponse resp;
+        try
+        {
+            resp = await _client.Models.GenerateContentAsync(_modelo, prompt, config, ct);
+        }
+        catch (Exception ex) when (ex is ClientError or ServerError)
+        {
+            throw new HttpRequestException($"Gemini generateContent falló: {ex.Message}", ex);
+        }
 
-        var doc   = await resp.Content.ReadFromJsonAsync<GeminiResponse>(cancellationToken: ct);
-        var texto = doc?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "[]";
+        var texto = resp.Parts?.FirstOrDefault()?.Text ?? "[]";
         texto = texto.Replace("```json", "").Replace("```", "").Trim();   // por si vienen fences
 
         return JsonSerializer.Deserialize<List<VeredictoGestion>>(texto, _jsonCaseInsensitive) ?? [];
     }
-
-    // ── Forma mínima de la respuesta de Gemini ──────────────────────────────────
-    private sealed class GeminiResponse { public List<Candidate>? Candidates { get; set; } }
-    private sealed class Candidate      { public Content? Content { get; set; } }
-    private sealed class Content        { public List<Part>? Parts { get; set; } }
-    private sealed class Part           { public string? Text { get; set; } }
-    private sealed class CountTokensResponse { public int TotalTokens { get; set; } }
 }

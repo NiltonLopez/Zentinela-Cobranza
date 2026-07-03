@@ -104,7 +104,7 @@ public static class DependencyInjection
         services.AddScoped<IRastreoLineasService, RastreoLineasService>();
 
         // ── Auditoría de Gestiones — evaluador de congruencia perfil↔gestión (Gemini) ──
-        services.AddHttpClient<IEvaluadorCongruencia, EvaluadorCongruenciaGemini>();
+        services.AddScoped<IEvaluadorCongruencia, EvaluadorCongruenciaGemini>();
         services.AddScoped<IAuditoriaGestionesService, AuditoriaGestionesService>();
         // Almacén en memoria de reportes generados (compartido, expira a 48 h).
         services.AddSingleton<AuditoriaReportesStore>();
