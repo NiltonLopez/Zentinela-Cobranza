@@ -13,6 +13,10 @@ import { formatearMoneda, formatearFecha, formatearFechaHora } from '../../utils
 import type { Preset } from '../../components/pagos/FiltrosPeriodo';
 import type { PagoDirectorDto } from '../../types/dashboard';
 
+// Vista previa: sin filtro de cartera la tabla solo muestra los primeros N pagos para
+// evitar renderizar miles de filas. Los totales siguen reflejando el universo completo.
+const PREVIEW_LIMIT = 10;
+
 // ── Fila de tabla ─────────────────────────────────────────────────────────────
 
 const TD: React.CSSProperties = {
@@ -79,6 +83,10 @@ export function PagosConfirmadosLiderPage() {
 
   const totalRecaudo    = pagos.reduce((s, p) => s + p.valorPagado, 0);
   const totalHonorarios = pagos.reduce((s, p) => s + p.honorarios, 0);
+
+  // En modo preview (sin cartera elegida) la tabla se limita a PREVIEW_LIMIT filas.
+  const enModoPreview = carteraID === null;
+  const filasVisibles = enModoPreview ? sorted.slice(0, PREVIEW_LIMIT) : sorted;
 
   const selectStyle: React.CSSProperties = {
     padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
@@ -162,6 +170,19 @@ export function PagosConfirmadosLiderPage() {
         </div>
       )}
 
+      {/* Aviso de vista previa */}
+      {!isLoading && enModoPreview && pagos.length > PREVIEW_LIMIT && (
+        <div style={{
+          background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+          borderRadius: '8px', padding: '12px 16px',
+          fontSize: '13px', color: 'var(--z-text-muted)',
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontWeight: 600, color: 'var(--z-text-primary)' }}>Vista previa</span>
+          Mostrando {PREVIEW_LIMIT} de {pagos.length.toLocaleString('es-CO')} pagos. Filtra por cartera para ver el detalle completo.
+        </div>
+      )}
+
       {/* Tabla */}
       <div style={{
         background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
@@ -188,7 +209,7 @@ export function PagosConfirmadosLiderPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((p, i) => (
+                {filasVisibles.map((p, i) => (
                   <FilaPago key={p.pagoID} pago={p} idx={i} />
                 ))}
               </tbody>
