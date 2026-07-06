@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using System.Text;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
@@ -16,6 +17,13 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// sets (escalares + 7 desgloses + localización). C# sólo hidrata el DTO. Reemplaza
 /// los 9 bloques C# en memoria que iteraban sobre 60-190k filas y, desde esta
 /// optimización, también la segunda pasada del TVF que calculaba localización.
+///
+/// La lista de titulares de la cartera se calcula UNA sola vez (query previa,
+/// ~0.7s) y se pasa como TVP (dbo.TitularIDList) a dbo.fn_BaseMadreParaTitulares,
+/// que cada fuente cruza directamente por JOIN. Reemplaza a fn_BaseMadrePorCartera
+/// (usada por EscribirLocalizacionCsvAsync y por el Creador, sin cambios), cuya CTE
+/// TitularesCartera se reevaluaba 18 veces por llamada (confirmado con el plan de
+/// ejecución real) — dominaba ~16.8 de ~25s en una cartera de 147k filas.
 /// </summary>
 public class CalificadorCarteraService : ICalificadorCarteraService
 {
@@ -114,6 +122,10 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     /// calculaba localización. Los nombres de columna y orden de filas replican
     /// exactamente lo que producía el código C# (Cantidad DESC, OrdenRango para
     /// Rotación, top 10 + Otras para EPS).
+    ///
+    /// FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares): recibe la lista de
+    /// titulares ya calculada (ver CalificarAsync) en vez de recalcularla — @LiderID
+    /// no se pasa aquí porque el filtro de líder ya quedó aplicado en esa lista.
     /// </summary>
     private const string SqlAgregados = """
         SET NOCOUNT ON;
@@ -176,7 +188,14 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Modelo,
             Placa
         INTO #t
-        FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID);
+        FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares)
+        -- OPTION (RECOMPILE) es OBLIGATORIO, no un ajuste opcional: sin él, el
+        -- optimizador asume que @Titulares (TVP) trae ~1 fila sin importar cuántas
+        -- traiga en realidad, y arma un plan de nested loops que para una cartera
+        -- de 147k filas NUNCA termina (medido: sesión matada tras 6+ min sin
+        -- avanzar). Con RECOMPILE, el optimizador mide el tamaño real de @Titulares
+        -- en cada ejecución y arma un plan correcto (medido: 3.3s).
+        OPTION (RECOMPILE);
 
         DECLARE @Total int  = (SELECT COUNT(*) FROM #t);
         DECLARE @Hoy   date = CAST(GETDATE() AS date);
@@ -495,12 +514,43 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         {
             var dto = new CalificadorCarteraDto();
 
-            await using var cmd = conn.CreateCommand();
+            // Precalcula la lista de TitularID UNA sola vez (antes se recalculaba 18
+            // veces dentro del TVF vía la CTE TitularesCartera — dominaba ~16.8 de
+            // ~25s en una cartera de 147k filas). Ver
+            // docs/sql/migrations/2026-07-06_fn_BaseMadreParaTitulares.sql.
+            var titulares = new DataTable();
+            titulares.Columns.Add("TitularID", typeof(long));
+
+            await using (var cmdIds = conn.CreateCommand())
+            {
+                cmdIds.CommandText = """
+                    SELECT TitularID
+                    FROM dbo.Titular_Cartera
+                    WHERE CarteraID = @CarteraID AND (@LiderID IS NULL OR LiderID = @LiderID)
+                    """;
+                cmdIds.CommandTimeout = CommandTimeoutSegundos;
+                AddParam(cmdIds, "@CarteraID", carteraID);
+                AddParam(cmdIds, "@LiderID",   (object?)liderID ?? DBNull.Value);
+
+                await using var readerIds = await cmdIds.ExecuteReaderAsync();
+                while (await readerIds.ReadAsync())
+                    titulares.Rows.Add(readerIds.GetInt64(0));
+            }
+
+            // Cartera sin titulares para este filtro: mismo comportamiento que ya
+            // existía para "sin datos", sin necesidad de invocar el TVF con un TVP vacío.
+            if (titulares.Rows.Count == 0)
+                return new CalificadorCarteraDto { TotalTitulares = 0 };
+
+            await using var cmd = (SqlCommand)conn.CreateCommand();
             cmd.CommandText    = SqlAgregados;
             cmd.CommandTimeout = CommandTimeoutSegundos;
             AddParam(cmd, "@CarteraID", carteraID);
-            // null → DBNull para que fn_BaseMadrePorCartera reciba NULL y omita el filtro de líder
-            AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
+            cmd.Parameters.Add(new SqlParameter("@Titulares", SqlDbType.Structured)
+            {
+                TypeName = "dbo.TitularIDList",
+                Value    = titulares,
+            });
 
             await using var reader = await cmd.ExecuteReaderAsync();
 
