@@ -16,7 +16,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// proceso externo a esta app (no hay hook para invalidar justo cuando termina), así que
 /// el TTL por entrada es largo (pensado para durar todo el día) y la frescura real la da
 /// <see cref="VerificarLimpiezaDiaria"/>: sin usar un BackgroundService, cada TryGet/Set
-/// revisa si ya pasó el corte diario (7am) desde la última limpieza y, si es así, invalida
+/// revisa si ya pasó el corte diario (1pm) desde la última limpieza y, si es así, invalida
 /// todo antes de continuar — se dispara solo con el tráfico normal del Calificador, no con
 /// un temporizador aparte.
 /// </summary>
@@ -32,7 +32,7 @@ public class CalificadorCarteraCache : ICalificadorCarteraCache
     private static readonly TimeSpan ExpiracionSliding  = TimeSpan.FromHours(2);
 
     // Hora del corte diario (después de que la carga nocturna de localización ya terminó).
-    private static readonly TimeSpan HoraLimpiezaDiaria = TimeSpan.FromHours(7);
+    private static readonly TimeSpan HoraLimpiezaDiaria = TimeSpan.FromHours(13);
     private DateTime _ultimaLimpieza = DateTime.Now;
 
     public CalificadorCarteraCache(IMemoryCache cache)
@@ -80,9 +80,9 @@ public class CalificadorCarteraCache : ICalificadorCarteraCache
 
     /// <summary>
     /// Sin BackgroundService: se evalúa oportunistamente en cada TryGet/Set. Calcula el
-    /// último corte de las 7am que ya pasó (hoy si ya son las 7, ayer si todavía no) y, si
+    /// último corte de la 1pm que ya pasó (hoy si ya es la 1pm, ayer si todavía no) y, si
     /// la limpieza más reciente es anterior a ese corte, invalida todo — como máximo una
-    /// vez por día, disparado por el primer request que llegue después de las 7am.
+    /// vez por día, disparado por el primer request que llegue después de la 1pm.
     /// </summary>
     private void VerificarLimpiezaDiaria()
     {
