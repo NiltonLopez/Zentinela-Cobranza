@@ -16,6 +16,11 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// </summary>
 public class AsignacionMasivaService : IAsignacionMasivaService
 {
+    // Los cargues masivos (DELETE + SqlBulkCopy) pueden superar el timeout por
+    // defecto de 30 s con carteras grandes. Se eleva a 5 minutos, igual que en
+    // CargueReporteService/CalificadorCarteraService.
+    private const int TimeoutCargueSegundos = 300;
+
     private readonly CallCenterDbContext _db;
     private readonly IExcelExporter     _excelExporter;
     private readonly ILogger<AsignacionMasivaService> _logger;
@@ -77,18 +82,23 @@ public class AsignacionMasivaService : IAsignacionMasivaService
 
         var numerosDocumento = filasExcel.Select(f => f.NumeroDocumento).ToList();
 
+        // Elevar el timeout: con carteras grandes (Titular_Cartera ~2.2M filas) estas
+        // lecturas pueden superar el default de 30 s. Igual que en ConfirmarCargueAsync.
+        _db.Database.SetCommandTimeout(TimeoutCargueSegundos);
+
         // Batch: titulares que ya existen en BD
         var existentesMap = await _db.Titulares
             .Where(t => numerosDocumento.Contains(t.NumeroDocumento))
             .AsNoTracking()
             .ToDictionaryAsync(t => t.NumeroDocumento, t => t.Nombre);
 
-        // Batch: titulares ya asignados a esta cartera+líder
-        var candidatos  = existentesMap.Keys.ToList();
+        // Batch: titulares ya asignados a esta cartera+líder. Se traen TODOS los
+        // TitularID de la cartera+líder con un seek limpio sobre
+        // IX_TitularCartera_Lider_Cartera y se filtran en memoria. Evita un IN/OPENJSON
+        // con miles de parámetros contra una tabla de millones de filas — que generaba
+        // un plan degenerado y era la causa real del timeout en la validación.
         var yaAsignados = await _db.TitularCarteras
-            .Where(tc => tc.CarteraID == carteraID
-                      && tc.LiderID   == liderID
-                      && candidatos.Contains(tc.TitularID))
+            .Where(tc => tc.CarteraID == carteraID && tc.LiderID == liderID)
             .Select(tc => tc.TitularID)
             .ToHashSetAsync();
 
@@ -223,6 +233,10 @@ public class AsignacionMasivaService : IAsignacionMasivaService
         var duplicados  = titularIDs.Count - idsUnicos.Count;
         titularIDs      = idsUnicos;
 
+        // Elevar el timeout de EF Core para el DELETE masivo y el SaveChanges;
+        // con carteras grandes el default de 30 s no alcanza.
+        _db.Database.SetCommandTimeout(TimeoutCargueSegundos);
+
         // Abrir conexión si EF Core aún no la ha abierto
         if (_db.Database.GetDbConnection().State != ConnectionState.Open)
             await _db.Database.OpenConnectionAsync();
@@ -270,6 +284,7 @@ public class AsignacionMasivaService : IAsignacionMasivaService
             {
                 DestinationTableName = "Titular_Cartera",
                 BatchSize            = 10_000,
+                BulkCopyTimeout      = TimeoutCargueSegundos,
             };
             bulk.ColumnMappings.Add("TitularID", "TitularID");
             bulk.ColumnMappings.Add("LiderID",   "LiderID");
