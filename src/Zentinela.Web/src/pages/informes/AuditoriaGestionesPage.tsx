@@ -63,6 +63,13 @@ const COP = new Intl.NumberFormat('es-CO', {
 const fechaISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+// Fecha corta con mes abreviado (ej. "06 jul 2026"), para mejor escaneo visual que "06/07/2026".
+const MESES_ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const fechaCorta = (iso: string) => {
+  const [y, m, d] = iso.split('-');
+  return `${d} ${MESES_ABREV[Number(m) - 1]} ${y}`;
+};
+
 // Persistencia en sessionStorage de la auditoría activa (cartera + día + consulta disparada),
 // para que al cambiar de módulo y volver el dashboard siga en su sitio (o esperando la carga).
 // Sobrevive a la navegación entre módulos e incluso a F5 dentro de la pestaña.
@@ -333,7 +340,7 @@ export function AuditoriaGestionesPage() {
 
       {/* ── Panel de filtro (carteras + período) ──────────────────────────────── */}
       {!informe && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 900 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1090 }}>
 
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
 
@@ -496,20 +503,27 @@ export function AuditoriaGestionesPage() {
               grupo.fechas.push(r.dia);
               porCartera.set(r.carteraID, grupo);
             }
-            const grupos = [...porCartera.entries()].map(([carteraID, g]) => ({
-              carteraID, nombre: g.nombre, fechas: g.fechas.sort((a, b) => b.localeCompare(a)),
-            }));
+            const grupos = [...porCartera.entries()]
+              .map(([carteraID, g]) => ({
+                // Fechas de cada card: más reciente primero.
+                carteraID, nombre: g.nombre, fechas: g.fechas.sort((a, b) => b.localeCompare(a)),
+              }))
+              // Cards ordenadas alfabéticamente por nombre de cartera.
+              .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                 <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Reportes ya generados (disponibles)
                 </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {grupos.map(g => (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                  {grupos.map((g, i) => (
                     <div key={g.carteraID} style={{
                       border: '1px solid var(--z-border)', borderRadius: 10, background: 'var(--z-bg-card)',
-                      padding: '10px 14px', minWidth: 150,
+                      padding: '10px 14px',
+                      // La última card siempre arranca en una fila nueva (misma columna normal),
+                      // en vez de quedar compartiendo la fila final con la penúltima.
+                      ...(i === grupos.length - 1 ? { gridColumnStart: 1 } : {}),
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{
@@ -531,7 +545,7 @@ export function AuditoriaGestionesPage() {
                               background: '#fff', color: C.brand, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
                             }}
                           >
-                            {dia.split('-').reverse().join('/')}
+                            {fechaCorta(dia)}
                           </button>
                         ))}
                       </div>
