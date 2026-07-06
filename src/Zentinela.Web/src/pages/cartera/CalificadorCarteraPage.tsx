@@ -159,7 +159,11 @@ function BarraDesglose({ filas, total }: { filas: DesglosePar[]; total: number }
 // volver el componente remonta con la selección en blanco y "se corta" el
 // resultado — con esto reconecta al mismo queryKey y React Query muestra lo
 // que ya haya en caché (o el spinner, si la petición seguía en curso).
-const CLAVE_ACTIVA = 'calificador-cartera-activa';
+// Exportada para que AuthContext.cerrarSesion() la borre al cerrar sesión —
+// la persistencia es para sobrevivir a la navegación entre submódulos dentro
+// de la misma sesión, no para que la siguiente sesión en el mismo navegador
+// vea la cartera de otro usuario.
+export const CLAVE_ACTIVA = 'calificador-cartera-activa';
 
 function leerSeleccionGuardada(): string {
   try {
