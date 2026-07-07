@@ -1,0 +1,46 @@
+name: Deploy Zentinela a Producción
+
+on:
+  push:
+    branches:
+      - production
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publicar API (Web Deploy)
+        run: |
+          dotnet publish src/Zentinela.API/Zentinela.API.csproj `
+            /p:PublishProfile="ZentinelaAPI Profile - Production" `
+            /p:Password="${{ secrets.WEBDEPLOY_PASSWORD }}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias React
+        working-directory: src/Zentinela.Web
+        run: npm install
+
+      - name: Build React
+        working-directory: src/Zentinela.Web
+        run: npm run build
+
+      - name: Copiar React a IIS
+        run: |
+          robocopy src\Zentinela.Web\dist C:\inetpub\wwwroot\Zentinela /E /PURGE
+          exit 0
+
+      - name: Deploy completado
+        run: echo "Zentinela desplegado exitosamente en producción"
