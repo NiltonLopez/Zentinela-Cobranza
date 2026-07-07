@@ -1,36 +1,13 @@
 import api from './authApi';
 import type {
-  ValidarMensajeriaResponse, InformeMensajeria, FilaMensajeria,
-  ValidarIVRResponse, InformeIVR, FilaIVR,
+  InformeMensajeria,
+  InformeIVR,
   ValidarLlamadasResponse, InformeLlamadas, FilaLlamada,
   ValidarEntrantesResponse, InformeEntrantes, FilaEntrante,
   PagosImpacto,
 } from '../types/virtualidad';
 
-// ── Mensajería ────────────────────────────────────────────────────────────────
-
-export const generarPlantillaMensajeria = async (): Promise<void> => {
-  const { data } = await api.get('/api/virtualidad/mensajeria/plantilla', { responseType: 'blob' });
-  const url  = URL.createObjectURL(data as Blob);
-  const link = document.createElement('a');
-  link.href     = url;
-  link.download = 'plantilla_mensajeria.xlsx';
-  link.click();
-  URL.revokeObjectURL(url);
-};
-
-export const validarMensajeria = async (archivo: File, carteraID: number): Promise<ValidarMensajeriaResponse> => {
-  const fd = new FormData();
-  fd.append('archivo', archivo);
-  fd.append('carteraID', String(carteraID));
-  const { data } = await api.post<ValidarMensajeriaResponse>('/api/virtualidad/mensajeria/validar', fd);
-  return data;
-};
-
-export const confirmarMensajeria = async (filasValidas: FilaMensajeria[]): Promise<{ insertados: number; mensaje: string }> => {
-  const { data } = await api.post('/api/virtualidad/mensajeria/confirmar', { filasValidas });
-  return data;
-};
+// ── Mensajería (SMS) — solo informe; el alta se hace en Solicitudes de Virtualidad ──
 
 export const getInformeMensajeria = async (
   desde: string,
@@ -44,30 +21,7 @@ export const getInformeMensajeria = async (
   return data;
 };
 
-// ── IVR ───────────────────────────────────────────────────────────────────────
-
-export const generarPlantillaIVR = async (): Promise<void> => {
-  const { data } = await api.get('/api/virtualidad/ivr/plantilla', { responseType: 'blob' });
-  const url  = URL.createObjectURL(data as Blob);
-  const link = document.createElement('a');
-  link.href     = url;
-  link.download = 'plantilla_ivr.xlsx';
-  link.click();
-  URL.revokeObjectURL(url);
-};
-
-export const validarIVR = async (archivo: File, carteraID: number): Promise<ValidarIVRResponse> => {
-  const fd = new FormData();
-  fd.append('archivo', archivo);
-  fd.append('carteraID', String(carteraID));
-  const { data } = await api.post<ValidarIVRResponse>('/api/virtualidad/ivr/validar', fd);
-  return data;
-};
-
-export const confirmarIVR = async (filasValidas: FilaIVR[]): Promise<{ insertados: number; mensaje: string }> => {
-  const { data } = await api.post('/api/virtualidad/ivr/confirmar', { filasValidas });
-  return data;
-};
+// ── IVR — solo informe; el alta se hace en Solicitudes de Virtualidad ──────────
 
 export const getInformeIVR = async (
   desde: string,

@@ -30,16 +30,16 @@ public class VirtualidadPagosImpactoService : IVirtualidadPagosImpactoService
         var fechaMin = pagos.Min(p => p.FechaPago);
         var fechaMax = pagos.Max(p => p.FechaPago);
 
-        // Mensajería enviada antes del pago
-        var mensajeria = await _db.MensajeriaEnviadas
-            .Where(m => cedulas.Contains(m.NumeroDocumento) && m.FechaEnvio < fechaMax)
-            .Select(m => new { m.NumeroDocumento, m.FechaEnvio })
+        // Mensajería/SMS enviada antes del pago (tabla unificada SolicitudVirtualidad)
+        var mensajeria = await _db.SolicitudesVirtualidad
+            .Where(s => s.Canal == "SMS" && cedulas.Contains(s.NumeroDocumento) && s.FechaEnvio < fechaMax)
+            .Select(s => new { s.NumeroDocumento, s.FechaEnvio })
             .ToListAsync();
 
-        // IVR enviado antes del pago
-        var ivr = await _db.IVREnviados
-            .Where(i => cedulas.Contains(i.NumeroDocumento) && i.FechaEnvio < fechaMax)
-            .Select(i => new { TitularID = i.NumeroDocumento, i.FechaEnvio })
+        // IVR enviado antes del pago (tabla unificada SolicitudVirtualidad)
+        var ivr = await _db.SolicitudesVirtualidad
+            .Where(s => s.Canal == "IVR" && cedulas.Contains(s.NumeroDocumento) && s.FechaEnvio < fechaMax)
+            .Select(s => new { TitularID = s.NumeroDocumento, s.FechaEnvio })
             .ToListAsync();
 
         // Llamadas perdidas registradas antes del pago

@@ -43,6 +43,7 @@ import { GestionPersonalPage } from './pages/administracion/GestionPersonalPage'
 import { CarguePagosPage } from './pages/administracion/CarguePagosPage';
 import { AsignacionMetasPage } from './pages/administracion/AsignacionMetasPage';
 import { CargueFuentesDatosPage } from './pages/administracion/CargueFuentesDatosPage';
+import { GestionSolicitudesVirtualidadPage } from './pages/administracion/GestionSolicitudesVirtualidadPage';
 
 // Consultas
 import { ConsultaIntegradaPage } from './pages/consultas/ConsultaIntegradaPage';
@@ -227,6 +228,15 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <CargueFuentesDatosPage />
+                  </RutaProtegida>
+                }
+              />
+
+              <Route
+                path="/administracion/solicitudes-virtualidad"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
+                    <GestionSolicitudesVirtualidadPage />
                   </RutaProtegida>
                 }
               />

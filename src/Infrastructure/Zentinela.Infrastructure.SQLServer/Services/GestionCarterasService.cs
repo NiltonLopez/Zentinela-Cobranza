@@ -56,8 +56,7 @@ public class GestionCarterasService : IGestionCarterasService
                 TieneHistorico    =
                     _context.Pagos.Any(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID)
                  || _context.MetaLiderCarteraMes.Any(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID)
-                 || _context.MensajeriaEnviadas.Any(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID)
-                 || _context.IVREnviados.Any(i => i.LiderID == lc.LiderID && i.CarteraID == lc.CarteraID),
+                 || _context.SolicitudesVirtualidad.Any(s => s.LiderID == lc.LiderID && s.CarteraID == lc.CarteraID),
             })
             .AsNoTracking()
             .ToListAsync();
@@ -263,27 +262,25 @@ public class GestionCarterasService : IGestionCarterasService
 
     /// <summary>
     /// Lista los dependientes que impiden el borrado FÍSICO de una relación (asesores,
-    /// pagos, metas, mensajería, IVR), con su conteo en texto. Vacío ⇒ se puede eliminar.
+    /// pagos, metas, solicitudes de virtualidad), con su conteo en texto.
+    /// Vacío ⇒ se puede eliminar.
     /// </summary>
     private async Task<List<string>> ObtenerBloqueantesAsync(int liderID, int carteraID)
     {
-        var asesores   = await _context.CarteraAgentes
+        var asesores    = await _context.CarteraAgentes
                             .CountAsync(ca => ca.LiderID == liderID && ca.CarteraID == carteraID);
-        var pagos      = await _context.Pagos
+        var pagos       = await _context.Pagos
                             .CountAsync(p => p.LiderID == liderID && p.CarteraID == carteraID);
-        var metas      = await _context.MetaLiderCarteraMes
+        var metas       = await _context.MetaLiderCarteraMes
                             .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
-        var mensajeria = await _context.MensajeriaEnviadas
-                            .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
-        var ivr        = await _context.IVREnviados
-                            .CountAsync(i => i.LiderID == liderID && i.CarteraID == carteraID);
+        var virtualidad = await _context.SolicitudesVirtualidad
+                            .CountAsync(s => s.LiderID == liderID && s.CarteraID == carteraID);
 
         var bloqueantes = new List<string>();
-        if (asesores   > 0) bloqueantes.Add($"{asesores} asesor(es) asignado(s)");
-        if (pagos      > 0) bloqueantes.Add($"{pagos} pago(s) registrado(s)");
-        if (metas      > 0) bloqueantes.Add($"{metas} meta(s) mensual(es)");
-        if (mensajeria > 0) bloqueantes.Add($"{mensajeria} envío(s) de mensajería");
-        if (ivr        > 0) bloqueantes.Add($"{ivr} envío(s) de IVR");
+        if (asesores    > 0) bloqueantes.Add($"{asesores} asesor(es) asignado(s)");
+        if (pagos       > 0) bloqueantes.Add($"{pagos} pago(s) registrado(s)");
+        if (metas       > 0) bloqueantes.Add($"{metas} meta(s) mensual(es)");
+        if (virtualidad > 0) bloqueantes.Add($"{virtualidad} solicitud(es) de virtualidad (IVR/SMS/Correo)");
         return bloqueantes;
     }
 }
