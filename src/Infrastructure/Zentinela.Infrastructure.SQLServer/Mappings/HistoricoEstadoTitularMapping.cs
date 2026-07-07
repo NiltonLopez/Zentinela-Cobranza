@@ -9,7 +9,9 @@ public class HistoricoEstadoTitularMapping : IEntityTypeConfiguration<HistoricoE
     public void Configure(EntityTypeBuilder<HistoricoEstadoTitular> builder)
     {
         builder.ToTable("HistoricoEstadoTitular", t => t.ExcludeFromMigrations());
-        builder.HasKey(h => new { h.TitularID, h.CarteraID, h.AgenteID });
+        // Entidad de solo lectura (el cargue la escribe vía SqlBulkCopy/MERGE, no por EF).
+        // Keyless porque AgenteID puede ser NULL en la BD y no se necesita seguimiento.
+        builder.HasNoKey();
         builder.Property(h => h.UltimoPerfil).HasMaxLength(50);
         builder.Property(h => h.MejorPerfil).HasMaxLength(50);
         builder.Property(h => h.NumeroMarcado).HasMaxLength(10);
