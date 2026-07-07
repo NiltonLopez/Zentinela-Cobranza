@@ -6,16 +6,13 @@ import {
 } from 'recharts';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
 import {
-  generarPlantillaMensajeria,
-  validarMensajeria, confirmarMensajeria, getInformeMensajeria,
-  generarPlantillaIVR, validarIVR, confirmarIVR, getInformeIVR,
+  getInformeMensajeria,
+  getInformeIVR,
   validarLlamadasPerdidas, confirmarLlamadasPerdidas, getInformeLlamadasPerdidas,
   validarLlamadasEntrantes, confirmarLlamadasEntrantes, getInformeEntrantes,
   getInformePagosImpacto,
 } from '../../api/virtualidadApi';
 import type {
-  ValidarMensajeriaResponse, FilaMensajeria,
-  ValidarIVRResponse, FilaIVR,
   ValidarLlamadasResponse, FilaLlamada,
   ValidarEntrantesResponse,
 } from '../../types/virtualidad';
@@ -308,46 +305,16 @@ function BtnSecondary({ children, onClick }: { children: React.ReactNode; onClic
 // ── Tab Mensajería ────────────────────────────────────────────────────────────
 
 function TabMensajeria() {
-  const [etapa,              setEtapa]              = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [seleccion,          setSeleccion]          = useState('');   // "carteraID_liderID"
-  const [archivoNombre,      setArchivoNombre]      = useState('');
-  const [archivoKB,          setArchivoKB]          = useState(0);
-  const [preview,            setPreview]            = useState<ValidarMensajeriaResponse | null>(null);
-  const [desde,              setDesde]              = useState(HACE30);
-  const [hasta,              setHasta]              = useState(HOY);
-  const [filtroLider,        setFiltroLider]        = useState(0);   // 0 = todos
-  const [filtroCartera,      setFiltroCartera]      = useState(0);   // 0 = todas
-  const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [desde,         setDesde]         = useState(HACE30);
+  const [hasta,         setHasta]         = useState(HOY);
+  const [filtroLider,   setFiltroLider]   = useState(0);   // 0 = todos
+  const [filtroCartera, setFiltroCartera] = useState(0);   // 0 = todas
 
-  const carteraID = seleccion ? Number(seleccion.split('_')[0]) : 0;
-  const liderID   = seleccion ? Number(seleccion.split('_')[1]) : 0;
-
-  const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
+  const { data: opciones = [] } = useQuery({
     queryKey: ['calificador-opciones'],
     queryFn:  obtenerOpcionesCalificador,
     staleTime: 10 * 60 * 1000,
   });
-
-  const validar   = useMutation({
-    mutationFn: (archivo: File) => validarMensajeria(archivo, carteraID),
-    onSuccess: r => {
-      // El back devuelve filas con CarteraID/NombreCartera ya inyectados;
-      // aquí completamos LiderID que viene del selector.
-      r.filasValidas = r.filasValidas.map(f => ({ ...f, liderID }));
-      setPreview(r);
-      setEtapa('preview');
-    },
-  });
-  const confirmar = useMutation({ mutationFn: (f: FilaMensajeria[]) => confirmarMensajeria(f),          onSuccess: () => setEtapa('exito') });
-
-  const reiniciar = () => {
-    setEtapa('carga');
-    setPreview(null);
-    setArchivoNombre('');
-    setArchivoKB(0);
-    if (inputRef.current) inputRef.current.value = '';
-  };
 
   const { data: informe, refetch, isFetching: cargandoInforme } = useQuery({
     queryKey: ['informe-mensajeria', desde, hasta, filtroLider, filtroCartera],
@@ -382,189 +349,14 @@ function TabMensajeria() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 16, borderBottom: '1px solid var(--z-border)' }}>
         <div style={{ width: 4, height: 32, borderRadius: 2, background: C.mensajes }} />
         <div>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Mensajería</h3>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Carga y seguimiento de mensajes de texto enviados a titulares</p>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Mensajería (SMS)</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Seguimiento de mensajes de texto enviados a titulares</p>
         </div>
       </div>
 
-      {etapa === 'carga' && (
-        <>
-          {/* Paso 1 — Seleccionar cartera */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 1 — Selecciona la cartera
-            </p>
-            {cargandoOpciones ? (
-              <p style={{ fontSize: 13, color: C.gray }}>Cargando carteras…</p>
-            ) : (
-              <select
-                value={seleccion}
-                onChange={e => { setSeleccion(e.target.value); setArchivoNombre(''); setArchivoKB(0); }}
-                style={{
-                  padding: '8px 10px', fontSize: 13, borderRadius: 7,
-                  border: '1px solid var(--z-border)', background: 'var(--z-bg-page)',
-                  color: seleccion ? 'var(--z-text-primary)' : C.gray,
-                  outline: 'none', cursor: 'pointer', maxWidth: 420,
-                }}
-              >
-                <option value="">— Selecciona cartera y líder —</option>
-                {opciones.map(o => (
-                  <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
-                    {o.etiqueta}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Paso 2 — Plantilla */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 2 — Descarga la plantilla
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button
-                onClick={async () => { setGenerandoPlantilla(true); await generarPlantillaMensajeria(); setGenerandoPlantilla(false); }}
-                disabled={generandoPlantilla}
-                style={{
-                  padding: '8px 16px', borderRadius: 7,
-                  border: `1px solid ${C.mensajes}`,
-                  background: generandoPlantilla ? 'var(--z-border)' : 'transparent',
-                  color: generandoPlantilla ? C.gray : C.mensajes,
-                  fontSize: 13, fontWeight: 600,
-                  cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {generandoPlantilla ? 'Generando…' : 'Generar Plantilla'}
-              </button>
-              <span style={{ fontSize: 12, color: C.gray }}>
-                Columnas: <strong>NumeroDocumento</strong>, <strong>NumeroTelefono</strong>, <strong>FechaEnvio</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Paso 3 — Subir archivo */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 3 — Sube el archivo completado
-            </p>
-            <div
-              onClick={() => seleccion && inputRef.current?.click()}
-              style={{
-                border: `1.5px dashed ${archivoNombre ? C.mensajes : 'var(--z-border)'}`,
-                borderRadius: 10, padding: '28px 32px', textAlign: 'center',
-                cursor: seleccion ? 'pointer' : 'not-allowed',
-                background: archivoNombre ? '#f5f3ff' : 'transparent',
-                opacity: seleccion ? 1 : 0.5,
-                transition: 'border-color 0.15s, background 0.15s',
-              }}
-            >
-              <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.6 }}>↑</div>
-              <p style={{ fontSize: 13, color: archivoNombre ? C.mensajes : C.gray, fontWeight: 600, marginBottom: 4 }}>
-                {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
-              </p>
-              {archivoNombre
-                ? <p style={{ fontSize: 11, color: C.gray }}>{archivoKB.toFixed(1)} KB</p>
-                : <p style={{ fontSize: 11, color: C.gray, opacity: 0.7 }}>Máximo 50 MB</p>
-              }
-            </div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xlsx"
-              disabled={!seleccion}
-              style={{ display: 'none' }}
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setArchivoNombre(f.name);
-                setArchivoKB(f.size / 1024);
-              }}
-            />
-            {archivoNombre && (
-              <button
-                onClick={() => { setArchivoNombre(''); setArchivoKB(0); if (inputRef.current) inputRef.current.value = ''; }}
-                style={{ background: 'none', border: 'none', fontSize: 11, color: C.gray, cursor: 'pointer', padding: 0, width: 'fit-content' }}
-              >
-                × Quitar archivo
-              </button>
-            )}
-            {!seleccion && (
-              <p style={{ fontSize: 12, color: C.gray }}>Selecciona primero la cartera para habilitar la carga.</p>
-            )}
-          </div>
-
-          {validar.isError && <ErrorPanel mensaje="Error al validar el archivo." />}
-
-          <div>
-            <BtnPrimary
-              color={C.mensajes}
-              disabled={!seleccion || !archivoNombre || validar.isPending}
-              onClick={() => {
-                const f = inputRef.current?.files?.[0];
-                if (f) validar.mutate(f);
-              }}
-            >
-              {validar.isPending ? 'Validando…' : 'Validar archivo'}
-            </BtnPrimary>
-          </div>
-        </>
-      )}
-
-      {etapa === 'preview' && preview && (
-        <>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Total filas"  value={preview.totalFilas}     color={C.mensajes} />
-            <KpiCard label="Válidas"      value={preview.totalValidas}   color={C.success}  />
-            <KpiCard label="Con errores"  value={preview.totalErrores}   color={C.danger}   />
-            <KpiCard label="Alertas >4"   value={preview.alertas.length} color={C.warning}  />
-          </div>
-
-          {preview.alertas.length > 0 && (
-            <AlertPanel title="Líneas con más de 4 mensajes en esta carga">
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead><tr><th style={thStyle}>Teléfono</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
-                <tbody>{preview.alertas.map((a, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                    <td style={tdStyle}>{a.numeroTelefono}</td>
-                    <td style={tdStyle}>{a.nombreCartera}</td>
-                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalMensajes}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </AlertPanel>
-          )}
-
-          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>{['Documento', 'Teléfono', 'Cartera', 'Fecha', 'Estado'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-            </thead>
-            <tbody>{preview.preview.map((f, i) => (
-              <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                <td style={tdStyle}>{f.numeroDocumento}</td>
-                <td style={tdStyle}>{f.numeroTelefono}</td>
-                <td style={tdStyle}>{f.nombreCartera}</td>
-                <td style={tdStyle}>{f.fechaEnvio}</td>
-                <td style={{ ...tdStyle, color: f.esValida ? C.success : C.danger, fontWeight: 500 }}>
-                  {f.esValida ? '✓ Válida' : f.errorMensaje}
-                </td>
-              </tr>
-            ))}</tbody>
-          </table>
-
-          <div style={{ display: 'flex', gap: 10 }}>
-            <BtnPrimary color={C.mensajes} disabled={preview.totalValidas === 0 || confirmar.isPending}
-              onClick={() => confirmar.mutate(preview.filasValidas)}>
-              Confirmar {preview.totalValidas} registro(s)
-            </BtnPrimary>
-            <BtnSecondary onClick={reiniciar}>Cancelar</BtnSecondary>
-          </div>
-        </>
-      )}
-
-      {etapa === 'exito' && (
-        <SuccessBanner mensaje="Mensajes registrados correctamente." onNuevaCarga={reiniciar} />
-      )}
+      <p style={{ margin: 0, fontSize: 12, color: C.gray, background: 'var(--z-bg-page)', border: '1px solid var(--z-border)', borderRadius: 8, padding: '10px 14px' }}>
+        El registro de solicitudes SMS ahora se hace en <strong>Administración → Gestión de Solicitudes de Virtualidad</strong>. Aquí solo se consulta el informe.
+      </p>
 
       {/* Sección informe */}
       <SectionDivider title="Informe de mensajería enviada" color={C.mensajes} />
@@ -669,45 +461,16 @@ function TabMensajeria() {
 // ── Tab IVR ───────────────────────────────────────────────────────────────────
 
 function TabIVR() {
-  const [etapa,              setEtapa]              = useState<'carga' | 'preview' | 'exito'>('carga');
-  const [seleccion,          setSeleccion]          = useState('');   // "carteraID_liderID"
-  const [archivoNombre,      setArchivoNombre]      = useState('');
-  const [archivoKB,          setArchivoKB]          = useState(0);
-  const [preview,            setPreview]            = useState<ValidarIVRResponse | null>(null);
-  const [desde,              setDesde]              = useState(HACE30);
-  const [hasta,              setHasta]              = useState(HOY);
-  const [filtroLider,        setFiltroLider]        = useState(0);
-  const [filtroCartera,      setFiltroCartera]      = useState(0);
-  const [generandoPlantilla, setGenerandoPlantilla] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [desde,         setDesde]         = useState(HACE30);
+  const [hasta,         setHasta]         = useState(HOY);
+  const [filtroLider,   setFiltroLider]   = useState(0);
+  const [filtroCartera, setFiltroCartera] = useState(0);
 
-  const carteraID = seleccion ? Number(seleccion.split('_')[0]) : 0;
-  const liderID   = seleccion ? Number(seleccion.split('_')[1]) : 0;
-
-  const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
+  const { data: opciones = [] } = useQuery({
     queryKey: ['calificador-opciones'],
     queryFn:  obtenerOpcionesCalificador,
     staleTime: 10 * 60 * 1000,
   });
-
-  const validar = useMutation({
-    mutationFn: (archivo: File) => validarIVR(archivo, carteraID),
-    onSuccess: r => {
-      // inyectar liderID en filas válidas (el back ya inyecta cartera/nombre)
-      r.filasValidas = r.filasValidas.map(f => ({ ...f, liderID }));
-      setPreview(r);
-      setEtapa('preview');
-    },
-  });
-  const confirmar = useMutation({ mutationFn: (f: FilaIVR[]) => confirmarIVR(f), onSuccess: () => setEtapa('exito') });
-
-  const reiniciar = () => {
-    setEtapa('carga');
-    setPreview(null);
-    setArchivoNombre('');
-    setArchivoKB(0);
-    if (inputRef.current) inputRef.current.value = '';
-  };
 
   const { data: informe, refetch, isFetching: cargandoInforme } = useQuery({
     queryKey: ['informe-ivr', desde, hasta, filtroLider, filtroCartera],
@@ -742,188 +505,13 @@ function TabIVR() {
         <div style={{ width: 4, height: 32, borderRadius: 2, background: C.ivr }} />
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>IVR</h3>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Carga y seguimiento de envíos IVR (voz automatizada) a titulares</p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.gray }}>Seguimiento de envíos IVR (voz automatizada) a titulares</p>
         </div>
       </div>
 
-      {etapa === 'carga' && (
-        <>
-          {/* Paso 1 — Seleccionar cartera */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 1 — Selecciona la cartera
-            </p>
-            {cargandoOpciones ? (
-              <p style={{ fontSize: 13, color: C.gray }}>Cargando carteras…</p>
-            ) : (
-              <select
-                value={seleccion}
-                onChange={e => { setSeleccion(e.target.value); setArchivoNombre(''); setArchivoKB(0); }}
-                style={{
-                  padding: '8px 10px', fontSize: 13, borderRadius: 7,
-                  border: '1px solid var(--z-border)', background: 'var(--z-bg-page)',
-                  color: seleccion ? 'var(--z-text-primary)' : C.gray,
-                  outline: 'none', cursor: 'pointer', maxWidth: 420,
-                }}
-              >
-                <option value="">— Selecciona cartera y líder —</option>
-                {opciones.map(o => (
-                  <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
-                    {o.etiqueta}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Paso 2 — Plantilla */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 2 — Descarga la plantilla
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button
-                onClick={async () => { setGenerandoPlantilla(true); await generarPlantillaIVR(); setGenerandoPlantilla(false); }}
-                disabled={generandoPlantilla}
-                style={{
-                  padding: '8px 16px', borderRadius: 7,
-                  border: `1px solid ${C.ivr}`,
-                  background: generandoPlantilla ? 'var(--z-border)' : 'transparent',
-                  color: generandoPlantilla ? C.gray : C.ivr,
-                  fontSize: 13, fontWeight: 600,
-                  cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {generandoPlantilla ? 'Generando…' : 'Generar Plantilla'}
-              </button>
-              <span style={{ fontSize: 12, color: C.gray }}>
-                Columnas: <strong>NumeroDocumento</strong>, <strong>NumeroTelefono</strong>, <strong>FechaEnvio</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Paso 3 — Subir archivo */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Paso 3 — Sube el archivo completado
-            </p>
-            <div
-              onClick={() => seleccion && inputRef.current?.click()}
-              style={{
-                border: `1.5px dashed ${archivoNombre ? C.ivr : 'var(--z-border)'}`,
-                borderRadius: 10, padding: '28px 32px', textAlign: 'center',
-                cursor: seleccion ? 'pointer' : 'not-allowed',
-                background: archivoNombre ? '#ecfeff' : 'transparent',
-                opacity: seleccion ? 1 : 0.5,
-                transition: 'border-color 0.15s, background 0.15s',
-              }}
-            >
-              <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.6 }}>↑</div>
-              <p style={{ fontSize: 13, color: archivoNombre ? C.ivr : C.gray, fontWeight: 600, marginBottom: 4 }}>
-                {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
-              </p>
-              {archivoNombre
-                ? <p style={{ fontSize: 11, color: C.gray }}>{archivoKB.toFixed(1)} KB</p>
-                : <p style={{ fontSize: 11, color: C.gray, opacity: 0.7 }}>Máximo 50 MB</p>
-              }
-            </div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".xlsx"
-              disabled={!seleccion}
-              style={{ display: 'none' }}
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setArchivoNombre(f.name);
-                setArchivoKB(f.size / 1024);
-              }}
-            />
-            {archivoNombre && (
-              <button
-                onClick={() => { setArchivoNombre(''); setArchivoKB(0); if (inputRef.current) inputRef.current.value = ''; }}
-                style={{ background: 'none', border: 'none', fontSize: 11, color: C.gray, cursor: 'pointer', padding: 0, width: 'fit-content' }}
-              >
-                × Quitar archivo
-              </button>
-            )}
-            {!seleccion && (
-              <p style={{ fontSize: 12, color: C.gray }}>Selecciona primero la cartera para habilitar la carga.</p>
-            )}
-          </div>
-
-          {validar.isError && <ErrorPanel mensaje="Error al validar el archivo." />}
-
-          <div>
-            <BtnPrimary
-              color={C.ivr}
-              disabled={!seleccion || !archivoNombre || validar.isPending}
-              onClick={() => {
-                const f = inputRef.current?.files?.[0];
-                if (f) validar.mutate(f);
-              }}
-            >
-              {validar.isPending ? 'Validando…' : 'Validar archivo'}
-            </BtnPrimary>
-          </div>
-        </>
-      )}
-
-      {etapa === 'preview' && preview && (
-        <>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Total filas"  value={preview.totalFilas}     color={C.ivr}     />
-            <KpiCard label="Válidas"      value={preview.totalValidas}   color={C.success} />
-            <KpiCard label="Con errores"  value={preview.totalErrores}   color={C.danger}  />
-            <KpiCard label="Alertas >5"   value={preview.alertas.length} color={C.warning} />
-          </div>
-
-          {preview.alertas.length > 0 && (
-            <AlertPanel title="Líneas con más de 5 IVR en esta carga">
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead><tr><th style={thStyle}>Teléfono</th><th style={thStyle}>Cartera</th><th style={thStyle}>Total</th></tr></thead>
-                <tbody>{preview.alertas.map((a, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                    <td style={tdStyle}>{a.numeroTelefono}</td>
-                    <td style={tdStyle}>{a.nombreCartera}</td>
-                    <td style={{ ...tdStyle, color: C.danger, fontWeight: 700 }}>{a.totalIVR}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </AlertPanel>
-          )}
-
-          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>{['Documento', 'Teléfono', 'Cartera', 'Fecha', 'Estado'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-            </thead>
-            <tbody>{preview.preview.map((f, i) => (
-              <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                <td style={tdStyle}>{f.numeroDocumento}</td>
-                <td style={tdStyle}>{f.numeroTelefono}</td>
-                <td style={tdStyle}>{f.nombreCartera}</td>
-                <td style={tdStyle}>{f.fechaEnvio}</td>
-                <td style={{ ...tdStyle, color: f.esValida ? C.success : C.danger, fontWeight: 500 }}>
-                  {f.esValida ? '✓ Válida' : f.errorMensaje}
-                </td>
-              </tr>
-            ))}</tbody>
-          </table>
-
-          <div style={{ display: 'flex', gap: 10 }}>
-            <BtnPrimary color={C.ivr} disabled={preview.totalValidas === 0 || confirmar.isPending}
-              onClick={() => confirmar.mutate(preview.filasValidas)}>
-              Confirmar {preview.totalValidas} registro(s)
-            </BtnPrimary>
-            <BtnSecondary onClick={reiniciar}>Cancelar</BtnSecondary>
-          </div>
-        </>
-      )}
-
-      {etapa === 'exito' && (
-        <SuccessBanner mensaje="Envíos IVR registrados correctamente." onNuevaCarga={reiniciar} />
-      )}
+      <p style={{ margin: 0, fontSize: 12, color: C.gray, background: 'var(--z-bg-page)', border: '1px solid var(--z-border)', borderRadius: 8, padding: '10px 14px' }}>
+        El registro de solicitudes IVR ahora se hace en <strong>Administración → Gestión de Solicitudes de Virtualidad</strong>. Aquí solo se consulta el informe.
+      </p>
 
       {/* Sección informe */}
       <SectionDivider title="Informe de IVR enviado" color={C.ivr} />
