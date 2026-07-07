@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   calificarCartera,
@@ -153,10 +153,39 @@ function BarraDesglose({ filas, total }: { filas: DesglosePar[]; total: number }
   );
 }
 
+// Persistencia en sessionStorage de la cartera seleccionada: como el fetch de
+// calificarCartera no se cancela al desmontar (no usa AbortSignal), sigue
+// corriendo en segundo plano si el usuario cambia de submódulo. Sin esto, al
+// volver el componente remonta con la selección en blanco y "se corta" el
+// resultado — con esto reconecta al mismo queryKey y React Query muestra lo
+// que ya haya en caché (o el spinner, si la petición seguía en curso).
+// Exportada para que AuthContext.cerrarSesion() la borre al cerrar sesión —
+// la persistencia es para sobrevivir a la navegación entre submódulos dentro
+// de la misma sesión, no para que la siguiente sesión en el mismo navegador
+// vea la cartera de otro usuario.
+export const CLAVE_ACTIVA = 'calificador-cartera-activa';
+
+function leerSeleccionGuardada(): string {
+  try {
+    return sessionStorage.getItem(CLAVE_ACTIVA) ?? '';
+  } catch {
+    return ''; // sessionStorage no disponible (ej. modo privado) — no bloquea la página
+  }
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function CalificadorCarteraPage() {
-  const [seleccion, setSeleccion] = useState('');
+  const [seleccion, setSeleccion] = useState(leerSeleccionGuardada);
+
+  useEffect(() => {
+    try {
+      if (seleccion) sessionStorage.setItem(CLAVE_ACTIVA, seleccion);
+      else sessionStorage.removeItem(CLAVE_ACTIVA);
+    } catch {
+      // sessionStorage no disponible — la selección simplemente no sobrevive a la navegación
+    }
+  }, [seleccion]);
 
   const { data: opciones, isLoading: cargandoOpciones } = useQuery({
     queryKey: ['calificador-opciones'],
