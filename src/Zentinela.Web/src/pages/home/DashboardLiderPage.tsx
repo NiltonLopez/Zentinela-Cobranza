@@ -4,7 +4,7 @@ import {
   obtenerDashboardLider,
   obtenerCarterasLiderPropias,
 } from '../../api/dashboardApi';
-import type { FilaAsesorDto } from '../../types/dashboard';
+import type { FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { useAuth } from '../../context/AuthContext';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
@@ -88,8 +88,9 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: {
+function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
   label: string; valor: string; sub?: string; valorSize?: number;
+  alerta?: { cantidad: number; onClick: () => void };
 }) {
   return (
     <div style={{
@@ -106,6 +107,22 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: {
       <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
         {valor}
       </p>
+      {alerta && (
+        <button
+          onClick={alerta.onClick}
+          title="Hay gestiones con un valor de promesa irregular que no se sumaron a la proyección"
+          style={{
+            marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px',
+            fontSize: '11px', fontWeight: 600, color: '#854F0B', background: '#FAEEDA',
+            border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+          </svg>
+          {alerta.cantidad} gestión{alerta.cantidad === 1 ? '' : 'es'} irregular{alerta.cantidad === 1 ? '' : 'es'}
+        </button>
+      )}
       {sub && (
         <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
       )}
@@ -226,6 +243,85 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
   );
 }
 
+function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDirectorDto; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '28px 32px',
+        maxWidth: '440px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--z-text-primary)', marginBottom: '6px' }}>
+          Gestiones excluidas de la proyección
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+          No se incluyeron en la "Proyección promesas" por tener un valor de promesa que parece irregular.
+        </p>
+
+        <div style={{ display: 'flex', gap: '24px', marginBottom: '20px' }}>
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+              Gestiones
+            </p>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#854F0B' }}>
+              {metricas.gestionesExcluidasPorTecho}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+              Valor excluido
+            </p>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#854F0B' }}>
+              {formatearPesos(metricas.valorExcluidoPorTecho)}
+            </p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+          Titulares a revisar
+        </p>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
+          {metricas.titularesExcluidos.map(id => (
+            <span key={id} style={{
+              fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)',
+              background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)',
+              borderRadius: '6px', padding: '4px 10px',
+            }}>
+              {id}
+            </span>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: '1px solid var(--z-border)',
+              background: 'transparent',
+              color: 'var(--z-text-muted)',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function DashboardLiderPage() {
@@ -234,6 +330,7 @@ export function DashboardLiderPage() {
 
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
   const [carteraNombre, setCarteraNombre] = useState<string>('');
+  const [modalExcluidosAbierto, setModalExcluidosAbierto] = useState(false);
 
   const [preset,      setPreset]      = useState<Preset>('ciclo');
   const [customDesde, setCustomDesde] = useState<string>('');
@@ -434,6 +531,9 @@ export function DashboardLiderPage() {
               valor={formatearPesos(data.metricas.proyeccionPromesas)}
               sub="Suma de acuerdos y abonos del período"
               valorSize={18}
+              alerta={data.metricas.gestionesExcluidasPorTecho > 0
+                ? { cantidad: data.metricas.gestionesExcluidasPorTecho, onClick: () => setModalExcluidosAbierto(true) }
+                : undefined}
             />
             <TarjetaMetrica
               label="Incumplidos"
@@ -460,6 +560,13 @@ export function DashboardLiderPage() {
           )}
         </div>
       </section>
+
+      {modalExcluidosAbierto && data && (
+        <ModalGestionesExcluidas
+          metricas={data.metricas}
+          onClose={() => setModalExcluidosAbierto(false)}
+        />
+      )}
 
     </div>
   );

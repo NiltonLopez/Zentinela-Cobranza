@@ -22,6 +22,7 @@ public static class DependencyInjection
     {
         // ── Configuración tipada (IOptions<JwtSettings>) ──────────────────────
         services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+        services.Configure<ProyeccionPromesasSettings>(configuration.GetSection("ProyeccionPromesas"));
 
         // ── DbContexts ────────────────────────────────────────────────────────
         services.AddDbContext<ZentinelaDbContext>(options =>
