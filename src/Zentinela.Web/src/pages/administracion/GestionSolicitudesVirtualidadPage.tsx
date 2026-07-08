@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { obtenerCarteras } from '../../api/carterasApi';
+import { listarRelaciones } from '../../api/gestionCarterasApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import {
   generarPlantillaSolicitud, validarSolicitud, confirmarSolicitud,
@@ -94,6 +95,80 @@ function DropZone({ archivoNombre, archivoKB, onClick, onQuitar, inputRef, onCha
           × Quitar archivo
         </button>
       )}
+    </div>
+  );
+}
+
+// ── Panel de referencia: nombres exactos de Cartera + Líder ──────────────────
+//
+// El mapeo del Excel es por NOMBRE (no por selector), y el par debe existir y
+// estar activo en Lider_Cartera o la fila queda marcada como error. Reusa
+// /api/gestion-carteras/relaciones (mismos roles Admin/AuxiliarSistemas) para
+// que el usuario copie el nombre exacto en vez de adivinarlo.
+function PanelNombresValidos() {
+  const [busqueda, setBusqueda] = useState('');
+  const { data: relaciones = [], isLoading } = useQuery({ queryKey: ['relaciones-lider-cartera'], queryFn: listarRelaciones });
+
+  const activas = useMemo(
+    () => relaciones
+      .filter(r => r.activo)
+      .sort((a, b) => a.nombreCartera.localeCompare(b.nombreCartera, 'es-CO') || a.nombreLider.localeCompare(b.nombreLider, 'es-CO')),
+    [relaciones],
+  );
+
+  const filtradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return activas;
+    return activas.filter(r => r.nombreCartera.toLowerCase().includes(q) || r.nombreLider.toLowerCase().includes(q));
+  }, [activas, busqueda]);
+
+  return (
+    <div style={{
+      background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)', borderRadius: 8,
+      padding: 16, display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+          Nombres exactos de Cartera y Líder
+        </p>
+        <span style={{ fontSize: 11, color: 'var(--z-text-muted)' }}>{filtradas.length} de {activas.length} pares activos</span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>
+        Escribe estos nombres <strong>tal cual</strong> en las columnas <strong>Cartera</strong> y <strong>Lider</strong> del Excel.
+        El par debe existir y estar activo — si no coincide exacto, la fila queda marcada como error.
+      </p>
+      <input
+        type="text" placeholder="Buscar cartera o líder..." value={busqueda}
+        onChange={e => setBusqueda(e.target.value)}
+        style={{
+          padding: '7px 10px', borderRadius: 6, border: '0.5px solid var(--z-border)',
+          background: 'var(--z-bg-card)', color: 'var(--z-text-primary)', fontSize: 13,
+        }}
+      />
+      <div style={{ maxHeight: 220, overflowY: 'auto', border: '0.5px solid var(--z-border)', borderRadius: 6, background: 'var(--z-bg-card)' }}>
+        {isLoading ? (
+          <p style={{ padding: 16, fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>Cargando...</p>
+        ) : filtradas.length === 0 ? (
+          <p style={{ padding: 16, fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>Sin coincidencias.</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--z-bg-page)', position: 'sticky', top: 0 }}>
+                <th style={TH}>Cartera</th>
+                <th style={TH}>Líder</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.map(r => (
+                <tr key={`${r.carteraID}-${r.liderID}`}>
+                  <td style={{ ...TD, fontFamily: 'monospace', whiteSpace: 'normal' }}>{r.nombreCartera}</td>
+                  <td style={{ ...TD, fontFamily: 'monospace', whiteSpace: 'normal' }}>{r.nombreLider}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -227,6 +302,7 @@ function SeccionSolicitud({ canal }: { canal: CanalVirtualidad }) {
           onClick={() => inputRef.current?.click()} onChange={seleccionar}
           onQuitar={() => { setNombre(''); setKB(0); if (inputRef.current) inputRef.current.value = ''; }} />
       </div>
+      <PanelNombresValidos />
       {error && <div style={cajaError}>{error}</div>}
     </div>
   );
