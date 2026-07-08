@@ -1315,7 +1315,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | Fosyga | `IX_Fosyga_TitularID_Fecha` |
 | MutualSer | `IX_MutualSer_TitularID_FechaConsulta` (creado en migración `2026-05-07_mutualser_in_basemadre.sql`) |
 | Positiva | `IX_Positiva_TitularID_Fecha` |
-| PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
+| PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` (la tabla seguía siendo HEAP sin este índice en producción pese a estar documentado aquí; backfill en migración `2026-07-08_index_positivaempresas_titularid.sql`) |
 | RGM | `IX_RGM_TitularID_Fecha` |
 | RUES | `IX_RUES_TitularID_Fecha` |
 | Runt | `IX_Runt_TitularID_Fecha` |

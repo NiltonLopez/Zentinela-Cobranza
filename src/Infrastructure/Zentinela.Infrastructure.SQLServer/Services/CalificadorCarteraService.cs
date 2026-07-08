@@ -421,6 +421,13 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                       AND NULLIF(NULLIF(t.EmClaro,  ''), '0') IS NULL
                       AND dc.TitularID IS NOT NULL
                      THEN 1 ELSE 0 END) AS ClaroNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelMiVacuna,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmMiVacuna,  ''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS MiVacunaEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelMiVacuna,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmMiVacuna,  ''), '0') IS NULL
+                      AND mv.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS MiVacunaNoEnc,
             SUM(CASE WHEN NULLIF(NULLIF(t.CelMutualSer, ''),'0') IS NOT NULL
                        OR NULLIF(NULLIF(t.CelMutualSer2,''),'0') IS NOT NULL
                        OR NULLIF(NULLIF(t.EmMutualSer,  ''),'0') IS NOT NULL
@@ -486,6 +493,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM MiVacuna)         mv ON mv.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM MutualSer)        ms ON ms.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TRY_CAST(TitularID AS BIGINT) AS TitularID FROM NuevaEps) ne ON ne.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = t.TitularID
@@ -672,6 +680,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Fuente("Tigo",          Sum("TigoEnc"),        Sum("TigoNoEnc"),        total),
             Fuente("SOS",           Sum("SosEnc"),         Sum("SosNoEnc"),         total),
             Fuente("Claro",         Sum("ClaroEnc"),       Sum("ClaroNoEnc"),       total),
+            Fuente("MiVacuna",      Sum("MiVacunaEnc"),    Sum("MiVacunaNoEnc"),    total),
             Fuente("MutualSer",     Sum("MutualSerEnc"),   Sum("MutualSerNoEnc"),   total),
             Fuente("NuevaEps",      Sum("NuevaEpsEnc"),    Sum("NuevaEpsNoEnc"),    total),
             Fuente("Sura (ARL)",    Sum("SuraEnc"),        Sum("SuraNoEnc"),        total),
@@ -765,6 +774,11 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             "[Celular Claro] AS CelClaro, [Email Claro] AS EmClaro",
             "NULLIF(NULLIF(t.CelClaro,''),'0') IS NOT NULL " +
             "OR NULLIF(NULLIF(t.EmClaro,''),'0') IS NOT NULL"),
+
+        ["mivacuna"] = new("mivacuna", "MiVacuna", "MiVacuna", "FechaConsulta",
+            "[Celular MiVacuna] AS CelMiVacuna, [Email MiVacuna] AS EmMiVacuna",
+            "NULLIF(NULLIF(t.CelMiVacuna,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmMiVacuna,''),'0') IS NOT NULL"),
 
         ["mutualser"] = new("mutualser", "MutualSer", "MutualSer", "FechaConsulta",
             "[Celular MutualSer] AS CelMutualSer, [Celular 2 MutualSer] AS CelMutualSer2, " +
