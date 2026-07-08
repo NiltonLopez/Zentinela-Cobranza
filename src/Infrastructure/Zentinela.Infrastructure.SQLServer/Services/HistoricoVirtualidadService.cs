@@ -1,7 +1,7 @@
 using System.Globalization;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
-using Zentinela.Application.DTOs.Virtualidad.Solicitudes;
+using Zentinela.Application.DTOs.Virtualidad.Historico;
 using Zentinela.Application.Interfaces;
 using Zentinela.Core.Entities;
 using Zentinela.Infrastructure.SQLServer.Persistence;
@@ -9,15 +9,15 @@ using Zentinela.Infrastructure.SQLServer.Persistence;
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
-/// Gestión de Solicitudes de Virtualidad (IVR / SMS / Correo).
+/// Gestión de Histórico de Virtualidad (IVR / SMS / Correo).
 /// Carga masiva con mapeo Cartera+Líder por NOMBRE en el archivo, y actualización
 /// posterior del resultado (Estado) por PK. Espejo del patrón de VirtualidadIVRService.
 /// </summary>
-public class SolicitudVirtualidadService : ISolicitudVirtualidadService
+public class HistoricoVirtualidadService : IHistoricoVirtualidadService
 {
     private readonly CallCenterDbContext _db;
 
-    public SolicitudVirtualidadService(CallCenterDbContext db) => _db = db;
+    public HistoricoVirtualidadService(CallCenterDbContext db) => _db = db;
 
     // ── Catálogo por canal ──────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ public class SolicitudVirtualidadService : ISolicitudVirtualidadService
         var carteraIDs = validas.Select(f => f.CarteraID).Distinct().ToList();
 
         // Histórico de envíos por destino para este canal y las carteras involucradas.
-        var historico = await _db.SolicitudesVirtualidad
+        var historico = await _db.HistoricoVirtualidad
             .Where(s => s.Canal == canal && carteraIDs.Contains(s.CarteraID) && destinos.Contains(s.Destino))
             .GroupBy(s => s.Destino)
             .Select(g => new { Destino = g.Key, Total = g.Count() })
@@ -163,7 +163,7 @@ public class SolicitudVirtualidadService : ISolicitudVirtualidadService
         if (!EsCanalValido(canal))
             throw new ArgumentException($"Canal '{canal}' no soportado.");
 
-        var entidades = filas.Select(f => new SolicitudVirtualidad
+        var entidades = filas.Select(f => new HistoricoVirtualidad
         {
             Canal           = canal,
             NumeroDocumento = f.NumeroDocumento,
@@ -174,7 +174,7 @@ public class SolicitudVirtualidadService : ISolicitudVirtualidadService
             Estado          = null, // sin resultado hasta la fase Resultado
         }).ToList();
 
-        _db.SolicitudesVirtualidad.AddRange(entidades);
+        _db.HistoricoVirtualidad.AddRange(entidades);
         await _db.SaveChangesAsync();
         return entidades.Count;
     }
@@ -194,7 +194,7 @@ public class SolicitudVirtualidadService : ISolicitudVirtualidadService
     public async Task<byte[]> DescargarPendientesAsync(string canal, int? carteraID, DateOnly? desde, DateOnly? hasta)
     {
         var query =
-            from s in _db.SolicitudesVirtualidad
+            from s in _db.HistoricoVirtualidad
             where s.Canal == canal && s.Estado == null
                 && (!carteraID.HasValue || s.CarteraID == carteraID.Value)
                 && (!desde.HasValue || s.FechaEnvio >= desde.Value)
@@ -252,7 +252,7 @@ public class SolicitudVirtualidadService : ISolicitudVirtualidadService
 
         // Validar existencia + canal de los ID cargados.
         var ids = filas.Where(f => f.EsValida).Select(f => f.ID).Distinct().ToList();
-        var existentes = await _db.SolicitudesVirtualidad
+        var existentes = await _db.HistoricoVirtualidad
             .Where(s => ids.Contains(s.ID))
             .Select(s => new { s.ID, s.Canal })
             .AsNoTracking().ToListAsync();
@@ -300,7 +300,7 @@ public class SolicitudVirtualidadService : ISolicitudVirtualidadService
         if (porId.Count == 0) return 0;
 
         var ids = porId.Keys.ToList();
-        var entidades = await _db.SolicitudesVirtualidad
+        var entidades = await _db.HistoricoVirtualidad
             .Where(s => ids.Contains(s.ID))
             .ToListAsync();
 

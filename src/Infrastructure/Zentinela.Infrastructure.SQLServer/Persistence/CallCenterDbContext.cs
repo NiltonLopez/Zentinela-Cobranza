@@ -27,7 +27,7 @@ public class CallCenterDbContext : DbContext
     public DbSet<MetaLiderCarteraMes> MetaLiderCarteraMes { get; set; }
     public DbSet<LlamadaPerdida>      LlamadasPerdidas    { get; set; }
     public DbSet<LlamadaEntrante>     LlamadasEntrantes   { get; set; }
-    public DbSet<SolicitudVirtualidad> SolicitudesVirtualidad { get; set; }
+    public DbSet<HistoricoVirtualidad> HistoricoVirtualidad { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -47,6 +47,6 @@ public class CallCenterDbContext : DbContext
         builder.ApplyConfiguration(new MetaLiderCarteraMesMapping());
         builder.ApplyConfiguration(new LlamadaPerdidaMapping());
         builder.ApplyConfiguration(new LlamadaEntranteMapping());
-        builder.ApplyConfiguration(new SolicitudVirtualidadMapping());
+        builder.ApplyConfiguration(new HistoricoVirtualidadMapping());
     }
 }

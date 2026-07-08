@@ -56,7 +56,7 @@ public class GestionCarterasService : IGestionCarterasService
                 TieneHistorico    =
                     _context.Pagos.Any(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID)
                  || _context.MetaLiderCarteraMes.Any(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID)
-                 || _context.SolicitudesVirtualidad.Any(s => s.LiderID == lc.LiderID && s.CarteraID == lc.CarteraID),
+                 || _context.HistoricoVirtualidad.Any(s => s.LiderID == lc.LiderID && s.CarteraID == lc.CarteraID),
             })
             .AsNoTracking()
             .ToListAsync();
@@ -273,7 +273,7 @@ public class GestionCarterasService : IGestionCarterasService
                             .CountAsync(p => p.LiderID == liderID && p.CarteraID == carteraID);
         var metas       = await _context.MetaLiderCarteraMes
                             .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
-        var virtualidad = await _context.SolicitudesVirtualidad
+        var virtualidad = await _context.HistoricoVirtualidad
                             .CountAsync(s => s.LiderID == liderID && s.CarteraID == carteraID);
 
         var bloqueantes = new List<string>();

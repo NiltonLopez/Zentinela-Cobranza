@@ -1,12 +1,12 @@
-using Zentinela.Application.DTOs.Virtualidad.Solicitudes;
+using Zentinela.Application.DTOs.Virtualidad.Historico;
 
 namespace Zentinela.Application.Interfaces;
 
 /// <summary>
-/// Módulo "Gestión de Solicitudes de Virtualidad": carga masiva de solicitudes
+/// Módulo "Gestión de Histórico de Virtualidad": carga masiva de solicitudes
 /// IVR/SMS/Correo (Estado null) y actualización posterior de resultados.
 /// </summary>
-public interface ISolicitudVirtualidadService
+public interface IHistoricoVirtualidadService
 {
     // Fase Solicitud
     byte[] GenerarPlantilla(string canal);

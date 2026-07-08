@@ -1,4 +1,4 @@
-namespace Zentinela.Application.DTOs.Virtualidad.Solicitudes;
+namespace Zentinela.Application.DTOs.Virtualidad.Historico;
 
 // ── Fase Solicitud ──────────────────────────────────────────────────────────
 

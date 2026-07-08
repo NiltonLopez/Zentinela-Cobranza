@@ -44,7 +44,7 @@ import { GestionPersonalPage } from './pages/administracion/GestionPersonalPage'
 import { CarguePagosPage } from './pages/administracion/CarguePagosPage';
 import { AsignacionMetasPage } from './pages/administracion/AsignacionMetasPage';
 import { CargueFuentesDatosPage } from './pages/administracion/CargueFuentesDatosPage';
-import { GestionSolicitudesVirtualidadPage } from './pages/administracion/GestionSolicitudesVirtualidadPage';
+import { GestionHistoricoVirtualidadPage } from './pages/administracion/GestionHistoricoVirtualidadPage';
 
 // Consultas
 import { ConsultaIntegradaPage } from './pages/consultas/ConsultaIntegradaPage';
@@ -254,10 +254,10 @@ function App() {
               />
 
               <Route
-                path="/administracion/solicitudes-virtualidad"
+                path="/administracion/historico-virtualidad"
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
-                    <GestionSolicitudesVirtualidadPage />
+                    <GestionHistoricoVirtualidadPage />
                   </RutaProtegida>
                 }
               />

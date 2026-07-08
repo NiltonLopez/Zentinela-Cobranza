@@ -143,6 +143,24 @@ Historial de estados de gestión por titular, acumulado con cada cargue de repor
 | MotivoNoPago | varchar(100) | SI | — | |
 | FechaActualizacion | datetime | NO | — | Timestamp del cargue en Zentinela — UPDATE si misma Rotacion, INSERT si nueva |
 
+### HistoricoVirtualidad
+Histórico consolidado de solicitudes de virtualidad (IVR / SMS / Correo) con resultado actualizable. Una sola tabla con discriminador `Canal`. `Estado = NULL` = fase Solicitud (sin resultado); se actualiza junto con `FechaResultado` en la fase Resultado (por PK). Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| ID | bigint | NO | SI | — |
+| Canal | varchar(10) | NO | — | CHECK IN (IVR, SMS, Correo) |
+| NumeroDocumento | bigint | NO | — | — |
+| Destino | varchar(255) | NO | — | teléfono (IVR/SMS) o email (Correo) |
+| CarteraID | int | NO | — | FK compuesta → Lider_Cartera |
+| LiderID | int | NO | — | FK compuesta → Lider_Cartera |
+| FechaEnvio | date | NO | — | — |
+| Estado | varchar(50) | SI | — | NULL = sin resultado (fase Solicitud) |
+| FechaResultado | datetime2 | SI | — | poblada en fase Resultado |
+| FechaCargue | datetime2 | NO | — | DEFAULT GETDATE() |
+
+Índices: `IX_HistoricoVirtualidad_Canal_Cartera_Fecha` (Canal, CarteraID, FechaEnvio), `IX_HistoricoVirtualidad_Canal_Destino` (Canal, Destino).
+
 ### PORTAFOLIO
 Tabla de portafolio completo con datos de cliente, financiacion y contacto (importada desde fuente externa).
 

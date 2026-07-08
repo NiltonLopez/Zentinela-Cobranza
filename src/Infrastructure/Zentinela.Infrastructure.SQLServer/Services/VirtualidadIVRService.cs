@@ -6,9 +6,9 @@ using Zentinela.Infrastructure.SQLServer.Persistence;
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
-/// Informe de IVR (solo lectura) sobre la tabla unificada SolicitudVirtualidad
+/// Informe de IVR (solo lectura) sobre la tabla unificada HistoricoVirtualidad
 /// (Canal = 'IVR'). El alta de solicitudes y resultados vive en
-/// <see cref="SolicitudVirtualidadService"/> (módulo Administración).
+/// <see cref="HistoricoVirtualidadService"/> (módulo Administración).
 /// </summary>
 public class VirtualidadIVRService : IVirtualidadIVRService
 {
@@ -23,7 +23,7 @@ public class VirtualidadIVRService : IVirtualidadIVRService
         DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
     {
         var queryEnriquecida =
-            from s in _db.SolicitudesVirtualidad
+            from s in _db.HistoricoVirtualidad
             where s.Canal == CANAL
                 && s.FechaEnvio >= desde && s.FechaEnvio <= hasta
                 && (!liderID.HasValue   || s.LiderID   == liderID.Value)

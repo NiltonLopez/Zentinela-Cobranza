@@ -4,13 +4,13 @@ using Zentinela.Core.Entities;
 
 namespace Zentinela.Infrastructure.SQLServer.Mappings;
 
-public class SolicitudVirtualidadMapping : IEntityTypeConfiguration<SolicitudVirtualidad>
+public class HistoricoVirtualidadMapping : IEntityTypeConfiguration<HistoricoVirtualidad>
 {
-    public void Configure(EntityTypeBuilder<SolicitudVirtualidad> builder)
+    public void Configure(EntityTypeBuilder<HistoricoVirtualidad> builder)
     {
         // La BD es propiedad del sistema de cobranza; el esquema se gestiona por
         // migración SQL manual (docs/sql), no por EF Migrations.
-        builder.ToTable("SolicitudVirtualidad", t => t.ExcludeFromMigrations());
+        builder.ToTable("HistoricoVirtualidad", t => t.ExcludeFromMigrations());
         builder.HasKey(s => s.ID);
 
         builder.Property(s => s.ID).ValueGeneratedOnAdd();
