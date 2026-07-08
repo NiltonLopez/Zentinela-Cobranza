@@ -39,9 +39,9 @@ public class CalificadorCarteraController : ControllerBase
     /// </summary>
     [HttpGet("{carteraID:int}/{liderID:int?}")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
-    public async Task<IActionResult> Calificar(int carteraID, int? liderID)
+    public async Task<IActionResult> Calificar(int carteraID, int? liderID, CancellationToken ct)
     {
-        var resultado = await _service.CalificarAsync(carteraID, liderID);
+        var resultado = await _service.CalificarAsync(carteraID, liderID, ct);
         return Ok(resultado);
     }
 

@@ -195,7 +195,12 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         -- de 147k filas NUNCA termina (medido: sesión matada tras 6+ min sin
         -- avanzar). Con RECOMPILE, el optimizador mide el tamaño real de @Titulares
         -- en cada ejecución y arma un plan correcto (medido: 3.3s).
-        OPTION (RECOMPILE);
+        -- MAXDOP 4 (servidor de 8 núcleos, 2026-07-08): sin tope, cada llamada pide
+        -- los 8 núcleos completos; dos usuarios calificando a la vez se ahogan entre
+        -- sí (incidente: retry storm en carteras chicas, ver
+        -- project_calificador_retry_storm.md). Con el tope, cada corrida es algo
+        -- más lenta sola pero el servidor resiste concurrencia real.
+        OPTION (RECOMPILE, MAXDOP 4);
 
         DECLARE @Total int  = (SELECT COUNT(*) FROM #t);
         DECLARE @Hoy   date = CAST(GETDATE() AS date);
@@ -497,7 +502,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     // ADO.NET y EF Core no alcanza — subimos a 3 min para dar margen.
     private const int CommandTimeoutSegundos = 180;
 
-    public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID)
+    public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID, CancellationToken ct = default)
     {
         // Hit de caché: el batch de 9 result sets cuesta 1-3s P90 y las recargas
         // son muy frecuentes. Si hay entry vigente la devolvemos directo (<100ms).
@@ -508,7 +513,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
         var conn = _db.Database.GetDbConnection();
         var wasOpen = conn.State == ConnectionState.Open;
-        if (!wasOpen) await conn.OpenAsync();
+        if (!wasOpen) await conn.OpenAsync(ct);
 
         try
         {
@@ -532,8 +537,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 AddParam(cmdIds, "@CarteraID", carteraID);
                 AddParam(cmdIds, "@LiderID",   (object?)liderID ?? DBNull.Value);
 
-                await using var readerIds = await cmdIds.ExecuteReaderAsync();
-                while (await readerIds.ReadAsync())
+                await using var readerIds = await cmdIds.ExecuteReaderAsync(ct);
+                while (await readerIds.ReadAsync(ct))
                     titulares.Rows.Add(readerIds.GetInt64(0));
             }
 
@@ -552,10 +557,10 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 Value    = titulares,
             });
 
-            await using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
 
             // Result set 1 — escalares
-            if (!await reader.ReadAsync())
+            if (!await reader.ReadAsync(ct))
                 return new CalificadorCarteraDto { TotalTitulares = 0 };
 
             var total = reader.GetInt32(reader.GetOrdinal("Total"));
@@ -583,17 +588,17 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             dto.EdadPromedioRegistraduria  = await GetNullableDecimalAsync(reader, "EdadPromedioRegistraduria");
 
             // Result sets 2-8 — desgloses (etiqueta, cantidad, porcentaje)
-            await reader.NextResultAsync(); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesglosePerfil         = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseEPS            = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(ct); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesglosePerfil         = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseEPS            = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader, ct);
 
             // Result set 9 — localización (15 fuentes, una sola fila)
-            await reader.NextResultAsync();
-            dto.Localizacion = await LeerLocalizacionAsync(reader, total);
+            await reader.NextResultAsync(ct);
+            dto.Localizacion = await LeerLocalizacionAsync(reader, total, ct);
 
             // Solo cacheamos resultados con datos. TotalTitulares == 0 (manejado arriba
             // con returns tempranos) probablemente sea transitorio y no debemos ocultar
@@ -623,10 +628,10 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         return await reader.IsDBNullAsync(ord) ? null : reader.GetDecimal(ord);
     }
 
-    private static async Task<List<DesglosePar>> ReadDesgloseAsync(DbDataReader reader)
+    private static async Task<List<DesglosePar>> ReadDesgloseAsync(DbDataReader reader, CancellationToken ct)
     {
         var list = new List<DesglosePar>();
-        while (await reader.ReadAsync())
+        while (await reader.ReadAsync(ct))
         {
             list.Add(new DesglosePar
             {
@@ -644,9 +649,9 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     /// Usa GetOrdinal por nombre para mantener consistencia con el resto de la clase.
     /// </summary>
     private static async Task<List<LocalizacionFuente>> LeerLocalizacionAsync(
-        DbDataReader reader, int total)
+        DbDataReader reader, int total, CancellationToken ct)
     {
-        if (!await reader.ReadAsync()) return [];
+        if (!await reader.ReadAsync(ct)) return [];
 
         // Si todas las SUMs vienen NULL (sucede con #t vacía aunque ya cubrimos total==0 arriba),
         // tratamos cada columna como 0.
