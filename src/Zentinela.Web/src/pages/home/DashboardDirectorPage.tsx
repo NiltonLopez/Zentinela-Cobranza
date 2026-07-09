@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   obtenerDashboardDirector,
@@ -100,11 +100,12 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
       padding: '20px 22px',
       flex: '1 1 160px',
       minWidth: '160px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
         {label}
       </p>
-      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
+      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, wordBreak: 'break-word' }}>
         {valor}
       </p>
       {alerta && (
@@ -130,6 +131,74 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
   );
 }
 
+function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
+  // Líder destacado por categoría — si el mismo líder gana varias, su nombre se repite.
+  const items = useMemo(() => {
+    if (filas.length === 0) return [];
+    const masGestiones       = filas.reduce((a, b) => (b.totalGestiones      > a.totalGestiones      ? b : a));
+    const masContactabilidad = filas.reduce((a, b) => (b.tasaContactabilidad > a.tasaContactabilidad ? b : a));
+    const masEfectividad     = filas.reduce((a, b) => (b.tasaEfectividad     > a.tasaEfectividad      ? b : a));
+    const masProyeccion      = filas.reduce((a, b) => (b.proyeccionPromesas  > a.proyeccionPromesas    ? b : a));
+    return [
+      { label: 'Más gestiones',        nombre: masGestiones.nombreLider,       valor: masGestiones.totalGestiones.toLocaleString('es-CO') },
+      { label: 'Mayor contactabilidad', nombre: masContactabilidad.nombreLider, valor: pct(masContactabilidad.tasaContactabilidad) },
+      { label: 'Mayor efectividad',    nombre: masEfectividad.nombreLider,     valor: pct(masEfectividad.tasaEfectividad) },
+      { label: 'Mayor proyección',     nombre: masProyeccion.nombreLider,      valor: formatearPesos(masProyeccion.proyeccionPromesas) },
+    ];
+  }, [filas]);
+
+  const [pausado, setPausado] = useState(false);
+
+  if (items.length === 0) return null;
+
+  // Pista duplicada: al recorrer el 50% del ancho total vuelve a verse igual → loop continuo sin salto.
+  const pista = [...items, ...items];
+
+  return (
+    <div
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      style={{
+        background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+        borderRadius: '8px', padding: '14px 0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        overflow: 'hidden',
+      }}
+    >
+      <style>{`
+        @keyframes zentinelaDestacadosDerecha {
+          from { transform: translateX(-50%); }
+          to   { transform: translateX(0%); }
+        }
+      `}</style>
+      <div style={{
+        display: 'flex', width: 'max-content',
+        animationName: 'zentinelaDestacadosDerecha',
+        animationDuration: '28s',
+        animationTimingFunction: 'linear',
+        animationIterationCount: 'infinite',
+        animationPlayState: pausado ? 'paused' : 'running',
+      }}>
+        {pista.map((it, i) => (
+          <div key={`${it.label}-${i}`} style={{
+            display: 'flex', alignItems: 'baseline', gap: '6px',
+            padding: '0 28px', borderRight: '0.5px solid var(--z-border)',
+            whiteSpace: 'nowrap',
+          }}>
+            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {it.label}
+            </span>
+            <span style={{ fontSize: '13px', color: 'var(--z-text-primary)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--z-brand)' }}>{it.nombre}</span>
+              {' · '}{it.valor}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asignados: number }) {
   const pctNum  = asignados > 0 ? Math.min((gestionados / asignados) * 100, 100) : 0;
   const radio   = 38;
@@ -149,6 +218,7 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
       display: 'flex',
       alignItems: 'center',
       gap: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <svg width="96" height="96" viewBox="0 0 96 96" style={{ flexShrink: 0 }}>
         <circle cx="48" cy="48" r={radio} fill="none" stroke="var(--z-border)" strokeWidth={grosor} />
@@ -171,11 +241,11 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
       </svg>
 
       <div style={{ minWidth: 0 }}>
-        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
           Avance de gestión
         </p>
-        <p style={{ fontSize: '13px', color: 'var(--z-text-primary)', marginBottom: '4px' }}>
-          <span style={{ fontWeight: 700 }}>{gestionados.toLocaleString('es-CO')}</span>
+        <p style={{ fontSize: '13px', marginBottom: '4px' }}>
+          <span style={{ fontWeight: 700, color: 'var(--z-brand)' }}>{gestionados.toLocaleString('es-CO')}</span>
           <span style={{ color: 'var(--z-text-muted)' }}> gestionados</span>
         </p>
         <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
@@ -183,7 +253,7 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
         </p>
         {/* Barra lineal de soporte visual */}
         <div style={{ marginTop: '10px', height: 4, borderRadius: 99, background: 'var(--z-border)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pctNum}%`, background: color, borderRadius: 99, transition: 'width 0.6s ease' }} />
+          <div style={{ height: '100%', width: `${pctNum}%`, background: 'var(--z-brand)', borderRadius: 99, transition: 'width 0.6s ease' }} />
         </div>
       </div>
     </div>
@@ -199,6 +269,7 @@ function TablaLideres({ filas, onSeleccionar }: {
     { key: 'totalGestiones', dir: 'desc' },
     (f, k) => (f as unknown as Record<string, string | number>)[k],
   );
+  const [filaHover, setFilaHover] = useState<number | null>(null);
 
   if (filas.length === 0) {
     return (
@@ -211,7 +282,7 @@ function TablaLideres({ filas, onSeleccionar }: {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-brand-light)' }}>
           <ThOrdenable label="Líder"           sortKey="nombreLider"         sort={sort} onSort={toggle} />
           <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
@@ -221,30 +292,43 @@ function TablaLideres({ filas, onSeleccionar }: {
         </tr>
       </thead>
       <tbody>
-        {items.map(f => (
-          <tr key={f.liderID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+        {items.map((f, i) => (
+          <tr
+            key={f.liderID}
+            onMouseEnter={() => setFilaHover(f.liderID)}
+            onMouseLeave={() => setFilaHover(prev => (prev === f.liderID ? null : prev))}
+            style={{
+              borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+              borderBottom: '0.5px solid var(--z-border)',
+              background: filaHover === f.liderID ? 'var(--z-bg-page)' : 'transparent',
+              transition: 'background 0.12s ease',
+            }}
+          >
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreLider}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {f.totalGestiones.toLocaleString('es-CO')}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaContactabilidad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaEfectividad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
               {formatearPesos(f.proyeccionPromesas)}
             </td>
-            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
               <button
                 onClick={() => onSeleccionar(f.liderID, f.nombreLider)}
                 style={{
                   padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  background: filaHover === f.liderID ? 'var(--z-bg-card)' : 'var(--z-bg-page)',
+                  color: 'var(--z-text-primary)',
                   fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                  boxShadow: filaHover === f.liderID ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  transition: 'background 0.12s ease, box-shadow 0.12s ease',
                 }}
               >
                 Ver detalle
@@ -475,6 +559,29 @@ export function DashboardDirectorPage() {
     setCarteraNombre('');
   };
 
+  // Chevron propio (reemplaza la flecha nativa del <select>, inconsistente entre navegadores).
+  const chevronSelect =
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888780' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+
+  const estiloSelect: React.CSSProperties = {
+    padding: '7px 30px 7px 10px', fontSize: '13px', borderRadius: '6px',
+    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+    color: 'var(--z-text-primary)', outline: 'none', cursor: 'pointer',
+    appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+    backgroundImage: chevronSelect, backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 10px center', backgroundSize: '10px 6px',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  };
+
+  const enfocarSelect = (e: React.FocusEvent<HTMLSelectElement>) => {
+    e.currentTarget.style.borderColor = 'var(--z-brand)';
+    e.currentTarget.style.boxShadow = '0 0 0 3px var(--z-brand-light)';
+  };
+  const desenfocarSelect = (e: React.FocusEvent<HTMLSelectElement>) => {
+    e.currentTarget.style.borderColor = 'var(--z-border)';
+    e.currentTarget.style.boxShadow = 'none';
+  };
+
   const mostrarDesgloseLider  = !liderID && (data?.filasLider?.length ?? 0) > 0;
   const mostrarDesgloseAsesor = liderID !== null;
 
@@ -506,11 +613,15 @@ export function DashboardDirectorPage() {
         </div>
       </div>
 
+      {/* Líderes destacados del período (solo vista global) */}
+      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} />}
+
       {/* Filtros */}
       <div style={{
         background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
         borderRadius: '8px', padding: '16px 20px',
         display: 'flex', flexDirection: 'column', gap: '14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
       }}>
         {/* Fila 1: Líder + Cartera */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -521,11 +632,9 @@ export function DashboardDirectorPage() {
             <select
               value={liderID ?? ''}
               onChange={handleCambiarLider}
-              style={{
-                padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                color: 'var(--z-text-primary)', outline: 'none',
-              }}
+              onFocus={enfocarSelect}
+              onBlur={desenfocarSelect}
+              style={estiloSelect}
             >
               <option value="">Todos los líderes</option>
               {lideres.map(l => (
@@ -542,11 +651,9 @@ export function DashboardDirectorPage() {
               <select
                 value={carteraID ?? ''}
                 onChange={handleCambiarCartera}
-                style={{
-                  padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-                  border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                  color: 'var(--z-text-primary)', outline: 'none',
-                }}
+                onFocus={enfocarSelect}
+                onBlur={desenfocarSelect}
+                style={estiloSelect}
               >
                 <option value="">Todas las carteras del líder</option>
                 {carteras.map(c => (
@@ -697,6 +804,7 @@ export function DashboardDirectorPage() {
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
             borderRadius: '8px', overflow: 'hidden',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
             <TablaLideres
               filas={data!.filasLider}
@@ -715,6 +823,7 @@ export function DashboardDirectorPage() {
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
             borderRadius: '8px', overflow: 'hidden',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
             {isLoading ? (
               <CargandoSpiral mensaje="Cargando asesores..." />
