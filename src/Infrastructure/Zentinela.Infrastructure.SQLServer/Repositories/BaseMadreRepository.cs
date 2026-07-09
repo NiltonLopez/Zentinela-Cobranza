@@ -87,9 +87,15 @@ public class BaseMadreRepository : IBaseMadreRepository
         // Aplica a las dos queries que siguen (count + datos) — ambas van por EF Core.
         _context.Database.SetCommandTimeout(CommandTimeoutSegundos);
 
-        var total = await _context.Database
+        // FirstOrDefaultAsync() NO sirve aquí: EF Core lo traduce envolviendo el SQL
+        // crudo en un subquery ("SELECT TOP(1) [v] FROM (<countSql>) AS t") para
+        // aplicar el TOP(1), y OPTION no es válido dentro de un subquery — sintaxis
+        // inválida en SQL Server (regresión real: rompió el Creador en producción
+        // el 2026-07-09). ToListAsync() no compone nada extra sobre el SQL crudo.
+        var total = (await _context.Database
             .SqlQueryRaw<int>(countSql, CreateParams())
-            .FirstOrDefaultAsync();
+            .ToListAsync())
+            .FirstOrDefault();
 
         var filas = await _context.BaseMadreRows
             .FromSqlRaw(dataSql, CreateParams())
