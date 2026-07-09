@@ -3,7 +3,33 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-05-07**.
+Última actualización: **2026-07-09**.
+
+---
+
+## Notas de arquitectura — rendimiento en servidor compartido (2026-07-09)
+
+- **El SQL Server corporativo tiene solo 8 núcleos y es compartido con toda la oficina.**
+  Cualquier query que consulte `dbo.fn_BaseMadrePorCartera` / `dbo.fn_BaseMadreParaTitulares`
+  sin `OPTION (MAXDOP N)` puede pedir los 8 núcleos completos y monopolizar el
+  servidor durante toda su ejecución — no solo se hace lenta a sí misma, ahoga
+  a **cualquier otra query concurrente** (Calificador, Creador, lo que sea).
+  Ya se agregó `MAXDOP 4` a: `CalificadorCarteraService.SqlAgregados` y
+  `EscribirLocalizacionCsvAsync`, y las 3 queries de `BaseMadreRepository`
+  (Creador). Medido: cartera de 628k filas, 83.7s sin tope → 12.7s con
+  `MAXDOP 4` (6.5×). Si se agrega una consulta nueva sobre estas TVFs,
+  replicar el mismo tope.
+  **`OPTION (RECOMPILE)` NO es automático** — ayuda cuando el parámetro es un
+  TVP con cardinalidad variable (Calificador), pero mide peor cuando los
+  parámetros son escalares simples como `CarteraID`/`LiderID` (Creador: medido
+  37-59s con RECOMPILE vs 12.7s sin él). Medir antes de asumir cuál ayuda.
+
+- **`.OrderByDescending(x => Peso(x)).First()` para sacar el máximo de un grupo es un anti-patrón.**
+  Ordena el grupo completo (O(n log n)) solo para quedarse con el primer
+  elemento. Usar `.MaxBy(x => Peso(x))` (.NET 6+) — un solo pase O(n), sin el
+  overhead de ordenar. Corregido en `ComparadorCarterasService.cs` (6
+  ocurrencias) — mejoró la cartera más grande del sistema de 14.7s a 10.7s en
+  caliente. Si aparece este patrón en código nuevo, cambiarlo directamente.
 
 ---
 
