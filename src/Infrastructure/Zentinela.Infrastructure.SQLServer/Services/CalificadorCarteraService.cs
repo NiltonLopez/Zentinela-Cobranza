@@ -878,7 +878,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             LEFT JOIN src        ON src.TitularID  = t.TitularID
             LEFT JOIN dbo.Titular ti ON ti.NumeroDocumento = t.TitularID
             WHERE {predicado}
-            ORDER BY t.TitularID;
+            ORDER BY t.TitularID
+            OPTION (MAXDOP 4);
             """;
 
         _db.Database.SetCommandTimeout(CommandTimeoutSegundos);

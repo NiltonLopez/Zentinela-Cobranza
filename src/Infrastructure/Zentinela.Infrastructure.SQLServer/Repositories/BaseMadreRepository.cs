@@ -59,16 +59,25 @@ public class BaseMadreRepository : IBaseMadreRepository
         // limite es int? validado upstream — interpolación segura (no es input string)
         var topClause = limite.HasValue ? $"TOP ({limite.Value})" : string.Empty;
 
+        // MAXDOP 4 (servidor de 8 núcleos, 2026-07-09): sin tope, esta query pide
+        // los 8 núcleos completos y monopoliza el servidor mientras corre (medido:
+        // cartera de 628k filas — 83.7s sin tope vs 12.7s con MAXDOP 4, 6.5×).
+        // OPTION (RECOMPILE) medido y descartado: empeora el tiempo aquí (a
+        // diferencia del batch del Calificador) porque @CarteraID/@LiderID son
+        // escalares simples — el plan cacheado ya escala bien, RECOMPILE solo
+        // agrega overhead de compilación sin mejorar el plan.
         var countSql = $"""
             SELECT COUNT(*) AS Value
             FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
             {whereClause}
+            OPTION (MAXDOP 4)
             """;
 
         var dataSql = $"""
             SELECT {topClause} *
             FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
             {whereClause}
+            OPTION (MAXDOP 4)
             """;
 
         // SqlParameter no se puede reusar entre comandos — instanciamos por query.
@@ -137,10 +146,13 @@ public class BaseMadreRepository : IBaseMadreRepository
         if (aliasesSql.Count == 0)
             aliasesSql.Add("[Numero Documento]");
 
+        // MAXDOP 4: ver comentario en ObtenerAsync (mismo servidor de 8 núcleos,
+        // misma TVF) — sin tope el export monopoliza el servidor completo.
         var sql = $"""
             SELECT {string.Join(", ", aliasesSql)}
             FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
             {whereClause}
+            OPTION (MAXDOP 4)
             """;
 
         var conn = _context.Database.GetDbConnection();
