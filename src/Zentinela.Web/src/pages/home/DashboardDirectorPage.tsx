@@ -821,25 +821,25 @@ export function DashboardDirectorPage() {
       {mostrarDesgloseAsesor && (
         <section>
           <h2 style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px',
           }}>
+            Desglose por asesor
             <button
               type="button"
               onClick={limpiarFiltros}
               title="Volver al desglose por líder"
               aria-label="Volver al desglose por líder"
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: '22px', height: '22px', borderRadius: '6px',
+                display: 'flex', alignItems: 'center', gap: '5px',
+                borderRadius: '6px', padding: '4px 10px',
                 border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                color: 'var(--z-text-primary)', fontSize: '14px', lineHeight: 1,
-                cursor: 'pointer', padding: 0,
+                color: 'var(--z-text-primary)', fontSize: '12px', fontWeight: 500, lineHeight: 1,
+                cursor: 'pointer',
               }}
             >
-              ←
+              ← Volver
             </button>
-            Desglose por asesor
           </h2>
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
