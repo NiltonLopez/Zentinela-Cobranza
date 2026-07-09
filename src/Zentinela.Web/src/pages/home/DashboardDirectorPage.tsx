@@ -359,7 +359,7 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-brand-light)' }}>
           <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} />
           <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
@@ -368,8 +368,11 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
         </tr>
       </thead>
       <tbody>
-        {items.map(f => (
-          <tr key={f.agenteID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+        {items.map((f, i) => (
+          <tr key={f.agenteID} style={{
+            borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+            borderBottom: '0.5px solid var(--z-border)',
+          }}>
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreAsesor}
               <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px', fontWeight: 400 }}>
