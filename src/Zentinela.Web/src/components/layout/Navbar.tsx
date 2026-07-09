@@ -77,23 +77,30 @@ export function Navbar({ moduloActivo, onModuloChange }: Props) {
               key={modulo.key}
               onClick={() => handleModuloClick(modulo.key)}
               style={{
+                boxSizing: 'border-box',
                 height: '100%',
                 padding: '0 14px',
                 background: 'none',
                 border: 'none',
-                borderBottom: isActive ? '2px solid var(--z-brand)' : '2px solid transparent',
+                borderBottomStyle: 'solid',
+                borderBottomWidth: isActive ? '4px' : '2px',
+                borderBottomColor: isActive ? 'var(--z-brand)' : 'transparent',
                 color: isActive ? 'var(--z-brand)' : 'var(--z-text-muted)',
                 fontSize: '13px',
                 fontWeight: isActive ? 600 : 400,
                 cursor: 'pointer',
-                transition: 'color 0.15s',
+                transition: 'color 0.15s, border-bottom-color 0.15s, border-bottom-width 0.15s',
                 whiteSpace: 'nowrap',
               }}
               onMouseOver={(e) => {
-                if (!isActive) (e.currentTarget as HTMLElement).style.color = 'var(--z-text-primary)';
+                if (isActive) return;
+                (e.currentTarget as HTMLElement).style.color = 'var(--z-brand)';
+                (e.currentTarget as HTMLElement).style.borderBottomColor = 'var(--z-brand-light)';
               }}
               onMouseOut={(e) => {
-                if (!isActive) (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
+                if (isActive) return;
+                (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
+                (e.currentTarget as HTMLElement).style.borderBottomColor = 'transparent';
               }}
             >
               {modulo.label}
