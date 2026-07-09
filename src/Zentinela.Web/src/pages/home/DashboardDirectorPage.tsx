@@ -820,7 +820,25 @@ export function DashboardDirectorPage() {
       {/* Desglose por asesor (vista filtrada por líder o cartera) */}
       {mostrarDesgloseAsesor && (
         <section>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px' }}>
+          <h2 style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px',
+          }}>
+            <button
+              type="button"
+              onClick={limpiarFiltros}
+              title="Volver al desglose por líder"
+              aria-label="Volver al desglose por líder"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '22px', height: '22px', borderRadius: '6px',
+                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                color: 'var(--z-text-primary)', fontSize: '14px', lineHeight: 1,
+                cursor: 'pointer', padding: 0,
+              }}
+            >
+              ←
+            </button>
             Desglose por asesor
           </h2>
           <div style={{
