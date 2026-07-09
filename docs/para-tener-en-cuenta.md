@@ -24,6 +24,26 @@ backlog: los items se cierran o se descartan con razón explícita.
   parámetros son escalares simples como `CarteraID`/`LiderID` (Creador: medido
   37-59s con RECOMPILE vs 12.7s sin él). Medir antes de asumir cuál ayuda.
 
+- **⚠️ Incidente real (2026-07-09): `OPTION (...)` en SQL crudo ejecutado vía
+  EF Core rompió el Creador en producción (500 en el 100% de las llamadas).**
+  `BaseMadreRepository.ObtenerAsync` corría el conteo así:
+  `_context.Database.SqlQueryRaw<int>(countSql, ...).FirstOrDefaultAsync()`.
+  EF Core traduce `.FirstOrDefaultAsync()` sobre `SqlQueryRaw` **envolviendo
+  el SQL crudo en un subquery** para aplicar `TOP(1)`
+  (`SELECT TOP(1) [v] FROM (<countSql>) AS t`). Como `countSql` terminaba en
+  `OPTION (MAXDOP 4)`, ese `OPTION` quedaba dentro del subquery — sintaxis
+  inválida en SQL Server. El benchmark con `sqlcmd` (SQL suelto, top-level)
+  no lo detectó porque no reproduce cómo EF Core compone la query real.
+  **Fix:** cambiar `.FirstOrDefaultAsync()` por `.ToListAsync()` +
+  `.FirstOrDefault()` en C# — no dispara wrapping.
+  **Regla práctica:** antes de agregar `OPTION(...)` a SQL crudo vía
+  `SqlQueryRaw`/`FromSqlRaw`, revisar qué operador LINQ se encadena después.
+  `FirstOrDefaultAsync`/`SingleAsync`/`Take`/`Where`/`OrderBy` compuestos
+  probablemente disparan wrapping en subquery — `OPTION` ahí rompe.
+  `ToListAsync()` solo, o ejecución vía ADO.NET puro (`SqlCommand` directo,
+  como el batch del Calificador), son seguros. Ante la duda, probar contra la
+  app real corriendo (login + curl a un endpoint), no solo `sqlcmd` aislado.
+
 - **`.OrderByDescending(x => Peso(x)).First()` para sacar el máximo de un grupo es un anti-patrón.**
   Ordena el grupo completo (O(n log n)) solo para quedarse con el primer
   elemento. Usar `.MaxBy(x => Peso(x))` (.NET 6+) — un solo pase O(n), sin el
