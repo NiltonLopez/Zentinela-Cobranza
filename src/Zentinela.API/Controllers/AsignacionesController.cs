@@ -18,24 +18,29 @@ public class AsignacionesController : ControllerBase
         _service = service;
     }
 
-    /// <summary>Descarga la plantilla Excel lista para rellenar con cédulas.</summary>
+    /// <summary>
+    /// Descarga la plantilla Excel lista para rellenar. Con completo=true incluye
+    /// la columna LiderID por fila (modo "Cartera Completo").
+    /// </summary>
     [HttpGet("plantilla")]
-    public IActionResult DescargarPlantilla()
+    public IActionResult DescargarPlantilla([FromQuery] bool completo = false)
     {
-        var bytes = _service.GenerarPlantilla();
+        var bytes  = completo ? _service.GenerarPlantillaCompleto() : _service.GenerarPlantilla();
+        var nombre = completo ? "plantilla_asignaciones_completo.xlsx" : "plantilla_asignaciones.xlsx";
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "plantilla_asignaciones.xlsx");
+            nombre);
     }
 
     /// <summary>
     /// Valida el Excel subido contra la BD y devuelve una vista previa
-    /// con los primeros 10 registros y los conteos totales.
+    /// con los primeros 10 registros y los conteos totales. Si liderID es null,
+    /// se valida en modo "Cartera Completo" (el LiderID viene por fila en el Excel).
     /// </summary>
     [HttpPost("validar")]
     [RequestSizeLimit(10 * 1024 * 1024)] // 10 MB
     public async Task<IActionResult> Validar(
-        IFormFile archivo, [FromForm] int carteraID, [FromForm] int liderID)
+        IFormFile archivo, [FromForm] int carteraID, [FromForm] int? liderID)
     {
         if (archivo is null || archivo.Length == 0)
             return BadRequest(new { mensaje = "El archivo no puede estar vacío." });
@@ -44,22 +49,36 @@ public class AsignacionesController : ControllerBase
             return BadRequest(new { mensaje = "El archivo debe ser .xlsx." });
 
         using var stream = archivo.OpenReadStream();
-        var preview = await _service.ValidarExcelAsync(stream, carteraID, liderID);
+        var preview = liderID.HasValue
+            ? await _service.ValidarExcelAsync(stream, carteraID, liderID.Value)
+            : await _service.ValidarExcelCompletoAsync(stream, carteraID);
         return Ok(preview);
     }
 
     /// <summary>
-    /// Inserta los titularIDs validados en la staging y ejecuta el SP
-    /// para transferirlos a Titular_Cartera.
+    /// Confirma el cargue reemplazando en Titular_Cartera. Con LiderID → reemplaza
+    /// solo ese líder; sin LiderID (modo "Cartera Completo") → reemplaza toda la
+    /// cartera con los pares (TitularID, LiderID) del archivo.
     /// </summary>
     [HttpPost("confirmar")]
     public async Task<IActionResult> Confirmar([FromBody] ConfirmarCargueRequest request)
     {
-        if (request.TitularIDs.Count == 0)
-            return BadRequest(new { mensaje = "No hay titulares para confirmar." });
+        if (request.LiderID.HasValue)
+        {
+            if (request.TitularIDs.Count == 0)
+                return BadRequest(new { mensaje = "No hay titulares para confirmar." });
 
-        var resultado = await _service.ConfirmarCargueAsync(
-            request.CarteraID, request.LiderID, request.TitularIDs, request.NuevosTitulares);
-        return Ok(resultado);
+            var resultado = await _service.ConfirmarCargueAsync(
+                request.CarteraID, request.LiderID.Value, request.TitularIDs, request.NuevosTitulares);
+            return Ok(resultado);
+        }
+
+        // Modo "Cartera Completo"
+        if (request.Asignaciones.Count == 0)
+            return BadRequest(new { mensaje = "No hay asignaciones para confirmar." });
+
+        var resultadoCompleto = await _service.ConfirmarCargueCompletoAsync(
+            request.CarteraID, request.Asignaciones, request.NuevosTitulares);
+        return Ok(resultadoCompleto);
     }
 }

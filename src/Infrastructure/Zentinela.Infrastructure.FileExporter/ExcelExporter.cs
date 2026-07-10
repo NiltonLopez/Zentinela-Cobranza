@@ -97,6 +97,36 @@ public class ExcelExporter : IExcelExporter
         return stream.ToArray();
     }
 
+    public byte[] GenerarPlantillaAsignacionesCompleto()
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Plantilla");
+
+        // ── Encabezados — modo "Cartera Completo": incluye LiderID por fila ────
+        var encabezados = new[] { "NumeroDocumento", "Nombre", "LiderID" };
+        for (var i = 0; i < encabezados.Length; i++)
+        {
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = encabezados[i];
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        // ── Fila de ejemplo (en gris, solo orientación) ───────────────────────
+        ws.Cell(2, 1).Value = "1020304050";
+        ws.Cell(2, 2).Value = "APELLIDO NOMBRE (ejemplo — puede borrarse)";
+        ws.Cell(2, 3).Value = "12";
+        ws.Row(2).Style.Font.FontColor = XLColor.Gray;
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
     // ── Plantilla y parser para Cargue de Reportes ───────────────────────────
 
     // Columnas del reporte — CarteraID viene de la UI, no del archivo.
@@ -395,6 +425,28 @@ public class ExcelExporter : IExcelExporter
 
             var nombre = fila.Cell(2).GetString().Trim();
             result.Add((numDoc, nombre));
+        }
+
+        return result;
+    }
+
+    public List<(long NumeroDocumento, string Nombre, long? LiderID)> ParsearFilasAsignacionCompleto(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        var ws     = workbook.Worksheet(1);
+        var result = new List<(long, string, long?)>();
+
+        foreach (var fila in ws.RowsUsed().Skip(1)) // fila 1 = encabezados
+        {
+            var texto = fila.Cell(1).GetString().Trim();
+            if (string.IsNullOrEmpty(texto)) continue;
+            if (!long.TryParse(texto, out var numDoc)) continue;
+
+            var nombre     = fila.Cell(2).GetString().Trim();
+            var liderTexto = fila.Cell(3).GetString().Trim();
+            long? liderID  = long.TryParse(liderTexto, out var lid) ? lid : null;
+
+            result.Add((numDoc, nombre, liderID));
         }
 
         return result;
