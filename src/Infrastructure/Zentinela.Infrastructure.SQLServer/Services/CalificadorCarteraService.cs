@@ -492,10 +492,14 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         DROP TABLE #t;
         """;
 
-    // Carteras pesadas (P99 ~190k filas, admin sin líder ~395k) + cold cache pueden
-    // sumar 30-60s entre TVF, materialización y desgloses. El default de 30s para
-    // ADO.NET y EF Core no alcanza — subimos a 3 min para dar margen.
-    private const int CommandTimeoutSegundos = 180;
+    // "Cartera Completa" (sin líder) en las carteras más grandes hoy supera lo que
+    // asumía el comentario anterior: medido en vivo, Cartera 22 sin líder (627.981
+    // filas) tarda ~222s solo en la materialización (INTO #t), por encima de los
+    // 180s previos — causaba "Execution Timeout Expired" y el líder lo veía como
+    // "no carga". El acceso normal de un líder a su propia cartera, aun siendo
+    // grande (222.591 filas, Cartera 8 / Líder 6), mide 65s — muy por debajo del
+    // presupuesto. Subimos a 420s para dar margen real sobre el peor caso medido.
+    private const int CommandTimeoutSegundos = 420;
 
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID)
     {
