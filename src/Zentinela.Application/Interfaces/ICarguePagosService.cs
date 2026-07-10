@@ -18,6 +18,14 @@ public interface ICarguePagosService
     Task<ValidarPagosResponse> ValidarArchivoAsync(Stream archivo, int carteraID, string extension);
 
     /// <summary>
+    /// Modo "Cargue Masivo": el archivo trae columnas Lider y Cartera obligatorias por fila.
+    /// Resuelve CarteraID y LiderID por nombre exacto contra las relaciones Lider_Cartera activas
+    /// (el par debe existir y estar activo). UsuarioControl es opcional (si viene, resuelve el asesor).
+    /// No requiere carteraID global. No persiste nada.
+    /// </summary>
+    Task<ValidarPagosResponse> ValidarArchivoMasivoAsync(Stream archivo, string extension);
+
+    /// <summary>
     /// Inserta en bloque las filas válidas en la tabla Pago.
     /// El LiderID de cada fila viene resuelto desde la validación.
     /// <paramref name="usuarioRegistro"/> es el UserName del usuario autenticado que confirma el cargue.
@@ -42,6 +50,9 @@ public interface ICarguePagosService
 
     /// <summary>Genera la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
     byte[] GenerarPlantilla();
+
+    /// <summary>Plantilla XLSX del modo "Cargue Masivo": incluye las columnas Lider y Cartera.</summary>
+    byte[] GenerarPlantillaMasiva();
 
     /// <summary>Fecha del último pago registrado (FechaRegistro) para la cartera. Null si no hay pagos aún.</summary>
     Task<DateTime?> ObtenerUltimaActualizacionAsync(int carteraID);

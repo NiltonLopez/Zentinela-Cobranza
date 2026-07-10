@@ -41,14 +41,18 @@ public class PagosController : ControllerBase
         return Ok(new { fechaActualizacion = fechaUtc });
     }
 
-    /// <summary>Descarga la plantilla XLSX con las columnas requeridas para el cargue de pagos.</summary>
+    /// <summary>
+    /// Descarga la plantilla XLSX del cargue de pagos. Con masivo=true incluye las
+    /// columnas Lider y Cartera por fila (modo "Cargue Masivo").
+    /// </summary>
     [HttpGet("plantilla")]
-    public IActionResult DescargarPlantilla()
+    public IActionResult DescargarPlantilla([FromQuery] bool masivo = false)
     {
-        var bytes = _service.GenerarPlantilla();
+        var bytes  = masivo ? _service.GenerarPlantillaMasiva() : _service.GenerarPlantilla();
+        var nombre = masivo ? "plantilla_cargue_pagos_masivo.xlsx" : "plantilla_cargue_pagos.xlsx";
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "plantilla_cargue_pagos.xlsx");
+            nombre);
     }
 
     /// <summary>
@@ -75,7 +79,8 @@ public class PagosController : ControllerBase
     /// </summary>
     [HttpPost("validar")]
     [RequestSizeLimit(10 * 1024 * 1024)] // 10 MB
-    public async Task<IActionResult> Validar([FromForm] IFormFile archivo, [FromForm] int carteraID)
+    public async Task<IActionResult> Validar(
+        [FromForm] IFormFile archivo, [FromForm] int carteraID, [FromForm] bool masivo = false)
     {
         if (archivo is null || archivo.Length == 0)
             return BadRequest(new { mensaje = "El archivo no puede estar vacío." });
@@ -84,13 +89,16 @@ public class PagosController : ControllerBase
         if (ext != ".csv" && ext != ".xlsx")
             return BadRequest(new { mensaje = "El archivo debe ser .csv o .xlsx." });
 
-        if (carteraID <= 0)
+        // En modo masivo la cartera viene por fila en el archivo — no se exige el selector.
+        if (!masivo && carteraID <= 0)
             return BadRequest(new { mensaje = "Debe seleccionar una cartera." });
 
         try
         {
             using var stream = archivo.OpenReadStream();
-            var resultado = await _service.ValidarArchivoAsync(stream, carteraID, ext);
+            var resultado = masivo
+                ? await _service.ValidarArchivoMasivoAsync(stream, ext)
+                : await _service.ValidarArchivoAsync(stream, carteraID, ext);
             return Ok(resultado);
         }
         catch (Exception ex)
