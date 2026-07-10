@@ -34,10 +34,18 @@ Líderes de cobranza del sistema.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| ID | int (identity) | NO | SI | — |
+| ID | int | NO | SI | — |
 | Nombre | varchar(100) | NO | — | — |
 | Email | varchar(150) | SI | — | — |
 | Activo | bit | NO | — | — |
+| NumeroDocumento | bigint | SI | — | — |
+
+`ID` **NO es IDENTITY**: se asigna manualmente como `MAX(ID)+1` al dar de alta un líder
+(mismo patrón que `Cartera`). El mapping EF usa `ValueGeneratedNever()`.
+
+`NumeroDocumento` es la cédula del empleado en `DBRecursosHumanos.Empleado` (vínculo lógico
+líder ↔ empleado). Es **nullable**: los líderes externos (agencias, no empleados) pueden no
+tener documento. Ver ADR-027.
 
 ### Lider_Cartera
 Relación muchos-a-muchos entre Lider y Cartera.
