@@ -6,7 +6,7 @@ import { obtenerDashboardAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
-import type { AcuerdoVigenteDto, PagosConfirmadosDto } from '../../types/dashboard';
+import type { AcuerdoVigenteDto, DashboardAsesorDto, PagosConfirmadosDto } from '../../types/dashboard';
 
 // ── Selector de período ───────────────────────────────────────────────────────
 
@@ -72,6 +72,131 @@ const SEMAFORO: Record<string, { bg: string; border: string; badge: string; labe
   verde:    { bg: '#f0fdf4', border: '#bbf7d0', badge: '#16a34a', label: 'A tiempo' },
 };
 
+// ── Barra de frases motivacionales ────────────────────────────────────────────
+
+interface FraseItem {
+  icono: string;
+  texto: string;
+}
+
+// Frases construidas con las métricas propias del asesor — solo se muestran si hay dato real.
+function construirFrasesDinamicas(data: DashboardAsesorDto | undefined, mesLabel: string): FraseItem[] {
+  if (!data) return [];
+  const items: FraseItem[] = [];
+
+  if (data.rendimiento.fechaActualizacion) {
+    items.push({ icono: 'connect_without_contact', texto: `${formatearPorcentaje(data.rendimiento.tasaContactabilidad)} de contactabilidad este mes` });
+    items.push({ icono: 'heart_check', texto: `${formatearPorcentaje(data.rendimiento.tasaEfectividad)} de efectividad en ${mesLabel}` });
+    if (data.rendimiento.totalGestiones > 0) {
+      items.push({ icono: 'diversity_4', texto: `${data.rendimiento.totalGestiones} gestiones realizadas` });
+    }
+  }
+
+  if (data.acuerdosVigentes.length > 0) {
+    items.push({ icono: 'local_police', texto: `${data.acuerdosVigentes.length} acuerdo${data.acuerdosVigentes.length !== 1 ? 's' : ''} vigente${data.acuerdosVigentes.length !== 1 ? 's' : ''}` });
+  }
+
+  return items;
+}
+
+const FRASES_MOTIVACIONALES: FraseItem[] = [
+  { icono: 'star',                      texto: 'El secreto para salir adelante es empezar.' },
+  { icono: 'settings_accessibility',    texto: 'El éxito es la suma de pequeños esfuerzos.' },
+  { icono: 'mindfulness',               texto: 'No cuentes los días, haz que los días cuenten.' },
+  { icono: 'fire_check',                texto: 'La persistencia es tu mayor aliada.' },
+  { icono: 'mark_chat_read',            texto: 'Escucha para entender, no solo para responder.' },
+  { icono: 'finance_mode',              texto: 'Enfócate en la solución, no en la excusa.' },
+  { icono: 'phone_enabled',             texto: 'Tu actitud al teléfono define el resultado de la negociación.' },
+  { icono: 'person_celebrate',          texto: 'Cierra el día sabiendo que diste lo mejor de ti en cada gestión.' },
+];
+
+function hashTexto(texto: string): number {
+  let hash = 0;
+  for (let i = 0; i < texto.length; i++) {
+    hash = (hash * 31 + texto.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+// Generador determinístico (mulberry32) — misma semilla siempre da la misma secuencia,
+// para que cada asesor vea siempre el mismo orden pero distinto al de sus compañeros.
+function crearGeneradorConSemilla(semilla: number) {
+  let estado = semilla;
+  return () => {
+    estado |= 0;
+    estado = (estado + 0x6D2B79F5) | 0;
+    let t = Math.imul(estado ^ (estado >>> 15), 1 | estado);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function mezclarConSemilla<T>(arr: T[], semilla: number): T[] {
+  const copia = [...arr];
+  const random = crearGeneradorConSemilla(semilla);
+  for (let i = copia.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia;
+}
+
+function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas }: { semillaTexto: string; frasesDinamicas: FraseItem[] }) {
+  const frases = useMemo(
+    () => mezclarConSemilla([...frasesDinamicas, ...FRASES_MOTIVACIONALES], hashTexto(semillaTexto || 'zentinela')),
+    [semillaTexto, frasesDinamicas],
+  );
+
+  const [pausado, setPausado] = useState(false);
+
+  // Pista duplicada: al recorrer el 50% del ancho total vuelve a verse igual → loop continuo sin salto.
+  const pista = [...frases, ...frases];
+
+  return (
+    <div
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      style={{
+        background: 'var(--z-bg-card)',
+        borderTop: '2px solid var(--z-brand)', borderBottom: '2px solid var(--z-brand)',
+        borderRadius: '8px', padding: '14px 0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        overflow: 'hidden',
+      }}
+    >
+      <style>{`
+        @keyframes zentinelaFrasesDerecha {
+          from { transform: translateX(-50%); }
+          to   { transform: translateX(0%); }
+        }
+      `}</style>
+      <div style={{
+        display: 'flex', width: 'max-content',
+        animationName: 'zentinelaFrasesDerecha',
+        animationDuration: '62s',
+        animationTimingFunction: 'linear',
+        animationIterationCount: 'infinite',
+        animationPlayState: pausado ? 'paused' : 'running',
+      }}>
+        {pista.map((item, i) => (
+          <div key={`${item.texto}-${i}`} style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '0 28px', borderRight: '0.5px solid var(--z-border)',
+            whiteSpace: 'nowrap',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--z-brand)' }}>
+              {item.icono}
+            </span>
+            <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--z-brand)' }}>
+              {item.texto}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
 function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
@@ -91,7 +216,7 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
     }}>
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-bg-card)' }}>
           <ThOrdenable label="Titular"       sortKey="nombreTitular" sort={sort} onSort={toggle} />
           <ThOrdenable label="Tipificación"  sortKey="ultimoPerfil"  sort={sort} onSort={toggle} />
           <ThOrdenable label="Fecha promesa" sortKey="fechaPromesa"  sort={sort} onSort={toggle} />
@@ -101,8 +226,8 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
         </tr>
       </thead>
       <tbody>
-        {items.map(a => (
-          <FilaAcuerdo key={`${a.titularID}`} acuerdo={a} />
+        {items.map((a, i) => (
+          <FilaAcuerdo key={`${a.titularID}`} acuerdo={a} esPrimera={i === 0} />
         ))}
       </tbody>
     </table>
@@ -110,10 +235,10 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
   );
 }
 
-function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
+function FilaAcuerdo({ acuerdo, esPrimera }: { acuerdo: AcuerdoVigenteDto; esPrimera?: boolean }) {
   const color = SEMAFORO[acuerdo.semaforo] ?? SEMAFORO.verde;
   return (
-    <tr style={{ background: color.bg }}>
+    <tr style={{ background: color.bg, borderTop: esPrimera ? '2px solid var(--z-brand)' : undefined }}>
       <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', borderBottom: `0.5px solid ${color.border}` }}>
         {acuerdo.nombreTitular}
         <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
@@ -158,9 +283,10 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 28 }: { label: string; 
       padding: '20px',
       flex: '1 1 140px',
       minWidth: '140px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
-      <p style={{ fontSize: '12px', color: 'var(--z-text-muted)', marginBottom: '8px' }}>{label}</p>
-      <p style={{ fontSize: `${valorSize}px`, fontWeight: 600, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>{valor}</p>
+      <p style={{ fontSize: '12px', color: 'var(--z-text-primary)', marginBottom: '8px' }}>{label}</p>
+      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, wordBreak: 'break-word' }}>{valor}</p>
       {sub && <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '6px' }}>{sub}</p>}
     </div>
   );
@@ -255,6 +381,7 @@ function SeccionPagosConfirmados({ pagos, isLoading }: { pagos?: PagosConfirmado
           gap: '24px',
           alignItems: 'center',
           flexWrap: 'wrap',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         }}>
           {/* Ring principal */}
           <RingHonorarios actual={pagos.totalHonorarios} meta={pagos.metaHonorarios} />
@@ -292,6 +419,7 @@ function SeccionPagosConfirmados({ pagos, isLoading }: { pagos?: PagosConfirmado
           textAlign: 'center',
           fontSize: '13px',
           color: 'var(--z-text-muted)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         }}>
           Sin datos de pagos disponibles.
         </div>
@@ -315,6 +443,8 @@ export function DashboardAsesorPage() {
     retry: false,
   });
 
+  const frasesDinamicas = useMemo(() => construirFrasesDinamicas(data, rango.label), [data, rango.label]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '960px' }}>
 
@@ -332,6 +462,11 @@ export function DashboardAsesorPage() {
           </p>
         </div>
       </div>
+
+      <BarraFrasesMotivacionales
+        semillaTexto={usuario?.email ?? usuario?.nombreCompleto ?? ''}
+        frasesDinamicas={frasesDinamicas}
+      />
 
       {isError && (
         <div style={{
@@ -361,6 +496,7 @@ export function DashboardAsesorPage() {
           border: '0.5px solid var(--z-border)',
           borderRadius: '8px',
           overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         }}>
           {isLoading ? (
             <CargandoSpiral mensaje="Cargando acuerdos..." />
@@ -438,6 +574,7 @@ export function DashboardAsesorPage() {
               padding: '20px',
               flex: '1 1 160px',
               minWidth: '160px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
             }}>
               <p style={{ fontSize: '12px', color: 'var(--z-brand)', fontWeight: 600, marginBottom: '8px', opacity: 0.8 }}>
                 Proyección del ciclo
@@ -461,6 +598,7 @@ export function DashboardAsesorPage() {
             textAlign: 'center',
             fontSize: '13px',
             color: 'var(--z-text-muted)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
             Sin datos de rendimiento disponibles.
           </div>
