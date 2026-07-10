@@ -14,6 +14,29 @@ public interface IGestionCarterasService
     /// <summary>Lista todos los líderes activos para el dropdown de creación.</summary>
     Task<IEnumerable<LiderDropdownDto>> ListarLideresAsync();
 
+    /// <summary>
+    /// Lista empleados de DBRecursosHumanos elegibles para darse de alta como líder:
+    /// cargo de líder (Líder/Coordinador/Director, ver <see cref="CargoRoles.CargosLider"/>),
+    /// activos en RRHH y que aún no existan como líder activo en DBCallCenter.
+    /// </summary>
+    Task<IEnumerable<EmpleadoElegibleDto>> ListarEmpleadosElegiblesAsync();
+
+    /// <summary>
+    /// Crea un líder en DBCallCenter a partir de un empleado de RRHH (por cédula).
+    /// Valida que el empleado exista, esté activo y tenga cargo de líder. Si ya existía
+    /// un líder inactivo con esa cédula lo reactiva en vez de duplicarlo.
+    /// Lanza InvalidOperationException ante datos inválidos o si ya es líder activo.
+    /// </summary>
+    Task<LiderDropdownDto> CrearLiderAsync(CrearLiderDto dto);
+
+    /// <summary>
+    /// Crea un líder EXTERNO (no empleado) en DBCallCenter y su usuario Zentinela con rol
+    /// Líder Externo. El documento es opcional. Contraseña inicial: el documento si viene
+    /// (≥6 dígitos), o una temporal generada que se devuelve en la respuesta para mostrarla
+    /// una sola vez. Si la creación del usuario falla, revierte el líder creado.
+    /// </summary>
+    Task<CrearLiderExternoResponse> CrearLiderExternoAsync(CrearLiderExternoDto dto);
+
     /// <summary>Busca carteras por nombre (máximo 10 resultados) para el autocompletado.</summary>
     Task<IEnumerable<CarteraDto>> BuscarCarterasAsync(string q);
 

@@ -1,5 +1,8 @@
 import api from './authApi';
-import type { RelacionLiderCartera, LiderDropdown, CarteraAutocomplete } from '../types/gestionCarteras';
+import type {
+  RelacionLiderCartera, LiderDropdown, CarteraAutocomplete, EmpleadoElegible,
+  CrearLiderExternoRequest, CrearLiderExternoResponse,
+} from '../types/gestionCarteras';
 
 export const listarRelaciones = async (): Promise<RelacionLiderCartera[]> => {
   const res = await api.get<RelacionLiderCartera[]>('/api/gestion-carteras/relaciones');
@@ -8,6 +11,26 @@ export const listarRelaciones = async (): Promise<RelacionLiderCartera[]> => {
 
 export const listarLideres = async (): Promise<LiderDropdown[]> => {
   const res = await api.get<LiderDropdown[]>('/api/gestion-carteras/lideres');
+  return res.data;
+};
+
+/** Empleados de RRHH (cargo de líder, activos, aún no líderes) para el alta de líder. */
+export const listarEmpleadosElegibles = async (): Promise<EmpleadoElegible[]> => {
+  const res = await api.get<EmpleadoElegible[]>('/api/gestion-carteras/empleados-elegibles');
+  return res.data;
+};
+
+/** Crea un líder en DBCallCenter a partir de un empleado de RRHH (por cédula). */
+export const crearLider = async (numeroDocumento: number): Promise<LiderDropdown> => {
+  const res = await api.post<LiderDropdown>('/api/gestion-carteras/lideres', { numeroDocumento });
+  return res.data;
+};
+
+/** Crea un líder externo (no empleado) + usuario Zentinela con rol Líder Externo. */
+export const crearLiderExterno = async (
+  payload: CrearLiderExternoRequest,
+): Promise<CrearLiderExternoResponse> => {
+  const res = await api.post<CrearLiderExternoResponse>('/api/gestion-carteras/lideres-externos', payload);
   return res.data;
 };
 
