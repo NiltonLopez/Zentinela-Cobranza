@@ -514,6 +514,19 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     // presupuesto. Subimos a 420s para dar margen real sobre el peor caso medido.
     private const int CommandTimeoutSegundos = 420;
 
+    // Carteras CHICAS (ver docs/sql/migrations/2026-07-11_fn_BaseMadreParaTitulares_CarteraChica.sql):
+    // el optimizador arma, solo para pocas filas en el TVP @Titulares, un plan de
+    // Nested Loops que reescanea @Titulares completo por cada fila externa (O(n²) —
+    // medido exacto: 3.135² = 9.828.225 reescaneos para 3.135 titulares), causando
+    // el síntoma CXSYNC_PORT / "queda cargando". Medido: 3.135 titulares tardaban
+    // 148.8s con la función original; 4.8s con HASH JOIN forzado en las 6 CTEs que
+    // explotan (Camara, DatosClaro, Fosyga, MutualSer, Positiva, PositivaEmpresas).
+    // Forzar HASH JOIN de forma universal ROMPE las carteras grandes (116.997
+    // titulares: 3.3s -> 64.3s), así que el branching es indispensable, no cosmético.
+    // 20.000 es un umbral conservador, no el cruce exacto (ver detalle en la
+    // migración) — confirmado rápido en ese límite con HASH JOIN (14.3s).
+    private const int UmbralCarteraChica = 20_000;
+
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID, CancellationToken ct = default)
     {
         // Hit de caché: el batch de 9 result sets cuesta 1-3s P90 y las recargas
@@ -559,8 +572,17 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             if (titulares.Rows.Count == 0)
                 return new CalificadorCarteraDto { TotalTitulares = 0 };
 
+            // Cartera chica -> función hermana con HASH JOIN forzado (ver
+            // UmbralCarteraChica arriba). Reemplazo de texto simple: ambas funciones
+            // tienen exactamente las mismas columnas de salida, solo cambia el plan.
+            var nombreFuncion = titulares.Rows.Count <= UmbralCarteraChica
+                ? "dbo.fn_BaseMadreParaTitulares_CarteraChica"
+                : "dbo.fn_BaseMadreParaTitulares";
+
             await using var cmd = (SqlCommand)conn.CreateCommand();
-            cmd.CommandText    = SqlAgregados;
+            cmd.CommandText    = SqlAgregados.Replace(
+                "FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares)",
+                $"FROM {nombreFuncion}(@CarteraID, @Titulares)");
             cmd.CommandTimeout = CommandTimeoutSegundos;
             AddParam(cmd, "@CarteraID", carteraID);
             cmd.Parameters.Add(new SqlParameter("@Titulares", SqlDbType.Structured)

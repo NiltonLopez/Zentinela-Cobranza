@@ -201,8 +201,16 @@ export function CalificadorCarteraPage() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['calificador', carteraID, liderID],
-    queryFn: () => calificarCartera(carteraID!, liderID),
+    queryFn: ({ signal }) => calificarCartera(carteraID!, liderID, signal),
     enabled: carteraID != null,
+    retry: false,
+    // Esta consulta puede tardar varios minutos en carteras grandes. Con el
+    // AbortSignal ya conectado de verdad (antes era un no-op), el refetch
+    // automático al recuperar foco cancelaría el intento en curso y lo
+    // reiniciaría desde cero cada vez que el usuario vuelve a la pestaña —
+    // convirtiendo una espera larga en una espera infinita.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   return (
