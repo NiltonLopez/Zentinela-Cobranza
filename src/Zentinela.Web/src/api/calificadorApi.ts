@@ -9,12 +9,13 @@ export const obtenerOpcionesCalificador = async (): Promise<CarteraLiderDropdown
 export const calificarCartera = async (
   carteraID: number,
   liderID: number | null,
+  signal?: AbortSignal,
 ): Promise<CalificadorCarteraDto> => {
   // null → "Cartera Completo": URL sin segmento de líder, el backend recibe int? = null.
   const url = liderID == null
     ? `/api/calificador/${carteraID}`
     : `/api/calificador/${carteraID}/${liderID}`;
-  const response = await api.get<CalificadorCarteraDto>(url);
+  const response = await api.get<CalificadorCarteraDto>(url, { signal });
   return response.data;
 };
 
