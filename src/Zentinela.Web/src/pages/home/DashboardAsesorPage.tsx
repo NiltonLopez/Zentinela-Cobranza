@@ -159,9 +159,10 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas }: { semillaT
       style={{
         background: 'var(--z-bg-card)',
         borderTop: '2px solid var(--z-brand)', borderBottom: '2px solid var(--z-brand)',
-        borderRadius: '8px', padding: '14px 0',
+        borderRadius: '2px', padding: '8px 0',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         overflow: 'hidden',
+        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
       }}
     >
       <style>{`
@@ -184,10 +185,10 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas }: { semillaT
             padding: '0 28px', borderRight: '0.5px solid var(--z-border)',
             whiteSpace: 'nowrap',
           }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--z-brand)' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '20px', color: 'var(--z-brand)' }}>
               {item.icono}
             </span>
-            <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--z-brand)' }}>
+            <span style={{ fontSize: '16px', fontWeight: 500, color: 'var(--z-brand)' }}>
               {item.texto}
             </span>
           </div>
@@ -446,6 +447,15 @@ export function DashboardAsesorPage() {
   const frasesDinamicas = useMemo(() => construirFrasesDinamicas(data, rango.label), [data, rango.label]);
 
   return (
+    <>
+      {/* Barra de frases motivacionales — fuera de la columna de contenido para
+          ocupar todo el ancho disponible, no solo los 960px del resto (igual que
+          BarraDestacadosLider en el Dashboard Director). */}
+      <BarraFrasesMotivacionales
+        semillaTexto={usuario?.email ?? usuario?.nombreCompleto ?? ''}
+        frasesDinamicas={frasesDinamicas}
+      />
+
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '960px' }}>
 
       {/* Encabezado */}
@@ -462,11 +472,6 @@ export function DashboardAsesorPage() {
           </p>
         </div>
       </div>
-
-      <BarraFrasesMotivacionales
-        semillaTexto={usuario?.email ?? usuario?.nombreCompleto ?? ''}
-        frasesDinamicas={frasesDinamicas}
-      />
 
       {isError && (
         <div style={{
@@ -609,5 +614,6 @@ export function DashboardAsesorPage() {
       <SeccionPagosConfirmados pagos={data?.pagosConfirmados} isLoading={isLoading} />
 
     </div>
+    </>
   );
 }
