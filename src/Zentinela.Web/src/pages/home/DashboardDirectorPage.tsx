@@ -69,6 +69,13 @@ function formatearPesos(valor: number): string {
   return valor.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 }
 
+/** Como formatearPesos, pero separa el número de la unidad "millones" cuando el valor es grande, para poder mostrar la unidad en un tamaño más chico sin que se corte de línea. */
+function formatearPesosCorto(valor: number): { valor: string; unidad?: string } {
+  if (Math.abs(valor) < 1_000_000) return { valor: formatearPesos(valor) };
+  const millones = valor / 1_000_000;
+  return { valor: `$ ${millones.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`, unidad: 'millones' };
+}
+
 function formatearFechaCorta(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
@@ -88,8 +95,8 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
-  label: string; valor: string; sub?: string; valorSize?: number;
+function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta }: {
+  label: string; valor: string; unidad?: string; valorReal?: string; sub?: string; valorSize?: number;
   alerta?: { cantidad: number; onClick: () => void };
 }) {
   return (
@@ -100,33 +107,43 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
       padding: '20px 22px',
       flex: '1 1 160px',
       minWidth: '160px',
+      display: 'flex',
+      flexDirection: 'column',
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
         {label}
       </p>
-      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, wordBreak: 'break-word' }}>
-        {valor}
-      </p>
-      {alerta && (
-        <button
-          onClick={alerta.onClick}
-          title="Hay gestiones con un valor de promesa irregular que no se sumaron a la proyección"
-          style={{
-            marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px',
-            fontSize: '11px', fontWeight: 600, color: '#854F0B', background: '#FAEEDA',
-            border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-          </svg>
-          {alerta.cantidad} gestión{alerta.cantidad === 1 ? '' : 'es'} irregular{alerta.cantidad === 1 ? '' : 'es'}
-        </button>
-      )}
-      {sub && (
-        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
-      )}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, whiteSpace: 'nowrap' }}>
+          {valor}
+          {unidad && (
+            <span style={{ fontSize: '13px', fontWeight: 600, marginLeft: '4px' }}>{unidad}</span>
+          )}
+        </p>
+        {valorReal && (
+          <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '4px', lineHeight: 1.4 }}>{valorReal}</p>
+        )}
+        {alerta && (
+          <button
+            onClick={alerta.onClick}
+            title="Hay gestiones con un valor de promesa irregular que no se sumaron a la proyección"
+            style={{
+              marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px',
+              fontSize: '11px', fontWeight: 600, color: '#854F0B', background: '#FAEEDA',
+              border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            </svg>
+            {alerta.cantidad} gestión{alerta.cantidad === 1 ? '' : 'es'} irregular{alerta.cantidad === 1 ? '' : 'es'}
+          </button>
+        )}
+        {sub && (
+          <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -159,10 +176,11 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
       onMouseEnter={() => setPausado(true)}
       onMouseLeave={() => setPausado(false)}
       style={{
-        background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
-        borderRadius: '8px', padding: '14px 0',
+        background: 'var(--z-brand)',
+        borderRadius: '2px', padding: '7px 0',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         overflow: 'hidden',
+        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
       }}
     >
       <style>{`
@@ -181,15 +199,15 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
       }}>
         {pista.map((it, i) => (
           <div key={`${it.label}-${i}`} style={{
-            display: 'flex', alignItems: 'baseline', gap: '6px',
-            padding: '0 28px', borderRight: '0.5px solid var(--z-border)',
+            display: 'flex', alignItems: 'baseline', gap: '7px',
+            padding: '0 24px', borderRight: '1px solid rgba(255,255,255,0.3)',
             whiteSpace: 'nowrap',
           }}>
-            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {it.label}
             </span>
-            <span style={{ fontSize: '13px', color: 'var(--z-text-primary)' }}>
-              <span style={{ fontWeight: 700, color: 'var(--z-brand)' }}>{it.nombre}</span>
+            <span style={{ fontSize: '15px', color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>
+              {it.nombre}
               {' · '}{it.valor}
             </span>
           </div>
@@ -427,7 +445,7 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
             <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
               Gestiones
             </p>
-            <p style={{ fontSize: '18px', fontWeight: 700, color: '#854F0B' }}>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
               {metricas.gestionesExcluidasPorTecho}
             </p>
           </div>
@@ -435,7 +453,7 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
             <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
               Valor excluido
             </p>
-            <p style={{ fontSize: '18px', fontWeight: 700, color: '#854F0B' }}>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
               {formatearPesos(metricas.valorExcluidoPorTecho)}
             </p>
           </div>
@@ -592,9 +610,9 @@ export function DashboardDirectorPage() {
   const estiloBtnPreset = (activo: boolean): React.CSSProperties => ({
     padding: '5px 12px',
     borderRadius: '20px',
-    border: '0.5px solid var(--z-border)',
-    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
-    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    border: activo ? '0.5px solid var(--z-brand)' : '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-brand)' : 'var(--z-bg-page)',
+    color: activo ? '#FFFFFF' : 'var(--z-text-muted)',
     fontSize: '12px',
     fontWeight: activo ? 600 : 400,
     cursor: 'pointer',
@@ -602,6 +620,11 @@ export function DashboardDirectorPage() {
   });
 
   return (
+    <>
+      {/* Líderes destacados del período (solo vista global) — fuera de la columna de
+          contenido para ocupar todo el ancho disponible, no solo los 1000px del resto. */}
+      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} />}
+
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
 
       {/* Encabezado */}
@@ -615,9 +638,6 @@ export function DashboardDirectorPage() {
           </p>
         </div>
       </div>
-
-      {/* Líderes destacados del período (solo vista global) */}
-      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} />}
 
       {/* Filtros */}
       <div style={{
@@ -782,7 +802,9 @@ export function DashboardDirectorPage() {
             />
             <TarjetaMetrica
               label="Proyección promesas"
-              valor={formatearPesos(data.metricas.proyeccionPromesas)}
+              valor={formatearPesosCorto(data.metricas.proyeccionPromesas).valor}
+              unidad={formatearPesosCorto(data.metricas.proyeccionPromesas).unidad}
+              valorReal={formatearPesos(data.metricas.proyeccionPromesas)}
               sub="Suma de acuerdos y abonos del período"
               valorSize={18}
               alerta={data.metricas.gestionesExcluidasPorTecho > 0
@@ -863,5 +885,6 @@ export function DashboardDirectorPage() {
       )}
 
     </div>
+    </>
   );
 }

@@ -35,7 +35,7 @@ export function ThOrdenable({
         textAlign: align,
         fontSize: '11px',
         fontWeight: 600,
-        color: activo ? 'var(--z-brand)' : 'var(--z-text-muted)',
+        color: activo ? 'var(--z-brand)' : 'var(--z-text-primary)',
         borderBottom: '0.5px solid var(--z-border)',
         letterSpacing: '0.04em',
         textTransform: 'uppercase',

@@ -272,7 +272,7 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
             <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
               Gestiones
             </p>
-            <p style={{ fontSize: '18px', fontWeight: 700, color: '#854F0B' }}>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
               {metricas.gestionesExcluidasPorTecho}
             </p>
           </div>
@@ -280,7 +280,7 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
             <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
               Valor excluido
             </p>
-            <p style={{ fontSize: '18px', fontWeight: 700, color: '#854F0B' }}>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
               {formatearPesos(metricas.valorExcluidoPorTecho)}
             </p>
           </div>
