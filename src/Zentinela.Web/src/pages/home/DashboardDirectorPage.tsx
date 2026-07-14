@@ -186,14 +186,14 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
       }}
     >
       <style>{`
-        @keyframes zentinelaDestacadosDerecha {
-          from { transform: translateX(-50%); }
-          to   { transform: translateX(0%); }
+        @keyframes zentinelaDestacadosLectura {
+          from { transform: translateX(0%); }
+          to   { transform: translateX(-50%); }
         }
       `}</style>
       <div style={{
         display: 'flex', width: 'max-content',
-        animationName: 'zentinelaDestacadosDerecha',
+        animationName: 'zentinelaDestacadosLectura',
         animationDuration: '28s',
         animationTimingFunction: 'linear',
         animationIterationCount: 'infinite',
