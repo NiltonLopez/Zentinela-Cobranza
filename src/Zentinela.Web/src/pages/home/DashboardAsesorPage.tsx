@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -79,16 +79,49 @@ interface FraseItem {
   texto: string;
 }
 
+// Umbrales de rendimiento para las frases cualitativas de la banda.
+// Calibrados con la mediana real de asesores (jul-2026) para que ~la mitad quede en cada lado.
+const UMBRAL_GESTIONES_DIA   = 30;   // productividad: gestiones/día (mediana ≈ 33)
+const UMBRAL_CONTACTABILIDAD = 0.35; // 35% (mediana ≈ 34,5%)
+const UMBRAL_EFECTIVIDAD     = 0.22; // 22% (mediana ≈ 21,8%)
+
+// Días calendario que abarca el período seleccionado (inclusivo).
+function diasDelPeriodo(desde: string, hasta: string): number {
+  const d1 = new Date(desde + 'T00:00:00');
+  const d2 = new Date(hasta + 'T00:00:00');
+  return Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86_400_000) + 1);
+}
+
 // Frases construidas con las métricas propias del asesor — solo se muestran si hay dato real.
-function construirFrasesDinamicas(data: DashboardAsesorDto | undefined, mesLabel: string): FraseItem[] {
+function construirFrasesDinamicas(
+  data: DashboardAsesorDto | undefined,
+  rango: { desde: string; hasta: string; label: string },
+): FraseItem[] {
   if (!data) return [];
   const items: FraseItem[] = [];
 
   if (data.rendimiento.fechaActualizacion) {
-    items.push({ icono: 'connect_without_contact', texto: `${formatearPorcentaje(data.rendimiento.tasaContactabilidad)} de contactabilidad este mes` });
-    items.push({ icono: 'heart_check', texto: `${formatearPorcentaje(data.rendimiento.tasaEfectividad)} de efectividad en ${mesLabel}` });
+    // Todas las frases de rendimiento son cualitativas (alta / a mejorar): el valor exacto
+    // ya vive en las cards, así no repetimos información.
+    const contactabilidadAlta = data.rendimiento.tasaContactabilidad >= UMBRAL_CONTACTABILIDAD;
+    items.push({
+      icono: 'connect_without_contact',
+      texto: contactabilidadAlta ? 'Tienes alta contactabilidad' : 'Sube tu contactabilidad',
+    });
+
+    const efectividadAlta = data.rendimiento.tasaEfectividad >= UMBRAL_EFECTIVIDAD;
+    items.push({
+      icono: 'heart_check',
+      texto: efectividadAlta ? 'Tienes alta efectividad' : 'Sube tu efectividad',
+    });
+
     if (data.rendimiento.totalGestiones > 0) {
-      items.push({ icono: 'diversity_4', texto: `${data.rendimiento.totalGestiones} gestiones realizadas` });
+      const porDia = data.rendimiento.totalGestiones / diasDelPeriodo(rango.desde, rango.hasta);
+      const productividadAlta = porDia >= UMBRAL_GESTIONES_DIA;
+      items.push({
+        icono: productividadAlta ? 'rocket_launch' : 'trending_up',
+        texto: productividadAlta ? 'Tienes alta productividad' : 'Sube el ritmo de productividad',
+      });
     }
   }
 
@@ -99,16 +132,87 @@ function construirFrasesDinamicas(data: DashboardAsesorDto | undefined, mesLabel
   return items;
 }
 
-const FRASES_MOTIVACIONALES: FraseItem[] = [
-  { icono: 'star',                      texto: 'El secreto para salir adelante es empezar.' },
-  { icono: 'settings_accessibility',    texto: 'El éxito es la suma de pequeños esfuerzos.' },
-  { icono: 'mindfulness',               texto: 'No cuentes los días, haz que los días cuenten.' },
-  { icono: 'fire_check',                texto: 'La persistencia es tu mayor aliada.' },
-  { icono: 'mark_chat_read',            texto: 'Escucha para entender, no solo para responder.' },
-  { icono: 'finance_mode',              texto: 'Enfócate en la solución, no en la excusa.' },
-  { icono: 'phone_enabled',             texto: 'Tu actitud al teléfono define el resultado de la negociación.' },
-  { icono: 'person_celebrate',          texto: 'Cierra el día sabiendo que diste lo mejor de ti en cada gestión.' },
-];
+// Bolsa de frases motivadoras por nivel de avance de meta (honorarios / metaHonorarios).
+// Reemplaza al pool genérico anterior: ahora el mensaje se adapta al desempeño del asesor.
+// Algunas frases dependen de la fecha (soloInicioMes / soloCierreMes) y solo se muestran
+// cuando el asesor mira "Este mes" (ver construirFrasesNivel).
+interface FraseNivel extends FraseItem {
+  soloInicioMes?: boolean; // solo primera semana del mes (día 1-7)
+  soloCierreMes?: boolean; // solo últimos 5 días del mes
+}
+
+type NivelMeta = 1 | 2 | 3 | 4;
+
+const FRASES_POR_NIVEL: Record<NivelMeta, FraseNivel[]> = {
+  // Nivel 1 — 0% a 40%: ánimo y arranque
+  1: [
+    { icono: 'footprint',             texto: 'Sabemos que el camino tiene días retadores.' },
+    { icono: 'arrow_forward',         texto: 'Enfoquémonos en el siguiente cliente.' },
+    { icono: 'wb_sunny',              texto: 'Cada día es una nueva oportunidad para empezar.' },
+    { icono: 'schedule',              texto: 'El mes sigue abierto y hay tiempo.', soloInicioMes: true },
+    { icono: 'directions_walk',       texto: 'Vamos paso a paso.' },
+  ],
+  // Nivel 2 — 40% a 60%: reconocimiento del esfuerzo
+  2: [
+    { icono: 'timeline',              texto: 'Ya recorriste la mitad del camino.' },
+    { icono: 'fitness_center',        texto: 'Has hecho un gran esfuerzo.' },
+    { icono: 'workspace_premium',     texto: 'Confía en tu talento.' },
+    { icono: 'trending_up',           texto: 'Tu constancia te ha traído hasta aquí.' },
+    { icono: 'donut_large',           texto: 'Buen progreso hasta ahora.' },
+  ],
+  // Nivel 3 — 60% a 80%: impulso final
+  3: [
+    { icono: 'flag',                  texto: '¡Estás muy cerca!' },
+    { icono: 'speed',                 texto: 'Mantén ese gran ritmo hoy.' },
+    { icono: 'verified',              texto: 'Asegura tu meta.' },
+    { icono: 'insights',              texto: 'Tu esfuerzo se nota en cada porcentaje.' },
+    { icono: 'sprint',                texto: 'Falta el último empujón, ¡sigue adelante que ya casi saboreas el éxito!' },
+    { icono: 'center_focus_strong',   texto: 'Mantén el enfoque y hazlo tuyo.' },
+  ],
+  // Nivel 4 — 80% a 100%+: celebración
+  4: [
+    { icono: 'emoji_events',          texto: '¡Qué orgullo ver tu tablero hoy!' },
+    { icono: 'volunteer_activism',    texto: 'Gracias por tu entrega.' },
+    { icono: 'military_tech',         texto: 'Este resultado es fruto de tu talento y dedicación.' },
+    { icono: 'workspace_premium',     texto: 'Has demostrado de qué estás hecho.' },
+    { icono: 'celebration',           texto: '¡A celebrar y a disfrutar el cierre de mes!', soloCierreMes: true },
+  ],
+};
+
+// Traduce el % de avance de meta (0-1+) al nivel de la bolsa de frases.
+// Cortes: ≤40% → 1, ≤60% → 2, ≤80% → 3, >80% (incluye meta superada) → 4.
+function calcularNivelMeta(pct: number): NivelMeta {
+  if (pct <= 0.40) return 1;
+  if (pct <= 0.60) return 2;
+  if (pct <= 0.80) return 3;
+  return 4;
+}
+
+// Selecciona las frases del nivel correspondiente al avance de meta del asesor.
+// Las frases condicionadas por fecha solo se incluyen si el período visible es "Este mes"
+// (mesOffset === 0), porque "inicio/cierre de mes" se mide contra la fecha de hoy.
+function construirFrasesNivel(data: DashboardAsesorDto | undefined, mesOffset: MesOffset): FraseItem[] {
+  if (!data) return [];
+  const { totalHonorarios, metaHonorarios } = data.pagosConfirmados;
+  // Sin meta válida no hay % → tratamos como nivel 1 (arranque).
+  const pct   = metaHonorarios > 0 ? totalHonorarios / metaHonorarios : 0;
+  const nivel = calcularNivelMeta(pct);
+
+  const esEsteMes  = mesOffset === 0;
+  const hoy        = new Date();
+  const diaDelMes  = hoy.getDate();
+  const ultimoDia  = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  const esInicioMes = esEsteMes && diaDelMes <= 7;                 // primera semana
+  const esCierreMes = esEsteMes && (ultimoDia - diaDelMes) <= 5;   // últimos 5 días
+
+  return FRASES_POR_NIVEL[nivel]
+    .filter(f => {
+      if (f.soloInicioMes) return esInicioMes;
+      if (f.soloCierreMes) return esCierreMes;
+      return true;
+    })
+    .map(({ icono, texto }) => ({ icono, texto }));
+}
 
 function hashTexto(texto: string): number {
   let hash = 0;
@@ -141,10 +245,10 @@ function mezclarConSemilla<T>(arr: T[], semilla: number): T[] {
   return copia;
 }
 
-function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas }: { semillaTexto: string; frasesDinamicas: FraseItem[] }) {
+function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel }: { semillaTexto: string; frasesDinamicas: FraseItem[]; frasesNivel: FraseItem[] }) {
   const frases = useMemo(
-    () => mezclarConSemilla([...frasesDinamicas, ...FRASES_MOTIVACIONALES], hashTexto(semillaTexto || 'zentinela')),
-    [semillaTexto, frasesDinamicas],
+    () => mezclarConSemilla([...frasesDinamicas, ...frasesNivel], hashTexto(semillaTexto || 'zentinela')),
+    [semillaTexto, frasesDinamicas, frasesNivel],
   );
 
   const [pausado, setPausado] = useState(false);
@@ -166,14 +270,14 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas }: { semillaT
       }}
     >
       <style>{`
-        @keyframes zentinelaFrasesDerecha {
-          from { transform: translateX(-50%); }
-          to   { transform: translateX(0%); }
+        @keyframes zentinelaFrasesLectura {
+          from { transform: translateX(0%); }
+          to   { transform: translateX(-50%); }
         }
       `}</style>
       <div style={{
         display: 'flex', width: 'max-content',
-        animationName: 'zentinelaFrasesDerecha',
+        animationName: 'zentinelaFrasesLectura',
         animationDuration: '62s',
         animationTimingFunction: 'linear',
         animationIterationCount: 'infinite',
@@ -228,7 +332,15 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
       </thead>
       <tbody>
         {items.map((a, i) => (
-          <FilaAcuerdo key={`${a.titularID}`} acuerdo={a} esPrimera={i === 0} />
+          <Fragment key={`${a.titularID}`}>
+            {/* Separador de 6px solo ENTRE registros: el primero queda pegado al encabezado */}
+            {i > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={6} style={{ height: '6px', padding: 0, background: 'var(--z-bg-card)' }} />
+              </tr>
+            )}
+            <FilaAcuerdo acuerdo={a} esPrimera={i === 0} />
+          </Fragment>
         ))}
       </tbody>
     </table>
@@ -238,27 +350,34 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
 
 function FilaAcuerdo({ acuerdo, esPrimera }: { acuerdo: AcuerdoVigenteDto; esPrimera?: boolean }) {
   const color = SEMAFORO[acuerdo.semaforo] ?? SEMAFORO.verde;
+
+  // Solo borde superior e inferior en cada celda; junto con el border-spacing de la tabla,
+  // las filas quedan separadas (sin recuadro en los extremos).
+  const bordeV   = `0.5px solid ${color.border}`;
+  const bordeTop = esPrimera ? `2px solid var(--z-brand)` : bordeV; // acento en la fila más próxima
+  const celda    = { padding: '10px 14px', fontSize: '13px', borderTop: bordeTop, borderBottom: bordeV };
+
   return (
-    <tr style={{ background: color.bg, borderTop: esPrimera ? '2px solid var(--z-brand)' : undefined }}>
-      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', borderBottom: `0.5px solid ${color.border}` }}>
+    <tr style={{ background: color.bg }}>
+      <td style={{ ...celda, color: 'var(--z-text-primary)' }}>
         {acuerdo.nombreTitular}
         <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
           {acuerdo.titularID}
         </span>
       </td>
-      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', borderBottom: `0.5px solid ${color.border}` }}>
+      <td style={{ ...celda, color: 'var(--z-text-primary)' }}>
         {acuerdo.ultimoPerfil}
       </td>
-      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', borderBottom: `0.5px solid ${color.border}` }}>
+      <td style={{ ...celda, color: 'var(--z-text-primary)' }}>
         {new Date(acuerdo.fechaPromesa + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
       </td>
-      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', borderBottom: `0.5px solid ${color.border}` }}>
+      <td style={{ ...celda, color: 'var(--z-text-primary)', textAlign: 'right' }}>
         {formatearMoneda(acuerdo.valorPromesa)}
       </td>
-      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--z-text-muted)', textAlign: 'right', borderBottom: `0.5px solid ${color.border}` }}>
+      <td style={{ ...celda, color: 'var(--z-text-muted)', textAlign: 'right' }}>
         {formatearMoneda(acuerdo.saldoTotal)}
       </td>
-      <td style={{ padding: '10px 14px', textAlign: 'center', borderBottom: `0.5px solid ${color.border}` }}>
+      <td style={{ ...celda, textAlign: 'center' }}>
         <span style={{
           display: 'inline-block',
           padding: '2px 8px',
@@ -444,7 +563,8 @@ export function DashboardAsesorPage() {
     retry: false,
   });
 
-  const frasesDinamicas = useMemo(() => construirFrasesDinamicas(data, rango.label), [data, rango.label]);
+  const frasesDinamicas = useMemo(() => construirFrasesDinamicas(data, rango), [data, rango]);
+  const frasesNivel     = useMemo(() => construirFrasesNivel(data, mesOffset), [data, mesOffset]);
 
   return (
     <>
@@ -454,6 +574,7 @@ export function DashboardAsesorPage() {
       <BarraFrasesMotivacionales
         semillaTexto={usuario?.email ?? usuario?.nombreCompleto ?? ''}
         frasesDinamicas={frasesDinamicas}
+        frasesNivel={frasesNivel}
       />
 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '960px' }}>
