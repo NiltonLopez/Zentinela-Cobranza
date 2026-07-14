@@ -28,6 +28,11 @@ public class BaseMadreRepository : IBaseMadreRepository
     // demorar más que el default de 30s entre la TVF, los filtros y el TOP.
     private const int CommandTimeoutSegundos = 180;
 
+    // Los exports recorren toda la cartera y pueden tardar minutos en carteras grandes,
+    // sobre todo con el servidor bajo carga; se les da un timeout más holgado para que
+    // un pico de contención no aborte la descarga a media transmisión.
+    private const int ExportTimeoutSegundos = 600;
+
     public BaseMadreRepository(CallCenterDbContext context)
     {
         _context = context;
@@ -35,7 +40,7 @@ public class BaseMadreRepository : IBaseMadreRepository
 
     // ── ObtenerAsync (preview) ───────────────────────────────────────────────
 
-    public async Task<(IEnumerable<BaseMadreRow> Filas, int Total, bool TotalExacto)> ObtenerAsync(
+    public async Task<(IEnumerable<BaseMadreRow> Filas, int Total, TipoTotalPreview TipoTotal)> ObtenerAsync(
         int          carteraID,
         int?         liderID,
         string?      ultimoPerfil,
@@ -89,7 +94,7 @@ public class BaseMadreRepository : IBaseMadreRepository
                 .FromSqlRaw(sqlTodo, CreateParams())
                 .AsNoTracking()
                 .ToListAsync();
-            return (todas, todas.Count, true);
+            return (todas, todas.Count, TipoTotalPreview.Exacto);
         }
 
         // Preview: TOP(limite+1) para saber si hay MÁS de `limite` filas sin el COUNT exacto.
@@ -111,20 +116,21 @@ public class BaseMadreRepository : IBaseMadreRepository
 
         // Caben todas en el preview → el total exacto es lo que trajimos.
         if (!hayMas)
-            return (filas, filasList.Count, true);
+            return (filas, filasList.Count, TipoTotalPreview.Exacto);
 
-        // Hay más de `limite`. Sin filtros la TVF es 1:1 con Titular_Cartera → total exacto
-        // por índice (instantáneo). Con filtros el conteo exacto exigiría materializar toda la
-        // TVF (lento) → se devuelve `limite` como cota inferior ("más de N", TotalExacto=false).
+        // Hay más de `limite`. Sin filtros el total sale de Titular_Cartera (instantáneo por
+        // índice), pero es APROXIMADO: la TVF puede devolver algo menos que Titular_Cartera
+        // (p.ej. cartera 22: 651k TVF vs 675k Titular_Cartera). Con filtros el conteo exacto
+        // exigiría materializar toda la TVF (lento) → se devuelve `limite` como cota inferior.
         if (!hayFiltros)
         {
-            var totalExacto = await _context.TitularCarteras
+            var totalAprox = await _context.TitularCarteras
                 .Where(tc => tc.CarteraID == carteraID && (liderID == null || tc.LiderID == liderID))
                 .CountAsync();
-            return (filas, totalExacto, true);
+            return (filas, totalAprox, TipoTotalPreview.Aproximado);
         }
 
-        return (filas, limite.Value, false);
+        return (filas, limite.Value, TipoTotalPreview.Minimo);
     }
 
     // ── StreamFilasAsync (export Excel/CSV) ──────────────────────────────────
@@ -145,6 +151,7 @@ public class BaseMadreRepository : IBaseMadreRepository
         List<string>           coincidenciasEmail,
         IReadOnlyList<string>  propiedadesSeleccionadas,
         Func<DbDataReader, ValueTask> procesarFila,
+        int?                   limite = null,
         CancellationToken      ct = default)
     {
         var (whereClause, paramSpecs) = ConstruirWhereYParams(
@@ -174,10 +181,14 @@ public class BaseMadreRepository : IBaseMadreRepository
         if (aliasesSql.Count == 0)
             aliasesSql.Add("[Numero Documento]");
 
+        // limite (int? validado upstream) acota filas — lo usa el export a Excel para
+        // no materializar carteras enormes (guard). CSV va sin límite (stream liviano).
+        var topClause = limite.HasValue ? $"TOP ({limite.Value}) " : string.Empty;
+
         // MAXDOP 4: ver comentario en ObtenerAsync (mismo servidor de 8 núcleos,
         // misma TVF) — sin tope el export monopoliza el servidor completo.
         var sql = $"""
-            SELECT {string.Join(", ", aliasesSql)}
+            SELECT {topClause}{string.Join(", ", aliasesSql)}
             FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
             {whereClause}
             OPTION (MAXDOP 4)
@@ -191,7 +202,7 @@ public class BaseMadreRepository : IBaseMadreRepository
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText    = sql;
-            cmd.CommandTimeout = CommandTimeoutSegundos;
+            cmd.CommandTimeout = ExportTimeoutSegundos;
             foreach (var (name, value) in paramSpecs)
             {
                 var p = cmd.CreateParameter();

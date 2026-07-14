@@ -14,10 +14,10 @@ public interface IBaseMadreRepository
     ///
     /// NO calcula un COUNT exacto sobre la TVF (materializa todos los cruces → minutos en
     /// carteras grandes). Trae TOP(limite+1) para detectar si hay más; sin filtros el total
-    /// exacto sale de Titular_Cartera (la TVF es 1:1). <c>TotalExacto=false</c> ⇒ Total es una
-    /// cota inferior ("más de N") — pasa con filtros cuando el resultado supera el límite.
+    /// sale de Titular_Cartera (aproximado). <see cref="TipoTotalPreview"/> indica la precisión
+    /// del <c>Total</c> devuelto (exacto / aproximado / cota inferior).
     /// </summary>
-    Task<(IEnumerable<BaseMadreRow> Filas, int Total, bool TotalExacto)> ObtenerAsync(
+    Task<(IEnumerable<BaseMadreRow> Filas, int Total, TipoTotalPreview TipoTotal)> ObtenerAsync(
         int            carteraID,
         int?           liderID,
         string?        ultimoPerfil,
@@ -56,5 +56,6 @@ public interface IBaseMadreRepository
         List<string>           coincidenciasEmail,
         IReadOnlyList<string>  propiedadesSeleccionadas,
         Func<DbDataReader, ValueTask> procesarFila,
+        int?                   limite = null,
         CancellationToken      ct = default);
 }

@@ -51,7 +51,14 @@ public class ExcelExporter : IExcelExporter
         }
 
         // ── Formato final ─────────────────────────────────────────────────────
-        if (listaColumnas.Count > 0 && listaFilas.Count >= 0)
+        // AdjustToContents() y el borde interior por celda escanean/estilan TODAS las
+        // celdas → O(filas×cols), carísimo en hojas grandes (medido: ~25s de formato en
+        // 190k filas). Solo se aplican en hojas chicas; en grandes se usan anchos fijos
+        // y sin bordes para mantener la generación rápida y con poca memoria.
+        const int umbralFormatoCompleto = 5_000;
+        var esGrande = listaFilas.Count > umbralFormatoCompleto;
+
+        if (!esGrande && listaColumnas.Count > 0 && listaFilas.Count > 0)
         {
             var rango = ws.RangeUsed();
             if (rango != null)
@@ -61,7 +68,10 @@ public class ExcelExporter : IExcelExporter
             }
         }
 
-        ws.Columns().AdjustToContents();
+        if (esGrande)
+            ws.Columns(1, Math.Max(1, listaColumnas.Count)).Width = 22;
+        else
+            ws.Columns().AdjustToContents();
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);

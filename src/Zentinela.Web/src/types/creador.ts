@@ -26,10 +26,12 @@ export interface FiltroBaseMadreRequest {
   columnasSeleccionadas: string[];
 }
 
+/** Precisión del total: Exacto | Aproximado (~N) | Minimo (más de N). */
+export type TipoTotalPreview = 'Exacto' | 'Aproximado' | 'Minimo';
+
 export interface PreviewBaseMadreResponse {
   total: number;
-  /** false ⇒ `total` es cota inferior: el frontend muestra "más de N". */
-  totalExacto: boolean;
+  totalTipo: TipoTotalPreview;
   filas: Record<string, unknown>[];
 }
 

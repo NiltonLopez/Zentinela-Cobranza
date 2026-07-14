@@ -18,6 +18,19 @@ interface SeleccionCartera {
 const claveSeleccion = (carteraID: number, liderID: number | null) =>
   `${carteraID}|${liderID ?? ''}`;
 
+// Con responseType 'blob', un error del backend (p. ej. 400 "usa CSV") llega como Blob,
+// no como JSON — hay que leer su texto y parsearlo para mostrar el mensaje real.
+async function mensajeErrorExport(err: unknown, formato: string): Promise<string> {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const json = JSON.parse(await data.text());
+      if (json?.mensaje) return String(json.mensaje);
+    } catch { /* no era JSON */ }
+  }
+  return `No se pudo generar el ${formato}. Intenta de nuevo o usa el otro formato.`;
+}
+
 // ── Tipificaciones conocidas para dropdowns ───────────────────────────────────
 const TIPIFICACIONES = [
   'Acuerdo de pago abono', 'Acuerdo de pago total', 'Incumplido', 'No hubo acuerdo',
@@ -127,14 +140,18 @@ export function CreadorZentinelaPage() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
+  const [errorExport, setErrorExport] = useState<string | null>(null);
+
   const exportMutation = useMutation({
     mutationFn: (filtro: FiltroBaseMadreRequest) => exportarExcel(filtro),
-    onSuccess: (blob) => dispararDescarga(blob, 'xlsx'),
+    onSuccess: (blob) => { setErrorExport(null); dispararDescarga(blob, 'xlsx'); },
+    onError: async (err) => setErrorExport(await mensajeErrorExport(err, 'Excel')),
   });
 
   const exportCsvMutation = useMutation({
     mutationFn: (filtro: FiltroBaseMadreRequest) => exportarCsv(filtro),
-    onSuccess: (blob) => dispararDescarga(blob, 'csv'),
+    onSuccess: (blob) => { setErrorExport(null); dispararDescarga(blob, 'csv'); },
+    onError: async (err) => setErrorExport(await mensajeErrorExport(err, 'CSV')),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -604,11 +621,13 @@ export function CreadorZentinelaPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)' }}>
               {preview
-                ? (preview.totalExacto
+                ? (preview.totalTipo === 'Exacto'
                     ? `${preview.total.toLocaleString('es-CO')} titular${preview.total !== 1 ? 'es' : ''} encontrado${preview.total !== 1 ? 's' : ''}`
-                    : `más de ${preview.total.toLocaleString('es-CO')} titulares encontrados`)
+                    : preview.totalTipo === 'Aproximado'
+                      ? `~${preview.total.toLocaleString('es-CO')} titulares (aprox.)`
+                      : `más de ${preview.total.toLocaleString('es-CO')} titulares`)
                 : 'Consultando...'}
-              {preview && (!preview.totalExacto || preview.total > 10) && (
+              {preview && (preview.totalTipo !== 'Exacto' || preview.total > 10) && (
                 <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}> — mostrando primeros 10</span>
               )}
             </p>
@@ -671,9 +690,9 @@ export function CreadorZentinelaPage() {
             </div>
           </div>
 
-          {(exportMutation.isError || exportCsvMutation.isError) && (
+          {errorExport && (
             <p style={{ fontSize: '12px', color: '#dc2626', marginBottom: '12px' }}>
-              Error al generar la descarga. Intenta de nuevo.
+              {errorExport}
             </p>
           )}
 
