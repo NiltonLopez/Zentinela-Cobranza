@@ -72,8 +72,10 @@ function formatearPesos(valor: number): string {
 /** Como formatearPesos, pero separa el número de la unidad "millones" cuando el valor es grande, para poder mostrar la unidad en un tamaño más chico sin que se corte de línea. */
 function formatearPesosCorto(valor: number): { valor: string; unidad?: string } {
   if (Math.abs(valor) < 1_000_000) return { valor: formatearPesos(valor) };
-  const millones = valor / 1_000_000;
-  return { valor: `$ ${millones.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`, unidad: 'millones' };
+  // Truncamos (no redondeamos) los millones para nunca mostrar un valor mayor al real.
+  // Ej: 1.181,94 millones → "$ 1.181 millones", nunca "$ 1.182 millones". El valor exacto se muestra aparte (valorReal).
+  const millones = Math.trunc(valor / 1_000_000);
+  return { valor: `$ ${millones.toLocaleString('es-CO')}`, unidad: 'millones' };
 }
 
 function formatearFechaCorta(iso: string): string {
