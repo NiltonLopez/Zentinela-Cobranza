@@ -604,9 +604,11 @@ export function CreadorZentinelaPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)' }}>
               {preview
-                ? `${preview.total.toLocaleString('es-CO')} titular${preview.total !== 1 ? 'es' : ''} encontrado${preview.total !== 1 ? 's' : ''}`
+                ? (preview.totalExacto
+                    ? `${preview.total.toLocaleString('es-CO')} titular${preview.total !== 1 ? 'es' : ''} encontrado${preview.total !== 1 ? 's' : ''}`
+                    : `más de ${preview.total.toLocaleString('es-CO')} titulares encontrados`)
                 : 'Consultando...'}
-              {preview && preview.total > 10 && (
+              {preview && (!preview.totalExacto || preview.total > 10) && (
                 <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}> — mostrando primeros 10</span>
               )}
             </p>

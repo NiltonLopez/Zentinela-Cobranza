@@ -35,7 +35,7 @@ public class BaseMadreRepository : IBaseMadreRepository
 
     // ── ObtenerAsync (preview) ───────────────────────────────────────────────
 
-    public async Task<(IEnumerable<BaseMadreRow> Filas, int Total)> ObtenerAsync(
+    public async Task<(IEnumerable<BaseMadreRow> Filas, int Total, bool TotalExacto)> ObtenerAsync(
         int          carteraID,
         int?         liderID,
         string?      ultimoPerfil,
@@ -56,53 +56,75 @@ public class BaseMadreRepository : IBaseMadreRepository
             rotacionMaxima, saldoMinimo, tipoAfiliado, estadoFosyga,
             fuentesCelular, coincidenciasCelular, fuentesEmail, coincidenciasEmail);
 
-        // limite es int? validado upstream — interpolación segura (no es input string)
-        var topClause = limite.HasValue ? $"TOP ({limite.Value})" : string.Empty;
-
-        // MAXDOP 4 (servidor de 8 núcleos, 2026-07-09): sin tope, esta query pide
-        // los 8 núcleos completos y monopoliza el servidor mientras corre (medido:
-        // cartera de 628k filas — 83.7s sin tope vs 12.7s con MAXDOP 4, 6.5×).
-        // OPTION (RECOMPILE) medido y descartado: empeora el tiempo aquí (a
-        // diferencia del batch del Calificador) porque @CarteraID/@LiderID son
-        // escalares simples — el plan cacheado ya escala bien, RECOMPILE solo
-        // agrega overhead de compilación sin mejorar el plan.
-        var countSql = $"""
-            SELECT COUNT(*) AS Value
-            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
-            {whereClause}
-            OPTION (MAXDOP 4)
-            """;
-
-        var dataSql = $"""
-            SELECT {topClause} *
-            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
-            {whereClause}
-            OPTION (MAXDOP 4)
-            """;
+        var hayFiltros = !string.IsNullOrEmpty(whereClause);
 
         // SqlParameter no se puede reusar entre comandos — instanciamos por query.
         SqlParameter[] CreateParams() =>
             paramSpecs.Select(s => new SqlParameter(s.Name, s.Value)).ToArray();
 
-        // Aplica a las dos queries que siguen (count + datos) — ambas van por EF Core.
         _context.Database.SetCommandTimeout(CommandTimeoutSegundos);
 
-        // FirstOrDefaultAsync() NO sirve aquí: EF Core lo traduce envolviendo el SQL
-        // crudo en un subquery ("SELECT TOP(1) [v] FROM (<countSql>) AS t") para
-        // aplicar el TOP(1), y OPTION no es válido dentro de un subquery — sintaxis
-        // inválida en SQL Server (regresión real: rompió el Creador en producción
-        // el 2026-07-09). ToListAsync() no compone nada extra sobre el SQL crudo.
-        var total = (await _context.Database
-            .SqlQueryRaw<int>(countSql, CreateParams())
-            .ToListAsync())
-            .FirstOrDefault();
+        // ── IMPORTANTE: NO se calcula un COUNT(*) exacto sobre la TVF ──────────────
+        // Un COUNT sin TOP obliga a materializar TODOS los cruces de la base madre
+        // (todas las fuentes EPS/celular/email por titular) solo para contar — no
+        // corta temprano como el TOP. En carteras grandes (p.ej. 675k) tarda ~2 min
+        // con MAXDOP 4 (CXSYNC_PORT), y bajo concurrencia satura el servidor: era la
+        // causa de que la preview del Creador "nunca cargara". La query de datos con
+        // TOP siempre fue rápida (~1s incluso en la cartera más grande).
+        //
+        // MAXDOP 4 (servidor de 8 núcleos): sin tope la query pide los 8 núcleos y
+        // monopoliza el servidor. Se conserva en la query de datos.
 
-        var filas = await _context.BaseMadreRows
+        // Export (sin límite): traer todo; total = filas materializadas. Ruta legada:
+        // el export real usa StreamFilasAsync, no este método.
+        if (!limite.HasValue)
+        {
+            var sqlTodo = $"""
+                SELECT *
+                FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+                {whereClause}
+                OPTION (MAXDOP 4)
+                """;
+            var todas = await _context.BaseMadreRows
+                .FromSqlRaw(sqlTodo, CreateParams())
+                .AsNoTracking()
+                .ToListAsync();
+            return (todas, todas.Count, true);
+        }
+
+        // Preview: TOP(limite+1) para saber si hay MÁS de `limite` filas sin el COUNT exacto.
+        var topMas  = limite.Value + 1;
+        var dataSql = $"""
+            SELECT TOP ({topMas}) *
+            FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
+            {whereClause}
+            OPTION (MAXDOP 4)
+            """;
+
+        var filasList = await _context.BaseMadreRows
             .FromSqlRaw(dataSql, CreateParams())
             .AsNoTracking()
             .ToListAsync();
 
-        return (filas, total);
+        var hayMas = filasList.Count > limite.Value;
+        var filas  = hayMas ? filasList.Take(limite.Value).ToList() : filasList;
+
+        // Caben todas en el preview → el total exacto es lo que trajimos.
+        if (!hayMas)
+            return (filas, filasList.Count, true);
+
+        // Hay más de `limite`. Sin filtros la TVF es 1:1 con Titular_Cartera → total exacto
+        // por índice (instantáneo). Con filtros el conteo exacto exigiría materializar toda la
+        // TVF (lento) → se devuelve `limite` como cota inferior ("más de N", TotalExacto=false).
+        if (!hayFiltros)
+        {
+            var totalExacto = await _context.TitularCarteras
+                .Where(tc => tc.CarteraID == carteraID && (liderID == null || tc.LiderID == liderID))
+                .CountAsync();
+            return (filas, totalExacto, true);
+        }
+
+        return (filas, limite.Value, false);
     }
 
     // ── StreamFilasAsync (export Excel/CSV) ──────────────────────────────────

@@ -76,7 +76,7 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         ContextoUsuario contexto, FiltroBaseMadreRequest filtro)
     {
         var liderID = ResolverLiderID(contexto, filtro.LiderID);
-        var (filas, total) = await _baseMadreRepo.ObtenerAsync(
+        var (filas, total, totalExacto) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
             filtro.UltimoPerfil, filtro.MejorPerfil,
             filtro.PromesasVigentes, filtro.RotacionMaxima,
@@ -90,8 +90,9 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         var columnas = ResolverColumnas(filtro.ColumnasSeleccionadas);
         return new PreviewBaseMadreResponse
         {
-            Total = total,
-            Filas = filas.Select(f => FilaADiccionario(f, columnas)).ToList(),
+            Total       = total,
+            TotalExacto = totalExacto,
+            Filas       = filas.Select(f => FilaADiccionario(f, columnas)).ToList(),
         };
     }
 

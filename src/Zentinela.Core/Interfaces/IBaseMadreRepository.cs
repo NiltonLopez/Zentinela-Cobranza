@@ -11,8 +11,13 @@ public interface IBaseMadreRepository
     /// fuentesCelular   = AND por cada fuente: el titular debe tener celular en todas.
     /// saldoMinimo      = filtro en memoria (Saldo es string en la vista).
     /// limite null      = todos los registros (para exportar).
+    ///
+    /// NO calcula un COUNT exacto sobre la TVF (materializa todos los cruces → minutos en
+    /// carteras grandes). Trae TOP(limite+1) para detectar si hay más; sin filtros el total
+    /// exacto sale de Titular_Cartera (la TVF es 1:1). <c>TotalExacto=false</c> ⇒ Total es una
+    /// cota inferior ("más de N") — pasa con filtros cuando el resultado supera el límite.
     /// </summary>
-    Task<(IEnumerable<BaseMadreRow> Filas, int Total)> ObtenerAsync(
+    Task<(IEnumerable<BaseMadreRow> Filas, int Total, bool TotalExacto)> ObtenerAsync(
         int            carteraID,
         int?           liderID,
         string?        ultimoPerfil,

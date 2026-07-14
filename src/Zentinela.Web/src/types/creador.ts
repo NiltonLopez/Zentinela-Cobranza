@@ -28,6 +28,8 @@ export interface FiltroBaseMadreRequest {
 
 export interface PreviewBaseMadreResponse {
   total: number;
+  /** false ⇒ `total` es cota inferior: el frontend muestra "más de N". */
+  totalExacto: boolean;
   filas: Record<string, unknown>[];
 }
 
