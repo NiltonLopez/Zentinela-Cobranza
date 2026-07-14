@@ -523,9 +523,21 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     // explotan (Camara, DatosClaro, Fosyga, MutualSer, Positiva, PositivaEmpresas).
     // Forzar HASH JOIN de forma universal ROMPE las carteras grandes (116.997
     // titulares: 3.3s -> 64.3s), así que el branching es indispensable, no cosmético.
-    // 20.000 es un umbral conservador, no el cruce exacto (ver detalle en la
-    // migración) — confirmado rápido en ese límite con HASH JOIN (14.3s).
-    private const int UmbralCarteraChica = 20_000;
+    //
+    // Umbral CALIBRADO empíricamente el 2026-07-14 (sondeo serial de combos con líder,
+    // midiendo cada función por separado con SET STATISTICS + sys.dm_exec_requests):
+    //   filas    NORMAL          CHICA (HASH)
+    //   ≤35.592  falla (>60s)    rápida (11-19s)   -> usar CHICA
+    //   36.612   17.7s           19.3s             (empatan; frontera)
+    //   56.723   rápida          58.9s (degrada)   -> usar NORMAL
+    //   116.997  3.3s            64.3s             -> usar NORMAL
+    // Las dos funciones se cruzan ~36k: por debajo NORMAL arma mal plan (Nested Loops
+    // O(n²), CXSYNC_PORT) y CHICA gana; por encima CHICA se degrada y NORMAL gana. Por
+    // eso el umbral va JUSTO en el cruce (36.000, en el hueco limpio 35.592-36.612), no
+    // con "margen" hacia arriba: subirlo mandaría los combos de 40-56k a CHICA, que ahí
+    // es MÁS lenta que NORMAL. Combos que hoy pasan a CHICA por este valor: 28.247,
+    // 29.877, 32.028, 33.695, 34.005, 35.592 (antes fallaban en NORMAL).
+    private const int UmbralCarteraChica = 36_000;
 
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID, CancellationToken ct = default)
     {
