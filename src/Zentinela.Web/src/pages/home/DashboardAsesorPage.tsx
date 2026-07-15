@@ -320,7 +320,7 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
       scrollbarColor: 'var(--z-border) transparent',
     }}>
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+      <thead style={{ position: 'sticky', top: 0, zIndex: 1, boxShadow: '0 2px 0 var(--z-brand)' }}>
         <tr style={{ background: 'var(--z-bg-card)' }}>
           <ThOrdenable label="Titular"       sortKey="nombreTitular" sort={sort} onSort={toggle} />
           <ThOrdenable label="Tipificación"  sortKey="ultimoPerfil"  sort={sort} onSort={toggle} />
@@ -339,7 +339,7 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
                 <td colSpan={6} style={{ height: '6px', padding: 0, background: 'var(--z-bg-card)' }} />
               </tr>
             )}
-            <FilaAcuerdo acuerdo={a} esPrimera={i === 0} />
+            <FilaAcuerdo acuerdo={a} />
           </Fragment>
         ))}
       </tbody>
@@ -348,14 +348,13 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
   );
 }
 
-function FilaAcuerdo({ acuerdo, esPrimera }: { acuerdo: AcuerdoVigenteDto; esPrimera?: boolean }) {
+function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
   const color = SEMAFORO[acuerdo.semaforo] ?? SEMAFORO.verde;
 
-  // Solo borde superior e inferior en cada celda; junto con el border-spacing de la tabla,
-  // las filas quedan separadas (sin recuadro en los extremos).
-  const bordeV   = `0.5px solid ${color.border}`;
-  const bordeTop = esPrimera ? `2px solid var(--z-brand)` : bordeV; // acento en la fila más próxima
-  const celda    = { padding: '10px 14px', fontSize: '13px', borderTop: bordeTop, borderBottom: bordeV };
+  // Solo borde superior e inferior en cada celda; junto con el separador entre filas,
+  // quedan separadas (sin recuadro en los extremos).
+  const bordeV = `0.5px solid ${color.border}`;
+  const celda  = { padding: '10px 14px', fontSize: '13px', borderTop: bordeV, borderBottom: bordeV };
 
   return (
     <tr style={{ background: color.bg }}>
