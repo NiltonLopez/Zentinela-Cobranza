@@ -757,6 +757,7 @@ export function GestionPersonalPage() {
             background: 'var(--z-bg-card)',
             color: 'var(--z-text-primary)',
             outline: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
           }}
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
@@ -774,6 +775,7 @@ export function GestionPersonalPage() {
             outline: 'none',
             cursor: 'pointer',
             minWidth: '200px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
           <option value="">Todos los supervisores</option>
@@ -796,12 +798,12 @@ export function GestionPersonalPage() {
           gridTemplateColumns: '28fr 14fr max-content 15fr 40px',
           columnGap: '16px',
           padding: '11px 20px',
-          borderBottom: '0.5px solid var(--z-border)',
-          background: 'var(--z-bg-surface)',
+          borderBottom: '2px solid var(--z-brand)',
+          background: 'var(--z-brand-light)',
           borderRadius: '12px 12px 0 0',
         }}>
           {['Nombre', 'Usuario', 'Rol', 'Estado', ''].map((h) => (
-            <span key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span key={h} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               {h}
             </span>
           ))}

@@ -288,6 +288,7 @@ export function GestionAgentesPage() {
             color: 'var(--z-text-primary)',
             outline: 'none',
             boxSizing: 'border-box',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
           }}
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
@@ -300,6 +301,7 @@ export function GestionAgentesPage() {
             color: soloSinCartera ? '#ea580c' : 'var(--z-text-muted)',
             fontSize: 12, fontWeight: soloSinCartera ? 600 : 400, cursor: 'pointer',
             whiteSpace: 'nowrap',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
           {soloSinCartera ? '▪ Solo sin cartera' : 'Solo sin cartera'}
@@ -319,12 +321,12 @@ export function GestionAgentesPage() {
           gridTemplateColumns: '1.4fr 1fr 110px 140px',
           columnGap: '16px',
           padding: '10px 16px',
-          borderBottom: '0.5px solid var(--z-border)',
-          background: 'var(--z-bg-surface)',
+          borderBottom: '2px solid var(--z-brand)',
+          background: 'var(--z-brand-light)',
         }}>
           {['Agente', 'Supervisor', 'Carteras', ''].map((h) => (
             <span key={h} style={{
-              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
+              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)',
               textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>
               {h}
