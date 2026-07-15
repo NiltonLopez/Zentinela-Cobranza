@@ -412,13 +412,29 @@ export function GestionSolicitudesVirtualidadPage() {
   const tabBase: React.CSSProperties = {
     padding: '8px 16px', borderRadius: 6, border: '0.5px solid var(--z-border)',
     background: 'var(--z-bg-page)', color: 'var(--z-text-muted)', fontSize: 13, cursor: 'pointer',
+    transition: 'background 0.18s ease, color 0.18s ease, transform 0.18s ease, border-color 0.18s ease',
   };
   const tabActivo: React.CSSProperties = { ...tabBase, background: 'var(--z-brand)', color: '#fff', border: '0.5px solid var(--z-brand)', fontWeight: 600 };
-  const faseBase: React.CSSProperties = { padding: '6px 4px', border: 'none', background: 'none', fontSize: 14, cursor: 'pointer', color: 'var(--z-text-muted)', borderBottom: '2px solid transparent' };
-  const faseActiva: React.CSSProperties = { ...faseBase, color: 'var(--z-text-primary)', fontWeight: 600, borderBottom: '2px solid var(--z-brand)' };
+  const faseBase: React.CSSProperties = { padding: '6px 4px', border: 'none', background: 'none', fontSize: 14, cursor: 'pointer', color: 'var(--z-text-muted)' };
+  const faseActiva: React.CSSProperties = { ...faseBase, color: 'var(--z-text-primary)', fontWeight: 600 };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1000 }}>
+      <style>{`
+        .z-tab-canal:hover { background: var(--z-brand-light) !important; color: var(--z-brand) !important; border-color: var(--z-brand) !important; transform: translateY(-1px); }
+        .z-tab-fase { position: relative; transition: color 0.2s ease; }
+        .z-tab-fase::after {
+          content: '';
+          position: absolute;
+          left: 50%; right: 50%; bottom: -1px; height: 2px;
+          background: var(--z-brand);
+          transition: left 0.22s ease, right 0.22s ease;
+        }
+        .z-tab-fase:hover { color: var(--z-brand); }
+        .z-tab-fase:hover::after { left: 4px; right: 4px; }
+        .z-tab-fase-activa::after,
+        .z-tab-fase-activa:hover::after { left: 0; right: 0; }
+      `}</style>
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>Gestión de Solicitudes de Virtualidad</h1>
         <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
@@ -429,14 +445,20 @@ export function GestionSolicitudesVirtualidadPage() {
       {/* Tabs de canal */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {CANALES.map(c => (
-          <button key={c.canal} onClick={() => { setCanal(c.canal); }} style={canal === c.canal ? tabActivo : tabBase}>{c.label}</button>
+          <button key={c.canal} onClick={() => { setCanal(c.canal); }}
+            className={canal === c.canal ? undefined : 'z-tab-canal'}
+            style={canal === c.canal ? tabActivo : tabBase}>{c.label}</button>
         ))}
       </div>
 
       {/* Sub-tabs de fase */}
       <div style={{ display: 'flex', gap: 20, borderBottom: '0.5px solid var(--z-border)' }}>
-        <button onClick={() => setFase('solicitud')} style={fase === 'solicitud' ? faseActiva : faseBase}>Solicitud</button>
-        <button onClick={() => setFase('resultado')} style={fase === 'resultado' ? faseActiva : faseBase}>Resultado</button>
+        <button onClick={() => setFase('solicitud')}
+          className={`z-tab-fase${fase === 'solicitud' ? ' z-tab-fase-activa' : ''}`}
+          style={fase === 'solicitud' ? faseActiva : faseBase}>Solicitud</button>
+        <button onClick={() => setFase('resultado')}
+          className={`z-tab-fase${fase === 'resultado' ? ' z-tab-fase-activa' : ''}`}
+          style={fase === 'resultado' ? faseActiva : faseBase}>Resultado</button>
       </div>
 
       {/* key={canal+fase} reinicia el estado interno al cambiar de canal o fase */}

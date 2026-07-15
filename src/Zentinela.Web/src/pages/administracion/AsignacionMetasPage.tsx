@@ -27,8 +27,9 @@ type TabMeta = 'lider' | 'agente' | 'externa';
 
 const TH: React.CSSProperties = {
   padding: '10px 12px', fontSize: 11, fontWeight: 600,
-  color: 'var(--z-text-muted)', textTransform: 'uppercase',
+  color: 'var(--z-text-primary)', textTransform: 'uppercase',
   letterSpacing: '0.04em', whiteSpace: 'nowrap', textAlign: 'left',
+  background: 'var(--z-brand-light)', borderBottom: '2px solid var(--z-brand)',
 };
 const TD: React.CSSProperties = {
   padding: '8px 12px', fontSize: 13,
@@ -351,18 +352,32 @@ export function AsignacionMetasPage() {
       {data && (
         <>
           {/* Tabs */}
+          <style>{`
+            .z-tab { position: relative; transition: color 0.2s ease; }
+            .z-tab::after {
+              content: '';
+              position: absolute;
+              left: 50%; right: 50%; bottom: -1px; height: 2px;
+              background: var(--z-brand);
+              transition: left 0.22s ease, right 0.22s ease;
+            }
+            .z-tab:hover { color: var(--z-brand); }
+            .z-tab:hover::after { left: 14px; right: 14px; }
+            .z-tab-activa::after,
+            .z-tab-activa:hover::after { left: 0; right: 0; }
+          `}</style>
           <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
             {([['lider', 'Líderes-Carteras'], ['agente', 'Agentes'], ['externa', 'Agencias Externas']] as [TabMeta, string][]).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => { setTab(id); setBusqueda(''); setLiderFiltro(''); }}
+                className={`z-tab${tab === id ? ' z-tab-activa' : ''}`}
                 style={{
                   padding: '9px 20px', fontSize: 13,
                   fontWeight: tab === id ? 600 : 400,
                   color: tab === id ? 'var(--z-brand)' : 'var(--z-text-muted)',
                   background: 'none', border: 'none',
-                  borderBottom: `2px solid ${tab === id ? 'var(--z-brand)' : 'transparent'}`,
-                  cursor: 'pointer', marginBottom: -1, transition: 'color 0.15s',
+                  cursor: 'pointer', marginBottom: -1,
                 }}
               >
                 {label}

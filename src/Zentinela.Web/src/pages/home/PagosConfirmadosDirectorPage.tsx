@@ -297,14 +297,14 @@ export function PagosConfirmadosDirectorPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
                 <tr style={{ background: 'var(--z-bg-page)' }}>
-                  <ThOrdenable label="Cliente"       sortKey="nombreCliente" sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Asesor"        sortKey="nombreAsesor"  sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Líder"         sortKey="nombreLider"   sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Cartera"       sortKey="nombreCartera" sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Fecha de pago" sortKey="fechaPago"     sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Valor pagado"  sortKey="valorPagado"   sort={sort} onSort={toggle} align="right" />
-                  <ThOrdenable label="Honorarios"    sortKey="honorarios"    sort={sort} onSort={toggle} align="right" />
-                  <ThOrdenable label="Registrado"    sortKey="fechaRegistro" sort={sort} onSort={toggle} />
+                  <ThOrdenable label="Cliente"       sortKey="nombreCliente" sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Asesor"        sortKey="nombreAsesor"  sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Líder"         sortKey="nombreLider"   sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Cartera"       sortKey="nombreCartera" sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Fecha de pago" sortKey="fechaPago"     sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Valor pagado"  sortKey="valorPagado"   sort={sort} onSort={toggle} align="right" resaltado />
+                  <ThOrdenable label="Honorarios"    sortKey="honorarios"    sort={sort} onSort={toggle} align="right" resaltado />
+                  <ThOrdenable label="Registrado"    sortKey="fechaRegistro" sort={sort} onSort={toggle} resaltado />
                 </tr>
               </thead>
               <tbody>

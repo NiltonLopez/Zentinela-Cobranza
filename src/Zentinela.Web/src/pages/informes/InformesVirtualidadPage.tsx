@@ -928,9 +928,24 @@ export function InformesVirtualidadPage() {
       </div>
 
       {/* Tabs */}
+      <style>{`
+        .z-tab { position: relative; transition: color 0.2s ease; }
+        .z-tab::after {
+          content: '';
+          position: absolute;
+          left: 50%; right: 50%; bottom: -1px; height: 2px;
+          background: var(--z-brand);
+          transition: left 0.22s ease, right 0.22s ease;
+        }
+        .z-tab:hover { color: var(--z-brand); }
+        .z-tab:hover::after { left: 14px; right: 14px; }
+        .z-tab-activa::after,
+        .z-tab-activa:hover::after { left: 0; right: 0; }
+      `}</style>
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
+            className={`z-tab${tab === t.key ? ' z-tab-activa' : ''}`}
             style={{
               padding: '9px 20px',
               fontSize: 13,
@@ -938,10 +953,8 @@ export function InformesVirtualidadPage() {
               color: tab === t.key ? 'var(--z-brand)' : 'var(--z-text-muted)',
               background: 'none',
               border: 'none',
-              borderBottom: `2px solid ${tab === t.key ? 'var(--z-brand)' : 'transparent'}`,
               cursor: 'pointer',
               marginBottom: -1,
-              transition: 'color 0.15s',
             }}>
             {t.label}
           </button>
