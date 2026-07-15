@@ -235,7 +235,7 @@ export function AgenciasExternasPage() {
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '6px 14px', borderRadius: 7, fontSize: 13, fontWeight: 500,
-              background: descargando ? '#94a3b8' : C.brand, color: '#fff', border: 'none',
+              background: descargando ? '#94a3b8' : C.naranja, color: '#fff', border: 'none',
               cursor: descargando ? 'not-allowed' : 'pointer', opacity: descargando ? 0.7 : 1,
               whiteSpace: 'nowrap',
             }}

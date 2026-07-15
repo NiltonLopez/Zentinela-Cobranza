@@ -42,6 +42,7 @@ export function KpiCard({ label, value, valueSuffix, sub, color }: {
     <div style={{
       background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
       borderRadius: 10, padding: '16px 20px', flex: 1, minWidth: 160,
+      boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
     }}>
       <p style={{ fontSize: 11, color: 'var(--z-text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
@@ -356,7 +357,7 @@ export function ModalColumnas({ columnas, generando, onConfirm, onClose }: {
             style={{
               padding: '8px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600,
               border: 'none', color: '#fff', whiteSpace: 'nowrap',
-              background: (seleccion.length === 0 || generando) ? '#94a3b8' : C.brand,
+              background: (seleccion.length === 0 || generando) ? '#94a3b8' : C.naranja,
               cursor: (seleccion.length === 0 || generando) ? 'not-allowed' : 'pointer',
               opacity: (seleccion.length === 0 || generando) ? 0.7 : 1,
             }}
@@ -404,8 +405,14 @@ export interface SortHandlers {
 }
 
 // ── Estilos base para th/td ───────────────────────────────────────────────────
+// Encabezado con el mismo estilo que las tablas del Home (ThOrdenable): mayúsculas,
+// texto primario; la columna activa se resalta con el color de marca.
 export const TH: React.CSSProperties = {
-  padding: '10px 12px', color: 'var(--z-text-muted)', fontWeight: 500, whiteSpace: 'nowrap',
+  padding: '10px 14px', fontSize: 11, fontWeight: 600,
+  color: 'var(--z-text-primary)', letterSpacing: '0.04em',
+  textTransform: 'uppercase', whiteSpace: 'nowrap',
+  background: 'var(--z-brand-light)',
+  borderBottom: '2px solid var(--z-brand)',
 };
 export const TD: React.CSSProperties = {
   padding: '9px 12px', borderBottom: '1px solid var(--z-border)', whiteSpace: 'nowrap',
@@ -423,8 +430,7 @@ export function ThSort({ label, k, sortKey, sortDir, onSort, align = 'right' }: 
       onClick={() => onSort(k)}
       style={{
         ...TH, textAlign: align, cursor: 'pointer', userSelect: 'none',
-        color: active ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-        whiteSpace: 'nowrap',
+        color: active ? 'var(--z-brand)' : 'var(--z-text-primary)',
       }}
     >
       {label}&nbsp;
