@@ -660,12 +660,16 @@ export function CargueMasivo() {
                 <>
                   Columnas requeridas: <strong>Cédula</strong>, <strong>Nombre</strong>, <strong>Valor</strong>,{' '}
                   <strong>Fecha</strong>, <strong>Honorarios</strong>, <strong>Lider</strong>, <strong>Cartera</strong>.{' '}
-                  <strong>UsuarioControl</strong> es opcional. Usa el panel de arriba para copiar los nombres exactos.
+                  <strong>UsuarioControl</strong> es opcional. Usa el panel de arriba para copiar los nombres exactos.{' '}
+                  El archivo puede traer las columnas en cualquier orden y con columnas adicionales — se
+                  identifican por su nombre de encabezado, no por su posición.
                 </>
               ) : (
                 <>
                   Columnas requeridas: <strong>Cédula</strong>, <strong>Nombre</strong>, <strong>Valor</strong>,{' '}
-                  <strong>Fecha</strong>, <strong>Honorarios</strong>, <strong>UsuarioControl</strong>.
+                  <strong>Fecha</strong>, <strong>Honorarios</strong>, <strong>UsuarioControl</strong>.{' '}
+                  El archivo puede traer las columnas en cualquier orden y con columnas adicionales — se
+                  identifican por su nombre de encabezado, no por su posición.
                 </>
               )}
             </p>
