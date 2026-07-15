@@ -17,8 +17,11 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// (cédula, fecha, valor) ya existe en la tabla Pago para esa cartera, o si se repite
 /// dentro del mismo archivo. Las omitidas se devuelven en Duplicados, no en Errores.
 ///
-/// El CSV puede tener las columnas en cualquier orden y puede incluir columnas extra.
+/// El CSV/XLSX puede tener las columnas en cualquier orden y puede incluir columnas extra.
 /// El servicio localiza cada columna por nombre (case-insensitive, sin tildes ni espacios).
+/// En XLSX con varias hojas (común en exports externos: resumen, gráficos, notas) se busca
+/// la hoja llamada "BASE" (sin distinguir mayúsculas/espacios); si no existe, se usa la
+/// primera hoja del libro.
 /// Columnas requeridas y alias aceptados:
 ///   Cédula      → cedula, numerodocumento, documento
 ///   Nombre      → nombre, nombrecliente, cliente
@@ -1083,7 +1086,17 @@ public class CarguePagosService : ICarguePagosService
     {
         var filas = new List<string[]>();
         using var workbook = new XLWorkbook(stream);
-        var rango = workbook.Worksheets.First().RangeUsed();
+
+        // Los archivos externos (bancos, otros sistemas) suelen traer varias hojas
+        // (resumen, gráficos, notas) y la data cruda vive en una hoja llamada "BASE".
+        // Se busca esa hoja por nombre (sin distinguir mayúsculas ni espacios); si no
+        // existe, se usa la primera hoja (compatibilidad con archivos de una sola hoja
+        // o con la plantilla propia del sistema, que no se llama "BASE").
+        var hoja = workbook.Worksheets
+            .FirstOrDefault(w => string.Equals(w.Name.Trim(), "BASE", StringComparison.OrdinalIgnoreCase))
+            ?? workbook.Worksheets.First();
+
+        var rango = hoja.RangeUsed();
         if (rango is null) return filas;
 
         foreach (var fila in rango.Rows())
