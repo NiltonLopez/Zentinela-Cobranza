@@ -25,6 +25,17 @@ public class NuevoTitularDto
 }
 
 /// <summary>
+/// Asignación (TitularID + LiderID) validada en modo "Cartera Completo".
+/// A diferencia del modo por líder, aquí cada fila trae su propio LiderID
+/// (columna del Excel), por lo que el cargue reparte titulares entre varios líderes.
+/// </summary>
+public class AsignacionValidaDto
+{
+    public long TitularID { get; set; }
+    public int  LiderID   { get; set; }
+}
+
+/// <summary>
 /// Vista previa devuelta tras validar el Excel.
 /// Filas contiene hasta 10 registros sin error (Ok/Nuevo/YaAsignado) para vista previa.
 /// FilasConError contiene TODAS las filas con error para que el usuario las inspeccione.
@@ -38,6 +49,9 @@ public class PreviewAsignacionDto
     public int                     TotalNuevos        { get; set; }   // Nuevo — se crearán en Titular
     public int                     TotalErrores       { get; set; }   // Error — fallaron validación
     public List<long>              TitularIDsValidos  { get; set; } = [];
+    // Solo se llena en modo "Cartera Completo": pares (TitularID, LiderID) a insertar.
+    // En modo por líder queda vacía (el LiderID es único y viene de la selección).
+    public List<AsignacionValidaDto> AsignacionesValidas { get; set; } = [];
     public List<NuevoTitularDto>   NuevosTitulares    { get; set; } = [];
 }
 
@@ -45,8 +59,11 @@ public class PreviewAsignacionDto
 public class ConfirmarCargueRequest
 {
     public int                   CarteraID       { get; set; }
-    public int                   LiderID         { get; set; }
+    // null = modo "Cartera Completo" (reemplaza toda la cartera con Asignaciones);
+    // con valor = modo por líder (reemplaza solo ese líder con TitularIDs).
+    public int?                  LiderID         { get; set; }
     public List<long>            TitularIDs      { get; set; } = [];
+    public List<AsignacionValidaDto> Asignaciones { get; set; } = [];
     public List<NuevoTitularDto> NuevosTitulares { get; set; } = [];
 }
 

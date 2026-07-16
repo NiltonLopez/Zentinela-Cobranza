@@ -4,7 +4,7 @@
     {
       "name": "api",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/Zentinela.API"],
+      "runtimeArgs": ["run", "--project", "src/Zentinela.API", "--launch-profile", "http"],
       "port": 5153
     },
     {

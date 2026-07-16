@@ -24,6 +24,15 @@ public class PagoFilaDto
     public long?    AgenteControlID  { get; set; }
     /// <summary>LiderID resuelto automáticamente desde TitularCartera (o CarteraAgente como desempate) durante la validación.</summary>
     public int      LiderID          { get; set; }
+    /// <summary>
+    /// CarteraID del pago. En modo estándar lo fija el selector de la UI al confirmar.
+    /// En modo "Cargue Masivo" se resuelve por fila desde la columna Cartera del archivo.
+    /// </summary>
+    public int      CarteraID        { get; set; }
+    /// <summary>Nombre de la Cartera tal como vino en el archivo (solo modo masivo — para preview/errores).</summary>
+    public string?  NombreCartera    { get; set; }
+    /// <summary>Nombre del Líder tal como vino en el archivo (solo modo masivo — para preview/errores).</summary>
+    public string?  NombreLider      { get; set; }
     /// <summary>True si la fila es BASE GENERAL (sin asesor). UI puede usarla para etiquetar visualmente.</summary>
     public bool     EsBaseGeneral    { get; set; }
     /// <summary>

@@ -58,17 +58,24 @@ public class CreadorZentinelaController : ControllerBase
 
     /// <summary>
     /// Genera y descarga el Excel completo con las columnas seleccionadas.
+    /// Si la selección supera el tope de filas del Excel, responde 400 sugiriendo el CSV.
     /// </summary>
     [HttpPost("exportar")]
     public async Task<IActionResult> Exportar([FromBody] FiltroBaseMadreRequest filtro)
     {
         var contexto = ObtenerContexto();
-        var (bytes, nombreArchivo) = await _service.ExportarExcelAsync(contexto, filtro);
-
-        return File(
-            bytes,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            nombreArchivo);
+        try
+        {
+            var (bytes, nombreArchivo) = await _service.ExportarExcelAsync(contexto, filtro);
+            return File(
+                bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                nombreArchivo);
+        }
+        catch (ExportacionDemasiadoGrandeException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
     }
 
     /// <summary>

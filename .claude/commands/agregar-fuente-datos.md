@@ -22,7 +22,7 @@ Si el usuario no provee los 3 argumentos, **preguntar antes de ejecutar** (prefl
 3. Descripción funcional (1 línea) y campos clave que aporta.
 4. **Cardinalidad** respecto a `TitularID`: ¿1:1 (una fila por titular) o N:1 (varias filas)? Esto cambia la entidad de ConsultaIntegrada y si el TVF necesita `ROW_NUMBER()` o no.
 5. ¿Aplica como filtro en Calificador/Creador (selector de celular o email)? Si expone múltiples celulares (ej. MutualSer) confirmar si entran como entradas separadas o COALESCE.
-6. ¿Es fuente de **localización** (aporta Departamento/Municipio o Ciudad)? Si sí, además del SqlAgregados hay que añadirla al panel de localización del Calificador (paso 5b).
+6. ¿Es fuente de **localización**? **La respuesta por defecto es SÍ.** El panel "Porcentajes de Localización" del Calificador NO requiere Departamento/Municipio — mide encontrado/no-encontrado/falta-por-buscar para **cualquier fuente con al menos un campo identificable** (celular, email, NIT, empresa, placa, lo que sea). De las 16 fuentes activas hoy, solo hay que verificar con el usuario si hay una razón real para excluirla (p. ej. la fuente fue retirada del sistema, como `DatosExternos`). **No asumas "no" solo porque la fuente no trae geografía** — SIMIT y RGM son datos vehiculares y SÍ están en el panel; MutualSer/Positiva/Cajacopi tampoco traen depto/municipio y también están. Si el usuario responde "no", pedir la justificación explícita y registrarla en la memoria (paso 9) y en `docs/para-tener-en-cuenta.md` (paso 8) — no dejarlo como una omisión silenciosa. Si sí, ejecutar el paso 5b.
 7. ¿Tiene página propia en el Sidebar? (raro — solo si hay vista dedicada útil al líder).
 
 ## Contexto del proyecto (snapshot)
@@ -88,23 +88,27 @@ src/
 
 ### Fuentes ya integradas (referencia rápida)
 
+> ⚠️ Corregido 2026-07-08: la columna Localización de esta tabla estaba desactualizada en varias filas (Tigo, PositivaEmpresas, Compensados, SIMIT, RGM decían "no" cuando el código actual **sí** las incluye en el panel — arrastraba el supuesto incorrecto de que localización = geografía). Verificar contra `LeerLocalizacionAsync`/`Fuentes` en `CalificadorCarteraService.cs` si hay dudas, no confiar ciegamente en esta tabla.
+
 | Fuente | Cardinalidad | Selector cel/email | Localización | Patrón ConsultaIntegrada |
 |---|---|---|---|---|
 | Cajacopi | 1:1 | sí / sí | sí | entidad 1:1 simple |
 | Camara | 1:1 | sí / sí | sí | entidad 1:1 simple |
 | SaludTotal | 1:1 | sí / sí | sí | entidad 1:1 + empresa |
 | Positiva | 1:1 | sí / sí | sí | entidad 1:1 simple |
-| Tigo | 1:1 | sí / sí | no (inactiva) | entidad 1:1 simple |
+| Tigo | 1:1 | sí / sí | sí (aunque `ESTADO_FUENTE` la marca "Inactivo" — son cosas distintas) | entidad 1:1 simple |
 | SOS | 1:1 | sí / no | sí | entidad 1:1 + empresa |
 | DatosClaro | **N:1** | sí / sí | sí (Rastreo) | entidad N:1, aplana con sufijos `Email 1`, `Email 2`, … |
+| MiVacuna | 1:1 | sí / sí | sí (agregado 2026-07-08 — se omitió por error en la integración original, ver `project_fuente_mivacuna.md`) | entidad 1:1 simple |
 | MutualSer | 1:1 | sí (×2 cels) / sí | sí (Rastreo + Localización) | entidad 1:1 simple |
 | ARLSura | 1:1 | no | sí (solo empresa) | entidad simple |
-| PositivaEmpresas | 1:1 | no | no | entidad simple |
+| PositivaEmpresas | 1:1 | no | sí | entidad simple |
 | RUES | 1:1 | no | sí (solo empresa) | entidad simple |
 | Fosyga | 1:1 | no | sí (regimen/depto/municipio) | entidad 1:1 |
-| Compensados | 1:1 | no | no | entidad 1:1 |
-| SIMIT | 1:1 | no | no (vehicular) | entidad 1:1 |
-| RGM | 1:1 | no | no (vehicular) | entidad 1:1 |
+| Compensados | 1:1 | no | sí | entidad 1:1 |
+| NuevaEps | 1:1 | sí / no | sí | entidad 1:1 |
+| SIMIT | 1:1 | no | sí (vehicular — celular/email no aplica, pero placa sí es el campo identificable) | entidad 1:1 |
+| RGM | 1:1 | no | sí (vehicular — marca/modelo/placa como campo identificable) | entidad 1:1 |
 | DatosExternos | 1:1 | **ignorada** — no se mapea (ver `project_datos_externos_removido.md`) | — | — |
 
 ## Pasos automáticos
@@ -188,12 +192,14 @@ Si la fuente debe consultarse fuera de la vista (3 estados o consulta dedicada),
 - En las cuatro condicionales `OR ... NOT IN ('','0')` de `ConCelular`, `ConEmail`, `ConCelularYEmail`, `SinContacto` (líneas ~132-156): añadir las columnas nuevas si entran al selector.
 - En el UNION ALL `desgloseFuentesCelular` (líneas ~225-237): añadir un `SELECT '<Fuente>', SUM(...)` por cada columna celular nueva.
 
-**5b. `Services/CalificadorCarteraService.cs` — `ObtenerLocalizacionAsync` (líneas ~440-555)** — solo si la fuente aporta localización (Departamento/Municipio o equivalente):
-- En el `SELECT` del subquery `b` (líneas ~459-495): proyectar las columnas de localización (`v.[Departamento <Fuente>] AS Departamento<Fuente>`, …) y añadir flag `CASE WHEN <alias>.TitularID IS NOT NULL THEN 1 ELSE 0 END AS En<Fuente>`.
-- En los `LEFT JOIN` (líneas ~511-524): añadir `LEFT JOIN (SELECT DISTINCT TitularID FROM <Tabla>) <alias> ON <alias>.TitularID = TRY_CAST(v.[Numero Documento] AS bigint)`.
-- En los SUMs (líneas ~390-458): añadir `<Fuente>Enc` y `<Fuente>NoEnc` con la misma lógica que las fuentes existentes.
-- En `LocalizacionResumenRaw` (líneas ~558-574): añadir `<Fuente>Enc` y `<Fuente>NoEnc` properties.
-- En el array de retorno (líneas ~530-546): añadir `Fuente("<EtiquetaUI>", r.<Fuente>Enc, r.<Fuente>NoEnc, total)`.
+**5b. `Services/CalificadorCarteraService.cs` — panel de localización (result set 9 del batch)** — **por defecto SÍ aplica** (ver pregunta 6 del preflight; solo se omite con justificación explícita del usuario):
+> ⚠️ Actualizado 2026-07-08: `ObtenerLocalizacionAsync` y `LocalizacionResumenRaw` **ya no existen** — se fusionaron al batch único `SqlAgregados` en la optimización del 2026-05-21 (ver `project_optimizacion_cartera_estado.md`). Si encuentras esos nombres en código viejo o en tu propia memoria de sesión, están obsoletos. Esta es la causa raíz de que MiVacuna se integrara sin localización: la fuente se agregó días después de esa fusión y el paso quedó mal referenciado.
+- Las columnas fuente (celular/email/NIT/lo que aplique) ya deben estar proyectadas en el `SELECT INTO #t` del paso 5a — si no, agrégalas ahí primero.
+- En el bloque `SUM(CASE WHEN ...)` dentro del `SELECT` final de result set 9 (busca el comentario `-- Result set 9: localización`): añadir dos `SUM(CASE WHEN ...)` — uno `<Fuente>Enc` (el campo identificable no está vacío) y uno `<Fuente>NoEnc` (el campo está vacío PERO `<alias>.TitularID IS NOT NULL`, es decir, el titular existe en la tabla fuente pero sin dato útil). Sigue el patrón de la fuente más parecida ya integrada (p. ej. `SOS`/`Positiva` para 1-2 campos simples, `MutualSer` para múltiples campos).
+- En los `LEFT JOIN` al final de la misma query: añadir `LEFT JOIN (SELECT DISTINCT TitularID FROM <Tabla>) <alias> ON <alias>.TitularID = t.TitularID`.
+- En `LeerLocalizacionAsync` (método privado, mismo archivo): añadir una línea `Fuente("<EtiquetaUI>", Sum("<Fuente>Enc"), Sum("<Fuente>NoEnc"), total),` al array de retorno.
+- En el diccionario `Fuentes` (mismo archivo, usado por la descarga CSV de cada celda de la tabla): añadir una entrada `["<slug>"] = new("<slug>", "<Etiqueta>", "<TablaFuente>", "<ColumnaFecha>", "<SelectDataCols>", "<PredicadoEncontrado>")` — replica exactamente el predicado usado en el `SUM` de arriba.
+- **Frontend** — `CalificadorCarteraPage.tsx`: añadir la fuente a `FUENTE_SLUG` (mapea etiqueta → slug del CSV) y a `ESTADO_FUENTE` (color/etiqueta visual — ver paso 7 más abajo). Sin esto el panel muestra la fila pero el botón de descarga no funciona y no sale el badge de estado.
 
 **5c. `Modules/ConsultaIntegrada/`**:
 - `ConsultaIntegrada.Core/Entities/Contactabilidad/<NombreFuente>.cs`: crear entidad.
@@ -299,7 +305,7 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - `ColumnasMadre.Todas` incluye las nuevas entradas.
 - **`SqlAlias` (en `BaseMadreRepository`) incluye una entrada por cada columna nueva** — las cuatro listas espejo (`BaseMadreRow`, `BaseMadreRowMapping`, `ColumnasMadre`, `SqlAlias`) quedan con exactamente las mismas columnas. El export CSV/Excel con **todas las columnas encendidas** baja completo, no se corta.
 - Si la fuente expone celular/email: switches `ColumnaCelular`/`ColumnaEmail` y arrays `FUENTES_CELULAR`/`FUENTES_EMAIL` actualizados, en sincronía exacta de claves.
-- Si la fuente aporta localización: `ObtenerLocalizacionAsync` actualizada (subquery + JOIN + SUMs + `LocalizacionResumenRaw` + array `Fuente(...)`).
+- **Salvo justificación explícita registrada**, la fuente está en el panel de localización: `SUM(CASE...)` Enc/NoEnc + `LEFT JOIN` en result set 9 + entrada en `LeerLocalizacionAsync` + entrada en el diccionario `Fuentes` + `FUENTE_SLUG`/`ESTADO_FUENTE` en el frontend.
 - Si la fuente expone columnas de teléfono: `RastreoLineasService.SqlConsulta` extendido con `UNION ALL` por cada columna.
 - ConsultaIntegrada renderiza la nueva fuente como sub-bloque dentro del grupo "Contactabilidad" (sin tocar el frontend).
 - `ESTADO_FUENTE` en CalificadorCarteraPage incluye la nueva fuente con etiqueta + color.
@@ -314,7 +320,9 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - ❌ **Modificar solo `vw_BaseMadre` y olvidar `fn_BaseMadrePorCartera`** — el código productivo consume el TVF; la vista solo se usa para EF mapping. Una migración que toca solo la vista deja el sistema inconsistente.
 - ❌ **Agregar la columna a `ColumnasMadre`/`BaseMadreRow`/mapping pero olvidar `SqlAlias`** — el preview engaña (funciona porque usa reflexión), pero el export CSV/Excel se rompe a media transmisión (`ERR_INCOMPLETE_CHUNKED_ENCODING` / archivo con 1 fila) por desfase entre el conteo de encabezados y los campos del reader. Las cuatro listas espejo se actualizan **juntas, siempre**. (Regresión histórica: integración MiVacuna, corregida en `1cbd33f`.)
 - ❌ **Componer LINQ encima de `FromSql(TVF)`** — EF Core envuelve la TVF en subquery sin pushdown del TOP/filtros, causando timeouts (lección de `project_optimizacion_cartera_estado.md`). Mover TOP y filtros al SQL del TVF directamente.
-- ❌ **Olvidar la lista enumerada en `LocalizacionResumenRaw` y en el array `Fuente(...)`** — el método `ObtenerLocalizacionAsync` enumera las fuentes a mano (no es agnóstico). Si añades MutualSer al SQL pero no al DTO ni al retorno, la fuente nueva no aparece en el panel.
+- ❌ **Asumir que la fuente "no aplica" a localización solo porque no trae Departamento/Municipio** — el panel no es geográfico, es de trazabilidad (encontrado/no-encontrado/falta-por-buscar) por cualquier campo identificable. Esta suposición incorrecta fue exactamente lo que dejó a **MiVacuna sin localización** en su integración original (2026-05-29) — corregido el 2026-07-08. Por defecto la respuesta a la pregunta 6 del preflight es SÍ; si de verdad no aplica, decirlo explícitamente y registrar el motivo (memoria + `para-tener-en-cuenta.md`), no dejarlo pasar en silencio.
+- ❌ **Olvidar alguna de las 4 piezas del panel de localización** — `SUM(CASE...)` en result set 9, el `LEFT JOIN`, la entrada en `LeerLocalizacionAsync`, y la entrada en el diccionario `Fuentes` (CSV) son 4 lugares distintos en el mismo archivo (`CalificadorCarteraService.cs`) que deben quedar sincronizados. Faltar cualquiera de los 4 deja la fuente a medias (aparece en la tabla pero sin datos, o con datos pero sin poder descargar el CSV).
+- ❌ **Confiar en referencias a `ObtenerLocalizacionAsync`/`LocalizacionResumenRaw`** — esos nombres son de una arquitectura anterior a la fusión del 2026-05-21; el código actual vive en el batch único `SqlAgregados` (result set 9) + `LeerLocalizacionAsync` + el diccionario `Fuentes`. Si una memoria de sesión vieja o un comentario menciona esos nombres, están obsoletos — verificar contra el archivo real.
 - ❌ **Asumir que `RastreoLineasService` no se toca solo porque ADR-015 lo dice** — el ADR-015 quedó parcialmente desactualizado. La regla práctica vigente: si la fuente expone teléfono, **se añade al `UNION ALL` de `RastreoLineasService.SqlConsulta`**.
 - ❌ **Hardcodear cadenas de conexión** (regla global #3).
 - ❌ **Consumir la tabla fuente vía `vw_BaseMadre` cuando se necesitan 3 estados** — rompe localización (la vista aplana NULLs a `'0'`).

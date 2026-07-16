@@ -69,7 +69,7 @@ export const MODULOS: Modulo[] = [
       { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes' },
       { key: 'pagos',    label: 'Cargue de Pagos',               path: '/administracion/pagos' },
       { key: 'fuentes-datos', label: 'Cargue de Fuentes de Datos', path: '/administracion/fuentes-datos' },
-      { key: 'solicitudes-virtualidad', label: 'Gestión de Solicitudes de Virtualidad', path: '/administracion/solicitudes-virtualidad' },
+      { key: 'historico-virtualidad', label: 'Gestión de Histórico de Virtualidad', path: '/administracion/historico-virtualidad' },
       { key: 'metas',    label: 'Asignación de Metas',            path: '/administracion/metas',  rolesPermitidos: ['Admin'] },
     ],
   },

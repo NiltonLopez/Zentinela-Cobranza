@@ -7,8 +7,8 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
 /// Informe de Mensajería/SMS (solo lectura) sobre la tabla unificada
-/// SolicitudVirtualidad (Canal = 'SMS'). El alta de solicitudes y resultados vive
-/// en <see cref="SolicitudVirtualidadService"/> (módulo Administración).
+/// HistoricoVirtualidad (Canal = 'SMS'). El alta de solicitudes y resultados vive
+/// en <see cref="HistoricoVirtualidadService"/> (módulo Administración).
 /// </summary>
 public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
 {
@@ -23,7 +23,7 @@ public class VirtualidadMensajeriaService : IVirtualidadMensajeriaService
         DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
     {
         var queryEnriquecida =
-            from s in _db.SolicitudesVirtualidad
+            from s in _db.HistoricoVirtualidad
             where s.Canal == CANAL
                 && s.FechaEnvio >= desde && s.FechaEnvio <= hasta
                 && (!liderID.HasValue   || s.LiderID   == liderID.Value)

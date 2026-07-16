@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.Net.Http.Headers;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
@@ -39,10 +40,27 @@ public class CalificadorCarteraController : ControllerBase
     /// </summary>
     [HttpGet("{carteraID:int}/{liderID:int?}")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
-    public async Task<IActionResult> Calificar(int carteraID, int? liderID)
+    public async Task<IActionResult> Calificar(int carteraID, int? liderID, CancellationToken ct)
     {
-        var resultado = await _service.CalificarAsync(carteraID, liderID);
-        return Ok(resultado);
+        try
+        {
+            var resultado = await _service.CalificarAsync(carteraID, liderID, ct);
+            return Ok(resultado);
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // El cliente canceló (cambió de cartera/módulo o cerró la pestaña) — no hay a quién responder.
+            // ADO.NET no siempre lanza OperationCanceledException al cancelar a mitad de un
+            // ExecuteReaderAsync: a veces la envuelve en SqlException ("Operation cancelled by
+            // user"), así que el filtro se basa en ct.IsCancellationRequested, no en el tipo.
+            return new EmptyResult();
+        }
+        catch (SqlException ex) when (ex.Number == -2 || ex.Number == 11)
+        {
+            // -2 = timeout de comando, 11 = error de red a mitad de consulta.
+            return StatusCode(StatusCodes.Status504GatewayTimeout,
+                "La consulta tardó demasiado. Intenta con una cartera más pequeña o vuelve a intentarlo.");
+        }
     }
 
     /// <summary>

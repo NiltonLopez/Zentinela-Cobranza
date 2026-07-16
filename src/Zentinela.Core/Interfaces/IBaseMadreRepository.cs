@@ -11,8 +11,13 @@ public interface IBaseMadreRepository
     /// fuentesCelular   = AND por cada fuente: el titular debe tener celular en todas.
     /// saldoMinimo      = filtro en memoria (Saldo es string en la vista).
     /// limite null      = todos los registros (para exportar).
+    ///
+    /// NO calcula un COUNT exacto sobre la TVF (materializa todos los cruces → minutos en
+    /// carteras grandes). Trae TOP(limite+1) para detectar si hay más; sin filtros el total
+    /// sale de Titular_Cartera (aproximado). <see cref="TipoTotalPreview"/> indica la precisión
+    /// del <c>Total</c> devuelto (exacto / aproximado / cota inferior).
     /// </summary>
-    Task<(IEnumerable<BaseMadreRow> Filas, int Total)> ObtenerAsync(
+    Task<(IEnumerable<BaseMadreRow> Filas, int Total, TipoTotalPreview TipoTotal)> ObtenerAsync(
         int            carteraID,
         int?           liderID,
         string?        ultimoPerfil,
@@ -51,5 +56,6 @@ public interface IBaseMadreRepository
         List<string>           coincidenciasEmail,
         IReadOnlyList<string>  propiedadesSeleccionadas,
         Func<DbDataReader, ValueTask> procesarFila,
+        int?                   limite = null,
         CancellationToken      ct = default);
 }

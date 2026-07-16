@@ -21,6 +21,7 @@ const FUENTE_SLUG: Record<string, string> = {
   'Tigo':           'tigo',
   'SOS':            'sos',
   'Claro':          'claro',
+  'MiVacuna':       'mivacuna',
   'MutualSer':      'mutualser',
   'NuevaEps':       'nuevaeps',
   'Sura (ARL)':     'sura',
@@ -200,8 +201,16 @@ export function CalificadorCarteraPage() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['calificador', carteraID, liderID],
-    queryFn: () => calificarCartera(carteraID!, liderID),
+    queryFn: ({ signal }) => calificarCartera(carteraID!, liderID, signal),
     enabled: carteraID != null,
+    retry: false,
+    // Esta consulta puede tardar varios minutos en carteras grandes. Con el
+    // AbortSignal ya conectado de verdad (antes era un no-op), el refetch
+    // automático al recuperar foco cancelaría el intento en curso y lo
+    // reiniciaría desde cero cada vez que el usuario vuelve a la pestaña —
+    // convirtiendo una espera larga en una espera infinita.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   return (
@@ -312,6 +321,7 @@ const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: st
   'Tigo':             { etiqueta: 'Inactivo',     color: '#DC2626' },
   'SOS':              { etiqueta: 'Funcional',    color: '#16A34A' },
   'Claro':            { etiqueta: 'Inactivo',     color: '#DC2626' },
+  'MiVacuna':         { etiqueta: 'Funcional',    color: '#16A34A' },
   'MutualSer':        { etiqueta: 'Funcional',    color: '#16A34A' },
   'NuevaEps':         { etiqueta: 'Funcional',    color: '#16A34A' },
   'Sura (ARL)':       { etiqueta: 'Funcional',    color: '#16A34A', nota: 'solo nombre de empresa' },

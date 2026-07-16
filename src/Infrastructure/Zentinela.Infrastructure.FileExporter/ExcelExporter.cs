@@ -51,7 +51,14 @@ public class ExcelExporter : IExcelExporter
         }
 
         // ── Formato final ─────────────────────────────────────────────────────
-        if (listaColumnas.Count > 0 && listaFilas.Count >= 0)
+        // AdjustToContents() y el borde interior por celda escanean/estilan TODAS las
+        // celdas → O(filas×cols), carísimo en hojas grandes (medido: ~25s de formato en
+        // 190k filas). Solo se aplican en hojas chicas; en grandes se usan anchos fijos
+        // y sin bordes para mantener la generación rápida y con poca memoria.
+        const int umbralFormatoCompleto = 5_000;
+        var esGrande = listaFilas.Count > umbralFormatoCompleto;
+
+        if (!esGrande && listaColumnas.Count > 0 && listaFilas.Count > 0)
         {
             var rango = ws.RangeUsed();
             if (rango != null)
@@ -61,7 +68,10 @@ public class ExcelExporter : IExcelExporter
             }
         }
 
-        ws.Columns().AdjustToContents();
+        if (esGrande)
+            ws.Columns(1, Math.Max(1, listaColumnas.Count)).Width = 22;
+        else
+            ws.Columns().AdjustToContents();
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -88,6 +98,36 @@ public class ExcelExporter : IExcelExporter
         // ── Fila de ejemplo (en gris, solo orientación) ───────────────────────
         ws.Cell(2, 1).Value = "1020304050";
         ws.Cell(2, 2).Value = "APELLIDO NOMBRE (ejemplo — puede borrarse)";
+        ws.Row(2).Style.Font.FontColor = XLColor.Gray;
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    public byte[] GenerarPlantillaAsignacionesCompleto()
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Plantilla");
+
+        // ── Encabezados — modo "Cartera Completo": incluye LiderID por fila ────
+        var encabezados = new[] { "NumeroDocumento", "Nombre", "LiderID" };
+        for (var i = 0; i < encabezados.Length; i++)
+        {
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = encabezados[i];
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        // ── Fila de ejemplo (en gris, solo orientación) ───────────────────────
+        ws.Cell(2, 1).Value = "1020304050";
+        ws.Cell(2, 2).Value = "APELLIDO NOMBRE (ejemplo — puede borrarse)";
+        ws.Cell(2, 3).Value = "12";
         ws.Row(2).Style.Font.FontColor = XLColor.Gray;
 
         ws.Columns().AdjustToContents();
@@ -395,6 +435,28 @@ public class ExcelExporter : IExcelExporter
 
             var nombre = fila.Cell(2).GetString().Trim();
             result.Add((numDoc, nombre));
+        }
+
+        return result;
+    }
+
+    public List<(long NumeroDocumento, string Nombre, long? LiderID)> ParsearFilasAsignacionCompleto(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        var ws     = workbook.Worksheet(1);
+        var result = new List<(long, string, long?)>();
+
+        foreach (var fila in ws.RowsUsed().Skip(1)) // fila 1 = encabezados
+        {
+            var texto = fila.Cell(1).GetString().Trim();
+            if (string.IsNullOrEmpty(texto)) continue;
+            if (!long.TryParse(texto, out var numDoc)) continue;
+
+            var nombre     = fila.Cell(2).GetString().Trim();
+            var liderTexto = fila.Cell(3).GetString().Trim();
+            long? liderID  = long.TryParse(liderTexto, out var lid) ? lid : null;
+
+            result.Add((numDoc, nombre, liderID));
         }
 
         return result;

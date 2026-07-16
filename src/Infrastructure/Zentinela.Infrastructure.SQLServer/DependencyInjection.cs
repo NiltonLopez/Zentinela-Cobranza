@@ -102,7 +102,7 @@ public static class DependencyInjection
         services.AddScoped<IVirtualidadLlamadasService, VirtualidadLlamadasService>();
         services.AddScoped<IVirtualidadEntrantesService, VirtualidadEntrantesService>();
         services.AddScoped<IVirtualidadPagosImpactoService, VirtualidadPagosImpactoService>();
-        services.AddScoped<ISolicitudVirtualidadService, SolicitudVirtualidadService>();
+        services.AddScoped<IHistoricoVirtualidadService, HistoricoVirtualidadService>();
         services.AddScoped<IRastreoLineasService, RastreoLineasService>();
 
         // ── Auditoría de Gestiones — evaluador de congruencia perfil↔gestión (Gemini) ──

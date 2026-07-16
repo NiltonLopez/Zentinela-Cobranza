@@ -79,7 +79,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         // Tomamos la fila con el mejor perfil entre todos sus agentes.
         var mejorEnSeleccionada = enSeleccionada
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
             .ToList();
 
         var numMarcadoSeleccionadaDict = mejorEnSeleccionada.ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
@@ -132,7 +132,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         //    luego conservar solo los que en la otra cartera tienen peso mayor que en la seleccionada.
         var coincidencias = enOtras
             .GroupBy(x => new { x.TitularID, x.CarteraID, x.NombreCartera })
-            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
             .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSeleccionada[x.TitularID])
             .GroupBy(x => new { x.CarteraID, x.NombreCartera })
             .Select(g => new ComparadorVsCarteraDto
@@ -174,7 +174,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         var mejorEnSel = enSeleccionada
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
             .ToList();
 
         var paraCompararDict = mejorEnSel
@@ -216,7 +216,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         return enOtra
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
             .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSel[x.TitularID])
             .Select(x => MapTitular(x.TitularID, x.Nombre,
                 paraCompararDict.GetValueOrDefault(x.TitularID), x.UltimoPerfil, nombreOtra,
@@ -276,7 +276,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         var mejorEnSelFull = enSeleccionadaCompleto
             .GroupBy(x => x.TitularID)
-            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
             .ToList();
 
         var paraCompararFull = mejorEnSelFull
@@ -314,7 +314,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         return todasEnOtras
             .GroupBy(x => new { x.TitularID, x.CarteraID, x.NombreCartera })
-            .Select(g => g.OrderByDescending(x => PerfilClasificacion.Peso(x.UltimoPerfil)).First())
+            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
             .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSelFull[x.TitularID])
             .OrderBy(x => x.NombreCartera)
             .ThenBy(x => x.Nombre)

@@ -1,24 +1,24 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Zentinela.Application;
-using Zentinela.Application.DTOs.Virtualidad.Solicitudes;
+using Zentinela.Application.DTOs.Virtualidad.Historico;
 using Zentinela.Application.Interfaces;
 
 namespace Zentinela.API.Controllers;
 
 /// <summary>
-/// Módulo "Gestión de Solicitudes de Virtualidad" (Administración).
+/// Módulo "Gestión de Histórico de Virtualidad" (Administración).
 /// Canales soportados: IVR | SMS | Correo. Fase Solicitud (Estado null) +
 /// fase Resultado (actualiza Estado por ID).
 /// </summary>
 [ApiController]
-[Route("api/virtualidad/solicitudes")]
+[Route("api/virtualidad/historico")]
 [Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
-public class SolicitudesVirtualidadController : ControllerBase
+public class HistoricoVirtualidadController : ControllerBase
 {
-    private readonly ISolicitudVirtualidadService _service;
+    private readonly IHistoricoVirtualidadService _service;
 
-    public SolicitudesVirtualidadController(ISolicitudVirtualidadService service)
+    public HistoricoVirtualidadController(IHistoricoVirtualidadService service)
         => _service = service;
 
     private bool CanalValido(string? canal) =>

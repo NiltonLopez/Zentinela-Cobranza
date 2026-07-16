@@ -30,14 +30,14 @@ public class VirtualidadPagosImpactoService : IVirtualidadPagosImpactoService
         var fechaMin = pagos.Min(p => p.FechaPago);
         var fechaMax = pagos.Max(p => p.FechaPago);
 
-        // Mensajería/SMS enviada antes del pago (tabla unificada SolicitudVirtualidad)
-        var mensajeria = await _db.SolicitudesVirtualidad
+        // Mensajería/SMS enviada antes del pago (tabla unificada HistoricoVirtualidad)
+        var mensajeria = await _db.HistoricoVirtualidad
             .Where(s => s.Canal == "SMS" && cedulas.Contains(s.NumeroDocumento) && s.FechaEnvio < fechaMax)
             .Select(s => new { s.NumeroDocumento, s.FechaEnvio })
             .ToListAsync();
 
-        // IVR enviado antes del pago (tabla unificada SolicitudVirtualidad)
-        var ivr = await _db.SolicitudesVirtualidad
+        // IVR enviado antes del pago (tabla unificada HistoricoVirtualidad)
+        var ivr = await _db.HistoricoVirtualidad
             .Where(s => s.Canal == "IVR" && cedulas.Contains(s.NumeroDocumento) && s.FechaEnvio < fechaMax)
             .Select(s => new { TitularID = s.NumeroDocumento, s.FechaEnvio })
             .ToListAsync();

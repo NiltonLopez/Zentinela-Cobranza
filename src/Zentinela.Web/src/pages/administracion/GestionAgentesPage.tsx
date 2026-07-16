@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listarAgentes,
@@ -239,6 +239,7 @@ function ModalCarteras({
 export function GestionAgentesPage() {
   const [busqueda, setBusqueda] = useState('');
   const [soloSinCartera, setSoloSinCartera] = useState(false);
+  const [liderFiltro, setLiderFiltro] = useState('');   // '' = todos los líderes
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<AgenteAdmin | null>(null);
 
   const { data: agentes = [], isLoading, isError } = useQuery({
@@ -246,14 +247,22 @@ export function GestionAgentesPage() {
     queryFn: listarAgentes,
   });
 
+  // Líderes (supervisores) que tienen al menos un agente — para el selector.
+  const lideres = useMemo(
+    () => Array.from(new Set(
+        agentes.map(a => a.supervisorNombre).filter((n): n is string => !!n),
+      )).sort((a, b) => a.localeCompare(b, 'es-CO')),
+    [agentes],
+  );
+
   const agentesFiltrados = agentes.filter((a) => {
     if (soloSinCartera && a.totalCarterasAsignadas > 0) return false;
+    if (liderFiltro && a.supervisorNombre !== liderFiltro) return false;
     const q = busqueda.trim().toLowerCase();
     if (!q) return true;
     return (
       a.nombreCompleto.toLowerCase().includes(q) ||
-      a.numeroDocumento.toString().includes(q) ||
-      (a.supervisorNombre ?? '').toLowerCase().includes(q)
+      a.numeroDocumento.toString().includes(q)
     );
   });
 
@@ -273,7 +282,7 @@ export function GestionAgentesPage() {
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <input
           type="text"
-          placeholder="Buscar por nombre, cédula o supervisor..."
+          placeholder="Nombre o cédula"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           style={{
@@ -293,6 +302,22 @@ export function GestionAgentesPage() {
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
         />
+        <select
+          value={liderFiltro}
+          onChange={(e) => setLiderFiltro(e.target.value)}
+          title="Filtrar agentes por líder"
+          style={{
+            padding: '8px 12px', fontSize: '13px', borderRadius: 6,
+            border: '1px solid var(--z-border)', background: 'var(--z-bg-card)',
+            color: liderFiltro ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+            outline: 'none', cursor: 'pointer', maxWidth: '260px',
+          }}
+        >
+          <option value="">Todos los líderes</option>
+          {lideres.map((l) => (
+            <option key={l} value={l}>{l}</option>
+          ))}
+        </select>
         <button
           onClick={() => setSoloSinCartera(v => !v)}
           style={{

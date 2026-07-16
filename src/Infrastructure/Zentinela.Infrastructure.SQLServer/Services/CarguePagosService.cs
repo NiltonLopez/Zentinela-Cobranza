@@ -17,8 +17,11 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// (cédula, fecha, valor) ya existe en la tabla Pago para esa cartera, o si se repite
 /// dentro del mismo archivo. Las omitidas se devuelven en Duplicados, no en Errores.
 ///
-/// El CSV puede tener las columnas en cualquier orden y puede incluir columnas extra.
+/// El CSV/XLSX puede tener las columnas en cualquier orden y puede incluir columnas extra.
 /// El servicio localiza cada columna por nombre (case-insensitive, sin tildes ni espacios).
+/// En XLSX con varias hojas (común en exports externos: resumen, gráficos, notas) se busca
+/// la hoja llamada "BASE" (sin distinguir mayúsculas/espacios); si no existe, se usa la
+/// primera hoja del libro.
 /// Columnas requeridas y alias aceptados:
 ///   Cédula      → cedula, numerodocumento, documento
 ///   Nombre      → nombre, nombrecliente, cliente
@@ -340,6 +343,331 @@ public class CarguePagosService : ICarguePagosService
             .ToHashSet();
     }
 
+    // ── Modo "Cargue Masivo": Lider y Cartera por fila (nombre exacto) ─────────
+
+    public async Task<ValidarPagosResponse> ValidarArchivoMasivoAsync(Stream archivo, string extension)
+    {
+        List<string[]> todasLasFilas;
+        char separador = ',';
+
+        if (extension == ".xlsx")
+            todasLasFilas = ExtraerFilasXlsx(archivo);
+        else
+            (todasLasFilas, separador) = await ExtraerFilasCsvAsync(archivo);
+
+        if (todasLasFilas.Count == 0)
+            return new ValidarPagosResponse();
+
+        var headerParts = todasLasFilas[0];
+        var headers = new Dictionary<string, int>();
+        for (int i = 0; i < headerParts.Length; i++)
+        {
+            var clave = Normalizar(headerParts[i]);
+            if (!string.IsNullOrEmpty(clave) && !headers.ContainsKey(clave))
+                headers[clave] = i;
+        }
+
+        var lineaEncabezado = string.Join(separador, headerParts);
+        var (idx, errorColumna) = ResolverIndicesMasivo(headers, lineaEncabezado, separador);
+        if (idx is null)
+        {
+            var errorEncabezado = new PagoFilaDto { EsValida = false, ErrorMensaje = errorColumna };
+            return new ValidarPagosResponse { TotalFilas = 0, CantidadErrores = 1, Errores = [errorEncabezado] };
+        }
+
+        var filas = new List<PagoFilaDto>();
+        for (int i = 1; i < todasLasFilas.Count; i++)
+        {
+            var partes = todasLasFilas[i];
+            if (partes.All(string.IsNullOrWhiteSpace)) continue;
+            filas.Add(ParsearPartesMasivo(partes, i + 1, idx));
+        }
+
+        return await ResolverFilasMasivoAsync(filas);
+    }
+
+    /// <summary>
+    /// Resuelve filas del modo masivo: mapea las columnas Cartera y Lider (nombre exacto) a
+    /// sus IDs contra las relaciones Lider_Cartera ACTIVAS (el par debe existir y estar activo),
+    /// resuelve el asesor solo si UsuarioControl viene (opcional) y deduplica por
+    /// (cédula, fecha, valor, cartera).
+    /// </summary>
+    private async Task<ValidarPagosResponse> ResolverFilasMasivoAsync(List<PagoFilaDto> filas)
+    {
+        var filasValidas = filas.Where(f => f.EsValida).ToList();
+
+        // Relaciones activas: índices nombre→ID + conjunto de pares válidos.
+        var relaciones = await _context.LiderCarteras
+            .Where(lc => lc.Activo)
+            .Select(lc => new
+            {
+                lc.CarteraID,
+                lc.LiderID,
+                NombreCartera = lc.Cartera.NombreCartera,
+                NombreLider   = lc.Lider.Nombre,
+            })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var carteraPorNombre = relaciones
+            .GroupBy(r => Normalizar(r.NombreCartera))
+            .ToDictionary(g => g.Key, g => g.First().CarteraID);
+        var liderPorNombre = relaciones
+            .GroupBy(r => Normalizar(r.NombreLider))
+            .ToDictionary(g => g.Key, g => g.First().LiderID);
+        var paresActivos = relaciones.Select(r => (r.CarteraID, r.LiderID)).ToHashSet();
+
+        // ── Resolver Cartera + Líder por nombre exacto ────────────────────────
+        foreach (var fila in filasValidas)
+        {
+            var normCartera = Normalizar(fila.NombreCartera ?? string.Empty);
+            var normLider   = Normalizar(fila.NombreLider ?? string.Empty);
+
+            if (!carteraPorNombre.TryGetValue(normCartera, out var carteraID))
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje = $"Cartera '{fila.NombreCartera}' no existe o no tiene relaciones activas.";
+                continue;
+            }
+            if (!liderPorNombre.TryGetValue(normLider, out var liderID))
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje = $"Líder '{fila.NombreLider}' no existe o no tiene relaciones activas.";
+                continue;
+            }
+            if (!paresActivos.Contains((carteraID, liderID)))
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje = $"El líder '{fila.NombreLider}' no está asignado a la cartera '{fila.NombreCartera}' (relación inexistente o inactiva).";
+                continue;
+            }
+            fila.CarteraID = carteraID;
+            fila.LiderID   = liderID;
+        }
+
+        // ── Asesor (opcional): BASE GENERAL o vacío → sin asesor (NULL) ────────
+        foreach (var fila in filasValidas.Where(f => f.EsValida))
+            fila.EsBaseGeneral = string.Equals(fila.UsuarioControl.Trim(), BaseGeneralKeyword, StringComparison.OrdinalIgnoreCase);
+
+        var usuariosControl = filasValidas
+            .Where(f => f.EsValida && !f.EsBaseGeneral && !string.IsNullOrWhiteSpace(f.UsuarioControl))
+            .Select(f => f.UsuarioControl.Trim())
+            .Distinct()
+            .ToList();
+
+        var agentePorUsuario = usuariosControl.Count == 0
+            ? new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+            : (await _context.Agentes
+                    .Where(a => a.UsuarioControlNext != null && usuariosControl.Contains(a.UsuarioControlNext))
+                    .Select(a => new { a.UsuarioControlNext, a.AgenteID })
+                    .AsNoTracking()
+                    .ToListAsync())
+                .DistinctBy(a => a.UsuarioControlNext!.ToLowerInvariant())
+                .ToDictionary(a => a.UsuarioControlNext!, a => a.AgenteID, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var fila in filasValidas.Where(f => f.EsValida))
+        {
+            if (fila.EsBaseGeneral || string.IsNullOrWhiteSpace(fila.UsuarioControl))
+            {
+                fila.AgenteControlID = null; // sin asesor: el pago se atribuye solo al líder de la fila
+                continue;
+            }
+            if (agentePorUsuario.TryGetValue(fila.UsuarioControl.Trim(), out var agenteID))
+                fila.AgenteControlID = agenteID;
+            else
+            {
+                fila.EsValida     = false;
+                fila.ErrorMensaje = $"Usuario Control '{fila.UsuarioControl}' no encontrado en el sistema.";
+            }
+        }
+
+        // ── Titular nuevo: cédula ausente en la maestra Titular ───────────────
+        var cedulas = filasValidas.Where(f => f.EsValida).Select(f => f.CedulaTitular).Distinct().ToList();
+        var cedulasExistentes = cedulas.Count == 0
+            ? []
+            : (await _context.Titulares
+                    .Where(t => cedulas.Contains(t.NumeroDocumento))
+                    .Select(t => t.NumeroDocumento)
+                    .ToListAsync())
+                .ToHashSet();
+
+        foreach (var fila in filasValidas.Where(f => f.EsValida && !cedulasExistentes.Contains(f.CedulaTitular)))
+        {
+            fila.TitularNuevo = true;
+            fila.ErrorMensaje = "Titular nuevo — se creará al cargar.";
+        }
+
+        // ── Deduplicación (cédula, fecha, valor, cartera) ─────────────────────
+        var candidatas       = filas.Where(f => f.EsValida).ToList();
+        var combosExistentes = await ObtenerCombosExistentesMasivoAsync(candidatas);
+
+        var vistosEnArchivo = new HashSet<(long, DateOnly, decimal, int)>();
+        foreach (var fila in candidatas)
+        {
+            var clave = (fila.CedulaTitular, fila.FechaPago, decimal.Round(fila.ValorPagado, 2), fila.CarteraID);
+            if (combosExistentes.Contains(clave) || !vistosEnArchivo.Add(clave))
+            {
+                fila.EsDuplicado  = true;
+                fila.ErrorMensaje = "Pago ya cargado (misma cédula, fecha, valor y cartera).";
+            }
+        }
+
+        var validas         = candidatas.Where(f => !f.EsDuplicado).ToList();
+        var duplicados      = candidatas.Where(f =>  f.EsDuplicado).ToList();
+        var errores         = filas.Where(f => !f.EsValida).ToList();
+        var titularesNuevos = validas.Where(f => f.TitularNuevo).ToList();
+
+        return new ValidarPagosResponse
+        {
+            TotalFilas              = filas.Count,
+            CantidadValidas         = validas.Count,
+            CantidadDuplicados      = duplicados.Count,
+            CantidadErrores         = errores.Count,
+            CantidadTitularesNuevos = titularesNuevos.Count,
+            Preview                 = validas.Take(10).ToList(),
+            Duplicados              = duplicados,
+            Errores                 = errores,
+            TitularesNuevos         = titularesNuevos,
+            TodasLasValidas         = validas,
+        };
+    }
+
+    /// <summary>Combinaciones (cédula, fecha, valor, cartera) ya presentes en Pago para las filas masivas.</summary>
+    private async Task<HashSet<(long, DateOnly, decimal, int)>> ObtenerCombosExistentesMasivoAsync(
+        List<PagoFilaDto> candidatas)
+    {
+        if (candidatas.Count == 0)
+            return [];
+
+        var cedulas  = candidatas.Select(f => f.CedulaTitular).Distinct().ToList();
+        var carteras = candidatas.Select(f => f.CarteraID).Distinct().ToList();
+
+        var existentes = await _context.Pagos
+            .Where(p => carteras.Contains(p.CarteraID) && cedulas.Contains(p.CedulaTitular))
+            .Select(p => new { p.CedulaTitular, p.FechaPago, p.ValorPagado, p.CarteraID })
+            .AsNoTracking()
+            .ToListAsync();
+
+        return existentes
+            .Select(p => (p.CedulaTitular, p.FechaPago, decimal.Round(p.ValorPagado, 2), p.CarteraID))
+            .ToHashSet();
+    }
+
+    private record IndicesColumnasMasivo(
+        int Cedula, int Nombre, int Valor, int Fecha, int Honorarios, int Lider, int Cartera, int UsuarioControl);
+
+    /// <summary>Resuelve índices para el modo masivo (Lider y Cartera obligatorias; UsuarioControl opcional = -1 si falta).</summary>
+    private static (IndicesColumnasMasivo? idx, string error) ResolverIndicesMasivo(
+        Dictionary<string, int> headers, string lineaOriginal, char separador)
+    {
+        var resuelto = new Dictionary<string, int>();
+        foreach (var (clave, indice) in headers)
+            if (AliasColumnas.TryGetValue(clave, out var campo) && !resuelto.ContainsKey(campo))
+                resuelto[campo] = indice;
+
+        var requeridos = new[] { "cedula", "nombre", "valor", "fecha", "honorarios", "lider", "cartera" };
+        var faltantes  = requeridos.Where(r => !resuelto.ContainsKey(r)).ToList();
+
+        if (faltantes.Count > 0)
+        {
+            var encontradas = lineaOriginal.Split(separador).Select(h => h.Trim());
+            var error = $"Columna(s) no encontrada(s): {string.Join(", ", faltantes)}. " +
+                        $"Columnas en el archivo: {string.Join(", ", encontradas)}.";
+            return (null, error);
+        }
+
+        return (new IndicesColumnasMasivo(
+            Cedula:         resuelto["cedula"],
+            Nombre:         resuelto["nombre"],
+            Valor:          resuelto["valor"],
+            Fecha:          resuelto["fecha"],
+            Honorarios:     resuelto["honorarios"],
+            Lider:          resuelto["lider"],
+            Cartera:        resuelto["cartera"],
+            UsuarioControl: resuelto.TryGetValue("usuariocontrol", out var u) ? u : -1
+        ), string.Empty);
+    }
+
+    /// <summary>Parsea una fila del modo masivo. UsuarioControl es opcional (queda vacío si no viene).</summary>
+    private static PagoFilaDto ParsearPartesMasivo(string[] partes, int numeroLinea, IndicesColumnasMasivo idx)
+    {
+        var requeridos = new[] { idx.Cedula, idx.Nombre, idx.Valor, idx.Fecha, idx.Honorarios, idx.Lider, idx.Cartera };
+        var maxIdx = idx.UsuarioControl >= 0 ? Math.Max(requeridos.Max(), idx.UsuarioControl) : requeridos.Max();
+        if (partes.Length <= maxIdx)
+            return new PagoFilaDto
+            {
+                EsValida     = false,
+                ErrorMensaje = $"Línea {numeroLinea}: solo {partes.Length} columnas, se esperan al menos {maxIdx + 1}.",
+            };
+
+        if (!long.TryParse(partes[idx.Cedula].Trim(), out var cedula))
+            return new PagoFilaDto
+            {
+                EsValida     = false,
+                ErrorMensaje = $"Línea {numeroLinea}: cédula inválida '{partes[idx.Cedula].Trim()}'.",
+            };
+
+        if (!decimal.TryParse(partes[idx.Valor].Trim().Replace(".", "").Replace(",", "."),
+                NumberStyles.Any, CultureInfo.InvariantCulture, out var valor))
+            return new PagoFilaDto
+            {
+                CedulaTitular = cedula,
+                EsValida      = false,
+                ErrorMensaje  = $"Línea {numeroLinea}: valor pagado inválido '{partes[idx.Valor].Trim()}'.",
+            };
+
+        if (!DateOnly.TryParse(partes[idx.Fecha].Trim(), out var fecha))
+            return new PagoFilaDto
+            {
+                CedulaTitular = cedula,
+                EsValida      = false,
+                ErrorMensaje  = $"Línea {numeroLinea}: fecha inválida '{partes[idx.Fecha].Trim()}'. Use YYYY-MM-DD.",
+            };
+
+        if (!decimal.TryParse(partes[idx.Honorarios].Trim().Replace(".", "").Replace(",", "."),
+                NumberStyles.Any, CultureInfo.InvariantCulture, out var honorarios))
+            return new PagoFilaDto
+            {
+                CedulaTitular = cedula,
+                EsValida      = false,
+                ErrorMensaje  = $"Línea {numeroLinea}: honorarios inválidos '{partes[idx.Honorarios].Trim()}'.",
+            };
+
+        var nombreLider   = partes[idx.Lider].Trim();
+        var nombreCartera = partes[idx.Cartera].Trim();
+        if (string.IsNullOrWhiteSpace(nombreLider))
+            return new PagoFilaDto
+            {
+                CedulaTitular = cedula,
+                EsValida      = false,
+                ErrorMensaje  = $"Línea {numeroLinea}: la columna Lider no puede estar vacía.",
+            };
+        if (string.IsNullOrWhiteSpace(nombreCartera))
+            return new PagoFilaDto
+            {
+                CedulaTitular = cedula,
+                EsValida      = false,
+                ErrorMensaje  = $"Línea {numeroLinea}: la columna Cartera no puede estar vacía.",
+            };
+
+        var usuarioControl = idx.UsuarioControl >= 0 && idx.UsuarioControl < partes.Length
+            ? partes[idx.UsuarioControl].Trim()
+            : string.Empty;
+
+        return new PagoFilaDto
+        {
+            CedulaTitular  = cedula,
+            NombreCliente  = partes[idx.Nombre].Trim(),
+            ValorPagado    = valor,
+            FechaPago      = fecha,
+            Honorarios     = honorarios,
+            NombreLider    = nombreLider,
+            NombreCartera  = nombreCartera,
+            UsuarioControl = usuarioControl,
+            EsValida       = true,
+        };
+    }
+
     public async Task<int> ConfirmarCargueAsync(ConfirmarPagosRequest request, string usuarioRegistro)
     {
         var ahora = DateTime.UtcNow;
@@ -372,7 +700,9 @@ public class CarguePagosService : ICarguePagosService
             Honorarios       = f.Honorarios,
             LiderID          = f.LiderID,
             AgenteControlID  = f.AgenteControlID,
-            CarteraID        = request.CarteraID,
+            // Modo masivo: CarteraID viene resuelto por fila (columna Cartera del archivo).
+            // Modo estándar: cartera única del selector de la UI.
+            CarteraID        = request.Masivo ? f.CarteraID : request.CarteraID,
             UsuarioRegistro  = usuarioRegistro,
             FechaRegistro    = ahora,
         }).ToList();
@@ -589,6 +919,50 @@ public class CarguePagosService : ICarguePagosService
         return stream.ToArray();
     }
 
+    public byte[] GenerarPlantillaMasiva()
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Pagos");
+
+        // Modo "Cargue Masivo": Lider y Cartera obligatorias por fila; UsuarioControl opcional.
+        var columnas = new[]
+        {
+            "Cedula", "Nombre", "Valor", "Honorarios", "Fecha", "Lider", "Cartera", "UsuarioControl",
+        };
+
+        for (int i = 0; i < columnas.Length; i++)
+        {
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = columnas[i];
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#1a56db");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        // Filas de ejemplo en gris. Lider/Cartera deben coincidir EXACTO con nombres registrados.
+        var ejemplos = new object[][]
+        {
+            new object[] { 1020304050L, "PEREZ JUAN",  1500000, 225000, "2026-04-21", "NOMBRE EXACTO DEL LIDER", "NOMBRE EXACTO DE LA CARTERA", "jperez" },
+            new object[] { 9876543210L, "GOMEZ MARIA", 900000,  135000, "2026-04-21", "NOMBRE EXACTO DEL LIDER", "NOMBRE EXACTO DE LA CARTERA", "BASE GENERAL" },
+        };
+        for (int r = 0; r < ejemplos.Length; r++)
+        {
+            for (int i = 0; i < ejemplos[r].Length; i++)
+            {
+                var celda = ws.Cell(2 + r, i + 1);
+                celda.Value = ejemplos[r][i].ToString();
+                celda.Style.Font.FontColor = XLColor.Gray;
+            }
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -641,6 +1015,12 @@ public class CarguePagosService : ICarguePagosService
         ["usuario"]          = "usuariocontrol",
         ["usuariocontrolnext"] = "usuariocontrol",
         ["control"]          = "usuariocontrol",
+        // Líder (solo modo masivo) — "Líder" normaliza a "lider" (sin tildes)
+        ["lider"]            = "lider",
+        ["nombrelider"]      = "lider",
+        // Cartera (solo modo masivo)
+        ["cartera"]          = "cartera",
+        ["nombrecartera"]    = "cartera",
     };
 
     /// <summary>
@@ -706,7 +1086,17 @@ public class CarguePagosService : ICarguePagosService
     {
         var filas = new List<string[]>();
         using var workbook = new XLWorkbook(stream);
-        var rango = workbook.Worksheets.First().RangeUsed();
+
+        // Los archivos externos (bancos, otros sistemas) suelen traer varias hojas
+        // (resumen, gráficos, notas) y la data cruda vive en una hoja llamada "BASE".
+        // Se busca esa hoja por nombre (sin distinguir mayúsculas ni espacios); si no
+        // existe, se usa la primera hoja (compatibilidad con archivos de una sola hoja
+        // o con la plantilla propia del sistema, que no se llama "BASE").
+        var hoja = workbook.Worksheets
+            .FirstOrDefault(w => string.Equals(w.Name.Trim(), "BASE", StringComparison.OrdinalIgnoreCase))
+            ?? workbook.Worksheets.First();
+
+        var rango = hoja.RangeUsed();
         if (rango is null) return filas;
 
         foreach (var fila in rango.Rows())

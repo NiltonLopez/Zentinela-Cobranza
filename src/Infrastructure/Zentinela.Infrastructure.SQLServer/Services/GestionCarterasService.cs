@@ -1,8 +1,14 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using ClosedXML.Excel;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.Interfaces;
 using Zentinela.Core.Entities;
+using Zentinela.Infrastructure.SQLServer.Models;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
@@ -15,10 +21,17 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 public class GestionCarterasService : IGestionCarterasService
 {
     private readonly CallCenterDbContext _context;
+    private readonly RecursosHumanosDbContext _rrhh;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public GestionCarterasService(CallCenterDbContext context)
+    public GestionCarterasService(
+        CallCenterDbContext context,
+        RecursosHumanosDbContext rrhh,
+        UserManager<ApplicationUser> userManager)
     {
-        _context = context;
+        _context     = context;
+        _rrhh        = rrhh;
+        _userManager = userManager;
     }
 
     public async Task<IEnumerable<RelacionLiderCarteraDto>> ListarRelacionesAsync(bool incluirExternas = true)
@@ -56,7 +69,7 @@ public class GestionCarterasService : IGestionCarterasService
                 TieneHistorico    =
                     _context.Pagos.Any(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID)
                  || _context.MetaLiderCarteraMes.Any(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID)
-                 || _context.SolicitudesVirtualidad.Any(s => s.LiderID == lc.LiderID && s.CarteraID == lc.CarteraID),
+                 || _context.HistoricoVirtualidad.Any(s => s.LiderID == lc.LiderID && s.CarteraID == lc.CarteraID),
             })
             .AsNoTracking()
             .ToListAsync();
@@ -70,6 +83,245 @@ public class GestionCarterasService : IGestionCarterasService
             .Select(l => new LiderDropdownDto { ID = l.ID, Nombre = l.Nombre })
             .AsNoTracking()
             .ToListAsync();
+    }
+
+    public async Task<IEnumerable<EmpleadoElegibleDto>> ListarEmpleadosElegiblesAsync()
+    {
+        // Empleados con cargo de líder y activos en RRHH. RRHH y CallCenter son
+        // bases distintas → no se puede hacer join cross-DB; se filtra en dos pasos.
+        var cargosLider = CargoRoles.CargosLider.ToArray();
+        var candidatos = await _rrhh.Empleados
+            .Where(e => e.EstadoEmpleado && cargosLider.Contains(e.CargoID))
+            .Select(e => new
+            {
+                e.NumeroDocumento,
+                e.Nombre,
+                e.Apellidos,
+                e.Email,
+                Cargo = e.Cargo.Descripcion,
+            })
+            .AsNoTracking()
+            .ToListAsync();
+
+        // Cédulas que ya son líder ACTIVO en DBCallCenter — se excluyen de la lista.
+        // Los inactivos permanecen elegibles: "crear" los reactiva (ver CrearLiderAsync).
+        var yaLideresActivos = await _context.Lideres
+            .Where(l => l.Activo && l.NumeroDocumento != null)
+            .Select(l => l.NumeroDocumento!.Value)
+            .ToHashSetAsync();
+
+        return candidatos
+            .Where(c => !yaLideresActivos.Contains(c.NumeroDocumento))
+            .Select(c => new EmpleadoElegibleDto
+            {
+                NumeroDocumento = c.NumeroDocumento,
+                NombreCompleto  = $"{c.Nombre} {c.Apellidos}".Trim(),
+                Cargo           = c.Cargo,
+                Email           = c.Email,
+            })
+            .OrderBy(e => e.NombreCompleto)
+            .ToList();
+    }
+
+    public async Task<LiderDropdownDto> CrearLiderAsync(CrearLiderDto dto)
+    {
+        // 1. Validar el empleado contra DBRecursosHumanos
+        var empleado = await _rrhh.Empleados
+            .Include(e => e.Cargo)
+            .FirstOrDefaultAsync(e => e.NumeroDocumento == dto.NumeroDocumento)
+            ?? throw new InvalidOperationException(
+                "No se encontró un empleado con esa cédula en Recursos Humanos.");
+
+        if (!empleado.EstadoEmpleado)
+            throw new InvalidOperationException("El empleado se encuentra inactivo en Recursos Humanos.");
+
+        if (!CargoRoles.EsCargoLider(empleado.CargoID))
+            throw new InvalidOperationException(
+                $"El cargo '{empleado.Cargo.Descripcion}' no puede darse de alta como líder de cobranza.");
+
+        var nombreCompleto = $"{empleado.Nombre} {empleado.Apellidos}".Trim();
+
+        // 2. ¿Ya existe un líder con esa cédula?
+        var liderExistente = await _context.Lideres
+            .FirstOrDefaultAsync(l => l.NumeroDocumento == dto.NumeroDocumento);
+
+        if (liderExistente is not null)
+        {
+            if (liderExistente.Activo)
+                throw new InvalidOperationException($"'{nombreCompleto}' ya está registrado como líder.");
+
+            // Reactivar el líder inactivo en vez de crear un duplicado; refrescar nombre/email.
+            liderExistente.Activo          = true;
+            liderExistente.Nombre          = nombreCompleto;
+            liderExistente.Email           = empleado.Email;
+            await _context.SaveChangesAsync();
+
+            return new LiderDropdownDto { ID = liderExistente.ID, Nombre = liderExistente.Nombre };
+        }
+
+        // 3. Crear el líder. Lider.ID NO es IDENTITY → se asigna MAX(ID)+1 (igual que Cartera).
+        var nextID = (await _context.Lideres.MaxAsync(l => (int?)l.ID) ?? 0) + 1;
+        var nuevoLider = new Lider
+        {
+            ID              = nextID,
+            Nombre          = nombreCompleto,
+            Email           = empleado.Email,
+            Activo          = true,
+            NumeroDocumento = dto.NumeroDocumento,
+        };
+        _context.Lideres.Add(nuevoLider);
+        await _context.SaveChangesAsync();
+
+        return new LiderDropdownDto { ID = nuevoLider.ID, Nombre = nuevoLider.Nombre };
+    }
+
+    public async Task<CrearLiderExternoResponse> CrearLiderExternoAsync(CrearLiderExternoDto dto)
+    {
+        var nombre = (dto.Nombre ?? string.Empty).Trim();
+        if (nombre.Length < 3)
+            throw new InvalidOperationException("El nombre del líder externo es obligatorio (mínimo 3 caracteres).");
+
+        var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
+
+        // Unicidad por documento (solo si viene): no duplicar líder ni usuario.
+        if (dto.NumeroDocumento.HasValue)
+        {
+            var doc = dto.NumeroDocumento.Value;
+            if (await _context.Lideres.AnyAsync(l => l.NumeroDocumento == doc))
+                throw new InvalidOperationException($"Ya existe un líder con el documento {doc}.");
+            if (await _userManager.Users.AnyAsync(u => u.NumeroDocumento == doc))
+                throw new InvalidOperationException($"Ya existe un usuario Zentinela con el documento {doc}.");
+        }
+
+        // 1. Crear el líder. ID manual (Lider.ID no es IDENTITY); NumeroDocumento nullable para externos.
+        var nextID = (await _context.Lideres.MaxAsync(l => (int?)l.ID) ?? 0) + 1;
+        var nuevoLider = new Lider
+        {
+            ID              = nextID,
+            Nombre          = nombre,
+            Email           = email,
+            Activo          = true,
+            NumeroDocumento = dto.NumeroDocumento,
+        };
+        _context.Lideres.Add(nuevoLider);
+        await _context.SaveChangesAsync();
+
+        // 2. Crear el usuario Zentinela con rol Líder Externo, vinculado a este líder.
+        //    Líder y usuario viven en bases distintas (DBCallCenter / DBZentinela) — no hay
+        //    transacción compartida, así que ante cualquier fallo se revierte manualmente lo creado.
+        ApplicationUser? usuarioCreado = null;
+        try
+        {
+            var (usuario, password, passwordEsDocumento) =
+                await ConstruirCredencialesExternasAsync(nombre, dto.NumeroDocumento, nuevoLider.ID);
+
+            var nuevoUsuario = new ApplicationUser
+            {
+                UserName               = usuario,
+                Email                  = email ?? $"{usuario}@zentinela.local",
+                EmailConfirmed         = true,
+                NombreCompleto         = nombre,
+                NumeroDocumento        = dto.NumeroDocumento ?? 0,
+                RequiereCambioPassword = true,
+                LiderID                = nuevoLider.ID,
+            };
+
+            var resultado = await _userManager.CreateAsync(nuevoUsuario, password);
+            if (!resultado.Succeeded)
+            {
+                var errores = string.Join(", ", resultado.Errors.Select(e => e.Description));
+                throw new InvalidOperationException($"No se pudo crear el usuario Zentinela: {errores}");
+            }
+            usuarioCreado = nuevoUsuario;
+
+            var rolResultado = await _userManager.AddToRoleAsync(nuevoUsuario, Roles.LiderExterno);
+            if (!rolResultado.Succeeded)
+            {
+                var errores = string.Join(", ", rolResultado.Errors.Select(e => e.Description));
+                throw new InvalidOperationException($"No se pudo asignar el rol Líder Externo: {errores}");
+            }
+
+            return new CrearLiderExternoResponse
+            {
+                LiderID          = nuevoLider.ID,
+                Nombre           = nombre,
+                Usuario          = usuario,
+                // Con documento la contraseña es el documento (el admin ya lo conoce) → null.
+                PasswordTemporal = passwordEsDocumento ? null : password,
+            };
+        }
+        catch
+        {
+            // Limpiar en orden inverso: usuario Identity (si se creó) y luego el líder.
+            if (usuarioCreado is not null)
+                await _userManager.DeleteAsync(usuarioCreado);
+            _context.Lideres.Remove(nuevoLider);
+            await _context.SaveChangesAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Construye usuario y contraseña inicial para un líder externo. Usuario:
+    /// nombre.apellido + (últimos 3 del documento, o el LiderID si no hay documento),
+    /// garantizando unicidad. Contraseña: el documento si viene (≥6 dígitos), o una temporal generada.
+    /// </summary>
+    private async Task<(string usuario, string password, bool passwordEsDocumento)> ConstruirCredencialesExternasAsync(
+        string nombre, long? documento, int liderID)
+    {
+        var partes         = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var primerNombre   = partes.Length > 0 ? partes[0] : nombre;
+        var primerApellido = partes.Length > 1 ? partes[^1] : "ext";
+
+        var docStr = documento?.ToString();
+        var sufijo = docStr is not null
+            ? docStr[^Math.Min(3, docStr.Length)..]
+            : liderID.ToString();
+
+        var baseUsuario = SlugAscii($"{primerNombre}.{primerApellido}{sufijo}");
+        if (string.IsNullOrWhiteSpace(baseUsuario))
+            baseUsuario = $"lider.ext{liderID}";
+
+        var usuario = baseUsuario;
+        var intento = 1;
+        while (await _userManager.FindByNameAsync(usuario) is not null)
+            usuario = $"{baseUsuario}{++intento}";
+
+        // Documento como contraseña solo si cumple la longitud mínima de la política (6).
+        if (docStr is not null && docStr.Length >= 6)
+            return (usuario, docStr, true);
+
+        return (usuario, GenerarPasswordTemporal(), false);
+    }
+
+    /// <summary>Genera una contraseña temporal de 10 caracteres alfanuméricos (sin ambiguos).</summary>
+    private static string GenerarPasswordTemporal()
+    {
+        const string alfabeto = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var bytes = RandomNumberGenerator.GetBytes(10);
+        var sb = new StringBuilder(10);
+        foreach (var b in bytes)
+            sb.Append(alfabeto[b % alfabeto.Length]);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Slug ASCII para username de Identity: quita diacríticos (ñ→n, á→a), pasa a minúsculas
+    /// y descarta caracteres fuera del set permitido por defecto. Igual criterio que RegistroService.
+    /// </summary>
+    private static string SlugAscii(string texto)
+    {
+        var descompuesto = texto.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(descompuesto.Length);
+        foreach (var c in descompuesto)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+                continue;
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '@' || c == '+')
+                sb.Append(c);
+        }
+        return sb.ToString().ToLowerInvariant();
     }
 
     public async Task<IEnumerable<CarteraDto>> BuscarCarterasAsync(string q)
@@ -273,7 +525,7 @@ public class GestionCarterasService : IGestionCarterasService
                             .CountAsync(p => p.LiderID == liderID && p.CarteraID == carteraID);
         var metas       = await _context.MetaLiderCarteraMes
                             .CountAsync(m => m.LiderID == liderID && m.CarteraID == carteraID);
-        var virtualidad = await _context.SolicitudesVirtualidad
+        var virtualidad = await _context.HistoricoVirtualidad
                             .CountAsync(s => s.LiderID == liderID && s.CarteraID == carteraID);
 
         var bloqueantes = new List<string>();

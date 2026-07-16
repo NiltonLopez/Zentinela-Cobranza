@@ -3,9 +3,9 @@ import type {
   CanalVirtualidad,
   FilaSolicitud, ValidarSolicitudResponse,
   FilaResultado, ValidarResultadoResponse,
-} from '../types/solicitudesVirtualidad';
+} from '../types/historicoVirtualidad';
 
-const BASE = '/api/virtualidad/solicitudes';
+const BASE = '/api/virtualidad/historico';
 
 function descargarBlob(data: Blob, nombre: string): void {
   const url  = URL.createObjectURL(data);

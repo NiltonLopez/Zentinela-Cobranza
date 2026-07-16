@@ -1,13 +1,33 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
 import { generarPlantilla, validarArchivo, confirmarCargue } from '../../api/asignacionesApi';
+import { listarRelaciones } from '../../api/gestionCarterasApi';
 import type { PreviewAsignacionDto, EstadoValidacion, FilaValidacionDto } from '../../types/asignaciones';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 
 // ── Helpers de estilo ────────────────────────────────────────────────────────
 
 type Etapa = 'inicial' | 'preview' | 'resultado';
+
+// El value del <select> es "carteraID_liderID"; las opciones "Cartera Completo"
+// traen liderID = null, que se serializa como el literal "null" (modo completo).
+interface SeleccionParseada {
+  carteraID:  number;
+  liderID:    number | null;
+  esCompleto: boolean;
+}
+
+function parseSeleccion(seleccion: string): SeleccionParseada | null {
+  if (!seleccion) return null;
+  const [carteraStr, liderStr] = seleccion.split('_');
+  const esCompleto = liderStr === 'null';
+  return {
+    carteraID:  Number(carteraStr),
+    liderID:    esCompleto ? null : Number(liderStr),
+    esCompleto,
+  };
+}
 
 function colorEstado(estado: EstadoValidacion): string {
   if (estado === 'Error')      return '#dc2626';
@@ -127,6 +147,85 @@ function PanelErrores({ filas }: { filas: FilaValidacionDto[] }) {
   );
 }
 
+// ── Panel de apoyo: LiderID válidos de la cartera (modo "Cartera Completo") ───
+//
+// En modo completo el Excel trae una columna LiderID por fila. Este panel lista
+// los líderes con relación ACTIVA en la cartera seleccionada mostrando su ID;
+// un clic copia el LiderID al portapapeles para pegarlo en el Excel. Mismo
+// patrón que el panel de nombres de "Gestión de Histórico de Virtualidad".
+function BotonCopiarLider({ liderID, nombre }: { liderID: number; nombre: string }) {
+  const [copiado, setCopiado] = useState(false);
+  const copiar = async () => {
+    await navigator.clipboard.writeText(String(liderID));
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 1200);
+  };
+  return (
+    <button
+      onClick={copiar}
+      title={`Clic para copiar el LiderID ${liderID}`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+        border: `0.5px solid ${copiado ? '#86efac' : 'var(--z-border)'}`,
+        background: copiado ? '#f0fdf4' : 'var(--z-bg-card)',
+        color: 'var(--z-text-primary)', fontSize: 12.5,
+      }}
+    >
+      <span style={{
+        fontWeight: 700, color: copiado ? '#15803d' : 'var(--z-brand)',
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {liderID}
+      </span>
+      <span style={{ color: 'var(--z-text-muted)' }}>{nombre}</span>
+      <span style={{ fontSize: 11, color: copiado ? '#15803d' : 'var(--z-text-muted)' }}>
+        {copiado ? '✓ copiado' : '⧉'}
+      </span>
+    </button>
+  );
+}
+
+function PanelLideresApoyo({ carteraID }: { carteraID: number }) {
+  const { data: relaciones = [], isLoading } = useQuery({
+    queryKey: ['relaciones-lider-cartera'],
+    queryFn:  listarRelaciones,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const lideres = useMemo(
+    () => relaciones
+      .filter(r => r.carteraID === carteraID && r.activo)
+      .map(r => ({ liderID: r.liderID, nombre: r.nombreLider }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es-CO')),
+    [relaciones, carteraID],
+  );
+
+  return (
+    <div style={{
+      background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)', borderRadius: 8,
+      padding: 16, display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+        LiderID válidos de esta cartera
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>
+        En modo <strong>Completo</strong> cada fila del Excel debe llevar el <strong>LiderID</strong> del líder al que se asigna el titular.
+        Haz clic en un líder para copiar su ID y pégalo en la columna <strong>LiderID</strong>. Solo se aceptan líderes activos de esta cartera.
+      </p>
+      {isLoading ? (
+        <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>Cargando líderes...</p>
+      ) : lideres.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>Esta cartera no tiene líderes activos asignados.</p>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {lideres.map(l => <BotonCopiarLider key={l.liderID} liderID={l.liderID} nombre={l.nombre} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export function GestionAsignacionesPage() {
@@ -152,11 +251,13 @@ export function GestionAsignacionesPage() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const sel        = parseSeleccion(seleccion);
+  const esCompleto = sel?.esCompleto ?? false;
+
   // Mutación: validar Excel
   const mutValidar = useMutation({
     mutationFn: async (archivo: File) => {
-      const [carteraIDStr, liderIDStr] = seleccion.split('_');
-      return validarArchivo(archivo, Number(carteraIDStr), Number(liderIDStr));
+      return validarArchivo(archivo, sel!.carteraID, sel!.liderID);
     },
     onSuccess: (data) => {
       setPreview(data);
@@ -172,11 +273,11 @@ export function GestionAsignacionesPage() {
   // Mutación: confirmar cargue
   const mutConfirmar = useMutation({
     mutationFn: () => {
-      const [carteraIDStr, liderIDStr] = seleccion.split('_');
       return confirmarCargue({
-        carteraID:       Number(carteraIDStr),
-        liderID:         Number(liderIDStr),
-        titularIDs:      preview!.titularIDsValidos,
+        carteraID:       sel!.carteraID,
+        liderID:         sel!.liderID,                     // null → modo completo
+        titularIDs:      esCompleto ? [] : preview!.titularIDsValidos,
+        asignaciones:    esCompleto ? preview!.asignacionesValidas : [],
         nuevosTitulares: preview!.nuevosTitulares,
       });
     },
@@ -271,23 +372,30 @@ export function GestionAsignacionesPage() {
             )}
           </div>
 
+          {/* Panel de apoyo con LiderID — solo en modo "Cartera Completo" */}
+          {esCompleto && sel && <PanelLideresApoyo carteraID={sel.carteraID} />}
+
           {/* Botón generar plantilla */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Paso 1 — Descarga la plantilla
             </p>
             <button
-              onClick={() => generarPlantilla()}
+              onClick={() => generarPlantilla(esCompleto)}
               style={{
                 padding: '8px 16px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
                 background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
                 fontSize: '13px', fontWeight: 600, cursor: 'pointer', width: 'fit-content',
               }}
             >
-              Generar Plantilla
+              {esCompleto ? 'Generar Plantilla (con LiderID)' : 'Generar Plantilla'}
             </button>
             <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Llena <strong>NumeroDocumento</strong> con la cédula y <strong>Nombre</strong> con el nombre completo. Los titulares que no existan en BD se crearán automáticamente.
+              {esCompleto ? (
+                <>Llena <strong>NumeroDocumento</strong>, <strong>Nombre</strong> y <strong>LiderID</strong> (usa el panel de arriba para copiar el ID correcto). Los titulares que no existan en BD se crearán automáticamente.</>
+              ) : (
+                <>Llena <strong>NumeroDocumento</strong> con la cédula y <strong>Nombre</strong> con el nombre completo. Los titulares que no existan en BD se crearán automáticamente.</>
+              )}
             </p>
           </div>
 
@@ -313,7 +421,7 @@ export function GestionAsignacionesPage() {
               {archivoNombre
                 ? <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>{archivoKB.toFixed(1)} KB</p>
                 : <p style={{ fontSize: '11px', color: 'var(--z-text-muted)' }}>
-                    Columnas requeridas: NumeroDocumento, Nombre
+                    Columnas requeridas: NumeroDocumento, Nombre{esCompleto ? ', LiderID' : ''}
                   </p>
               }
             </div>
@@ -432,27 +540,32 @@ export function GestionAsignacionesPage() {
 
           {/* Aviso de reemplazo */}
           <div style={{
-            background: '#fffbeb', border: '0.5px solid #fcd34d',
+            background: esCompleto ? '#fef2f2' : '#fffbeb',
+            border: `0.5px solid ${esCompleto ? '#fca5a5' : '#fcd34d'}`,
             borderRadius: '8px', padding: '12px 16px',
-            fontSize: '13px', color: '#92400e',
+            fontSize: '13px', color: esCompleto ? '#b91c1c' : '#92400e',
           }}>
-            <strong>Atención:</strong> confirmar reemplazará <em>todas</em> las asignaciones actuales de esta cartera+líder con los {preview.totalValidos} titulares válidos del archivo.
+            {esCompleto ? (
+              <><strong>Atención:</strong> este es un cargue de <em>cartera completa</em>. Confirmar borrará <em>todas</em> las asignaciones de la cartera para <em>todos</em> los líderes y las reemplazará con las {preview.totalValidos} asignaciones válidas del archivo. Un líder que no aparezca en el archivo quedará sin titulares en esta cartera.</>
+            ) : (
+              <><strong>Atención:</strong> confirmar reemplazará <em>todas</em> las asignaciones actuales de esta cartera+líder con los {preview.totalValidos} titulares válidos del archivo.</>
+            )}
           </div>
 
           {/* Acciones */}
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
               onClick={() => mutConfirmar.mutate()}
-              disabled={preview.titularIDsValidos.length === 0}
+              disabled={preview.totalValidos === 0}
               style={{
                 padding: '9px 20px', borderRadius: '6px',
-                border: 'none', background: preview.titularIDsValidos.length > 0 ? 'var(--z-brand)' : 'var(--z-border)',
-                color: preview.titularIDsValidos.length > 0 ? '#fff' : 'var(--z-text-muted)',
+                border: 'none', background: preview.totalValidos > 0 ? 'var(--z-brand)' : 'var(--z-border)',
+                color: preview.totalValidos > 0 ? '#fff' : 'var(--z-text-muted)',
                 fontSize: '13px', fontWeight: 600,
-                cursor: preview.titularIDsValidos.length > 0 ? 'pointer' : 'not-allowed',
+                cursor: preview.totalValidos > 0 ? 'pointer' : 'not-allowed',
               }}
             >
-              {(() => { const n = preview.titularIDsValidos.length; return `Reemplazar con ${n} asignacion${n !== 1 ? 'es' : ''}`; })()}
+              {(() => { const n = preview.totalValidos; return `Reemplazar con ${n} asignacion${n !== 1 ? 'es' : ''}`; })()}
             </button>
             <button
               onClick={handleNuevaCarga}

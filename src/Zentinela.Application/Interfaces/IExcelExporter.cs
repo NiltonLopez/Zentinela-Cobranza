@@ -12,11 +12,21 @@ public interface IExcelExporter
 
     byte[] GenerarPlantillaAsignaciones();
 
+    /// <summary>Plantilla "Cartera Completo": columnas NumeroDocumento, Nombre y LiderID.</summary>
+    byte[] GenerarPlantillaAsignacionesCompleto();
+
     /// <summary>
     /// Parsea el Excel de asignaciones y devuelve las filas como pares (NumeroDocumento, Nombre).
     /// La columna A es NumeroDocumento (obligatoria); la columna B es Nombre (opcional).
     /// </summary>
     List<(long NumeroDocumento, string Nombre)> ParsearFilasAsignacion(Stream stream);
+
+    /// <summary>
+    /// Parsea el Excel de asignaciones "Cartera Completo": columna A NumeroDocumento,
+    /// B Nombre, C LiderID. LiderID es null si la celda está vacía o no es numérica
+    /// (la fila se marcará como error en la validación).
+    /// </summary>
+    List<(long NumeroDocumento, string Nombre, long? LiderID)> ParsearFilasAsignacionCompleto(Stream stream);
 
     byte[] GenerarPlantillaReporte();
 

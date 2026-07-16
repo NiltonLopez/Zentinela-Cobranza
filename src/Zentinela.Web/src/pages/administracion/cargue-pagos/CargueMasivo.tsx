@@ -9,11 +9,16 @@ import {
 } from '../../../api/pagosApi';
 import { LeyendaUltimaActualizacion } from '../../../components/LeyendaUltimaActualizacion';
 import { CargandoSpiral } from '../../../components/CargandoSpiral';
+import { PanelNombresValidos } from '../../../components/PanelNombresValidos';
 import type { PagoFila, ValidarPagosResponse } from '../../../types/pagos';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type Etapa = 'inicial' | 'preview' | 'resultado';
+
+// Valor especial del <select> de cartera que activa el modo "Cargue Masivo"
+// (Líder y Cartera vienen por fila en el archivo, no del selector).
+const OPCION_MASIVO = '__masivo__';
 
 const cop = (v: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
@@ -177,10 +182,23 @@ function PanelErrores({ filas }: { filas: PagoFila[] }) {
   );
 }
 
-// ── Panel de duplicados (ya cargados — se omiten) ───────────────────────────────
+// ── Panel de duplicados (ya cargados — se omiten salvo aprobación explícita) ─────
+//
+// Cada duplicado trae un checkbox para "Aprobarlo": al marcarlo, ese pago se
+// incluye en la confirmación aunque coincida con uno ya cargado (o repetido en
+// el archivo). Un botón marca/desmarca todos de una vez.
 
-function PanelDuplicados({ filas }: { filas: PagoFila[] }) {
+function PanelDuplicados({
+  filas, aprobados, onToggle, onToggleTodos,
+}: {
+  filas: PagoFila[];
+  aprobados: Set<number>;
+  onToggle: (idx: number) => void;
+  onToggleTodos: () => void;
+}) {
   if (filas.length === 0) return null;
+
+  const todosAprobados = aprobados.size === filas.length;
 
   return (
     <div style={{
@@ -190,16 +208,29 @@ function PanelDuplicados({ filas }: { filas: PagoFila[] }) {
       {/* Encabezado */}
       <div style={{
         padding: '14px 18px', borderBottom: '1px solid #fcd34d',
-        display: 'flex', alignItems: 'baseline', gap: '10px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap',
       }}>
-        <span style={{ fontSize: 24, fontWeight: 700, color: '#b45309', lineHeight: 1 }}>
-          {filas.length.toLocaleString('es-CO')}
-        </span>
-        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#92400e' }}>
-          {filas.length === 1
-            ? 'pago ya cargado — se omitirá'
-            : 'pagos ya cargados — se omitirán'}
-        </p>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+          <span style={{ fontSize: 24, fontWeight: 700, color: '#b45309', lineHeight: 1 }}>
+            {filas.length.toLocaleString('es-CO')}
+          </span>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#92400e' }}>
+            {filas.length === 1 ? 'pago ya cargado' : 'pagos ya cargados'}
+            {aprobados.size > 0
+              ? ` — ${aprobados.size.toLocaleString('es-CO')} aprobado${aprobados.size !== 1 ? 's' : ''} para ingresar`
+              : ' — se omiten salvo que apruebes'}
+          </p>
+        </div>
+        <button
+          onClick={onToggleTodos}
+          style={{
+            padding: '6px 14px', borderRadius: '6px', border: '0.5px solid #d97706',
+            background: '#fff', color: '#b45309', fontSize: '12px', fontWeight: 600,
+            cursor: 'pointer', whiteSpace: 'nowrap',
+          }}
+        >
+          {todosAprobados ? 'Desmarcar todos' : 'Aprobar todos'}
+        </button>
       </div>
 
       {/* Tabla registro por registro */}
@@ -207,7 +238,7 @@ function PanelDuplicados({ filas }: { filas: PagoFila[] }) {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#fef3c7' }}>
-              {['#', 'Cédula', 'Nombre', 'Valor pagado', 'Fecha', 'Motivo'].map((col, i) => (
+              {['Aprobar', '#', 'Cédula', 'Nombre', 'Valor pagado', 'Fecha', 'Motivo'].map((col, i) => (
                 <th key={i} style={{
                   padding: '8px 14px', textAlign: 'left',
                   fontSize: '11px', fontWeight: 600, color: '#92400e',
@@ -220,34 +251,48 @@ function PanelDuplicados({ filas }: { filas: PagoFila[] }) {
             </tr>
           </thead>
           <tbody>
-            {filas.map((fila, idx) => (
-              <tr
-                key={idx}
-                style={{
-                  borderBottom: idx < filas.length - 1 ? '0.5px solid #fde68a' : 'none',
-                  background: idx % 2 === 0 ? 'transparent' : '#fffaf0',
-                }}
-              >
-                <td style={{ padding: '8px 14px', fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>
-                  {idx + 1}
-                </td>
-                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                  {fila.cedulaTitular}
-                </td>
-                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
-                  {fila.nombreCliente || '—'}
-                </td>
-                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {cop(fila.valorPagado)}
-                </td>
-                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
-                  {fila.fechaPago}
-                </td>
-                <td style={{ padding: '8px 14px', fontSize: '13px', color: '#b45309' }}>
-                  {fila.errorMensaje ?? 'Pago ya cargado'}
-                </td>
-              </tr>
-            ))}
+            {filas.map((fila, idx) => {
+              const aprobado = aprobados.has(idx);
+              return (
+                <tr
+                  key={idx}
+                  onClick={() => onToggle(idx)}
+                  style={{
+                    borderBottom: idx < filas.length - 1 ? '0.5px solid #fde68a' : 'none',
+                    background: aprobado ? '#f0fdf4' : (idx % 2 === 0 ? 'transparent' : '#fffaf0'),
+                    cursor: 'pointer',
+                  }}
+                >
+                  <td style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                    <input
+                      type="checkbox"
+                      checked={aprobado}
+                      onChange={() => onToggle(idx)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ cursor: 'pointer', width: 16, height: 16 }}
+                    />
+                  </td>
+                  <td style={{ padding: '8px 14px', fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>
+                    {idx + 1}
+                  </td>
+                  <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                    {fila.cedulaTitular}
+                  </td>
+                  <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
+                    {fila.nombreCliente || '—'}
+                  </td>
+                  <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {cop(fila.valorPagado)}
+                  </td>
+                  <td style={{ padding: '8px 14px', fontSize: '13px', color: '#78350f', whiteSpace: 'nowrap' }}>
+                    {fila.fechaPago}
+                  </td>
+                  <td style={{ padding: '8px 14px', fontSize: '13px', color: aprobado ? '#15803d' : '#b45309', fontWeight: aprobado ? 600 : 400 }}>
+                    {aprobado ? 'Aprobado — se ingresará' : (fila.errorMensaje ?? 'Pago ya cargado')}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -415,6 +460,7 @@ export function CargueMasivo() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [etapa,              setEtapa]              = useState<Etapa>('inicial');
+  const [modo,               setModo]               = useState<'estandar' | 'masivo'>('estandar');
   const [carteraID,          setCarteraID]          = useState<number | ''>('');
   const [archivoNombre,      setArchivoNombre]      = useState('');
   const [archivoKB,          setArchivoKB]          = useState(0);
@@ -428,16 +474,22 @@ export function CargueMasivo() {
   const [verValidos,         setVerValidos]         = useState(false);
   const [verDuplicados,      setVerDuplicados]      = useState(false);
   const [verTitularesNuevos, setVerTitularesNuevos] = useState(false);
+  // Índices (dentro de preview.duplicados) de los pagos duplicados aprobados
+  // para ingresar de todos modos mediante su checkbox.
+  const [duplicadosAprobados, setDuplicadosAprobados] = useState<Set<number>>(new Set());
 
   const { data: carteras = [] } = useQuery({
     queryKey: ['pagos-carteras'],
     queryFn:  listarCarterasPagos,
   });
 
+  const esMasivo = modo === 'masivo';
+
   const mutValidar = useMutation({
     mutationFn: () => validarCsvPagos(
       inputRef.current!.files![0],
-      Number(carteraID),
+      esMasivo ? null : Number(carteraID),
+      esMasivo,
     ),
     onSuccess: (data) => {
       setPreview(data);
@@ -448,6 +500,7 @@ export function CargueMasivo() {
       setVerDuplicados(data.cantidadDuplicados > 0);
       setVerTitularesNuevos(data.cantidadTitularesNuevos > 0);
       setVerValidos(false);
+      setDuplicadosAprobados(new Set());
       setEtapa('preview');
     },
     onError: (err: unknown) => {
@@ -457,8 +510,17 @@ export function CargueMasivo() {
     },
   });
 
+  // Duplicados aprobados por el usuario (se ingresan junto a los válidos).
+  const filasAprobadas = preview
+    ? preview.duplicados.filter((_, i) => duplicadosAprobados.has(i))
+    : [];
+
   const mutConfirmar = useMutation({
-    mutationFn: () => confirmarCarguePagos(Number(carteraID), preview!.todasLasValidas),
+    mutationFn: () => confirmarCarguePagos(
+      esMasivo ? 0 : Number(carteraID),
+      [...preview!.todasLasValidas, ...filasAprobadas],
+      esMasivo,
+    ),
     onSuccess: (data) => {
       setInsertados(data.insertados);
       setEtapa('resultado');
@@ -489,11 +551,28 @@ export function CargueMasivo() {
     setVerValidos(false);
     setVerDuplicados(false);
     setVerTitularesNuevos(false);
+    setDuplicadosAprobados(new Set());
     if (inputRef.current) inputRef.current.value = '';
   };
 
+  const toggleDuplicadoAprobado = (idx: number) => {
+    setDuplicadosAprobados(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleTodosDuplicados = () => {
+    const total = preview?.duplicados.length ?? 0;
+    setDuplicadosAprobados(prev =>
+      prev.size === total ? new Set() : new Set(Array.from({ length: total }, (_, i) => i)));
+  };
+
   const esCargando   = mutValidar.isPending || mutConfirmar.isPending;
-  const puedeValidar = !!carteraID && !!archivoNombre;
+  // En modo masivo no se exige cartera del selector (viene por fila en el archivo).
+  const carteraLista = esMasivo || !!carteraID;
+  const puedeValidar = carteraLista && !!archivoNombre;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -510,36 +589,49 @@ export function CargueMasivo() {
           borderRadius: '8px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px',
         }}>
 
-          {/* Paso 1 — Cartera */}
+          {/* Paso 1 — Cartera o modo Cargue Masivo */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Paso 1 — Selecciona la cartera
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <select
-                value={carteraID}
-                onChange={e => setCarteraID(e.target.value ? Number(e.target.value) : '')}
+                value={esMasivo ? OPCION_MASIVO : carteraID}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === OPCION_MASIVO) { setModo('masivo'); setCarteraID(''); }
+                  else { setModo('estandar'); setCarteraID(v ? Number(v) : ''); }
+                  setErrorMensaje('');
+                }}
                 style={{
                   padding: '7px 10px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: carteraID ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-                  fontSize: '13px', width: '280px', cursor: 'pointer', outline: 'none',
+                  background: 'var(--z-bg-page)', color: carteraLista ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+                  fontSize: '13px', width: '320px', cursor: 'pointer', outline: 'none',
                 }}
               >
                 <option value="">— Seleccionar cartera —</option>
+                <option value={OPCION_MASIVO}>⇅ Cargue Masivo (Líder y Cartera en el archivo)</option>
                 {carteras.map(c => (
                   <option key={c.id} value={c.id}>{c.nombre}</option>
                 ))}
               </select>
-              <LeyendaUltimaActualizacion
-                carteraID={carteraID}
-                queryKey="pagos-ultima-actualizacion"
-                queryFn={obtenerUltimaActualizacionPagos}
-              />
+              {!esMasivo && (
+                <LeyendaUltimaActualizacion
+                  carteraID={carteraID}
+                  queryKey="pagos-ultima-actualizacion"
+                  queryFn={obtenerUltimaActualizacionPagos}
+                />
+              )}
             </div>
             <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              El líder de cada pago se asigna automáticamente según las asignaciones del sistema.
+              {esMasivo
+                ? 'El Líder y la Cartera de cada pago se toman de las columnas del archivo (nombres exactos). El asesor (UsuarioControl) es opcional.'
+                : 'El líder de cada pago se asigna automáticamente según las asignaciones del sistema.'}
             </p>
           </div>
+
+          {/* Panel de ayuda — nombres exactos (idéntico a Histórico de Virtualidad) */}
+          {esMasivo && <PanelNombresValidos />}
 
           {/* Paso 2 — Plantilla */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -549,7 +641,7 @@ export function CargueMasivo() {
             <button
               onClick={async () => {
                 setGenerandoPlantilla(true);
-                await generarPlantillaPagos();
+                await generarPlantillaPagos(esMasivo);
                 setGenerandoPlantilla(false);
               }}
               disabled={generandoPlantilla}
@@ -561,11 +653,25 @@ export function CargueMasivo() {
                 cursor: generandoPlantilla ? 'not-allowed' : 'pointer',
               }}
             >
-              {generandoPlantilla ? 'Generando...' : 'Generar Plantilla'}
+              {generandoPlantilla ? 'Generando...' : (esMasivo ? 'Generar Plantilla (con Líder y Cartera)' : 'Generar Plantilla')}
             </button>
             <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Columnas requeridas: <strong>Cédula</strong>, <strong>Nombre</strong>, <strong>Valor</strong>,{' '}
-              <strong>Fecha</strong>, <strong>Honorarios</strong>, <strong>UsuarioControl</strong>.
+              {esMasivo ? (
+                <>
+                  Columnas requeridas: <strong>Cédula</strong>, <strong>Nombre</strong>, <strong>Valor</strong>,{' '}
+                  <strong>Fecha</strong>, <strong>Honorarios</strong>, <strong>Lider</strong>, <strong>Cartera</strong>.{' '}
+                  <strong>UsuarioControl</strong> es opcional. Usa el panel de arriba para copiar los nombres exactos.{' '}
+                  El archivo puede traer las columnas en cualquier orden y con columnas adicionales — se
+                  identifican por su nombre de encabezado, no por su posición.
+                </>
+              ) : (
+                <>
+                  Columnas requeridas: <strong>Cédula</strong>, <strong>Nombre</strong>, <strong>Valor</strong>,{' '}
+                  <strong>Fecha</strong>, <strong>Honorarios</strong>, <strong>UsuarioControl</strong>.{' '}
+                  El archivo puede traer las columnas en cualquier orden y con columnas adicionales — se
+                  identifican por su nombre de encabezado, no por su posición.
+                </>
+              )}
             </p>
           </div>
 
@@ -575,13 +681,13 @@ export function CargueMasivo() {
               Paso 3 — Sube el archivo completado
             </p>
             <div
-              onClick={() => !!carteraID && inputRef.current?.click()}
+              onClick={() => carteraLista && inputRef.current?.click()}
               style={{
                 border: `1.5px dashed ${archivoNombre ? 'var(--z-brand)' : 'var(--z-border)'}`,
                 borderRadius: '8px', padding: '24px', textAlign: 'center',
-                cursor: carteraID ? 'pointer' : 'not-allowed',
+                cursor: carteraLista ? 'pointer' : 'not-allowed',
                 background: archivoNombre ? '#eff6ff' : 'transparent',
-                opacity: carteraID ? 1 : 0.5,
+                opacity: carteraLista ? 1 : 0.5,
                 transition: 'border-color 0.15s, background 0.15s',
               }}
             >
@@ -597,7 +703,7 @@ export function CargueMasivo() {
               ref={inputRef}
               type="file"
               accept=".csv,.xlsx"
-              disabled={!carteraID}
+              disabled={!carteraLista}
               onChange={handleSeleccionarArchivo}
               style={{ display: 'none' }}
             />
@@ -609,9 +715,9 @@ export function CargueMasivo() {
                 × Quitar archivo
               </button>
             )}
-            {!carteraID && (
+            {!carteraLista && (
               <p style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-                Selecciona primero la cartera para habilitar la carga.
+                Selecciona primero la cartera (o el modo Cargue Masivo) para habilitar la carga.
               </p>
             )}
           </div>
@@ -660,7 +766,9 @@ export function CargueMasivo() {
             {preview.cantidadDuplicados > 0 && (
               <ChipConteo
                 numero={preview.cantidadDuplicados}
-                label="ya cargados — se omitirán"
+                label={filasAprobadas.length > 0
+                  ? `ya cargados — ${filasAprobadas.length} aprobado(s)`
+                  : 'ya cargados — apruébalos si aplica'}
                 bg="#fffbeb" border="#fcd34d" colorNum="#b45309" colorLabel="#92400e"
                 onClick={() => setVerDuplicados(v => !v)}
                 abierto={verDuplicados}
@@ -686,8 +794,16 @@ export function CargueMasivo() {
             )}
           </div>
 
-          {/* Panel de duplicados — TODOS los ya cargados (click en el chip ámbar) */}
-          {verDuplicados && <PanelDuplicados filas={preview.duplicados} />}
+          {/* Panel de duplicados — TODOS los ya cargados (click en el chip ámbar).
+              Cada fila puede aprobarse (checkbox) para ingresarla de todos modos. */}
+          {verDuplicados && (
+            <PanelDuplicados
+              filas={preview.duplicados}
+              aprobados={duplicadosAprobados}
+              onToggle={toggleDuplicadoAprobado}
+              onToggleTodos={toggleTodosDuplicados}
+            />
+          )}
 
           {/* Panel de titulares nuevos — se crearán al confirmar (click en el chip ámbar) */}
           {verTitularesNuevos && <PanelTitularesNuevos filas={preview.titularesNuevos} />}
@@ -701,54 +817,61 @@ export function CargueMasivo() {
           )}
 
           {/* Aviso */}
-          {preview.cantidadValidas > 0 && (
+          {(preview.cantidadValidas > 0 || filasAprobadas.length > 0) && (
             <div style={{
               background: '#eff6ff', border: '0.5px solid #93c5fd',
               borderRadius: '8px', padding: '12px 16px',
               fontSize: '13px', color: '#1e40af',
             }}>
-              <strong>Atención:</strong> los {preview.cantidadValidas} pagos válidos se insertarán
-              directamente en la tabla <strong>Pago</strong>. Esta acción no se puede deshacer.
-              {preview.cantidadDuplicados > 0 &&
-                ` Los ${preview.cantidadDuplicados} pagos ya cargados se omitirán automáticamente.`}
+              <strong>Atención:</strong> se insertarán {(preview.cantidadValidas + filasAprobadas.length).toLocaleString('es-CO')} pago(s)
+              en la tabla <strong>Pago</strong>. Esta acción no se puede deshacer.
+              {filasAprobadas.length > 0 &&
+                ` Incluye ${filasAprobadas.length} duplicado(s) aprobado(s) manualmente.`}
+              {preview.cantidadDuplicados - filasAprobadas.length > 0 &&
+                ` Se omitirán ${preview.cantidadDuplicados - filasAprobadas.length} pago(s) ya cargado(s) sin aprobar.`}
               {preview.cantidadTitularesNuevos > 0 &&
                 ` Se crearán ${preview.cantidadTitularesNuevos} titular(es) nuevo(s) que no existían en la base.`}
             </div>
           )}
 
           {/* Acciones */}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button
-              onClick={() => mutConfirmar.mutate()}
-              disabled={preview.cantidadValidas === 0}
-              style={{
-                padding: '9px 20px', borderRadius: '6px', border: 'none',
-                background: preview.cantidadValidas > 0 ? 'var(--z-brand)' : 'var(--z-border)',
-                color: preview.cantidadValidas > 0 ? '#fff' : 'var(--z-text-muted)',
-                fontSize: '13px', fontWeight: 600,
-                cursor: preview.cantidadValidas > 0 ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Confirmar {preview.cantidadValidas} pago{preview.cantidadValidas !== 1 ? 's' : ''}
-            </button>
-            <button
-              onClick={handleNuevaCarga}
-              style={{
-                padding: '9px 16px', borderRadius: '6px',
-                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                color: 'var(--z-text-muted)', fontSize: '13px', cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-            {preview.cantidadValidas === 0 && (
-              <p style={{ fontSize: '13px', color: '#dc2626', margin: 0 }}>
-                {preview.cantidadErrores === 0 && preview.cantidadDuplicados > 0
-                  ? 'No hay pagos nuevos: todos los del archivo ya estaban cargados.'
-                  : 'No hay pagos válidos. Corrige los errores y vuelve a subir el archivo.'}
-              </p>
-            )}
-          </div>
+          {(() => {
+            const totalAConfirmar = preview.cantidadValidas + filasAprobadas.length;
+            return (
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  onClick={() => mutConfirmar.mutate()}
+                  disabled={totalAConfirmar === 0}
+                  style={{
+                    padding: '9px 20px', borderRadius: '6px', border: 'none',
+                    background: totalAConfirmar > 0 ? 'var(--z-brand)' : 'var(--z-border)',
+                    color: totalAConfirmar > 0 ? '#fff' : 'var(--z-text-muted)',
+                    fontSize: '13px', fontWeight: 600,
+                    cursor: totalAConfirmar > 0 ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Confirmar {totalAConfirmar} pago{totalAConfirmar !== 1 ? 's' : ''}
+                </button>
+                <button
+                  onClick={handleNuevaCarga}
+                  style={{
+                    padding: '9px 16px', borderRadius: '6px',
+                    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                    color: 'var(--z-text-muted)', fontSize: '13px', cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                {totalAConfirmar === 0 && (
+                  <p style={{ fontSize: '13px', color: '#dc2626', margin: 0 }}>
+                    {preview.cantidadErrores === 0 && preview.cantidadDuplicados > 0
+                      ? 'No hay pagos nuevos sin aprobar. Marca los duplicados que quieras ingresar o sube otro archivo.'
+                      : 'No hay pagos válidos. Corrige los errores y vuelve a subir el archivo.'}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {errorMensaje && (
             <div style={{

@@ -2,14 +2,15 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { obtenerCarteras } from '../../api/carterasApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { PanelNombresValidos } from '../../components/PanelNombresValidos';
 import {
   generarPlantillaSolicitud, validarSolicitud, confirmarSolicitud,
   descargarPendientes, validarResultado, confirmarResultado,
-} from '../../api/solicitudesVirtualidadApi';
+} from '../../api/historicoVirtualidadApi';
 import type {
   CanalVirtualidad, FilaSolicitud, ValidarSolicitudResponse,
   ValidarResultadoResponse,
-} from '../../types/solicitudesVirtualidad';
+} from '../../types/historicoVirtualidad';
 
 // ── Metadatos de canal ──────────────────────────────────────────────────────
 
@@ -227,6 +228,7 @@ function SeccionSolicitud({ canal }: { canal: CanalVirtualidad }) {
           onClick={() => inputRef.current?.click()} onChange={seleccionar}
           onQuitar={() => { setNombre(''); setKB(0); if (inputRef.current) inputRef.current.value = ''; }} />
       </div>
+      <PanelNombresValidos />
       {error && <div style={cajaError}>{error}</div>}
     </div>
   );
@@ -405,7 +407,7 @@ function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
 
 // ── Página ──────────────────────────────────────────────────────────────────
 
-export function GestionSolicitudesVirtualidadPage() {
+export function GestionHistoricoVirtualidadPage() {
   const [canal, setCanal] = useState<CanalVirtualidad>('IVR');
   const [fase, setFase]   = useState<'solicitud' | 'resultado'>('solicitud');
 
@@ -436,7 +438,7 @@ export function GestionSolicitudesVirtualidadPage() {
         .z-tab-fase-activa:hover::after { left: 0; right: 0; }
       `}</style>
       <div>
-        <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>Gestión de Solicitudes de Virtualidad</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>Gestión de Histórico de Virtualidad</h1>
         <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
           Registra el histórico de solicitudes IVR, SMS y Correos, y actualiza sus resultados. El mapeo a cartera y líder se resuelve por el nombre indicado en el archivo.
         </p>
