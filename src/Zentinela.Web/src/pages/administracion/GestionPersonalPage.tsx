@@ -767,7 +767,7 @@ export function GestionPersonalPage() {
           options={[{ value: '', label: 'Todos los supervisores' }, ...opcionesSupervisor.map(s => ({ value: s, label: s }))]}
           value={filtroSupervisor}
           onChange={setFiltroSupervisor}
-          style={{ minWidth: '200px', boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)' }}
+          style={{ minWidth: '200px' }}
         />
       </div>
 
