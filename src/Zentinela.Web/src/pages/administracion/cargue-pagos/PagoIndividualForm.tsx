@@ -8,6 +8,7 @@ import {
 } from '../../../api/pagosApi';
 import type { AsesorCartera, RegistrarPagoIndividualResponse } from '../../../types/pagos';
 import { CargandoSpiral } from '../../../components/CargandoSpiral';
+import { ZDropdown } from '../../../components/ZDropdown';
 
 // ── Estilos compartidos ─────────────────────────────────────────────────────────
 
@@ -203,16 +204,12 @@ export function PagoIndividualForm() {
       {/* Cartera */}
       <div>
         <label style={LABEL}>Cartera</label>
-        <select
+        <ZDropdown
+          options={[{ value: '', label: '— Seleccionar cartera —' }, ...carteras.map(c => ({ value: c.id, label: c.nombre }))]}
           value={carteraID}
-          onChange={(e) => cambiarCartera(e.target.value ? Number(e.target.value) : '')}
-          style={{ ...INPUT, cursor: 'pointer', color: carteraID ? 'var(--z-text-primary)' : 'var(--z-text-muted)' }}
-        >
-          <option value="">— Seleccionar cartera —</option>
-          {carteras.map(c => (
-            <option key={c.id} value={c.id}>{c.nombre}</option>
-          ))}
-        </select>
+          onChange={cambiarCartera}
+          background="var(--z-bg-page)"
+        />
       </div>
 
       {/* Cédula */}

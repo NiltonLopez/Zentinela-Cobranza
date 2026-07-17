@@ -11,6 +11,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { getInformeAgenciasExternas } from '../../api/informesRecaudoApi';
+import { ZDropdown } from '../../components/ZDropdown';
 import type { FilaAgenciaExterna } from '../../types/informesRecaudo';
 import {
   C, cop, MESES, KpiCard, Semaforo, ChipTipoMeta, Cargando, ErrorMsg,
@@ -41,20 +42,20 @@ function SelectorPeriodo({ año, mes, onAño, onMes }: {
   año: number; mes: number;
   onAño: (n: number) => void; onMes: (n: number) => void;
 }) {
-  const baseStyle: React.CSSProperties = {
-    padding: '6px 10px', borderRadius: 6, border: '1px solid var(--z-border)',
-    background: 'var(--z-bg-card)', color: 'var(--z-text-primary)', fontSize: 13,
-  };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <select value={mes} onChange={(e) => onMes(Number(e.target.value))} style={baseStyle}>
-        {MESES.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
-      </select>
-      <select value={año} onChange={(e) => onAño(Number(e.target.value))} style={baseStyle}>
-        {[AÑO_ACTUAL - 1, AÑO_ACTUAL, AÑO_ACTUAL + 1].map((a) => (
-          <option key={a} value={a}>{a}</option>
-        ))}
-      </select>
+      <ZDropdown
+        options={MESES.map((m, i) => ({ value: i + 1, label: m }))}
+        value={mes}
+        onChange={onMes}
+        style={{ minWidth: 130 }}
+      />
+      <ZDropdown
+        options={[AÑO_ACTUAL - 1, AÑO_ACTUAL, AÑO_ACTUAL + 1].map((a) => ({ value: a, label: String(a) }))}
+        value={año}
+        onChange={onAño}
+        style={{ minWidth: 90 }}
+      />
     </div>
   );
 }
@@ -90,7 +91,11 @@ function TablaExternas({ filas, sortKey, sortDir, onSort }: {
           </thead>
           <tbody>
             {filas.map(f => (
-              <tr key={`${f.liderID}-${f.carteraID}`}>
+              <tr
+                key={`${f.liderID}-${f.carteraID}`}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
                 <td style={{ ...TD }}>{f.nombreLider}</td>
                 <td style={{ ...TD }}>{f.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{f.totalAsesores}</td>

@@ -5,6 +5,7 @@ import { generarPlantilla, validarArchivo, confirmarCargue } from '../../api/asi
 import { listarRelaciones } from '../../api/gestionCarterasApi';
 import type { PreviewAsignacionDto, EstadoValidacion, FilaValidacionDto } from '../../types/asignaciones';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Helpers de estilo ────────────────────────────────────────────────────────
 
@@ -353,22 +354,16 @@ export function GestionAsignacionesPage() {
             {cargandoOpciones ? (
               <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>Cargando opciones...</p>
             ) : (
-              <select
+              <ZDropdown
+                options={[
+                  { value: '', label: '— Selecciona cartera y líder —' },
+                  ...opciones.map(o => ({ value: `${o.carteraID}_${o.liderID}`, label: o.etiqueta })),
+                ]}
                 value={seleccion}
-                onChange={e => setSeleccion(e.target.value)}
-                style={{
-                  padding: '8px 10px', fontSize: '13px', borderRadius: '6px',
-                  border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                  color: 'var(--z-text-primary)', outline: 'none', maxWidth: '400px',
-                }}
-              >
-                <option value="">— Selecciona cartera y líder —</option>
-                {opciones.map(o => (
-                  <option key={`${o.carteraID}_${o.liderID}`} value={`${o.carteraID}_${o.liderID}`}>
-                    {o.etiqueta}
-                  </option>
-                ))}
-              </select>
+                onChange={setSeleccion}
+                background="var(--z-bg-page)"
+                style={{ maxWidth: '400px' }}
+              />
             )}
           </div>
 

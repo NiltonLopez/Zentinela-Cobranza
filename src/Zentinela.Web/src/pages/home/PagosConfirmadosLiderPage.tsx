@@ -5,6 +5,7 @@ import {
   obtenerCarterasLiderPropias,
 } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import { FiltrosPeriodo, calcularRango } from '../../components/pagos/FiltrosPeriodo';
@@ -22,14 +23,13 @@ const PREVIEW_LIMIT = 10;
 const TD: React.CSSProperties = {
   padding: '10px 14px', fontSize: '13px',
   color: 'var(--z-text-primary)',
-  borderBottom: '0.5px solid var(--z-border)',
   whiteSpace: 'nowrap',
 };
 
-function FilaPago({ pago, idx }: { pago: PagoDirectorDto; idx: number }) {
-  const bg = idx % 2 === 0 ? 'var(--z-bg-card)' : 'var(--z-bg-page)';
+function FilaPago({ pago }: { pago: PagoDirectorDto }) {
+  const bg = 'var(--z-bg-card)';
   return (
-    <tr>
+    <tr style={{ borderBottom: '0.5px solid var(--z-border)' }}>
       <td style={{ ...TD, background: bg }}>
         {pago.nombreCliente}
         <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
@@ -88,12 +88,6 @@ export function PagosConfirmadosLiderPage() {
   const enModoPreview = carteraID === null;
   const filasVisibles = enModoPreview ? sorted.slice(0, PREVIEW_LIMIT) : sorted;
 
-  const selectStyle: React.CSSProperties = {
-    padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-    color: 'var(--z-text-primary)', outline: 'none',
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1200px' }}>
 
@@ -121,12 +115,12 @@ export function PagosConfirmadosLiderPage() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Cartera
             </label>
-            <select value={carteraID ?? ''} onChange={e => setCarteraID(Number(e.target.value) || null)} style={selectStyle}>
-              <option value="">Todas mis carteras</option>
-              {carteras.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-              ))}
-            </select>
+            <ZDropdown
+              options={[{ value: null, label: 'Todas mis carteras' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+              value={carteraID}
+              onChange={setCarteraID}
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {carteraID !== null && (
@@ -209,8 +203,8 @@ export function PagosConfirmadosLiderPage() {
                 </tr>
               </thead>
               <tbody>
-                {filasVisibles.map((p, i) => (
-                  <FilaPago key={p.pagoID} pago={p} idx={i} />
+                {filasVisibles.map(p => (
+                  <FilaPago key={p.pagoID} pago={p} />
                 ))}
               </tbody>
             </table>

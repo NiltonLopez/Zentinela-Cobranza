@@ -7,6 +7,7 @@ import {
 } from '../../api/dashboardApi';
 import type { FilaLiderDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
@@ -389,10 +390,15 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
       </thead>
       <tbody>
         {items.map((f, i) => (
-          <tr key={f.agenteID} style={{
-            borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
-            borderBottom: '0.5px solid var(--z-border)',
-          }}>
+          <tr
+            key={f.agenteID}
+            style={{
+              borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+              borderBottom: '0.5px solid var(--z-border)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreAsesor}
               <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px', fontWeight: 400 }}>
@@ -547,9 +553,8 @@ export function DashboardDirectorPage() {
     setCarteraNombre('');
   };
 
-  const handleCambiarLider = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const handleCambiarLider = (val: number | null) => {
+    if (val === null) {
       setLiderID(null);
       setLiderNombre('');
       setCarteraID(null);
@@ -563,9 +568,8 @@ export function DashboardDirectorPage() {
     }
   };
 
-  const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const handleCambiarCartera = (val: number | null) => {
+    if (val === null) {
       setCarteraID(null);
       setCarteraNombre('');
     } else {
@@ -580,29 +584,6 @@ export function DashboardDirectorPage() {
     setLiderNombre('');
     setCarteraID(null);
     setCarteraNombre('');
-  };
-
-  // Chevron propio (reemplaza la flecha nativa del <select>, inconsistente entre navegadores).
-  const chevronSelect =
-    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888780' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
-
-  const estiloSelect: React.CSSProperties = {
-    padding: '7px 30px 7px 10px', fontSize: '13px', borderRadius: '6px',
-    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-    color: 'var(--z-text-primary)', outline: 'none', cursor: 'pointer',
-    appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
-    backgroundImage: chevronSelect, backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'right 10px center', backgroundSize: '10px 6px',
-    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-  };
-
-  const enfocarSelect = (e: React.FocusEvent<HTMLSelectElement>) => {
-    e.currentTarget.style.borderColor = 'var(--z-brand)';
-    e.currentTarget.style.boxShadow = '0 0 0 3px var(--z-brand-light)';
-  };
-  const desenfocarSelect = (e: React.FocusEvent<HTMLSelectElement>) => {
-    e.currentTarget.style.borderColor = 'var(--z-border)';
-    e.currentTarget.style.boxShadow = 'none';
   };
 
   const mostrarDesgloseLider  = !liderID && (data?.filasLider?.length ?? 0) > 0;
@@ -654,18 +635,12 @@ export function DashboardDirectorPage() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Líder
             </label>
-            <select
-              value={liderID ?? ''}
+            <ZDropdown
+              options={[{ value: null, label: 'Todos los líderes' }, ...lideres.map(l => ({ value: l.id, label: l.nombre }))]}
+              value={liderID}
               onChange={handleCambiarLider}
-              onFocus={enfocarSelect}
-              onBlur={desenfocarSelect}
-              style={estiloSelect}
-            >
-              <option value="">Todos los líderes</option>
-              {lideres.map(l => (
-                <option key={l.id} value={l.id}>{l.nombre}</option>
-              ))}
-            </select>
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {liderID !== null && (
@@ -673,18 +648,12 @@ export function DashboardDirectorPage() {
               <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 Cartera
               </label>
-              <select
-                value={carteraID ?? ''}
+              <ZDropdown
+                options={[{ value: null, label: 'Todas las carteras del líder' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+                value={carteraID}
                 onChange={handleCambiarCartera}
-                onFocus={enfocarSelect}
-                onBlur={desenfocarSelect}
-                style={estiloSelect}
-              >
-                <option value="">Todas las carteras del líder</option>
-                {carteras.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-                ))}
-              </select>
+                background="var(--z-bg-page)"
+              />
             </div>
           )}
 
@@ -859,7 +828,15 @@ export function DashboardDirectorPage() {
                 borderRadius: '6px', padding: '4px 10px',
                 border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
                 color: 'var(--z-text-primary)', fontSize: '12px', fontWeight: 500, lineHeight: 1,
-                cursor: 'pointer',
+                cursor: 'pointer', transition: 'color 0.15s, border-color 0.15s',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = 'var(--z-brand)';
+                e.currentTarget.style.borderColor = 'var(--z-brand)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = 'var(--z-text-primary)';
+                e.currentTarget.style.borderColor = 'var(--z-border)';
               }}
             >
               ← Volver

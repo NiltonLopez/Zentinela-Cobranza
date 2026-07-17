@@ -8,6 +8,7 @@ import {
 } from '../../api/comparadorApi';
 import type { ComparadorVsCarteraDto, TitularComparativoDto } from '../../types/comparador';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -278,24 +279,16 @@ export function ComparadorCarterasPage() {
         <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>
           Cartera a analizar
         </label>
-        <select
-          value={carteraID ?? ''}
-          onChange={e => setCarteraID(e.target.value ? Number(e.target.value) : null)}
+        <ZDropdown
+          options={[
+            { value: null, label: '— Selecciona una cartera —' },
+            ...(opciones ?? []).map(o => ({ value: o.carteraID, label: o.nombreCartera })),
+          ]}
+          value={carteraID}
+          onChange={setCarteraID}
           disabled={cargandoOpciones}
-          style={{
-            padding: '8px 12px', borderRadius: 6,
-            border: '1px solid var(--z-border)',
-            background: 'var(--z-bg-card)', color: 'var(--z-text)',
-            fontSize: 14, minWidth: 300,
-          }}
-        >
-          <option value="">— Selecciona una cartera —</option>
-          {opciones?.map(o => (
-            <option key={o.carteraID} value={o.carteraID}>
-              {o.nombreCartera}
-            </option>
-          ))}
-        </select>
+          style={{ minWidth: 300 }}
+        />
       </div>
 
       {cargandoDatos && (

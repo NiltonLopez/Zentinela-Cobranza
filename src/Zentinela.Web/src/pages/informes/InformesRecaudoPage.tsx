@@ -21,6 +21,7 @@ import type {
   InformeAgenteMes,
   InformeLiderCartera,
 } from '../../types/informesRecaudo';
+import { ZDropdown } from '../../components/ZDropdown';
 import {
   C, cop, MESES, KpiCard, Semaforo, ChipTipoMeta, Cargando, ErrorMsg,
   buildExportarPDF, filtrarColumnas, ModalColumnas, useSortable, ThSort, FiltroSelect,
@@ -48,20 +49,21 @@ function SelectorPeriodo({ año, mes, onAño, onMes, label }: {
   onAño: (v: number) => void; onMes: (v: number) => void;
   label?: string;
 }) {
-  const sel: React.CSSProperties = {
-    background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
-    borderRadius: 6, padding: '5px 10px', fontSize: 13,
-    color: 'var(--z-text-primary)', cursor: 'pointer',
-  };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {label && <span style={{ fontSize: 13, color: 'var(--z-text-muted)' }}>{label}</span>}
-      <select value={mes} onChange={e => onMes(Number(e.target.value))} style={sel}>
-        {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-      </select>
-      <select value={año} onChange={e => onAño(Number(e.target.value))} style={sel}>
-        {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
-      </select>
+      <ZDropdown
+        options={MESES.map((m, i) => ({ value: i + 1, label: m }))}
+        value={mes}
+        onChange={onMes}
+        style={{ minWidth: 130 }}
+      />
+      <ZDropdown
+        options={[2024, 2025, 2026, 2027].map(a => ({ value: a, label: String(a) }))}
+        value={año}
+        onChange={onAño}
+        style={{ minWidth: 90 }}
+      />
     </div>
   );
 }
@@ -284,7 +286,10 @@ function TablaAgentes({ agentes, esLider, sortKey, sortDir, onSort }: {
 
 function FilaAgente({ a, pos, esLider }: { a: InformeAgenteMes & { caida: number }; pos: number; esLider: boolean }) {
   return (
-    <tr>
+    <tr
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
       <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{pos}</td>
       <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{a.nombreAgente}</td>
       {!esLider && <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{a.nombreLider}</td>}
@@ -583,7 +588,11 @@ function TablaLideres({ lideres, sortKey, sortDir, onSort }: {
             {lideres.map(l => {
               const proyOk = l.proyeccionCierre >= l.valorMeta && l.valorMeta > 0;
               return (
-                <tr key={l.liderID}>
+                <tr
+                  key={l.liderID}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
                   <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{l.nombreLider}</td>
                   <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{l.carteras}</td>
                   <td style={{ ...TD, textAlign: 'center' }}>{l.asesores}</td>
@@ -989,7 +998,11 @@ function TablaCarterasLiderCartera({ filas, esLider, sortKey, sortDir, onSort }:
           </thead>
           <tbody>
             {filas.map(f => (
-              <tr key={`${f.liderID}-${f.carteraID}`}>
+              <tr
+                key={`${f.liderID}-${f.carteraID}`}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
                 {!esLider && <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{f.nombreLider}</td>}
                 <td style={{ ...TD, textAlign: 'left', color: 'var(--z-text-muted)' }}>{f.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{f.totalAsesores}</td>
@@ -1043,7 +1056,11 @@ function TablaCarterasAgrupada({ filas, sortKey, sortDir, onSort }: {
           </thead>
           <tbody>
             {filas.map(c => (
-              <tr key={c.carteraID}>
+              <tr
+                key={c.carteraID}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 500, color: 'var(--z-text-primary)' }}>{c.nombreCartera}</td>
                 <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{c.lideres}</td>
                 <td style={{ ...TD, textAlign: 'center' }}>{c.asesores}</td>
@@ -1327,7 +1344,11 @@ function TablaComparativo({ filas, labelA, labelB, labelC, sortKey, sortDir, onS
               const varAB = f.valA > 0 ? ((f.valB - f.valA) / f.valA * 100) : null;
               const varBC = f.valB > 0 ? ((f.valC - f.valB) / f.valB * 100) : null;
               return (
-                <tr key={f.carteraID}>
+                <tr
+                  key={f.carteraID}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
                   <td style={{ ...TD, textAlign: 'left', fontWeight: 500 }}>{f.nombre}</td>
                   <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(f.valA)}</td>
                   <td style={{ ...TD, textAlign: 'right', color: 'var(--z-text-muted)' }}>{cop(f.honA)}</td>

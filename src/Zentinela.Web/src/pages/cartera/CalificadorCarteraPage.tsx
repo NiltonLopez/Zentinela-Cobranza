@@ -8,6 +8,7 @@ import {
 } from '../../api/calificadorApi';
 import type { CalificadorCarteraDto, DesglosePar, LocalizacionFuente } from '../../types/calificador';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // Mapa etiqueta de fuente (UI) → slug que entiende el backend para descargar
 // (Cédula, Nombre, Última Consulta) de la celda correspondiente.
@@ -235,27 +236,18 @@ export function CalificadorCarteraPage() {
         {cargandoOpciones ? (
           <CargandoSpiral />
         ) : (
-          <select
+          <ZDropdown
+            options={[
+              { value: '', label: '— Selecciona una cartera —' },
+              ...(opciones ?? []).map((o) => ({
+                value: `${o.carteraID}_${o.liderID ?? ''}`,
+                label: o.etiqueta,
+              })),
+            ]}
             value={seleccion}
-            onChange={(e) => setSeleccion(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '0.5px solid var(--z-border)',
-              background: 'var(--z-bg-card)',
-              color: 'var(--z-text-primary)',
-              fontSize: '13px',
-              minWidth: 320,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">— Selecciona una cartera —</option>
-            {opciones?.map((o) => (
-              <option key={`${o.carteraID}_${o.liderID ?? ''}`} value={`${o.carteraID}_${o.liderID ?? ''}`}>
-                {o.etiqueta}
-              </option>
-            ))}
-          </select>
+            onChange={setSeleccion}
+            style={{ minWidth: 320 }}
+          />
         )}
       </div>
 

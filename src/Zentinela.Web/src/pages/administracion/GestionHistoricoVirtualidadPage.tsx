@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { obtenerCarteras } from '../../api/carterasApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { PanelNombresValidos } from '../../components/PanelNombresValidos';
 import {
   generarPlantillaSolicitud, validarSolicitud, confirmarSolicitud,
@@ -375,11 +376,13 @@ function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Paso 1 — Descarga las solicitudes pendientes</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={carteraID} onChange={e => setCarteraID(Number(e.target.value))}
-            style={{ padding: '7px 10px', borderRadius: 6, border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', fontSize: 13, width: 240, cursor: 'pointer' }}>
-            <option value={0}>Todas las carteras</option>
-            {carteras.map(c => <option key={c.id} value={c.id}>{c.nombreCartera}</option>)}
-          </select>
+          <ZDropdown
+            options={[{ value: 0, label: 'Todas las carteras' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+            value={carteraID}
+            onChange={setCarteraID}
+            background="var(--z-bg-page)"
+            style={{ width: 240 }}
+          />
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)} title="Desde"
             style={{ padding: '7px 10px', borderRadius: 6, border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', fontSize: 13 }} />
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} title="Hasta"

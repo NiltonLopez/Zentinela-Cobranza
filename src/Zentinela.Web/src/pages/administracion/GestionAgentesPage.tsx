@@ -7,6 +7,7 @@ import {
   desasignarCarteraAgente,
 } from '../../api/adminApi';
 import type { AgenteAdmin } from '../../types/admin';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Modal: gestionar carteras del agente ─────────────────────────────────────
 
@@ -302,22 +303,12 @@ export function GestionAgentesPage() {
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
         />
-        <select
+        <ZDropdown
+          options={[{ value: '', label: 'Todos los líderes' }, ...lideres.map((l) => ({ value: l, label: l }))]}
           value={liderFiltro}
-          onChange={(e) => setLiderFiltro(e.target.value)}
-          title="Filtrar agentes por líder"
-          style={{
-            padding: '8px 12px', fontSize: '13px', borderRadius: 6,
-            border: '1px solid var(--z-border)', background: 'var(--z-bg-card)',
-            color: liderFiltro ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-            outline: 'none', cursor: 'pointer', maxWidth: '260px',
-          }}
-        >
-          <option value="">Todos los líderes</option>
-          {lideres.map((l) => (
-            <option key={l} value={l}>{l}</option>
-          ))}
-        </select>
+          onChange={setLiderFiltro}
+          style={{ maxWidth: '260px' }}
+        />
         <button
           onClick={() => setSoloSinCartera(v => !v)}
           style={{
@@ -392,6 +383,8 @@ export function GestionAgentesPage() {
                 alignItems: 'center',
                 borderBottom: i < agentesFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
               <div>
                 <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--z-text-primary)', marginBottom: '2px' }}>

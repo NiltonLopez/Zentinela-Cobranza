@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import {
   obtenerColumnas,
   obtenerPreview,
@@ -234,10 +235,16 @@ export function CreadorZentinelaPage() {
       }}>
         <div style={{ marginBottom: '16px' }}>
           <label style={labelStyle}>Cartera</label>
-          <select
+          <ZDropdown
+            options={[
+              { value: '', label: 'Selecciona una cartera...' },
+              ...opciones.map(o => ({
+                value: claveSeleccion(o.carteraID, o.liderID),
+                label: o.etiqueta,
+              })),
+            ]}
             value={seleccion ? claveSeleccion(seleccion.carteraID, seleccion.liderID) : ''}
-            onChange={e => {
-              const v = e.target.value;
+            onChange={(v) => {
               if (!v) { setSeleccion(null); setFiltroActivo(null); return; }
               const [cid, lid] = v.split('|');
               setSeleccion({
@@ -246,18 +253,7 @@ export function CreadorZentinelaPage() {
               });
               setFiltroActivo(null);
             }}
-            style={{ ...inputStyle, cursor: 'pointer' }}
-          >
-            <option value="">Selecciona una cartera...</option>
-            {opciones.map(o => (
-              <option
-                key={claveSeleccion(o.carteraID, o.liderID)}
-                value={claveSeleccion(o.carteraID, o.liderID)}
-              >
-                {o.etiqueta}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         {/* Toggle filtros */}

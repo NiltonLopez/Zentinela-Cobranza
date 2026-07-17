@@ -8,6 +8,7 @@
 // ║  con su modal de selección de columnas.                                        ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
 import { useState, useMemo } from 'react';
+import { ZDropdown } from '../ZDropdown';
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
 export const C = {
@@ -479,18 +480,15 @@ export function FiltroSelect({ label, value, onChange, options, placeholder }: {
   options: { value: string; label: string }[];
   placeholder: string;
 }) {
-  const sel: React.CSSProperties = {
-    background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
-    borderRadius: 6, padding: '5px 10px', fontSize: 13,
-    color: 'var(--z-text-primary)', cursor: 'pointer', minWidth: 160,
-  };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{ fontSize: 12, color: 'var(--z-text-muted)', whiteSpace: 'nowrap' }}>{label}</span>
-      <select value={value} onChange={e => onChange(e.target.value)} style={sel}>
-        <option value="">{placeholder}</option>
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      <ZDropdown
+        options={[{ value: '', label: placeholder }, ...options]}
+        value={value}
+        onChange={onChange}
+        style={{ minWidth: 160 }}
+      />
     </div>
   );
 }

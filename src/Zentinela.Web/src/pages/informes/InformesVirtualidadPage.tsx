@@ -5,6 +5,7 @@ import {
   Cell, Legend, CartesianGrid,
 } from 'recharts';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
+import { ZDropdown } from '../../components/ZDropdown';
 import {
   getInformeMensajeria,
   getInformeIVR,
@@ -366,29 +367,23 @@ function TabMensajeria() {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
-          <select
+          <ZDropdown
+            options={[{ value: 0, label: 'Todos' }, ...lideresUnicos.map(l => ({ value: l.id, label: l.nombre }))]}
             value={filtroLider}
-            onChange={e => { setFiltroLider(Number(e.target.value)); setFiltroCartera(0); }}
-            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
-          >
-            <option value={0}>Todos</option>
-            {lideresUnicos.map(l => (
-              <option key={l.id} value={l.id}>{l.nombre}</option>
-            ))}
-          </select>
+            onChange={v => { setFiltroLider(v); setFiltroCartera(0); }}
+            background="var(--z-bg-page)"
+            style={{ minWidth: 220 }}
+          />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
-          <select
+          <ZDropdown
+            options={[{ value: 0, label: 'Todas' }, ...carterasFiltradas.map(c => ({ value: c.id, label: c.nombre }))]}
             value={filtroCartera}
-            onChange={e => setFiltroCartera(Number(e.target.value))}
-            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
-          >
-            <option value={0}>Todas</option>
-            {carterasFiltradas.map(c => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </select>
+            onChange={setFiltroCartera}
+            background="var(--z-bg-page)"
+            style={{ minWidth: 220 }}
+          />
         </div>
       </div>
 
@@ -520,29 +515,23 @@ function TabIVR() {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
-          <select
+          <ZDropdown
+            options={[{ value: 0, label: 'Todos' }, ...lideresUnicos.map(l => ({ value: l.id, label: l.nombre }))]}
             value={filtroLider}
-            onChange={e => { setFiltroLider(Number(e.target.value)); setFiltroCartera(0); }}
-            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
-          >
-            <option value={0}>Todos</option>
-            {lideresUnicos.map(l => (
-              <option key={l.id} value={l.id}>{l.nombre}</option>
-            ))}
-          </select>
+            onChange={v => { setFiltroLider(v); setFiltroCartera(0); }}
+            background="var(--z-bg-page)"
+            style={{ minWidth: 220 }}
+          />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
-          <select
+          <ZDropdown
+            options={[{ value: 0, label: 'Todas' }, ...carterasFiltradas.map(c => ({ value: c.id, label: c.nombre }))]}
             value={filtroCartera}
-            onChange={e => setFiltroCartera(Number(e.target.value))}
-            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 7, border: '1px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', minWidth: 220 }}
-          >
-            <option value={0}>Todas</option>
-            {carterasFiltradas.map(c => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </select>
+            onChange={setFiltroCartera}
+            background="var(--z-bg-page)"
+            style={{ minWidth: 220 }}
+          />
         </div>
       </div>
 

@@ -7,6 +7,7 @@ import {
   obtenerVinculosLiderCartera,
 } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import { FiltrosPeriodo, calcularRango } from '../../components/pagos/FiltrosPeriodo';
@@ -25,14 +26,13 @@ const TD: React.CSSProperties = {
   padding: '10px 14px',
   fontSize: '13px',
   color: 'var(--z-text-primary)',
-  borderBottom: '0.5px solid var(--z-border)',
   whiteSpace: 'nowrap',
 };
 
-function FilaPago({ pago, idx }: { pago: PagoDirectorDto; idx: number }) {
-  const bg = idx % 2 === 0 ? 'var(--z-bg-card)' : 'var(--z-bg-page)';
+function FilaPago({ pago }: { pago: PagoDirectorDto }) {
+  const bg = 'var(--z-bg-card)';
   return (
-    <tr>
+    <tr style={{ borderBottom: '0.5px solid var(--z-border)' }}>
       <td style={{ ...TD, background: bg }}>
         {pago.nombreCliente}
         <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
@@ -131,9 +131,8 @@ export function PagosConfirmadosDirectorPage() {
   const filasVisibles = enModoPreview ? sorted.slice(0, PREVIEW_LIMIT) : sorted;
 
   // Selectores dependientes: al elegir un líder, si la cartera actual no le pertenece, se descarta.
-  const handleCambiarLider = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const handleCambiarLider = (val: number | null) => {
+    if (val === null) {
       setLiderID(null);
       setLiderNombre('');
       return;
@@ -147,8 +146,7 @@ export function PagosConfirmadosDirectorPage() {
   };
 
   // Al elegir una cartera, si el líder actual no la atiende, se descarta.
-  const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value) || null;
+  const handleCambiarCartera = (val: number | null) => {
     setCarteraID(val);
     if (val != null && liderID != null && !vinculoSet.has(`${liderID}-${val}`)) {
       setLiderID(null);
@@ -166,12 +164,6 @@ export function PagosConfirmadosDirectorPage() {
   };
 
   const hayFiltrosActivos = liderID !== null || carteraID !== null || preset !== 'ciclo';
-
-  const selectStyle: React.CSSProperties = {
-    padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-    color: 'var(--z-text-primary)', outline: 'none',
-  };
 
   const labelStyle: React.CSSProperties = {
     fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
@@ -206,22 +198,22 @@ export function PagosConfirmadosDirectorPage() {
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
             <label style={labelStyle}>Líder</label>
-            <select value={liderID ?? ''} onChange={handleCambiarLider} style={selectStyle}>
-              <option value="">Todos los líderes</option>
-              {lideresFiltrados.map(l => (
-                <option key={l.id} value={l.id}>{l.nombre}</option>
-              ))}
-            </select>
+            <ZDropdown
+              options={[{ value: null, label: 'Todos los líderes' }, ...lideresFiltrados.map(l => ({ value: l.id, label: l.nombre }))]}
+              value={liderID}
+              onChange={handleCambiarLider}
+              background="var(--z-bg-page)"
+            />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
             <label style={labelStyle}>Cartera</label>
-            <select value={carteraID ?? ''} onChange={handleCambiarCartera} style={selectStyle}>
-              <option value="">Todas las carteras</option>
-              {carterasFiltradas.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-              ))}
-            </select>
+            <ZDropdown
+              options={[{ value: null, label: 'Todas las carteras' }, ...carterasFiltradas.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+              value={carteraID}
+              onChange={handleCambiarCartera}
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {hayFiltrosActivos && (
@@ -308,8 +300,8 @@ export function PagosConfirmadosDirectorPage() {
                 </tr>
               </thead>
               <tbody>
-                {filasVisibles.map((p, i) => (
-                  <FilaPago key={p.pagoID} pago={p} idx={i} />
+                {filasVisibles.map(p => (
+                  <FilaPago key={p.pagoID} pago={p} />
                 ))}
               </tbody>
             </table>

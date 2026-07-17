@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   obtenerDashboardLider,
@@ -7,6 +7,7 @@ import {
 import type { FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { useAuth } from '../../context/AuthContext';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
@@ -69,6 +70,14 @@ function formatearPesos(valor: number): string {
   return valor.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 }
 
+/** Como formatearPesos, pero separa el número de la unidad "millones" cuando el valor es grande, para poder mostrar la unidad en un tamaño más chico sin que se corte de línea. */
+function formatearPesosCorto(valor: number): { valor: string; unidad?: string } {
+  if (Math.abs(valor) < 1_000_000) return { valor: formatearPesos(valor) };
+  // Truncamos (no redondeamos) los millones para nunca mostrar un valor mayor al real.
+  const millones = Math.trunc(valor / 1_000_000);
+  return { valor: `$ ${millones.toLocaleString('es-CO')}`, unidad: 'millones' };
+}
+
 function formatearFechaCorta(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
@@ -88,8 +97,113 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
-  label: string; valor: string; sub?: string; valorSize?: number;
+// ── Barra de frase motivadora ─────────────────────────────────────────────────
+// Frases seleccionadas según el % de avance de gestión del equipo, en un ticker
+// que se desplaza igual que BarraDestacadosLider (DashboardDirectorPage.tsx).
+
+const RANGOS_FRASE: { min: number; max: number; frases: string[]; fraseCierre?: string[] }[] = [
+  {
+    min: 0, max: 40,
+    frases: [
+      'Tu liderazgo marca el ritmo del equipo.',
+      'Tu equipo cuenta con tu guía para superarlos.',
+      'Vamos con todo, aún hay camino por recorrer.',
+      'Tu equipo te necesita enfocado hoy.',
+    ],
+  },
+  {
+    min: 40, max: 60,
+    frases: [
+      'Tu equipo ya recorrió la mitad del camino, se nota tu acompañamiento.',
+      'Confía en el talento de tu equipo.',
+      'La constancia que le has transmitido a tu equipo los ha traído hasta aquí.',
+      'Buen progreso del equipo hasta ahora, sigue impulsándolos.',
+      'Tu equipo avanza, no bajes el ritmo.',
+    ],
+  },
+  {
+    min: 60, max: 80,
+    frases: [
+      'Tu liderazgo se siente en el resultado.',
+      'Mantén ese gran ritmo hoy, ayuda a tu equipo a asegurar la meta.',
+      'Ya casi lo logran, ¡con todo!',
+    ],
+  },
+  {
+    min: 80, max: 100,
+    frases: [
+      'Gracias por tu liderazgo y por la entrega que le contagiaste a tu equipo.',
+      '¡Excelente gestión de equipo!',
+      'A cerrar con broche de oro.',
+    ],
+    // Solo se agrega dentro de los últimos días del mes calendario.
+    fraseCierre: ['Es momento de celebrar con tu equipo el cierre de mes.'],
+  },
+];
+
+function esCierreDeMes(): boolean {
+  const hoy = new Date();
+  const ultimoDiaMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  return hoy.getDate() >= ultimoDiaMes - 2;
+}
+
+function BarraFraseLider({ pct }: { pct: number }) {
+  const frases = useMemo(() => {
+    const rango = RANGOS_FRASE.find(r => pct >= r.min && pct <= r.max) ?? RANGOS_FRASE[0];
+    const base = [...rango.frases];
+    if (rango.fraseCierre && esCierreDeMes()) base.push(...rango.fraseCierre);
+    return base;
+  }, [pct]);
+
+  const [pausado, setPausado] = useState(false);
+
+  if (frases.length === 0) return null;
+
+  // Pista duplicada: al recorrer el 50% del ancho total vuelve a verse igual → loop continuo sin salto.
+  const pista = [...frases, ...frases];
+
+  return (
+    <div
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      style={{
+        background: 'var(--z-brand)',
+        borderRadius: '2px', padding: '7px 0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        overflow: 'hidden',
+        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+      }}
+    >
+      <style>{`
+        @keyframes zentinelaFraseLectura {
+          from { transform: translateX(0%); }
+          to   { transform: translateX(-50%); }
+        }
+      `}</style>
+      <div style={{
+        display: 'flex', width: 'max-content',
+        animationName: 'zentinelaFraseLectura',
+        animationDuration: '28s',
+        animationTimingFunction: 'linear',
+        animationIterationCount: 'infinite',
+        animationPlayState: pausado ? 'paused' : 'running',
+      }}>
+        {pista.map((frase, i) => (
+          <span key={i} style={{
+            fontSize: '14px', fontWeight: 600, color: '#fff',
+            padding: '0 24px', borderRight: '1px solid rgba(255,255,255,0.3)',
+            whiteSpace: 'nowrap',
+          }}>
+            {frase}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta }: {
+  label: string; valor: string; unidad?: string; valorReal?: string; sub?: string; valorSize?: number;
   alerta?: { cantidad: number; onClick: () => void };
 }) {
   return (
@@ -100,13 +214,20 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26, alerta }: {
       padding: '20px 22px',
       flex: '1 1 160px',
       minWidth: '160px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
         {label}
       </p>
-      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
+      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, whiteSpace: 'nowrap' }}>
         {valor}
+        {unidad && (
+          <span style={{ fontSize: '13px', fontWeight: 600, marginLeft: '4px' }}>{unidad}</span>
+        )}
       </p>
+      {valorReal && (
+        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '4px', lineHeight: 1.4 }}>{valorReal}</p>
+      )}
       {alerta && (
         <button
           onClick={alerta.onClick}
@@ -149,6 +270,7 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
       display: 'flex',
       alignItems: 'center',
       gap: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <svg width="96" height="96" viewBox="0 0 96 96" style={{ flexShrink: 0 }}>
         <circle cx="48" cy="48" r={radio} fill="none" stroke="var(--z-border)" strokeWidth={grosor} />
@@ -208,16 +330,21 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: 'var(--z-bg-page)' }}>
-          <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} />
-          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
-          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
-          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
-          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} resaltado />
+          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" resaltado />
+          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" resaltado />
+          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" resaltado />
+          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" resaltado />
         </tr>
       </thead>
       <tbody>
         {items.map(f => (
-          <tr key={f.agenteID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+          <tr
+            key={f.agenteID}
+            style={{ borderBottom: '0.5px solid var(--z-border)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreAsesor}
               <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px', fontWeight: 400 }}>
@@ -354,9 +481,12 @@ export function DashboardLiderPage() {
 
   const tituloFiltro = carteraNombre || 'Todas mis carteras';
 
-  const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const pctAvance = data && data.metricas.totalAsignados > 0
+    ? Math.min((data.metricas.totalGestiones / data.metricas.totalAsignados) * 100, 100)
+    : 0;
+
+  const handleCambiarCartera = (val: number | null) => {
+    if (val === null) {
       setCarteraID(null);
       setCarteraNombre('');
     } else {
@@ -369,9 +499,9 @@ export function DashboardLiderPage() {
   const estiloBtnPreset = (activo: boolean): React.CSSProperties => ({
     padding: '5px 12px',
     borderRadius: '20px',
-    border: '0.5px solid var(--z-border)',
-    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
-    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    border: activo ? '0.5px solid var(--z-brand)' : '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-brand)' : 'var(--z-bg-page)',
+    color: activo ? '#FFFFFF' : 'var(--z-text-muted)',
     fontSize: '12px',
     fontWeight: activo ? 600 : 400,
     cursor: 'pointer',
@@ -388,6 +518,8 @@ export function DashboardLiderPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
+
+      {data && <BarraFraseLider pct={pctAvance} />}
 
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -413,20 +545,12 @@ export function DashboardLiderPage() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Cartera
             </label>
-            <select
-              value={carteraID ?? ''}
+            <ZDropdown
+              options={[{ value: null, label: 'Todas mis carteras' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+              value={carteraID}
               onChange={handleCambiarCartera}
-              style={{
-                padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                color: 'var(--z-text-primary)', outline: 'none',
-              }}
-            >
-              <option value="">Todas mis carteras</option>
-              {carteras.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-              ))}
-            </select>
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {carteraID !== null && (
@@ -528,7 +652,9 @@ export function DashboardLiderPage() {
             />
             <TarjetaMetrica
               label="Proyección promesas"
-              valor={formatearPesos(data.metricas.proyeccionPromesas)}
+              valor={formatearPesosCorto(data.metricas.proyeccionPromesas).valor}
+              unidad={formatearPesosCorto(data.metricas.proyeccionPromesas).unidad}
+              valorReal={formatearPesos(data.metricas.proyeccionPromesas)}
               sub="Suma de acuerdos y abonos del período"
               valorSize={18}
               alerta={data.metricas.gestionesExcluidasPorTecho > 0

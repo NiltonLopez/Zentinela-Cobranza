@@ -9,6 +9,7 @@ import {
 } from '../../../api/pagosApi';
 import { LeyendaUltimaActualizacion } from '../../../components/LeyendaUltimaActualizacion';
 import { CargandoSpiral } from '../../../components/CargandoSpiral';
+import { ZDropdown } from '../../../components/ZDropdown';
 import { PanelNombresValidos } from '../../../components/PanelNombresValidos';
 import type { PagoFila, ValidarPagosResponse } from '../../../types/pagos';
 
@@ -595,26 +596,21 @@ export function CargueMasivo() {
               Paso 1 — Selecciona la cartera
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <select
+              <ZDropdown
+                options={[
+                  { value: '', label: '— Seleccionar cartera —' },
+                  { value: OPCION_MASIVO, label: '⇅ Cargue Masivo (Líder y Cartera en el archivo)' },
+                  ...carteras.map(c => ({ value: c.id, label: c.nombre })),
+                ]}
                 value={esMasivo ? OPCION_MASIVO : carteraID}
-                onChange={e => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   if (v === OPCION_MASIVO) { setModo('masivo'); setCarteraID(''); }
-                  else { setModo('estandar'); setCarteraID(v ? Number(v) : ''); }
+                  else { setModo('estandar'); setCarteraID(v as number | ''); }
                   setErrorMensaje('');
                 }}
-                style={{
-                  padding: '7px 10px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: carteraLista ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-                  fontSize: '13px', width: '320px', cursor: 'pointer', outline: 'none',
-                }}
-              >
-                <option value="">— Seleccionar cartera —</option>
-                <option value={OPCION_MASIVO}>⇅ Cargue Masivo (Líder y Cartera en el archivo)</option>
-                {carteras.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
+                background="var(--z-bg-page)"
+                style={{ width: '320px' }}
+              />
               {!esMasivo && (
                 <LeyendaUltimaActualizacion
                   carteraID={carteraID}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listarUsuarios, resetPassword, listarSupervisores, listarSupervisoresActivos, reasignarSupervisor, inactivarUsuario, obtenerSupervisorActual, cambiarUsuario, cambiarRol } from '../../api/adminApi';
 import type { UsuarioAdmin, Supervisor } from '../../types/admin';
+import { ZDropdown } from '../../components/ZDropdown';
 
 const ROLES_DISPONIBLES = [
   'Admin', 'Líder', 'Director', 'Asesor',
@@ -762,27 +763,12 @@ export function GestionPersonalPage() {
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
         />
-        <select
+        <ZDropdown
+          options={[{ value: '', label: 'Todos los supervisores' }, ...opcionesSupervisor.map(s => ({ value: s, label: s }))]}
           value={filtroSupervisor}
-          onChange={(e) => setFiltroSupervisor(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            fontSize: '13px',
-            border: '1px solid var(--z-border)',
-            borderRadius: '6px',
-            background: 'var(--z-bg-card)',
-            color: filtroSupervisor ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-            outline: 'none',
-            cursor: 'pointer',
-            minWidth: '200px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
-          }}
-        >
-          <option value="">Todos los supervisores</option>
-          {opcionesSupervisor.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+          onChange={setFiltroSupervisor}
+          style={{ minWidth: '200px', boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)' }}
+        />
       </div>
 
       {/* Tabla */}
@@ -839,6 +825,7 @@ export function GestionPersonalPage() {
               padding: '13px 20px',
               alignItems: 'center',
               borderBottom: i < usuariosFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
+              background: filaHover === u.id ? 'var(--z-bg-page)' : 'transparent',
             }}
           >
             <div>

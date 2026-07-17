@@ -5,6 +5,7 @@ import { obtenerCarteras } from '../../api/carterasApi';
 import { LeyendaUltimaActualizacion } from '../../components/LeyendaUltimaActualizacion';
 import type { FilaValidacionReporteDto, EstadoFilaReporte, PreviewReporteDto } from '../../types/reportes';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -375,20 +376,13 @@ export function CargueReportesPage() {
               Paso 1 — Selecciona la cartera
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <select
+              <ZDropdown
+                options={[{ value: 0, label: '— Seleccionar cartera —' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
                 value={carteraID}
-                onChange={e => setCarteraID(Number(e.target.value))}
-                style={{
-                  padding: '7px 10px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
-                  fontSize: '13px', width: '280px', cursor: 'pointer', outline: 'none',
-                }}
-              >
-                <option value={0}>— Seleccionar cartera —</option>
-                {carteras.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-                ))}
-              </select>
+                onChange={setCarteraID}
+                background="var(--z-bg-page)"
+                style={{ width: '280px' }}
+              />
               <LeyendaUltimaActualizacion
                 carteraID={carteraID}
                 queryKey="reporte-ultima-actualizacion"

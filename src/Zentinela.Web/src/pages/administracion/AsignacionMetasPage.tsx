@@ -13,6 +13,7 @@ import type {
   GuardarMetaAgenteRequest,
 } from '../../types/metas';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -142,7 +143,11 @@ function FilaLider({
   const sinMeta      = !fila.tieneMeta;
 
   return (
-    <tr style={sinMeta ? { background: '#fff7ed' } : {}}>
+    <tr
+      style={sinMeta ? { background: '#fff7ed' } : {}}
+      onMouseEnter={(e) => { e.currentTarget.style.background = sinMeta ? '#fdead1' : 'var(--z-bg-page)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = sinMeta ? '#fff7ed' : 'transparent'; }}
+    >
       <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{fila.nombreCartera}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreLider}</td>
       <td style={{ ...TD, textAlign: 'center' }}>{fila.capacidadActual}</td>
@@ -204,7 +209,11 @@ function FilaAgente({
   const sinMeta      = !fila.tieneMeta;
 
   return (
-    <tr style={sinMeta ? { background: '#fff7ed' } : {}}>
+    <tr
+      style={sinMeta ? { background: '#fff7ed' } : {}}
+      onMouseEnter={(e) => { e.currentTarget.style.background = sinMeta ? '#fdead1' : 'var(--z-bg-page)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = sinMeta ? '#fff7ed' : 'transparent'; }}
+    >
       <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{fila.nombreAgente}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreCartera ?? '—'}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreLider ?? '—'}</td>
@@ -421,21 +430,12 @@ export function AsignacionMetasPage() {
             </button>
 
             {tab === 'agente' && lideresConAgentes.length > 0 && (
-              <select
+              <ZDropdown
+                options={[{ value: '', label: '— Todos los líderes —' }, ...lideresConAgentes.map(nombre => ({ value: nombre, label: nombre }))]}
                 value={liderFiltro}
-                onChange={e => setLiderFiltro(e.target.value)}
-                style={{
-                  padding: '7px 10px', borderRadius: 6, border: '1px solid var(--z-border)',
-                  background: 'var(--z-bg-card)',
-                  color: liderFiltro ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-                  fontSize: 13, outline: 'none', cursor: 'pointer', minWidth: 180,
-                }}
-              >
-                <option value="">— Todos los líderes —</option>
-                {lideresConAgentes.map(nombre => (
-                  <option key={nombre} value={nombre}>{nombre}</option>
-                ))}
-              </select>
+                onChange={setLiderFiltro}
+                style={{ minWidth: 180 }}
+              />
             )}
 
             <input
