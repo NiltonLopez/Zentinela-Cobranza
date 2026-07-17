@@ -6,6 +6,7 @@ import { obtenerDashboardAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
+import { useDuracionTicker } from '../../hooks/useDuracionTicker';
 import type { AcuerdoVigenteDto, DashboardAsesorDto, PagosConfirmadosDto } from '../../types/dashboard';
 
 // ── Selector de período ───────────────────────────────────────────────────────
@@ -256,15 +257,16 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel 
   // Pista duplicada: al recorrer el 50% del ancho total vuelve a verse igual → loop continuo sin salto.
   const pista = [...frases, ...frases];
 
+  const { ref: pistaRef, duracion: duracionAnimacion } = useDuracionTicker([frases]);
+
   return (
     <div
       onMouseEnter={() => setPausado(true)}
       onMouseLeave={() => setPausado(false)}
       style={{
         background: 'var(--z-bg-card)',
-        borderTop: '2px solid var(--z-brand)', borderBottom: '2px solid var(--z-brand)',
         borderRadius: '2px', padding: '8px 0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06)',
         overflow: 'hidden',
         marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
       }}
@@ -275,10 +277,10 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel 
           to   { transform: translateX(-50%); }
         }
       `}</style>
-      <div style={{
+      <div ref={pistaRef} style={{
         display: 'flex', width: 'max-content',
         animationName: 'zentinelaFrasesLectura',
-        animationDuration: '62s',
+        animationDuration: duracionAnimacion,
         animationTimingFunction: 'linear',
         animationIterationCount: 'infinite',
         animationPlayState: pausado ? 'paused' : 'running',
@@ -320,7 +322,7 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
       scrollbarColor: 'var(--z-border) transparent',
     }}>
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead style={{ position: 'sticky', top: 0, zIndex: 1, boxShadow: '0 2px 0 var(--z-brand)' }}>
+      <thead style={{ position: 'sticky', top: 0, zIndex: 1, boxShadow: '0 2px 0 var(--z-brand), 0 4px 8px rgba(0,0,0,0.22)' }}>
         <tr style={{ background: 'var(--z-bg-card)' }}>
           <ThOrdenable label="Titular"       sortKey="nombreTitular" sort={sort} onSort={toggle} />
           <ThOrdenable label="Tipificación"  sortKey="ultimoPerfil"  sort={sort} onSort={toggle} />

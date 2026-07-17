@@ -10,6 +10,7 @@ import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
+import { useDuracionTicker } from '../../hooks/useDuracionTicker';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
   }, [filas]);
 
   const [pausado, setPausado] = useState(false);
+  const { ref: pistaRef, duracion: duracionAnimacion } = useDuracionTicker([items]);
 
   if (items.length === 0) return null;
 
@@ -192,10 +194,10 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
           to   { transform: translateX(-50%); }
         }
       `}</style>
-      <div style={{
+      <div ref={pistaRef} style={{
         display: 'flex', width: 'max-content',
         animationName: 'zentinelaDestacadosLectura',
-        animationDuration: '28s',
+        animationDuration: duracionAnimacion,
         animationTimingFunction: 'linear',
         animationIterationCount: 'infinite',
         animationPlayState: pausado ? 'paused' : 'running',
