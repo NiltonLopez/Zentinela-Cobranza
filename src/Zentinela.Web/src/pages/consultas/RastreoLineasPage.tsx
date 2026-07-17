@@ -119,6 +119,7 @@ export function RastreoLineasPage() {
         borderRadius: 10,
         padding: 20,
         marginBottom: 20,
+        maxWidth: 900,
       }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>

@@ -51,10 +51,12 @@ button {
   margin-right: auto;
 }
 
-/* Módulo Cartera: el contenido queda alineado al padding estándar del layout
-   en vez de centrarse según el maxWidth propio de cada sub-página (evita el
-   espacio izquierdo distinto entre Calificador, Comparador y Creador). */
-.z-page-content--cartera > * {
+/* Módulos con sub-menú vertical (Cartera, Consultas): el contenido queda
+   alineado al padding estándar del layout en vez de centrarse según el
+   maxWidth propio de cada sub-página (evita el espacio izquierdo distinto
+   entre sub-módulos, p. ej. Calificador/Comparador/Creador o
+   Consulta Integrada/Rastreo de Líneas). */
+.z-page-content--align-fija > * {
   margin-left: 0;
   margin-right: 0;
 }

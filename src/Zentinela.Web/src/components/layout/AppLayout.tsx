@@ -13,11 +13,13 @@ export function AppLayout() {
   }, [location.pathname]);
 
   const esCartera = moduloActivo === 'cartera';
+  const esConsultas = moduloActivo === 'consultas';
+  const usaAlineacionFija = esCartera || esConsultas;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Navbar moduloActivo={moduloActivo} onModuloChange={setModuloActivo} />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: esCartera ? '24px' : undefined }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: usaAlineacionFija ? '24px' : undefined }}>
         <Sidebar moduloActivo={moduloActivo} />
         <main style={{
           flex: 1,
@@ -25,7 +27,7 @@ export function AppLayout() {
           background: 'var(--z-bg-page)',
         }}>
           <div
-            className={esCartera ? 'z-page-content z-page-content--cartera' : 'z-page-content'}
+            className={usaAlineacionFija ? 'z-page-content z-page-content--align-fija' : 'z-page-content'}
             style={{
               maxWidth: '1440px',
               margin: '0 auto',
