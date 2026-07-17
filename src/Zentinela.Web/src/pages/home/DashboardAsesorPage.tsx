@@ -350,6 +350,72 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
   );
 }
 
+// ── Nivel de ranking del asesor (diamante/oro/plata/bronce) ──────────────────
+// TEMPORAL: la regla de negocio para calcular el nivel real aún no está definida.
+// Por ahora se muestra un dato quemado hasta que se confirme con negocio.
+
+type NivelRanking = 'diamante' | 'oro' | 'plata' | 'bronce';
+
+// placeholder — reemplazar cuando exista la regla real; el nivel varía por mes
+const NIVEL_ASESOR_QUEMADO_POR_MES: Record<MesOffset, NivelRanking> = {
+  0: 'oro',
+  [-1]: 'diamante',
+  [-2]: 'plata',
+};
+
+const CONFIG_NIVEL: Record<NivelRanking, { etiqueta: string; icono: string; color: string; beneficios: string[] }> = {
+  diamante: {
+    etiqueta: 'Diamante', icono: '💎', color: '#38BDF8',
+    beneficios: ['Prioridad en asignación de mejores carteras', 'Bono adicional por cumplimiento', 'Reconocimiento mensual'],
+  },
+  oro: {
+    etiqueta: 'Oro', icono: '🥇', color: '#F5B800',
+    beneficios: ['Prioridad en asignación de carteras', 'Bono por cumplimiento'],
+  },
+  plata: {
+    etiqueta: 'Plata', icono: '🥈', color: '#9CA3AF',
+    beneficios: ['Acceso a capacitaciones avanzadas'],
+  },
+  bronce: {
+    etiqueta: 'Bronce', icono: '🥉', color: '#B87333',
+    beneficios: ['Acceso a capacitaciones básicas'],
+  },
+};
+
+function InsigniaNivelAsesor({ nivel }: { nivel: NivelRanking }) {
+  const [mostrarBeneficios, setMostrarBeneficios] = useState(false);
+  const cfg = CONFIG_NIVEL[nivel];
+
+  return (
+    <span
+      onMouseEnter={() => setMostrarBeneficios(true)}
+      onMouseLeave={() => setMostrarBeneficios(false)}
+      style={{
+        position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+        border: `0.5px solid ${cfg.color}`, background: `${cfg.color}1A`, color: cfg.color,
+        cursor: 'default', userSelect: 'none',
+      }}
+    >
+      <span aria-hidden="true">{cfg.icono}</span>
+      Categoría: {cfg.etiqueta}
+
+      {mostrarBeneficios && (
+        <span style={{
+          position: 'absolute', top: 0, left: '100%', marginLeft: 8, zIndex: 10,
+          background: 'var(--z-bg-card)', color: 'var(--z-text-primary)', fontFamily: 'inherit', fontWeight: 400,
+          fontSize: 11.5, lineHeight: 1.5, padding: '10px 12px', borderRadius: 8,
+          border: `0.5px solid var(--z-border)`, borderLeft: `2px solid ${cfg.color}`,
+          whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.14)',
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: cfg.color }}>Beneficios {cfg.etiqueta}:</div>
+          {cfg.beneficios.map((b) => <div key={b} style={{ color: 'var(--z-text-muted)' }}>• {b}</div>)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Cédula copiable en píldora — estilo propio de este perfil, no comparte
 // apariencia con BotonCopiable (usado en Gestión de Histórico de Virtualidad).
 function BotonCopiableCedula({ texto }: { texto: string }) {
@@ -651,6 +717,11 @@ export function DashboardAsesorPage() {
                 ? `Supervisor: ${data.nombreSupervisor}`
                 : 'Sin supervisor asignado'}
           </p>
+          {!isLoading && (
+            <div style={{ marginTop: 6 }}>
+              <InsigniaNivelAsesor nivel={NIVEL_ASESOR_QUEMADO_POR_MES[mesOffset]} />
+            </div>
+          )}
         </div>
       </div>
 
