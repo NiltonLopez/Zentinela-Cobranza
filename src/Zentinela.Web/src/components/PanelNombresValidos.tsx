@@ -7,7 +7,7 @@ import { listarRelaciones } from '../api/gestionCarterasApi';
 // Copia el nombre al portapapeles y muestra un aviso "Copiado!" flotante y
 // minimalista sobre el botón (se oculta solo). No es texto seleccionable —
 // es un botón, el gesto esperado es el clic, no la selección manual.
-function BotonCopiable({ texto }: { texto: string }) {
+export function BotonCopiable({ texto }: { texto: string }) {
   const [copiado, setCopiado] = useState(false);
 
   const copiar = async () => {
@@ -30,6 +30,8 @@ function BotonCopiable({ texto }: { texto: string }) {
   return (
     <button
       onClick={copiar}
+      onMouseEnter={(e) => { if (!copiado) e.currentTarget.style.background = '#DCDCD8'; }}
+      onMouseLeave={(e) => { if (!copiado) e.currentTarget.style.background = 'var(--z-bg-page)'; }}
       style={{
         position: 'relative', userSelect: 'none', cursor: 'pointer',
         padding: '5px 10px', borderRadius: 6, fontSize: 12.5, fontFamily: 'monospace',

@@ -348,6 +348,65 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
   );
 }
 
+// Cédula copiable en píldora — estilo propio de este perfil, no comparte
+// apariencia con BotonCopiable (usado en Gestión de Histórico de Virtualidad).
+function BotonCopiableCedula({ texto }: { texto: string }) {
+  const [copiado, setCopiado] = useState(false);
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = texto;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiado(true);
+    window.setTimeout(() => setCopiado(false), 1100);
+  };
+
+  return (
+    <button
+      onClick={copiar}
+      onMouseEnter={(e) => {
+        if (copiado) return;
+        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.12)';
+        e.currentTarget.style.background = '#DCDCD8';
+      }}
+      onMouseLeave={(e) => {
+        if (copiado) return;
+        e.currentTarget.style.boxShadow = 'none';
+        e.currentTarget.style.background = 'var(--z-bg-surface)';
+      }}
+      style={{
+        position: 'relative', userSelect: 'none', cursor: 'pointer',
+        padding: '2px 5px', borderRadius: 999, fontSize: 10.5, fontFamily: 'monospace',
+        border: `0.5px solid ${copiado ? 'var(--z-brand)' : 'var(--z-border)'}`,
+        background: copiado ? 'var(--z-brand)' : 'var(--z-bg-surface)',
+        color: copiado ? '#fff' : 'var(--z-text-primary)',
+        transition: 'background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s',
+      }}
+    >
+      {texto}
+      {copiado && (
+        <span style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          marginBottom: 5, background: '#111827', color: '#fff', fontFamily: 'inherit',
+          fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5,
+          whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+        }}>
+          Copiado!
+        </span>
+      )}
+    </button>
+  );
+}
+
 function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
   const color = SEMAFORO[acuerdo.semaforo] ?? SEMAFORO.verde;
 
@@ -359,9 +418,9 @@ function FilaAcuerdo({ acuerdo }: { acuerdo: AcuerdoVigenteDto }) {
   return (
     <tr style={{ background: color.bg }}>
       <td style={{ ...celda, color: 'var(--z-text-primary)' }}>
-        {acuerdo.nombreTitular}
-        <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
-          {acuerdo.titularID}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          {acuerdo.nombreTitular}
+          <BotonCopiableCedula texto={String(acuerdo.titularID)} />
         </span>
       </td>
       <td style={{ ...celda, color: 'var(--z-text-primary)' }}>
