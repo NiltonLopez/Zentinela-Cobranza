@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export interface ZDropdownOption<T> {
   value: T;
@@ -15,12 +15,48 @@ interface Props<T> {
   disabled?: boolean;
 }
 
+const FUENTE_MEDICION = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif';
+let canvasMedicion: HTMLCanvasElement | null = null;
+
+// Ancho (px) de la etiqueta más larga, midiendo el texto real en vez de
+// asumir un ancho fijo — evita que options.label largas queden truncadas.
+function medirEtiquetaMasLarga(labels: string[]): number {
+  canvasMedicion ??= document.createElement('canvas');
+  const ctx = canvasMedicion.getContext('2d');
+  if (!ctx) return 0;
+  ctx.font = FUENTE_MEDICION;
+  return Math.max(0, ...labels.map((l) => ctx.measureText(l).width));
+}
+
+function aPx(valor: React.CSSProperties['minWidth']): number {
+  if (typeof valor === 'number') return valor;
+  if (typeof valor === 'string') {
+    const n = parseFloat(valor);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 // Dropdown propio (botón + panel flotante) para reemplazar al <select> nativo,
 // cuya lista de opciones no se puede estilizar. Mismo patrón visual que el
 // selector de cartera de AuditoriaGestionesPage.
 export function ZDropdown<T>({ options, value, onChange, style, background = 'var(--z-bg-card)', disabled = false }: Props<T>) {
   const [abierto, setAbierto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const { minWidth: minWidthEstilo, ...restoStyle } = style ?? {};
+
+  // Padding horizontal del botón (7px*2) + gap (10) + ancho de flecha (~10) + borde.
+  const anchoTexto = useMemo(
+    () => medirEtiquetaMasLarga(options.map((o) => o.label)),
+    [options],
+  );
+  const anchoMinimoContenido = Math.ceil(anchoTexto) + 20 + 10 + 10 + 2;
+  // Tope al ancho auto-calculado: con etiquetas muy largas (p. ej. "cartera —
+  // líder") el botón no debe crecer sin límite; el texto se trunca con
+  // ellipsis y el detalle completo queda visible en el panel desplegado.
+  const ANCHO_MAXIMO_CALCULADO = 340;
+  const anchoMinimo = Math.max(Math.min(anchoMinimoContenido, ANCHO_MAXIMO_CALCULADO), aPx(minWidthEstilo));
 
   useEffect(() => {
     if (!abierto) return;
@@ -34,7 +70,7 @@ export function ZDropdown<T>({ options, value, onChange, style, background = 'va
   const seleccionado = options.find(o => o.value === value) ?? null;
 
   return (
-    <div ref={ref} style={{ position: 'relative', ...style }}>
+    <div ref={ref} style={{ position: 'relative', width: 'fit-content', ...restoStyle, minWidth: anchoMinimo }}>
       <button
         type="button"
         disabled={disabled}
