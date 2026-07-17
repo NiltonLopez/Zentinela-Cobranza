@@ -12,21 +12,26 @@ export function AppLayout() {
     setModuloActivo(pathToModulo(location.pathname));
   }, [location.pathname]);
 
+  const esCartera = moduloActivo === 'cartera';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Navbar moduloActivo={moduloActivo} onModuloChange={setModuloActivo} />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: esCartera ? '24px' : undefined }}>
         <Sidebar moduloActivo={moduloActivo} />
         <main style={{
           flex: 1,
           overflowY: 'auto',
           background: 'var(--z-bg-page)',
         }}>
-          <div className="z-page-content" style={{
-            maxWidth: '1440px',
-            margin: '0 auto',
-            padding: '28px 32px',
-          }}>
+          <div
+            className={esCartera ? 'z-page-content z-page-content--cartera' : 'z-page-content'}
+            style={{
+              maxWidth: '1440px',
+              margin: '0 auto',
+              padding: '28px 32px',
+            }}
+          >
             <Outlet />
           </div>
         </main>

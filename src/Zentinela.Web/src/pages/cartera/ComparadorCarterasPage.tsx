@@ -258,7 +258,7 @@ export function ComparadorCarterasPage() {
   });
 
   return (
-    <div style={{ maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1300 }}>
 
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>

@@ -211,7 +211,7 @@ export function CreadorZentinelaPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: '960px' }}>
+    <div style={{ maxWidth: '1300px' }}>
       {/* eslint-disable-next-line jsx-a11y/anchor-has-content */}
       <a ref={anchorRef} style={{ display: 'none' }} />
 

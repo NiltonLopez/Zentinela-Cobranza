@@ -46,10 +46,17 @@ button {
   font-family: inherit;
 }
 
-/* Centra horizontalmente el contenido de cada página dentro del layout */
 .z-page-content > * {
   margin-left: auto;
   margin-right: auto;
+}
+
+/* Módulo Cartera: el contenido queda alineado al padding estándar del layout
+   en vez de centrarse según el maxWidth propio de cada sub-página (evita el
+   espacio izquierdo distinto entre Calificador, Comparador y Creador). */
+.z-page-content--cartera > * {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 @keyframes z-spiral-cw {
@@ -62,3 +69,4 @@ button {
   0%, 100% { opacity: 0.45; transform: scale(0.75); }
   50%       { opacity: 1;    transform: scale(1.25); }
 }
+
