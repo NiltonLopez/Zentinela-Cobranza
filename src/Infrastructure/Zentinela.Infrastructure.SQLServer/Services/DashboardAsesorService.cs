@@ -15,13 +15,16 @@ public class DashboardAsesorService : IDashboardAsesorService
 {
     private readonly CallCenterDbContext _callCenter;
     private readonly RecursosHumanosDbContext _rrhh;
+    private readonly ICategoriaRankingService _categoriaRanking;
 
     public DashboardAsesorService(
         CallCenterDbContext callCenter,
-        RecursosHumanosDbContext rrhh)
+        RecursosHumanosDbContext rrhh,
+        ICategoriaRankingService categoriaRanking)
     {
         _callCenter = callCenter;
         _rrhh = rrhh;
+        _categoriaRanking = categoriaRanking;
     }
 
     public async Task<DashboardAsesorDto> ObtenerDashboardAsync(long numeroDocumento, DateOnly? fechaDesde, DateOnly? fechaHasta)
@@ -36,6 +39,7 @@ public class DashboardAsesorService : IDashboardAsesorService
         var acuerdos         = await ObtenerAcuerdosVigentesAsync(agenteID);
         var rendimiento      = await ObtenerRendimientoAsync(agenteID, fechaDesde, fechaHasta);
         var pagosConfirmados = await ObtenerPagosConfirmadosAsync(agenteID, fechaDesde, fechaHasta);
+        var categoriaRanking = await ObtenerCategoriaRankingAsync(numeroDocumento, fechaDesde);
 
         return new DashboardAsesorDto
         {
@@ -43,7 +47,18 @@ public class DashboardAsesorService : IDashboardAsesorService
             AcuerdosVigentes = acuerdos,
             Rendimiento      = rendimiento,
             PagosConfirmados = pagosConfirmados,
+            CategoriaRanking = categoriaRanking,
         };
+    }
+
+    // ── Categoría de ranking (Diamante/Oro/Plata/Bronce) ──────────────────────
+    // El cálculo vive en CategoriaRankingService (compartido con la futura vista
+    // admin/director) y se cachea por año/mes — aquí solo se lee la fila de este agente.
+    private async Task<string?> ObtenerCategoriaRankingAsync(long agenteID, DateOnly? fechaDesde)
+    {
+        var refDate = fechaDesde ?? DateOnly.FromDateTime(DateTime.Today);
+        var categorias = await _categoriaRanking.ObtenerCategoriasAsync(refDate.Year, refDate.Month);
+        return categorias.TryGetValue(agenteID, out var dto) ? dto.Categoria : null;
     }
 
     // ── Supervisor ────────────────────────────────────────────────────────────

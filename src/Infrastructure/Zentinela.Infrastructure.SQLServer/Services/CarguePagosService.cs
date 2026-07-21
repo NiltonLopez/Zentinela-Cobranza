@@ -56,15 +56,18 @@ public class CarguePagosService : ICarguePagosService
     private readonly CallCenterDbContext _context;
     private readonly RecursosHumanosDbContext _rrhh;
     private readonly ICalificadorCarteraCache _calificadorCache;
+    private readonly ICategoriaRankingCache _categoriaRankingCache;
 
     public CarguePagosService(
         CallCenterDbContext context,
         RecursosHumanosDbContext rrhh,
-        ICalificadorCarteraCache calificadorCache)
+        ICalificadorCarteraCache calificadorCache,
+        ICategoriaRankingCache categoriaRankingCache)
     {
         _context          = context;
         _rrhh             = rrhh;
         _calificadorCache = calificadorCache;
+        _categoriaRankingCache = categoriaRankingCache;
     }
 
     public async Task<ValidarPagosResponse> ValidarArchivoAsync(Stream archivo, int carteraID, string extension)
@@ -728,6 +731,7 @@ public class CarguePagosService : ICarguePagosService
         // Calificador, pero sí podrían influir en versiones futuras del DTO (recaudo
         // por líder, etc.). Invalidar es barato y mantiene coherencia.
         _calificadorCache.InvalidarTodo();
+        _categoriaRankingCache.InvalidarTodo(); // nuevos honorarios pueden cambiar categorías de ranking
 
         return pagos.Count;
     }
@@ -781,6 +785,7 @@ public class CarguePagosService : ICarguePagosService
         _context.Pagos.Add(pago);
         await _context.SaveChangesAsync();
         _calificadorCache.InvalidarTodo(); // paridad con el cargue masivo
+        _categoriaRankingCache.InvalidarTodo();
 
         var liderNombre = await _context.Lideres
             .Where(l => l.ID == valida.LiderID)

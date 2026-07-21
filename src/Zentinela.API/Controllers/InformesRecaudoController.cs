@@ -11,8 +11,13 @@ namespace Zentinela.API.Controllers;
 public class InformesRecaudoController : ControllerBase
 {
     private readonly IInformesRecaudoService _service;
+    private readonly ICategoriaRankingService _categoriaRanking;
 
-    public InformesRecaudoController(IInformesRecaudoService service) => _service = service;
+    public InformesRecaudoController(IInformesRecaudoService service, ICategoriaRankingService categoriaRanking)
+    {
+        _service = service;
+        _categoriaRanking = categoriaRanking;
+    }
 
     /// <summary>
     /// Sub-informe de agentes: recaudo, honorarios, meta y cumplimiento.
@@ -78,5 +83,21 @@ public class InformesRecaudoController : ControllerBase
         if (mes < 1 || mes > 12) return BadRequest(new { mensaje = "Mes inválido." });
         var resultado = await _service.GetInformeAgenciasExternasAsync(año, mes);
         return Ok(resultado);
+    }
+
+    /// <summary>
+    /// Categoría de ranking (Diamante/Oro/Plata/Bronce) de todos los asesores internos
+    /// para el año/mes indicado, con el desglose del cálculo (promedio anual, honorario
+    /// del mes actual/anterior, si se aplicó el ajuste por bajo rendimiento) — para que
+    /// admin/director puedan auditar por qué un asesor quedó en tal categoría.
+    /// Solo Admin/Director: es información de toda la empresa, no de un líder puntual.
+    /// </summary>
+    [HttpGet("categorias")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Director}")]
+    public async Task<IActionResult> GetCategorias([FromQuery] int año, [FromQuery] int mes)
+    {
+        if (mes < 1 || mes > 12) return BadRequest(new { mensaje = "Mes inválido." });
+        var resultado = await _categoriaRanking.ObtenerCategoriasAsync(año, mes);
+        return Ok(resultado.Values.OrderByDescending(c => c.PromedioAnual));
     }
 }
