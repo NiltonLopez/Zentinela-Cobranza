@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { obtenerDashboardAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
+import { IconoCategoria, type CategoriaRanking } from '../../components/IconoCategoria';
 import { useSort } from '../../hooks/useSort';
 import { useDuracionTicker } from '../../hooks/useDuracionTicker';
 import type { AcuerdoVigenteDto, DashboardAsesorDto, PagosConfirmadosDto } from '../../types/dashboard';
@@ -351,38 +352,52 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
 }
 
 // ── Nivel de ranking del asesor (diamante/oro/plata/bronce) ──────────────────
-// TEMPORAL: la regla de negocio para calcular el nivel real aún no está definida.
-// Por ahora se muestra un dato quemado hasta que se confirme con negocio.
+// La categoría llega calculada del backend (DashboardAsesorService.ObtenerCategoriaRankingAsync).
+// PENDIENTE: rangos/umbrales y valores de honorarios de los beneficios aún por
+// pactar formalmente con negocio — ver texto de beneficios abajo.
 
 type NivelRanking = 'diamante' | 'oro' | 'plata' | 'bronce';
 
-// placeholder — reemplazar cuando exista la regla real; el nivel varía por mes
-const NIVEL_ASESOR_QUEMADO_POR_MES: Record<MesOffset, NivelRanking> = {
-  0: 'oro',
-  [-1]: 'diamante',
-  [-2]: 'plata',
+const NIVEL_POR_CATEGORIA_BACKEND: Record<string, NivelRanking> = {
+  Diamante: 'diamante', Oro: 'oro', Plata: 'plata', Bronce: 'bronce',
 };
 
-const CONFIG_NIVEL: Record<NivelRanking, { etiqueta: string; icono: string; color: string; beneficios: string[] }> = {
+const CONFIG_NIVEL: Record<NivelRanking, { etiqueta: string; color: string; beneficios: string[] }> = {
   diamante: {
-    etiqueta: 'Diamante', icono: '💎', color: '#38BDF8',
-    beneficios: ['Prioridad en asignación de mejores carteras', 'Bono adicional por cumplimiento', 'Reconocimiento mensual'],
+    etiqueta: 'Diamante', color: '#38BDF8',
+    beneficios: [
+      'Descanso todos los sábados (sujeto a cumplimiento mensual y conciliación con líder)',
+      '30 minutos de desayuno',
+      'Comisión el primer día de cada mes (si el mes anterior cumplió)',
+      'Almuerzo el día 15',
+      'Bono de $300.000 por cada asesor de plata apadrinado y llevado a oro o superior (vigencia 2 meses)',
+      'Derecho a reclamar boleta de la rifa actual',
+      'Rifa de un bono de $300.000 entre los asesores de la categoría',
+      'Si conservan la categoría hasta diciembre: descanso del 28 de diciembre al 2 de enero',
+    ],
   },
   oro: {
-    etiqueta: 'Oro', icono: '🥇', color: '#F5B800',
-    beneficios: ['Prioridad en asignación de carteras', 'Bono por cumplimiento'],
+    etiqueta: 'Oro', color: '#F5B800',
+    beneficios: [
+      'Comisión el día 5 de cada mes (si el mes anterior cumplió)',
+      'Descanso 3 sábados al mes (sujeto a cumplimiento mensual y conciliación con líder)',
+      '25 minutos de desayuno',
+      'Bono de $200.000 por cada asesor de plata o bronce apadrinado y mejorado de categoría (vigencia 2 meses)',
+      'Desayuno adicional el día 15',
+      'Rifa de un bono de $300.000 entre los asesores de la categoría',
+    ],
   },
   plata: {
-    etiqueta: 'Plata', icono: '🥈', color: '#9CA3AF',
-    beneficios: ['Acceso a capacitaciones avanzadas'],
+    etiqueta: 'Plata', color: '#9CA3AF',
+    beneficios: ['Aplican las comisiones vigentes', 'Cumplimiento obligatorio de productividad'],
   },
   bronce: {
-    etiqueta: 'Bronce', icono: '🥉', color: '#B87333',
-    beneficios: ['Acceso a capacitaciones básicas'],
+    etiqueta: 'Bronce', color: '#B87333',
+    beneficios: ['Aplican las comisiones vigentes', 'Cumplimiento obligatorio de productividad'],
   },
 };
 
-function InsigniaNivelAsesor({ nivel }: { nivel: NivelRanking }) {
+function InsigniaNivelAsesor({ nivel, promedioAnual }: { nivel: NivelRanking; promedioAnual: number | null }) {
   const [mostrarBeneficios, setMostrarBeneficios] = useState(false);
   const cfg = CONFIG_NIVEL[nivel];
 
@@ -397,19 +412,28 @@ function InsigniaNivelAsesor({ nivel }: { nivel: NivelRanking }) {
         cursor: 'default', userSelect: 'none',
       }}
     >
-      <span aria-hidden="true">{cfg.icono}</span>
+      <IconoCategoria categoria={cfg.etiqueta as CategoriaRanking} size={18} />
       Categoría: {cfg.etiqueta}
+      {promedioAnual !== null && (
+        <span style={{ fontWeight: 400, opacity: 0.85 }}>
+          · Prom. anual: {formatearMoneda(promedioAnual)}
+        </span>
+      )}
 
       {mostrarBeneficios && (
         <span style={{
           position: 'absolute', top: 0, left: '100%', marginLeft: 8, zIndex: 10,
           background: 'var(--z-bg-card)', color: 'var(--z-text-primary)', fontFamily: 'inherit', fontWeight: 400,
-          fontSize: 11.5, lineHeight: 1.5, padding: '10px 12px', borderRadius: 8,
+          fontSize: 11.5, lineHeight: 1.5, padding: '10px 12px', borderRadius: 8, width: 280,
           border: `0.5px solid var(--z-border)`, borderLeft: `2px solid ${cfg.color}`,
-          whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.14)',
+          whiteSpace: 'normal', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.14)',
         }}>
           <div style={{ fontWeight: 700, marginBottom: 4, color: cfg.color }}>Beneficios {cfg.etiqueta}:</div>
-          {cfg.beneficios.map((b) => <div key={b} style={{ color: 'var(--z-text-muted)' }}>• {b}</div>)}
+          {cfg.beneficios.map((b) => (
+            <div key={b} style={{ display: 'flex', gap: 6, color: 'var(--z-text-muted)', marginBottom: 3 }}>
+              <span>•</span><span>{b}</span>
+            </div>
+          ))}
         </span>
       )}
     </span>
@@ -717,9 +741,12 @@ export function DashboardAsesorPage() {
                 ? `Supervisor: ${data.nombreSupervisor}`
                 : 'Sin supervisor asignado'}
           </p>
-          {!isLoading && (
+          {!isLoading && data?.categoriaRanking && NIVEL_POR_CATEGORIA_BACKEND[data.categoriaRanking] && (
             <div style={{ marginTop: 6 }}>
-              <InsigniaNivelAsesor nivel={NIVEL_ASESOR_QUEMADO_POR_MES[mesOffset]} />
+              <InsigniaNivelAsesor
+                nivel={NIVEL_POR_CATEGORIA_BACKEND[data.categoriaRanking]}
+                promedioAnual={data.promedioAnualCategoria}
+              />
             </div>
           )}
         </div>

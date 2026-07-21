@@ -4,6 +4,7 @@ import type {
   InformeLideresResponse,
   InformeCarterasResponse,
   InformeAgenciasExternasResponse,
+  CategoriaAgenteDto,
 } from '../types/informesRecaudo';
 
 export const getInformeAgentes = async (
@@ -59,6 +60,18 @@ export const getInformeAgenciasExternas = async (
 ): Promise<InformeAgenciasExternasResponse> => {
   const { data } = await api.get<InformeAgenciasExternasResponse>(
     '/api/informes/recaudo/agencias-externas',
+    { params: { año, mes } },
+  );
+  return data;
+};
+
+// Solo Admin/Director — categoría de ranking (Diamante/Oro/Plata/Bronce) de todos los asesores.
+export const getCategoriasAgentes = async (
+  año: number,
+  mes: number,
+): Promise<CategoriaAgenteDto[]> => {
+  const { data } = await api.get<CategoriaAgenteDto[]>(
+    '/api/informes/recaudo/categorias',
     { params: { año, mes } },
   );
   return data;

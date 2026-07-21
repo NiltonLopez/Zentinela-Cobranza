@@ -111,4 +111,8 @@ export interface DashboardAsesorDto {
   acuerdosVigentes: AcuerdoVigenteDto[];
   rendimiento: RendimientoAsesorDto;
   pagosConfirmados: PagosConfirmadosDto;
+  /** "Diamante" | "Oro" | "Plata" | "Bronce" | null (sin honorarios registrados este año) */
+  categoriaRanking: string | null;
+  /** Promedio anual de honorarios usado para calcular categoriaRanking. Null junto con ella. */
+  promedioAnualCategoria: number | null;
 }

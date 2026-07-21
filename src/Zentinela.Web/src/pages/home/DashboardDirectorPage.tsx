@@ -1,14 +1,18 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import {
   obtenerDashboardDirector,
   obtenerLideresDropdown,
   obtenerCarterasLider,
 } from '../../api/dashboardApi';
+import { getCategoriasAgentes } from '../../api/informesRecaudoApi';
 import type { FilaLiderDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
+import type { CategoriaAgenteDto } from '../../types/informesRecaudo';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
+import { IconoCategoria, type CategoriaRanking } from '../../components/IconoCategoria';
 import { useSort } from '../../hooks/useSort';
 import { useDuracionTicker } from '../../hooks/useDuracionTicker';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
@@ -364,11 +368,15 @@ function TablaLideres({ filas, onSeleccionar }: {
   );
 }
 
-function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
+function TablaAsesores({ filas, categoriaPorAgente }: {
+  filas: FilaAsesorDto[]; categoriaPorAgente: Map<number, CategoriaAgenteDto>;
+}) {
   const { items, sort, toggle } = useSort<FilaAsesorDto>(
     filas,
     { key: 'totalGestiones', dir: 'desc' },
-    (f, k) => (f as unknown as Record<string, string | number>)[k],
+    (f, k) => k === 'categoria'
+      ? categoriaPorAgente.get(f.agenteID)?.promedioAnual ?? null
+      : (f as unknown as Record<string, string | number>)[k],
   );
 
   if (filas.length === 0) {
@@ -388,10 +396,15 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          {categoriaPorAgente.size > 0 && (
+            <ThOrdenable label="Categoría" sortKey="categoria" sort={sort} onSort={toggle} align="center" />
+          )}
         </tr>
       </thead>
       <tbody>
-        {items.map((f, i) => (
+        {items.map((f, i) => {
+          const categoria = categoriaPorAgente.get(f.agenteID);
+          return (
           <tr
             key={f.agenteID}
             style={{
@@ -419,8 +432,24 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
               {formatearPesos(f.proyeccionPromesas)}
             </td>
+            {categoriaPorAgente.size > 0 && (
+              <td style={{ padding: '11px 14px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                {categoria
+                  ? (
+                    <span
+                      title={`${categoria.categoria}${categoria.ajustePorBajoRendimiento ? ' (bajó por rendimiento vs. mes anterior)' : ''}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    >
+                      <IconoCategoria categoria={categoria.categoria as CategoriaRanking} size={22} />
+                      <span style={{ color: 'var(--z-text-muted)' }}>{formatearPesos(categoria.promedioAnual)}</span>
+                    </span>
+                  )
+                  : <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>—</span>}
+              </td>
+            )}
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );
@@ -508,6 +537,7 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function DashboardDirectorPage() {
+  const { usuario } = useAuth();
   const [liderID,       setLiderID]       = useState<number | null>(null);
   const [liderNombre,   setLiderNombre]   = useState<string>('');
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
@@ -520,6 +550,20 @@ export function DashboardDirectorPage() {
   const [customHasta, setCustomHasta] = useState<string>('');
 
   const rango = calcularRango(preset, customDesde, customHasta);
+
+  // Categoría de ranking — solo Admin/Director (el backend la restringe igual).
+  // Se usa el fin del rango seleccionado como mes de referencia (o el mes actual sin rango).
+  const fechaRefCategoria = rango?.hasta ? new Date(rango.hasta + 'T00:00:00') : new Date();
+  const { data: categoriasData } = useQuery({
+    queryKey: ['inf-categorias', fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1],
+    queryFn:  () => getCategoriasAgentes(fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1),
+    enabled:  usuario?.rol === 'Admin' || usuario?.rol === 'Director',
+  });
+  const categoriaPorAgente = useMemo(() => {
+    const mapa = new Map<number, CategoriaAgenteDto>();
+    categoriasData?.forEach(c => mapa.set(c.agenteID, c));
+    return mapa;
+  }, [categoriasData]);
 
   // Dropdowns
   const { data: lideres = [] } = useQuery({
@@ -852,7 +896,7 @@ export function DashboardDirectorPage() {
             {isLoading ? (
               <CargandoSpiral mensaje="Cargando asesores..." />
             ) : (
-              <TablaAsesores filas={data?.filasAsesor ?? []} />
+              <TablaAsesores filas={data?.filasAsesor ?? []} categoriaPorAgente={categoriaPorAgente} />
             )}
           </div>
         </section>
