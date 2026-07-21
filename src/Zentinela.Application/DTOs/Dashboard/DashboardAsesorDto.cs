@@ -12,8 +12,11 @@ public class DashboardAsesorDto
 
     /// <summary>
     /// Categoría de ranking del asesor ("Diamante"/"Oro"/"Plata"/"Bronce"), calculada en vivo
-    /// sin persistencia — ver DashboardAsesorService.ObtenerCategoriaRankingAsync.
-    /// Null cuando el asesor no tiene honorarios registrados en el año en curso.
+    /// sin persistencia — ver CategoriaRankingService. Null cuando el asesor no tiene
+    /// honorarios registrados en el año en curso.
     /// </summary>
     public string? CategoriaRanking { get; set; }
+
+    /// <summary>Promedio anual de honorarios usado para calcular CategoriaRanking. Null junto con ella.</summary>
+    public decimal? PromedioAnualCategoria { get; set; }
 }

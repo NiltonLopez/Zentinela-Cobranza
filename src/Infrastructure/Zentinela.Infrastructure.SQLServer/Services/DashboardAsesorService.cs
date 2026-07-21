@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Dashboard;
+using Zentinela.Application.DTOs.Ranking;
 using Zentinela.Application.Interfaces;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
@@ -36,10 +37,10 @@ public class DashboardAsesorService : IDashboardAsesorService
         // Las consultas a _callCenter deben ser secuenciales (DbContext no es thread-safe).
         var supervisorTask = ObtenerNombreSupervisorAsync(numeroDocumento);
 
-        var acuerdos         = await ObtenerAcuerdosVigentesAsync(agenteID);
-        var rendimiento      = await ObtenerRendimientoAsync(agenteID, fechaDesde, fechaHasta);
-        var pagosConfirmados = await ObtenerPagosConfirmadosAsync(agenteID, fechaDesde, fechaHasta);
-        var categoriaRanking = await ObtenerCategoriaRankingAsync(numeroDocumento, fechaDesde);
+        var acuerdos           = await ObtenerAcuerdosVigentesAsync(agenteID);
+        var rendimiento        = await ObtenerRendimientoAsync(agenteID, fechaDesde, fechaHasta);
+        var pagosConfirmados   = await ObtenerPagosConfirmadosAsync(agenteID, fechaDesde, fechaHasta);
+        var categoriaAgente    = await ObtenerCategoriaRankingAsync(numeroDocumento, fechaDesde);
 
         return new DashboardAsesorDto
         {
@@ -47,18 +48,19 @@ public class DashboardAsesorService : IDashboardAsesorService
             AcuerdosVigentes = acuerdos,
             Rendimiento      = rendimiento,
             PagosConfirmados = pagosConfirmados,
-            CategoriaRanking = categoriaRanking,
+            CategoriaRanking = categoriaAgente?.Categoria,
+            PromedioAnualCategoria = categoriaAgente?.PromedioAnual,
         };
     }
 
     // ── Categoría de ranking (Diamante/Oro/Plata/Bronce) ──────────────────────
-    // El cálculo vive en CategoriaRankingService (compartido con la futura vista
-    // admin/director) y se cachea por año/mes — aquí solo se lee la fila de este agente.
-    private async Task<string?> ObtenerCategoriaRankingAsync(long agenteID, DateOnly? fechaDesde)
+    // El cálculo vive en CategoriaRankingService (compartido con la vista admin/director)
+    // y se cachea por año/mes — aquí solo se lee la fila de este agente.
+    private async Task<CategoriaAgenteDto?> ObtenerCategoriaRankingAsync(long agenteID, DateOnly? fechaDesde)
     {
         var refDate = fechaDesde ?? DateOnly.FromDateTime(DateTime.Today);
         var categorias = await _categoriaRanking.ObtenerCategoriasAsync(refDate.Year, refDate.Month);
-        return categorias.TryGetValue(agenteID, out var dto) ? dto.Categoria : null;
+        return categorias.TryGetValue(agenteID, out var dto) ? dto : null;
     }
 
     // ── Supervisor ────────────────────────────────────────────────────────────
