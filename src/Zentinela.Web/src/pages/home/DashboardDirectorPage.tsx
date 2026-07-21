@@ -6,7 +6,7 @@ import {
   obtenerLideresDropdown,
   obtenerCarterasLider,
 } from '../../api/dashboardApi';
-import { getCategoriasAgentes } from '../../api/informesRecaudoApi';
+import { getCategoriasAgentes, getInformeLideres } from '../../api/informesRecaudoApi';
 import type { FilaLiderDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import type { CategoriaAgenteDto } from '../../types/informesRecaudo';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
@@ -16,6 +16,8 @@ import { IconoCategoria, type CategoriaRanking } from '../../components/IconoCat
 import { useSort } from '../../hooks/useSort';
 import { useDuracionTicker } from '../../hooks/useDuracionTicker';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
+import { MARGEN_BARRA_COMPLETA } from '../../utils/layout';
+import { calcularLiderDelMes, type LiderDelMes } from '../../utils/liderDelMes';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -156,7 +158,13 @@ function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, 
   );
 }
 
-function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
+const LABEL_LIDER_DEL_MES: Record<LiderDelMes['tipo'], string> = {
+  'cumplimiento':       'Líder del mes',
+  'honorarios-totales': 'Más honorarios recaudados',
+  'productividad':      'Mejor productividad',
+};
+
+export function BarraDestacadosLider({ filas, liderDelMes }: { filas: FilaLiderDto[]; liderDelMes: LiderDelMes[] }) {
   // Líder destacado por categoría — si el mismo líder gana varias, su nombre se repite.
   const items = useMemo(() => {
     if (filas.length === 0) return [];
@@ -164,13 +172,23 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
     const masContactabilidad = filas.reduce((a, b) => (b.tasaContactabilidad > a.tasaContactabilidad ? b : a));
     const masEfectividad     = filas.reduce((a, b) => (b.tasaEfectividad     > a.tasaEfectividad      ? b : a));
     const masProyeccion      = filas.reduce((a, b) => (b.proyeccionPromesas  > a.proyeccionPromesas    ? b : a));
-    return [
+    const destacados = [
       { label: 'Más gestiones',        nombre: masGestiones.nombreLider,       valor: masGestiones.totalGestiones.toLocaleString('es-CO') },
       { label: 'Mayor contactabilidad', nombre: masContactabilidad.nombreLider, valor: pct(masContactabilidad.tasaContactabilidad) },
       { label: 'Mayor efectividad',    nombre: masEfectividad.nombreLider,     valor: pct(masEfectividad.tasaEfectividad) },
       { label: 'Mayor proyección',     nombre: masProyeccion.nombreLider,      valor: formatearPesos(masProyeccion.proyeccionPromesas) },
     ];
-  }, [filas]);
+    // Plan B: sin metas cargadas ese mes (o todas en 0%) — honorarios totales y productividad se
+    // destacan por separado, cada uno con su propio ganador.
+    liderDelMes.forEach(item => {
+      destacados.push({
+        label: LABEL_LIDER_DEL_MES[item.tipo],
+        nombre: item.nombreLider,
+        valor: item.tipo === 'cumplimiento' ? pct(item.valor) : formatearPesos(item.valor),
+      });
+    });
+    return destacados;
+  }, [filas, liderDelMes]);
 
   const [pausado, setPausado] = useState(false);
   const { ref: pistaRef, duracion: duracionAnimacion } = useDuracionTicker([items]);
@@ -186,10 +204,10 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
       onMouseLeave={() => setPausado(false)}
       style={{
         background: 'var(--z-brand)',
-        borderRadius: '2px', padding: '7px 0',
+        borderRadius: '2px', padding: '8px 0',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         overflow: 'hidden',
-        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+        marginLeft: MARGEN_BARRA_COMPLETA, marginRight: MARGEN_BARRA_COMPLETA, marginTop: '-22px', marginBottom: '24px',
       }}
     >
       <style>{`
@@ -215,7 +233,7 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {it.label}
             </span>
-            <span style={{ fontSize: '15px', color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '15px', color: '#fff', fontWeight: 600, textTransform: 'uppercase' }}>
               {it.nombre}
               {' · '}{it.valor}
             </span>
@@ -565,6 +583,17 @@ export function DashboardDirectorPage() {
     return mapa;
   }, [categoriasData]);
 
+  // Líder del mes (cumplimiento de meta) — mismo mes de referencia que la categoría de ranking.
+  const { data: informeLideresData } = useQuery({
+    queryKey: ['inf-lideres', fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1],
+    queryFn:  () => getInformeLideres(fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1),
+    enabled:  usuario?.rol === 'Admin' || usuario?.rol === 'Director',
+  });
+  const liderDelMes = useMemo(
+    () => calcularLiderDelMes(informeLideresData?.liderCarteras ?? []),
+    [informeLideresData],
+  );
+
   // Dropdowns
   const { data: lideres = [] } = useQuery({
     queryKey: ['director-lideres'],
@@ -652,7 +681,7 @@ export function DashboardDirectorPage() {
     <>
       {/* Líderes destacados del período (solo vista global) — fuera de la columna de
           contenido para ocupar todo el ancho disponible, no solo los 1000px del resto. */}
-      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} />}
+      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} liderDelMes={liderDelMes} />}
 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
 

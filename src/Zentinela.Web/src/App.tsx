@@ -34,6 +34,7 @@ import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPag
 import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
 import { AgenciasExternasPage } from './pages/informes/AgenciasExternasPage';
 import { AuditoriaGestionesPage } from './pages/informes/AuditoriaGestionesPage';
+import { PreviewLiderDelMesPage } from './pages/home/PreviewLiderDelMesPage';
 
 // Administración
 import { GestionAsignacionesPage } from './pages/administracion/GestionAsignacionesPage';
@@ -71,6 +72,17 @@ function App() {
               element={
                 <div style={{ padding: '28px 32px', minHeight: '100vh', background: 'var(--z-bg-page)' }}>
                   <AuditoriaGestionesPage />
+                </div>
+              }
+            />
+
+            {/* TEMPORAL — preview sin auth de "Líder del mes" (cumplimiento + Plan B),
+                con datos mock. REVERTIR antes de mergear. */}
+            <Route
+              path="/preview-lider-del-mes"
+              element={
+                <div style={{ minHeight: '100vh', background: 'var(--z-bg-page)' }}>
+                  <PreviewLiderDelMesPage />
                 </div>
               }
             />
