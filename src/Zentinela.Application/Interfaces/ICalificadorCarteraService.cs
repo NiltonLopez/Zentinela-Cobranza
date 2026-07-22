@@ -15,7 +15,7 @@ public interface ICalificadorCarteraService
     /// o para una "Cartera Completa" (todos los líderes de la cartera) cuando
     /// <paramref name="liderID"/> es null.
     /// </summary>
-    Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID);
+    Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID, CancellationToken ct = default);
 
     /// <summary>
     /// Stream CSV con (Cédula, Nombre, Última Consulta) de los titulares de la

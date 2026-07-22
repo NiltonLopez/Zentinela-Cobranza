@@ -62,9 +62,9 @@ export function FiltrosPeriodo({
 }: FiltrosPeriodoProps) {
   const btnStyle = (activo: boolean): React.CSSProperties => ({
     padding: '5px 12px', borderRadius: '20px',
-    border: '0.5px solid var(--z-border)',
-    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
-    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    border: activo ? '0.5px solid var(--z-brand)' : '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-brand)' : 'var(--z-bg-page)',
+    color: activo ? '#FFFFFF' : 'var(--z-text-muted)',
     fontSize: '12px', fontWeight: activo ? 600 : 400,
     cursor: 'pointer', whiteSpace: 'nowrap' as const,
   });

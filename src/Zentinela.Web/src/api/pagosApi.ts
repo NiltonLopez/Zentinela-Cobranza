@@ -5,14 +5,15 @@ import type {
   AsesorCartera, TitularEnCartera,
 } from '../types/pagos';
 
-export const generarPlantillaPagos = async (): Promise<void> => {
-  const response = await api.get('/api/pagos/plantilla', { responseType: 'blob' });
-  const url  = URL.createObjectURL(response.data as Blob);
+export const generarPlantillaPagos = async (masivo = false): Promise<void> => {
+  const url = masivo ? '/api/pagos/plantilla?masivo=true' : '/api/pagos/plantilla';
+  const response = await api.get(url, { responseType: 'blob' });
+  const blobUrl  = URL.createObjectURL(response.data as Blob);
   const link = document.createElement('a');
-  link.href     = url;
-  link.download = 'plantilla_cargue_pagos.xlsx';
+  link.href     = blobUrl;
+  link.download = masivo ? 'plantilla_cargue_pagos_masivo.xlsx' : 'plantilla_cargue_pagos.xlsx';
   link.click();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(blobUrl);
 };
 
 export const listarCarterasPagos = async (): Promise<CarteraDropdown[]> => {
@@ -22,11 +23,13 @@ export const listarCarterasPagos = async (): Promise<CarteraDropdown[]> => {
 
 export const validarCsvPagos = async (
   archivo: File,
-  carteraID: number,
+  carteraID: number | null,   // null en modo masivo (la cartera viene por fila)
+  masivo = false,
 ): Promise<ValidarPagosResponse> => {
   const form = new FormData();
   form.append('archivo', archivo);
-  form.append('carteraID', String(carteraID));
+  if (carteraID != null) form.append('carteraID', String(carteraID));
+  form.append('masivo', String(masivo));
   const res = await api.post<ValidarPagosResponse>('/api/pagos/validar', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -43,9 +46,11 @@ export const obtenerUltimaActualizacionPagos = async (
 export const confirmarCarguePagos = async (
   carteraID: number,
   filasValidas: PagoFila[],
+  masivo = false,
 ): Promise<{ insertados: number; mensaje: string }> => {
   const res = await api.post<{ insertados: number; mensaje: string }>('/api/pagos/confirmar', {
     carteraID,
+    masivo,
     filasValidas,
   });
   return res.data;

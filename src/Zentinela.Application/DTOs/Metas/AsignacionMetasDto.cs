@@ -30,10 +30,12 @@ public class FilaMetaAgenteDto
 
 public class EstadoMetasMesDto
 {
-    public int                          Año           { get; set; }
-    public int                          Mes           { get; set; }
-    public List<FilaMetaLiderCarteraDto> LiderCarteras { get; set; } = [];
-    public List<FilaMetaAgenteDto>       Agentes       { get; set; } = [];
+    public int                          Año                   { get; set; }
+    public int                          Mes                   { get; set; }
+    public List<FilaMetaLiderCarteraDto> LiderCarteras         { get; set; } = [];
+    /// <summary>Relaciones externas (EsExterna = 1): mismo destino de guardado.</summary>
+    public List<FilaMetaLiderCarteraDto> LiderCarterasExternas { get; set; } = [];
+    public List<FilaMetaAgenteDto>       Agentes               { get; set; } = [];
 }
 
 // ── Body del endpoint de guardado (UPSERT de una o varias filas) ──────────────

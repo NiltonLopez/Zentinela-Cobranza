@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listarAgentes,
@@ -7,6 +7,7 @@ import {
   desasignarCarteraAgente,
 } from '../../api/adminApi';
 import type { AgenteAdmin } from '../../types/admin';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Modal: gestionar carteras del agente ─────────────────────────────────────
 
@@ -238,6 +239,8 @@ function ModalCarteras({
 
 export function GestionAgentesPage() {
   const [busqueda, setBusqueda] = useState('');
+  const [soloSinCartera, setSoloSinCartera] = useState(false);
+  const [liderFiltro, setLiderFiltro] = useState('');   // '' = todos los líderes
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<AgenteAdmin | null>(null);
 
   const { data: agentes = [], isLoading, isError } = useQuery({
@@ -245,13 +248,22 @@ export function GestionAgentesPage() {
     queryFn: listarAgentes,
   });
 
+  // Líderes (supervisores) que tienen al menos un agente — para el selector.
+  const lideres = useMemo(
+    () => Array.from(new Set(
+        agentes.map(a => a.supervisorNombre).filter((n): n is string => !!n),
+      )).sort((a, b) => a.localeCompare(b, 'es-CO')),
+    [agentes],
+  );
+
   const agentesFiltrados = agentes.filter((a) => {
+    if (soloSinCartera && a.totalCarterasAsignadas > 0) return false;
+    if (liderFiltro && a.supervisorNombre !== liderFiltro) return false;
     const q = busqueda.trim().toLowerCase();
     if (!q) return true;
     return (
       a.nombreCompleto.toLowerCase().includes(q) ||
-      a.numeroDocumento.toString().includes(q) ||
-      (a.supervisorNombre ?? '').toLowerCase().includes(q)
+      a.numeroDocumento.toString().includes(q)
     );
   });
 
@@ -267,15 +279,16 @@ export function GestionAgentesPage() {
         </p>
       </div>
 
-      {/* Buscador */}
-      <div style={{ marginBottom: 16 }}>
+      {/* Buscador + filtro */}
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <input
           type="text"
-          placeholder="Buscar por nombre, cédula o supervisor..."
+          placeholder="Nombre o cédula"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           style={{
-            width: '100%',
+            flex: 1,
+            minWidth: '240px',
             maxWidth: '380px',
             padding: '8px 12px',
             fontSize: '13px',
@@ -285,10 +298,30 @@ export function GestionAgentesPage() {
             color: 'var(--z-text-primary)',
             outline: 'none',
             boxSizing: 'border-box',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
           }}
           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-brand)'; }}
           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = 'var(--z-border)'; }}
         />
+        <ZDropdown
+          options={[{ value: '', label: 'Todos los líderes' }, ...lideres.map((l) => ({ value: l, label: l }))]}
+          value={liderFiltro}
+          onChange={setLiderFiltro}
+          style={{ maxWidth: '260px' }}
+        />
+        <button
+          onClick={() => setSoloSinCartera(v => !v)}
+          style={{
+            padding: '8px 14px', borderRadius: 6, border: '1px solid var(--z-border)',
+            background: soloSinCartera ? '#fff7ed' : 'var(--z-bg-card)',
+            color: soloSinCartera ? '#ea580c' : 'var(--z-text-muted)',
+            fontSize: 12, fontWeight: soloSinCartera ? 600 : 400, cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
+          }}
+        >
+          {soloSinCartera ? '▪ Solo sin cartera' : 'Solo sin cartera'}
+        </button>
       </div>
 
       {/* Tabla */}
@@ -304,12 +337,12 @@ export function GestionAgentesPage() {
           gridTemplateColumns: '1.4fr 1fr 110px 140px',
           columnGap: '16px',
           padding: '10px 16px',
-          borderBottom: '0.5px solid var(--z-border)',
-          background: 'var(--z-bg-surface)',
+          borderBottom: '2px solid var(--z-brand)',
+          background: 'var(--z-brand-light)',
         }}>
           {['Agente', 'Supervisor', 'Carteras', ''].map((h) => (
             <span key={h} style={{
-              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)',
+              fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)',
               textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>
               {h}
@@ -331,7 +364,9 @@ export function GestionAgentesPage() {
 
         {!isLoading && !isError && agentesFiltrados.length === 0 && (
           <div style={{ padding: '32px', textAlign: 'center', color: 'var(--z-text-muted)', fontSize: '13px' }}>
-            {busqueda ? 'Sin resultados para la búsqueda.' : 'No hay agentes activos.'}
+            {busqueda || soloSinCartera
+              ? (soloSinCartera && !busqueda ? 'Todos los agentes tienen al menos una cartera asignada.' : 'Sin resultados para la búsqueda.')
+              : 'No hay agentes activos.'}
           </div>
         )}
 
@@ -348,6 +383,8 @@ export function GestionAgentesPage() {
                 alignItems: 'center',
                 borderBottom: i < agentesFiltrados.length - 1 ? '0.5px solid var(--z-border)' : 'none',
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
               <div>
                 <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--z-text-primary)', marginBottom: '2px' }}>

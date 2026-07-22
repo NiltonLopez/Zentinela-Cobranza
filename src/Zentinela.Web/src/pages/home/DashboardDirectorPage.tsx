@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   obtenerDashboardDirector,
   obtenerLideresDropdown,
   obtenerCarterasLider,
 } from '../../api/dashboardApi';
-import type { FilaLiderDto, FilaAsesorDto } from '../../types/dashboard';
+import type { FilaLiderDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
+import { useDuracionTicker } from '../../hooks/useDuracionTicker';
+import { formatearTiempoTranscurrido } from '../../utils/formatters';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -68,18 +71,18 @@ function formatearPesos(valor: number): string {
   return valor.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 }
 
+/** Como formatearPesos, pero separa el número de la unidad "millones" cuando el valor es grande, para poder mostrar la unidad en un tamaño más chico sin que se corte de línea. */
+function formatearPesosCorto(valor: number): { valor: string; unidad?: string } {
+  if (Math.abs(valor) < 1_000_000) return { valor: formatearPesos(valor) };
+  // Truncamos (no redondeamos) los millones para nunca mostrar un valor mayor al real.
+  // Ej: 1.181,94 millones → "$ 1.181 millones", nunca "$ 1.182 millones". El valor exacto se muestra aparte (valorReal).
+  const millones = Math.trunc(valor / 1_000_000);
+  return { valor: `$ ${millones.toLocaleString('es-CO')}`, unidad: 'millones' };
+}
+
 function formatearFechaCorta(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
-}
-
-function formatearFechaHora(iso: string | null): string {
-  if (!iso) return 'Sin datos';
-  const fecha = new Date(iso);
-  return fecha.toLocaleDateString('es-CO', {
-    day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
 }
 
 // ── Constantes de presets ─────────────────────────────────────────────────────
@@ -96,7 +99,10 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: { label: string; valor: string; sub?: string; valorSize?: number }) {
+function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta }: {
+  label: string; valor: string; unidad?: string; valorReal?: string; sub?: string; valorSize?: number;
+  alerta?: { cantidad: number; onClick: () => void };
+}) {
   return (
     <div style={{
       background: 'var(--z-bg-card)',
@@ -105,16 +111,113 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: { label: string; 
       padding: '20px 22px',
       flex: '1 1 160px',
       minWidth: '160px',
+      display: 'flex',
+      flexDirection: 'column',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
         {label}
       </p>
-      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
-        {valor}
-      </p>
-      {sub && (
-        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
-      )}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, whiteSpace: 'nowrap' }}>
+          {valor}
+          {unidad && (
+            <span style={{ fontSize: '13px', fontWeight: 600, marginLeft: '4px' }}>{unidad}</span>
+          )}
+        </p>
+        {valorReal && (
+          <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '4px', lineHeight: 1.4 }}>{valorReal}</p>
+        )}
+        {alerta && (
+          <button
+            onClick={alerta.onClick}
+            title="Hay gestiones con un valor de promesa irregular que no se sumaron a la proyección"
+            style={{
+              marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px',
+              fontSize: '11px', fontWeight: 600, color: '#854F0B', background: '#FAEEDA',
+              border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            </svg>
+            {alerta.cantidad} gestión{alerta.cantidad === 1 ? '' : 'es'} irregular{alerta.cantidad === 1 ? '' : 'es'}
+          </button>
+        )}
+        {sub && (
+          <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
+  // Líder destacado por categoría — si el mismo líder gana varias, su nombre se repite.
+  const items = useMemo(() => {
+    if (filas.length === 0) return [];
+    const masGestiones       = filas.reduce((a, b) => (b.totalGestiones      > a.totalGestiones      ? b : a));
+    const masContactabilidad = filas.reduce((a, b) => (b.tasaContactabilidad > a.tasaContactabilidad ? b : a));
+    const masEfectividad     = filas.reduce((a, b) => (b.tasaEfectividad     > a.tasaEfectividad      ? b : a));
+    const masProyeccion      = filas.reduce((a, b) => (b.proyeccionPromesas  > a.proyeccionPromesas    ? b : a));
+    return [
+      { label: 'Más gestiones',        nombre: masGestiones.nombreLider,       valor: masGestiones.totalGestiones.toLocaleString('es-CO') },
+      { label: 'Mayor contactabilidad', nombre: masContactabilidad.nombreLider, valor: pct(masContactabilidad.tasaContactabilidad) },
+      { label: 'Mayor efectividad',    nombre: masEfectividad.nombreLider,     valor: pct(masEfectividad.tasaEfectividad) },
+      { label: 'Mayor proyección',     nombre: masProyeccion.nombreLider,      valor: formatearPesos(masProyeccion.proyeccionPromesas) },
+    ];
+  }, [filas]);
+
+  const [pausado, setPausado] = useState(false);
+  const { ref: pistaRef, duracion: duracionAnimacion } = useDuracionTicker([items]);
+
+  if (items.length === 0) return null;
+
+  // Pista duplicada: al recorrer el 50% del ancho total vuelve a verse igual → loop continuo sin salto.
+  const pista = [...items, ...items];
+
+  return (
+    <div
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      style={{
+        background: 'var(--z-brand)',
+        borderRadius: '2px', padding: '7px 0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        overflow: 'hidden',
+        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+      }}
+    >
+      <style>{`
+        @keyframes zentinelaDestacadosLectura {
+          from { transform: translateX(0%); }
+          to   { transform: translateX(-50%); }
+        }
+      `}</style>
+      <div ref={pistaRef} style={{
+        display: 'flex', width: 'max-content',
+        animationName: 'zentinelaDestacadosLectura',
+        animationDuration: duracionAnimacion,
+        animationTimingFunction: 'linear',
+        animationIterationCount: 'infinite',
+        animationPlayState: pausado ? 'paused' : 'running',
+      }}>
+        {pista.map((it, i) => (
+          <div key={`${it.label}-${i}`} style={{
+            display: 'flex', alignItems: 'baseline', gap: '7px',
+            padding: '0 24px', borderRight: '1px solid rgba(255,255,255,0.3)',
+            whiteSpace: 'nowrap',
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {it.label}
+            </span>
+            <span style={{ fontSize: '15px', color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>
+              {it.nombre}
+              {' · '}{it.valor}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -138,6 +241,7 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
       display: 'flex',
       alignItems: 'center',
       gap: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <svg width="96" height="96" viewBox="0 0 96 96" style={{ flexShrink: 0 }}>
         <circle cx="48" cy="48" r={radio} fill="none" stroke="var(--z-border)" strokeWidth={grosor} />
@@ -160,11 +264,11 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
       </svg>
 
       <div style={{ minWidth: 0 }}>
-        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
           Avance de gestión
         </p>
-        <p style={{ fontSize: '13px', color: 'var(--z-text-primary)', marginBottom: '4px' }}>
-          <span style={{ fontWeight: 700 }}>{gestionados.toLocaleString('es-CO')}</span>
+        <p style={{ fontSize: '13px', marginBottom: '4px' }}>
+          <span style={{ fontWeight: 700, color: 'var(--z-brand)' }}>{gestionados.toLocaleString('es-CO')}</span>
           <span style={{ color: 'var(--z-text-muted)' }}> gestionados</span>
         </p>
         <p style={{ fontSize: '13px', color: 'var(--z-text-muted)' }}>
@@ -172,7 +276,7 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
         </p>
         {/* Barra lineal de soporte visual */}
         <div style={{ marginTop: '10px', height: 4, borderRadius: 99, background: 'var(--z-border)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pctNum}%`, background: color, borderRadius: 99, transition: 'width 0.6s ease' }} />
+          <div style={{ height: '100%', width: `${pctNum}%`, background: 'var(--z-brand)', borderRadius: 99, transition: 'width 0.6s ease' }} />
         </div>
       </div>
     </div>
@@ -188,6 +292,7 @@ function TablaLideres({ filas, onSeleccionar }: {
     { key: 'totalGestiones', dir: 'desc' },
     (f, k) => (f as unknown as Record<string, string | number>)[k],
   );
+  const [filaHover, setFilaHover] = useState<number | null>(null);
 
   if (filas.length === 0) {
     return (
@@ -200,7 +305,7 @@ function TablaLideres({ filas, onSeleccionar }: {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-brand-light)' }}>
           <ThOrdenable label="Líder"           sortKey="nombreLider"         sort={sort} onSort={toggle} />
           <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
@@ -210,30 +315,43 @@ function TablaLideres({ filas, onSeleccionar }: {
         </tr>
       </thead>
       <tbody>
-        {items.map(f => (
-          <tr key={f.liderID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+        {items.map((f, i) => (
+          <tr
+            key={f.liderID}
+            onMouseEnter={() => setFilaHover(f.liderID)}
+            onMouseLeave={() => setFilaHover(prev => (prev === f.liderID ? null : prev))}
+            style={{
+              borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+              borderBottom: '0.5px solid var(--z-border)',
+              background: filaHover === f.liderID ? 'var(--z-bg-page)' : 'transparent',
+              transition: 'background 0.12s ease',
+            }}
+          >
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreLider}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {f.totalGestiones.toLocaleString('es-CO')}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaContactabilidad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaEfectividad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
               {formatearPesos(f.proyeccionPromesas)}
             </td>
-            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
               <button
                 onClick={() => onSeleccionar(f.liderID, f.nombreLider)}
                 style={{
                   padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  background: filaHover === f.liderID ? 'var(--z-bg-card)' : 'var(--z-bg-page)',
+                  color: 'var(--z-text-primary)',
                   fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                  boxShadow: filaHover === f.liderID ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  transition: 'background 0.12s ease, box-shadow 0.12s ease',
                 }}
               >
                 Ver detalle
@@ -264,7 +382,7 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-brand-light)' }}>
           <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} />
           <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
@@ -273,8 +391,16 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
         </tr>
       </thead>
       <tbody>
-        {items.map(f => (
-          <tr key={f.agenteID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+        {items.map((f, i) => (
+          <tr
+            key={f.agenteID}
+            style={{
+              borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+              borderBottom: '0.5px solid var(--z-border)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreAsesor}
               <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px', fontWeight: 400 }}>
@@ -300,6 +426,85 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
   );
 }
 
+function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDirectorDto; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '28px 32px',
+        maxWidth: '440px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--z-text-primary)', marginBottom: '6px' }}>
+          Gestiones excluidas de la proyección
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+          No se incluyeron en la "Proyección promesas" por tener un valor de promesa que parece irregular.
+        </p>
+
+        <div style={{ display: 'flex', gap: '24px', marginBottom: '20px' }}>
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+              Gestiones
+            </p>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
+              {metricas.gestionesExcluidasPorTecho}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+              Valor excluido
+            </p>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
+              {formatearPesos(metricas.valorExcluidoPorTecho)}
+            </p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+          Titulares a revisar
+        </p>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
+          {metricas.titularesExcluidos.map(id => (
+            <span key={id} style={{
+              fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)',
+              background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)',
+              borderRadius: '6px', padding: '4px 10px',
+            }}>
+              {id}
+            </span>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: '1px solid var(--z-border)',
+              background: 'transparent',
+              color: 'var(--z-text-muted)',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function DashboardDirectorPage() {
@@ -307,6 +512,7 @@ export function DashboardDirectorPage() {
   const [liderNombre,   setLiderNombre]   = useState<string>('');
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
   const [carteraNombre, setCarteraNombre] = useState<string>('');
+  const [modalExcluidosAbierto, setModalExcluidosAbierto] = useState(false);
 
   // Selector de fechas
   const [preset,      setPreset]      = useState<Preset>('ciclo');
@@ -349,9 +555,8 @@ export function DashboardDirectorPage() {
     setCarteraNombre('');
   };
 
-  const handleCambiarLider = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const handleCambiarLider = (val: number | null) => {
+    if (val === null) {
       setLiderID(null);
       setLiderNombre('');
       setCarteraID(null);
@@ -365,9 +570,8 @@ export function DashboardDirectorPage() {
     }
   };
 
-  const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const handleCambiarCartera = (val: number | null) => {
+    if (val === null) {
       setCarteraID(null);
       setCarteraNombre('');
     } else {
@@ -391,9 +595,9 @@ export function DashboardDirectorPage() {
   const estiloBtnPreset = (activo: boolean): React.CSSProperties => ({
     padding: '5px 12px',
     borderRadius: '20px',
-    border: '0.5px solid var(--z-border)',
-    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
-    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    border: activo ? '0.5px solid var(--z-brand)' : '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-brand)' : 'var(--z-bg-page)',
+    color: activo ? '#FFFFFF' : 'var(--z-text-muted)',
     fontSize: '12px',
     fontWeight: activo ? 600 : 400,
     cursor: 'pointer',
@@ -401,6 +605,11 @@ export function DashboardDirectorPage() {
   });
 
   return (
+    <>
+      {/* Líderes destacados del período (solo vista global) — fuera de la columna de
+          contenido para ocupar todo el ancho disponible, no solo los 1000px del resto. */}
+      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} />}
+
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
 
       {/* Encabezado */}
@@ -420,6 +629,7 @@ export function DashboardDirectorPage() {
         background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
         borderRadius: '8px', padding: '16px 20px',
         display: 'flex', flexDirection: 'column', gap: '14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
       }}>
         {/* Fila 1: Líder + Cartera */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -427,20 +637,12 @@ export function DashboardDirectorPage() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Líder
             </label>
-            <select
-              value={liderID ?? ''}
+            <ZDropdown
+              options={[{ value: null, label: 'Todos los líderes' }, ...lideres.map(l => ({ value: l.id, label: l.nombre }))]}
+              value={liderID}
               onChange={handleCambiarLider}
-              style={{
-                padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                color: 'var(--z-text-primary)', outline: 'none',
-              }}
-            >
-              <option value="">Todos los líderes</option>
-              {lideres.map(l => (
-                <option key={l.id} value={l.id}>{l.nombre}</option>
-              ))}
-            </select>
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {liderID !== null && (
@@ -448,20 +650,12 @@ export function DashboardDirectorPage() {
               <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 Cartera
               </label>
-              <select
-                value={carteraID ?? ''}
+              <ZDropdown
+                options={[{ value: null, label: 'Todas las carteras del líder' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+                value={carteraID}
                 onChange={handleCambiarCartera}
-                style={{
-                  padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-                  border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                  color: 'var(--z-text-primary)', outline: 'none',
-                }}
-              >
-                <option value="">Todas las carteras del líder</option>
-                {carteras.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-                ))}
-              </select>
+                background="var(--z-bg-page)"
+              />
             </div>
           )}
 
@@ -556,7 +750,7 @@ export function DashboardDirectorPage() {
           </div>
           {data && (
             <span style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Actualizado: {formatearFechaHora(data.metricas.fechaActualizacion)}
+              Actualizado: {formatearTiempoTranscurrido(data.metricas.fechaActualizacion)}
             </span>
           )}
         </div>
@@ -581,9 +775,14 @@ export function DashboardDirectorPage() {
             />
             <TarjetaMetrica
               label="Proyección promesas"
-              valor={formatearPesos(data.metricas.proyeccionPromesas)}
+              valor={formatearPesosCorto(data.metricas.proyeccionPromesas).valor}
+              unidad={formatearPesosCorto(data.metricas.proyeccionPromesas).unidad}
+              valorReal={formatearPesos(data.metricas.proyeccionPromesas)}
               sub="Suma de acuerdos y abonos del período"
               valorSize={18}
+              alerta={data.metricas.gestionesExcluidasPorTecho > 0
+                ? { cantidad: data.metricas.gestionesExcluidasPorTecho, onClick: () => setModalExcluidosAbierto(true) }
+                : undefined}
             />
             <TarjetaMetrica
               label="Incumplidos"
@@ -603,6 +802,7 @@ export function DashboardDirectorPage() {
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
             borderRadius: '8px', overflow: 'hidden',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
             <TablaLideres
               filas={data!.filasLider}
@@ -615,12 +815,39 @@ export function DashboardDirectorPage() {
       {/* Desglose por asesor (vista filtrada por líder o cartera) */}
       {mostrarDesgloseAsesor && (
         <section>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px' }}>
+          <h2 style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px',
+          }}>
             Desglose por asesor
+            <button
+              type="button"
+              onClick={limpiarFiltros}
+              title="Volver al desglose por líder"
+              aria-label="Volver al desglose por líder"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '5px',
+                borderRadius: '6px', padding: '4px 10px',
+                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
+                color: 'var(--z-text-primary)', fontSize: '12px', fontWeight: 500, lineHeight: 1,
+                cursor: 'pointer', transition: 'color 0.15s, border-color 0.15s',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = 'var(--z-brand)';
+                e.currentTarget.style.borderColor = 'var(--z-brand)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = 'var(--z-text-primary)';
+                e.currentTarget.style.borderColor = 'var(--z-border)';
+              }}
+            >
+              ← Volver
+            </button>
           </h2>
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
             borderRadius: '8px', overflow: 'hidden',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
             {isLoading ? (
               <CargandoSpiral mensaje="Cargando asesores..." />
@@ -631,6 +858,14 @@ export function DashboardDirectorPage() {
         </section>
       )}
 
+      {modalExcluidosAbierto && data && (
+        <ModalGestionesExcluidas
+          metricas={data.metricas}
+          onClose={() => setModalExcluidosAbierto(false)}
+        />
+      )}
+
     </div>
+    </>
   );
 }

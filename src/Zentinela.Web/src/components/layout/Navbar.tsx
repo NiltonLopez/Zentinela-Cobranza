@@ -61,6 +61,25 @@ export function Navbar({ moduloActivo, onModuloChange }: Props) {
       </div>
 
       {/* Módulos centrados */}
+      <style>{`
+        .z-navbar-tab {
+          position: relative; box-sizing: border-box; transition: color 0.2s ease;
+          color: var(--z-text-muted); font-weight: 400;
+        }
+        .z-navbar-tab::after {
+          content: '';
+          position: absolute;
+          left: 50%; right: 50%; bottom: 0; height: 3px;
+          background: var(--z-brand);
+          transition: left 0.22s ease, right 0.22s ease;
+        }
+        .z-navbar-tab:hover { color: var(--z-brand); }
+        .z-navbar-tab:hover::after { left: 10px; right: 10px; }
+        .z-navbar-tab-activa,
+        .z-navbar-tab-activa:hover { color: var(--z-brand); font-weight: 600; }
+        .z-navbar-tab-activa::after,
+        .z-navbar-tab-activa:hover::after { left: 0; right: 0; }
+      `}</style>
       <nav style={{
         position: 'absolute',
         left: '50%',
@@ -76,24 +95,15 @@ export function Navbar({ moduloActivo, onModuloChange }: Props) {
             <button
               key={modulo.key}
               onClick={() => handleModuloClick(modulo.key)}
+              className={`z-navbar-tab${isActive ? ' z-navbar-tab-activa' : ''}`}
               style={{
                 height: '100%',
                 padding: '0 14px',
                 background: 'none',
                 border: 'none',
-                borderBottom: isActive ? '2px solid var(--z-brand)' : '2px solid transparent',
-                color: isActive ? 'var(--z-brand)' : 'var(--z-text-muted)',
                 fontSize: '13px',
-                fontWeight: isActive ? 600 : 400,
                 cursor: 'pointer',
-                transition: 'color 0.15s',
                 whiteSpace: 'nowrap',
-              }}
-              onMouseOver={(e) => {
-                if (!isActive) (e.currentTarget as HTMLElement).style.color = 'var(--z-text-primary)';
-              }}
-              onMouseOut={(e) => {
-                if (!isActive) (e.currentTarget as HTMLElement).style.color = 'var(--z-text-muted)';
               }}
             >
               {modulo.label}

@@ -14,6 +14,11 @@ public class MetricasDirectorDto
     public decimal   ProyeccionPromesas  { get; set; }
     /// <summary>Cantidad de titulares con UltimoPerfil = "Incumplido" en el período.</summary>
     public int       TotalIncumplidos    { get; set; }
+    /// <summary>Gestiones con ValorPromesa por encima del techo (ver ADR-026) — no se sumaron a ProyeccionPromesas.</summary>
+    public int          GestionesExcluidasPorTecho { get; set; }
+    /// <summary>Suma de los ValorPromesa excluidos por superar el techo.</summary>
+    public decimal      ValorExcluidoPorTecho      { get; set; }
+    public List<long>   TitularesExcluidos         { get; set; } = [];
 }
 
 public class FilaLiderDto

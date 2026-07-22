@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Dashboard;
 using Zentinela.Application.Interfaces;
+using Zentinela.Application.Settings;
+using Zentinela.Application.Utils;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
@@ -15,13 +18,16 @@ public class DashboardDirectorService : IDashboardDirectorService
 {
     private readonly CallCenterDbContext      _callCenter;
     private readonly RecursosHumanosDbContext _rrhh;
+    private readonly decimal                  _techoProyeccion;
 
     public DashboardDirectorService(
         CallCenterDbContext callCenter,
-        RecursosHumanosDbContext rrhh)
+        RecursosHumanosDbContext rrhh,
+        IOptions<ProyeccionPromesasSettings> proyeccionPromesasSettings)
     {
         _callCenter = callCenter;
         _rrhh = rrhh;
+        _techoProyeccion = proyeccionPromesasSettings.Value.TechoAbsolutoPorTitular;
     }
 
     // ── Dropdowns ─────────────────────────────────────────────────────────────
@@ -149,7 +155,7 @@ public class DashboardDirectorService : IDashboardDirectorService
         var totalAsignados = await ContarAsignadosAsync(liderID, carteraID);
 
         var registros = await query
-            .Select(u => new { u.CarteraID, u.AgenteID, u.UltimoPerfil, u.ValorPromesa })
+            .Select(u => new { u.TitularID, u.CarteraID, u.AgenteID, u.UltimoPerfil, u.ValorPromesa })
             .AsNoTracking()
             .ToListAsync();
 
@@ -157,9 +163,14 @@ public class DashboardDirectorService : IDashboardDirectorService
         var totalGestiones     = registros.Count;
         var contactosPositivos = registros.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
         var acuerdosAbonos     = registros.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
-        var proyeccionPromesas = registros
+        var acuerdosRegistros  = registros
             .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
-            .Sum(r => r.ValorPromesa ?? 0m);
+            .ToList();
+        var proyeccionPromesas = acuerdosRegistros
+            .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
+        var excluidosPorTecho  = acuerdosRegistros
+            .Where(r => (r.ValorPromesa ?? 0m) > _techoProyeccion)
+            .ToList();
         var totalIncumplidos   = registros.Count(r =>
             string.Equals(r.UltimoPerfil, "Incumplido", StringComparison.OrdinalIgnoreCase));
 
@@ -176,6 +187,9 @@ public class DashboardDirectorService : IDashboardDirectorService
             ProyeccionPromesas  = Math.Round(proyeccionPromesas, 0),
             TotalIncumplidos    = totalIncumplidos,
             TotalAsignados      = totalAsignados,
+            GestionesExcluidasPorTecho = excluidosPorTecho.Count,
+            ValorExcluidoPorTecho      = excluidosPorTecho.Sum(r => r.ValorPromesa ?? 0m),
+            TitularesExcluidos         = excluidosPorTecho.Select(r => r.TitularID).ToList(),
         };
 
         // ── Desglose ─────────────────────────────────────────────────────────
@@ -344,7 +358,7 @@ public class DashboardDirectorService : IDashboardDirectorService
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
                 var proyeccion = grp
                     .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
-                    .Sum(r => r.ValorPromesa ?? 0m);
+                    .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
 
                 return new FilaLiderDto
                 {
@@ -386,7 +400,7 @@ public class DashboardDirectorService : IDashboardDirectorService
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
                 var proyeccion = grp
                     .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
-                    .Sum(r => r.ValorPromesa ?? 0m);
+                    .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
 
                 nombrePorAgente.TryGetValue(grp.Key, out var nombre);
 

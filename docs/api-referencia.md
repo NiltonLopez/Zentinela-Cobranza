@@ -1515,6 +1515,186 @@ Sirve tanto para "mes pasado vs este mes" (Tab Carteras) como para el comparativ
 
 ---
 
+## GET /api/virtualidad/historico/plantilla
+
+Descarga la plantilla XLSX para cargar solicitudes (fase Solicitud) de un canal.
+
+**Roles:** Admin, AuxiliarSistemas
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `canal` | `string` | Sí | `IVR` \| `SMS` \| `Correo` |
+
+### Response — 200 OK
+
+Archivo `.xlsx` (`plantilla_solicitud_{canal}.xlsx`) con columnas `NumeroDocumento`, `Telefono`/`Email` (según canal), `Cartera`, `Lider`, `FechaEnvio` y una fila de ejemplo.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Plantilla generada |
+| `400 Bad Request` | Canal inválido |
+
+---
+
+## POST /api/virtualidad/historico/validar
+
+Valida el archivo de solicitudes cargado: resuelve Cartera/Líder por nombre (`Normalizar`) contra `Lider_Cartera` activo, valida el par, y calcula alertas de saturación (envíos acumulados por destino sobre el umbral del canal: IVR=5, SMS=4, Correo=sin alerta).
+
+**Roles:** Admin, AuxiliarSistemas · **Content-Type:** `multipart/form-data`
+
+### Request — `multipart/form-data`
+
+| Campo | Tipo | Requerido |
+|---|---|---|
+| `archivo` | `.xlsx` | Sí |
+| `canal` | `string` | Sí |
+
+### Response body — 200 OK
+
+```json
+{
+  "totalFilas": 120,
+  "totalValidas": 115,
+  "totalErrores": 5,
+  "preview": [ { "numeroDocumento": 123456, "destino": "3001234567", "nombreCartera": "SG+", "nombreLider": "VANESA ARANGO", "carteraID": 28, "liderID": 14, "fechaEnvio": "2026-07-08", "esValida": true, "errorMensaje": null } ],
+  "filasValidas": [ ],
+  "alertas": [ { "destino": "3001234567", "nombreCartera": "SG+", "totalEnvios": 6 } ]
+}
+```
+
+`preview` trae máximo 10 filas. Errores comunes en `errorMensaje`: `"Cartera '{x}' no encontrada (o inactiva)."`, `"Líder '{x}' no encontrado."`, `"'{Líder}' no está asignado a la cartera '{Cartera}'."`.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Validado (puede traer errores por fila, no es fallo del request) |
+| `400 Bad Request` | Canal inválido, archivo ausente/vacío, o extensión distinta de `.xlsx` |
+
+---
+
+## POST /api/virtualidad/historico/confirmar
+
+Inserta las filas válidas en `HistoricoVirtualidad` con `Estado = NULL` (sin resultado — se completa en la fase Resultado).
+
+**Roles:** Admin, AuxiliarSistemas
+
+### Request body
+
+```json
+{ "canal": "SMS", "filasValidas": [ ] }
+```
+
+### Response body — 200 OK
+
+```json
+{ "insertados": 115, "mensaje": "Se registraron 115 solicitudes de SMS correctamente." }
+```
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Inserción exitosa |
+| `400 Bad Request` | Canal inválido o `filasValidas` vacío |
+
+---
+
+## GET /api/virtualidad/historico/pendientes
+
+Descarga XLSX con las solicitudes de un canal que aún no tienen `Estado` (fase Resultado), filtrable por cartera y rango de fechas.
+
+**Roles:** Admin, AuxiliarSistemas
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `canal` | `string` | Sí | `IVR` \| `SMS` \| `Correo` |
+| `carteraID` | `int` | No | Filtra por cartera |
+| `desde` | `date` | No | `FechaEnvio >= desde` |
+| `hasta` | `date` | No | `FechaEnvio <= hasta` |
+
+### Response — 200 OK
+
+Archivo `.xlsx` (`pendientes_{canal}.xlsx`) con columnas `ID`, `NumeroDocumento`, `Destino`, `Cartera`, `Lider`, `FechaEnvio`, `Estado` (vacía — a diligenciar). **No modificar la columna `ID`**, es la clave para el UPDATE.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Archivo generado (puede venir sin filas si no hay pendientes) |
+| `400 Bad Request` | Canal inválido |
+
+---
+
+## POST /api/virtualidad/historico/resultado/validar
+
+Valida el archivo de resultados: confirma que cada `ID` existe, pertenece al canal indicado, y que `Estado` está en la lista blanca del canal (IVR: Contestada/No contestada/Buzón/Número errado — SMS: Entregado/No entregado — Correo: Entregado/Rebotado/Abierto).
+
+**Roles:** Admin, AuxiliarSistemas · **Content-Type:** `multipart/form-data`
+
+### Request — `multipart/form-data`
+
+| Campo | Tipo | Requerido |
+|---|---|---|
+| `archivo` | `.xlsx` | Sí |
+| `canal` | `string` | Sí |
+
+### Response body — 200 OK
+
+```json
+{
+  "totalFilas": 40,
+  "totalValidas": 38,
+  "totalErrores": 2,
+  "preview": [ { "id": 501, "estado": "Contestada", "esValida": true, "errorMensaje": null } ],
+  "filasValidas": [ ]
+}
+```
+
+Errores comunes: `"ID {id} no existe."`, `"ID {id} pertenece al canal '{canalReal}', no a '{canal}'."`, `"Estado '{x}' no válido para {canal}. Válidos: ..."`.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Validado |
+| `400 Bad Request` | Canal inválido, archivo ausente/vacío, o extensión distinta de `.xlsx` |
+
+---
+
+## POST /api/virtualidad/historico/resultado/confirmar
+
+Aplica `Estado` + `FechaResultado = DateTime.Now` por `ID` sobre las filas válidas. Si un `ID` se repite en el archivo, gana la última fila.
+
+**Roles:** Admin, AuxiliarSistemas
+
+### Request body
+
+```json
+{ "filasValidas": [ ] }
+```
+
+### Response body — 200 OK
+
+```json
+{ "actualizados": 38, "mensaje": "Se actualizaron 38 resultados correctamente." }
+```
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Actualización exitosa |
+| `400 Bad Request` | `filasValidas` vacío |
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`

@@ -26,8 +26,12 @@ export interface FiltroBaseMadreRequest {
   columnasSeleccionadas: string[];
 }
 
+/** Precisión del total: Exacto | Aproximado (~N) | Minimo (más de N). */
+export type TipoTotalPreview = 'Exacto' | 'Aproximado' | 'Minimo';
+
 export interface PreviewBaseMadreResponse {
   total: number;
+  totalTipo: TipoTotalPreview;
   filas: Record<string, unknown>[];
 }
 

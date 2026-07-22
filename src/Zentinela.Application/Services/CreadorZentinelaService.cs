@@ -12,6 +12,11 @@ public class CreadorZentinelaService : ICreadorZentinelaService
 {
     private const int LimitePreview = 10;
 
+    // Tope de filas para el export a Excel: ClosedXML mantiene cada celda como objeto
+    // en memoria (medido: 190k filas ≈ 1.5 GB, 675k ≈ 5 GB) — por encima de esto se
+    // fuerza la Descarga CSV, que transmite en streaming sin acumular en memoria.
+    private const int LimiteExcel = 100_000;
+
     private readonly IBaseMadreRepository _baseMadreRepo;
     private readonly ICarteraRepository   _carteraRepo;
     private readonly IExcelExporter       _excelExporter;
@@ -76,7 +81,7 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         ContextoUsuario contexto, FiltroBaseMadreRequest filtro)
     {
         var liderID = ResolverLiderID(contexto, filtro.LiderID);
-        var (filas, total) = await _baseMadreRepo.ObtenerAsync(
+        var (filas, total, totalTipo) = await _baseMadreRepo.ObtenerAsync(
             filtro.CarteraID, liderID,
             filtro.UltimoPerfil, filtro.MejorPerfil,
             filtro.PromesasVigentes, filtro.RotacionMaxima,
@@ -90,8 +95,9 @@ public class CreadorZentinelaService : ICreadorZentinelaService
         var columnas = ResolverColumnas(filtro.ColumnasSeleccionadas);
         return new PreviewBaseMadreResponse
         {
-            Total = total,
-            Filas = filas.Select(f => FilaADiccionario(f, columnas)).ToList(),
+            Total     = total,
+            TotalTipo = totalTipo,
+            Filas     = filas.Select(f => FilaADiccionario(f, columnas)).ToList(),
         };
     }
 
@@ -125,7 +131,13 @@ public class CreadorZentinelaService : ICreadorZentinelaService
                     dict[columnas[i].Nombre] = reader.IsDBNull(i) ? null : reader.GetValue(i);
                 diccionarios.Add(dict);
                 return ValueTask.CompletedTask;
-            });
+            },
+            // Se pide 1 fila de más para detectar si excede el tope sin materializar todo.
+            limite: LimiteExcel + 1);
+
+        // Guard: por encima del tope, el Excel consumiría demasiada memoria → forzar CSV.
+        if (diccionarios.Count > LimiteExcel)
+            throw new ExportacionDemasiadoGrandeException(LimiteExcel);
 
         // Nombre de la cartera para el Excel y el nombre de archivo.
         var carteras = await _carteraRepo.ObtenerTodasAsync();

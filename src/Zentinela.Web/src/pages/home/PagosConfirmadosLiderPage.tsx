@@ -5,6 +5,7 @@ import {
   obtenerCarterasLiderPropias,
 } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import { FiltrosPeriodo, calcularRango } from '../../components/pagos/FiltrosPeriodo';
@@ -13,19 +14,22 @@ import { formatearMoneda, formatearFecha, formatearFechaHora } from '../../utils
 import type { Preset } from '../../components/pagos/FiltrosPeriodo';
 import type { PagoDirectorDto } from '../../types/dashboard';
 
+// Vista previa: sin filtro de cartera la tabla solo muestra los primeros N pagos para
+// evitar renderizar miles de filas. Los totales siguen reflejando el universo completo.
+const PREVIEW_LIMIT = 10;
+
 // ── Fila de tabla ─────────────────────────────────────────────────────────────
 
 const TD: React.CSSProperties = {
   padding: '10px 14px', fontSize: '13px',
   color: 'var(--z-text-primary)',
-  borderBottom: '0.5px solid var(--z-border)',
   whiteSpace: 'nowrap',
 };
 
-function FilaPago({ pago, idx }: { pago: PagoDirectorDto; idx: number }) {
-  const bg = idx % 2 === 0 ? 'var(--z-bg-card)' : 'var(--z-bg-page)';
+function FilaPago({ pago }: { pago: PagoDirectorDto }) {
+  const bg = 'var(--z-bg-card)';
   return (
-    <tr>
+    <tr style={{ borderBottom: '0.5px solid var(--z-border)' }}>
       <td style={{ ...TD, background: bg }}>
         {pago.nombreCliente}
         <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
@@ -80,11 +84,9 @@ export function PagosConfirmadosLiderPage() {
   const totalRecaudo    = pagos.reduce((s, p) => s + p.valorPagado, 0);
   const totalHonorarios = pagos.reduce((s, p) => s + p.honorarios, 0);
 
-  const selectStyle: React.CSSProperties = {
-    padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-    border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-    color: 'var(--z-text-primary)', outline: 'none',
-  };
+  // En modo preview (sin cartera elegida) la tabla se limita a PREVIEW_LIMIT filas.
+  const enModoPreview = carteraID === null;
+  const filasVisibles = enModoPreview ? sorted.slice(0, PREVIEW_LIMIT) : sorted;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1200px' }}>
@@ -113,12 +115,12 @@ export function PagosConfirmadosLiderPage() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Cartera
             </label>
-            <select value={carteraID ?? ''} onChange={e => setCarteraID(Number(e.target.value) || null)} style={selectStyle}>
-              <option value="">Todas mis carteras</option>
-              {carteras.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-              ))}
-            </select>
+            <ZDropdown
+              options={[{ value: null, label: 'Todas mis carteras' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+              value={carteraID}
+              onChange={setCarteraID}
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {carteraID !== null && (
@@ -162,6 +164,19 @@ export function PagosConfirmadosLiderPage() {
         </div>
       )}
 
+      {/* Aviso de vista previa */}
+      {!isLoading && enModoPreview && pagos.length > PREVIEW_LIMIT && (
+        <div style={{
+          background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+          borderRadius: '8px', padding: '12px 16px',
+          fontSize: '13px', color: 'var(--z-text-muted)',
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontWeight: 600, color: 'var(--z-text-primary)' }}>Vista previa</span>
+          Mostrando {PREVIEW_LIMIT} de {pagos.length.toLocaleString('es-CO')} pagos. Filtra por cartera para ver el detalle completo.
+        </div>
+      )}
+
       {/* Tabla */}
       <div style={{
         background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
@@ -178,18 +193,18 @@ export function PagosConfirmadosLiderPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
                 <tr style={{ background: 'var(--z-bg-page)' }}>
-                  <ThOrdenable label="Cliente"       sortKey="nombreCliente" sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Asesor"        sortKey="nombreAsesor"  sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Cartera"       sortKey="nombreCartera" sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Fecha de pago" sortKey="fechaPago"     sort={sort} onSort={toggle} />
-                  <ThOrdenable label="Valor pagado"  sortKey="valorPagado"   sort={sort} onSort={toggle} align="right" />
-                  <ThOrdenable label="Honorarios"    sortKey="honorarios"    sort={sort} onSort={toggle} align="right" />
-                  <ThOrdenable label="Registrado"    sortKey="fechaRegistro" sort={sort} onSort={toggle} />
+                  <ThOrdenable label="Cliente"       sortKey="nombreCliente" sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Asesor"        sortKey="nombreAsesor"  sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Cartera"       sortKey="nombreCartera" sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Fecha de pago" sortKey="fechaPago"     sort={sort} onSort={toggle} resaltado />
+                  <ThOrdenable label="Valor pagado"  sortKey="valorPagado"   sort={sort} onSort={toggle} align="right" resaltado />
+                  <ThOrdenable label="Honorarios"    sortKey="honorarios"    sort={sort} onSort={toggle} align="right" resaltado />
+                  <ThOrdenable label="Registrado"    sortKey="fechaRegistro" sort={sort} onSort={toggle} resaltado />
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((p, i) => (
-                  <FilaPago key={p.pagoID} pago={p} idx={i} />
+                {filasVisibles.map(p => (
+                  <FilaPago key={p.pagoID} pago={p} />
                 ))}
               </tbody>
             </table>

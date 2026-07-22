@@ -34,6 +34,47 @@ public class GestionCarterasController : ControllerBase
         return Ok(lideres);
     }
 
+    /// <summary>Lista empleados de RRHH elegibles para darse de alta como líder.</summary>
+    [HttpGet("empleados-elegibles")]
+    public async Task<IActionResult> ListarEmpleadosElegibles()
+    {
+        var empleados = await _service.ListarEmpleadosElegiblesAsync();
+        return Ok(empleados);
+    }
+
+    /// <summary>Crea un líder en DBCallCenter a partir de un empleado de RRHH (por cédula).</summary>
+    [HttpPost("lideres")]
+    public async Task<IActionResult> CrearLider([FromBody] CrearLiderDto dto)
+    {
+        try
+        {
+            var lider = await _service.CrearLiderAsync(dto);
+            return Ok(lider);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Crea un líder EXTERNO (no empleado) y su usuario Zentinela con rol Líder Externo.
+    /// Devuelve las credenciales (usuario + contraseña temporal si se generó).
+    /// </summary>
+    [HttpPost("lideres-externos")]
+    public async Task<IActionResult> CrearLiderExterno([FromBody] CrearLiderExternoDto dto)
+    {
+        try
+        {
+            var resultado = await _service.CrearLiderExternoAsync(dto);
+            return Ok(resultado);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+    }
+
     /// <summary>Busca carteras por nombre para el autocompletado (máx. 10 resultados).</summary>
     [HttpGet("carteras/buscar")]
     public async Task<IActionResult> BuscarCarteras([FromQuery] string q = "")

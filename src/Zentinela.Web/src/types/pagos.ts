@@ -7,6 +7,9 @@ export interface PagoFila {
   usuarioControl: string;    // valor crudo del CSV — "BASE GENERAL" (case-insensitive) marca pago sin asesor
   agenteControlID: number | null;  // null cuando es BASE GENERAL
   liderID: number;           // resuelto desde TitularCartera (o CarteraAgente como desempate)
+  carteraID: number;         // modo estándar: cartera del selector; modo masivo: resuelta por fila
+  nombreCartera?: string | null; // solo modo masivo — nombre tal como vino en el archivo
+  nombreLider?: string | null;   // solo modo masivo — nombre tal como vino en el archivo
   esBaseGeneral: boolean;    // true cuando UsuarioControl = "BASE GENERAL"
   esDuplicado: boolean;      // true cuando el pago ya estaba cargado o se repite en el archivo — se omite
   titularNuevo: boolean;     // true cuando la cédula no existe en Titular — se creará al confirmar (amarillo)

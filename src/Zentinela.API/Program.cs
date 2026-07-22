@@ -2,6 +2,7 @@ using ConsultaIntegrada.Infrastructure.Entities;
 using ConsultaIntegrada.Initialization;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using Zentinela.API.HealthChecks;
 using Zentinela.Application;
 using Zentinela.Infrastructure.FileExporter;
 using Zentinela.Infrastructure.SQLServer;
@@ -43,6 +44,10 @@ builder.Services.AddControllers()
             new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 
+// Health check para el smoke test post-deploy (verifica app + conectividad a la BD).
+builder.Services.AddHealthChecks()
+    .AddTypeActivatedCheck<DatabaseHealthCheck>("db");
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -56,6 +61,9 @@ app.UseCors(app.Environment.IsDevelopment() ? "FrontendPolicy" : "ZentinelaPolic
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Endpoint anónimo /health (200 = sano, 503 = no sano) para el smoke test del deploy.
+app.MapHealthChecks("/health");
 
 if (app.Environment.IsDevelopment())
 {

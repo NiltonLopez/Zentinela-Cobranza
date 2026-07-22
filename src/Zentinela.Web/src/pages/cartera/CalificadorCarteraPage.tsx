@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   calificarCartera,
@@ -8,6 +8,7 @@ import {
 } from '../../api/calificadorApi';
 import type { CalificadorCarteraDto, DesglosePar, LocalizacionFuente } from '../../types/calificador';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // Mapa etiqueta de fuente (UI) → slug que entiende el backend para descargar
 // (Cédula, Nombre, Última Consulta) de la celda correspondiente.
@@ -21,6 +22,7 @@ const FUENTE_SLUG: Record<string, string> = {
   'Tigo':           'tigo',
   'SOS':            'sos',
   'Claro':          'claro',
+  'MiVacuna':       'mivacuna',
   'MutualSer':      'mutualser',
   'NuevaEps':       'nuevaeps',
   'Sura (ARL)':     'sura',
@@ -153,10 +155,39 @@ function BarraDesglose({ filas, total }: { filas: DesglosePar[]; total: number }
   );
 }
 
+// Persistencia en sessionStorage de la cartera seleccionada: como el fetch de
+// calificarCartera no se cancela al desmontar (no usa AbortSignal), sigue
+// corriendo en segundo plano si el usuario cambia de submódulo. Sin esto, al
+// volver el componente remonta con la selección en blanco y "se corta" el
+// resultado — con esto reconecta al mismo queryKey y React Query muestra lo
+// que ya haya en caché (o el spinner, si la petición seguía en curso).
+// Exportada para que AuthContext.cerrarSesion() la borre al cerrar sesión —
+// la persistencia es para sobrevivir a la navegación entre submódulos dentro
+// de la misma sesión, no para que la siguiente sesión en el mismo navegador
+// vea la cartera de otro usuario.
+export const CLAVE_ACTIVA = 'calificador-cartera-activa';
+
+function leerSeleccionGuardada(): string {
+  try {
+    return sessionStorage.getItem(CLAVE_ACTIVA) ?? '';
+  } catch {
+    return ''; // sessionStorage no disponible (ej. modo privado) — no bloquea la página
+  }
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function CalificadorCarteraPage() {
-  const [seleccion, setSeleccion] = useState('');
+  const [seleccion, setSeleccion] = useState(leerSeleccionGuardada);
+
+  useEffect(() => {
+    try {
+      if (seleccion) sessionStorage.setItem(CLAVE_ACTIVA, seleccion);
+      else sessionStorage.removeItem(CLAVE_ACTIVA);
+    } catch {
+      // sessionStorage no disponible — la selección simplemente no sobrevive a la navegación
+    }
+  }, [seleccion]);
 
   const { data: opciones, isLoading: cargandoOpciones } = useQuery({
     queryKey: ['calificador-opciones'],
@@ -171,12 +202,20 @@ export function CalificadorCarteraPage() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['calificador', carteraID, liderID],
-    queryFn: () => calificarCartera(carteraID!, liderID),
+    queryFn: ({ signal }) => calificarCartera(carteraID!, liderID, signal),
     enabled: carteraID != null,
+    retry: false,
+    // Esta consulta puede tardar varios minutos en carteras grandes. Con el
+    // AbortSignal ya conectado de verdad (antes era un no-op), el refetch
+    // automático al recuperar foco cancelaría el intento en curso y lo
+    // reiniciaría desde cero cada vez que el usuario vuelve a la pestaña —
+    // convirtiendo una espera larga en una espera infinita.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   return (
-    <div style={{ maxWidth: 1200 }}>
+    <div style={{ maxWidth: 1300 }}>
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <div>
@@ -197,27 +236,18 @@ export function CalificadorCarteraPage() {
         {cargandoOpciones ? (
           <CargandoSpiral />
         ) : (
-          <select
+          <ZDropdown
+            options={[
+              { value: '', label: '— Selecciona una cartera —' },
+              ...(opciones ?? []).map((o) => ({
+                value: `${o.carteraID}_${o.liderID ?? ''}`,
+                label: o.etiqueta,
+              })),
+            ]}
             value={seleccion}
-            onChange={(e) => setSeleccion(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '0.5px solid var(--z-border)',
-              background: 'var(--z-bg-card)',
-              color: 'var(--z-text-primary)',
-              fontSize: '13px',
-              minWidth: 320,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">— Selecciona una cartera —</option>
-            {opciones?.map((o) => (
-              <option key={`${o.carteraID}_${o.liderID ?? ''}`} value={`${o.carteraID}_${o.liderID ?? ''}`}>
-                {o.etiqueta}
-              </option>
-            ))}
-          </select>
+            onChange={setSeleccion}
+            style={{ minWidth: 320 }}
+          />
         )}
       </div>
 
@@ -283,6 +313,7 @@ const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: st
   'Tigo':             { etiqueta: 'Inactivo',     color: '#DC2626' },
   'SOS':              { etiqueta: 'Funcional',    color: '#16A34A' },
   'Claro':            { etiqueta: 'Inactivo',     color: '#DC2626' },
+  'MiVacuna':         { etiqueta: 'Funcional',    color: '#16A34A' },
   'MutualSer':        { etiqueta: 'Funcional',    color: '#16A34A' },
   'NuevaEps':         { etiqueta: 'Funcional',    color: '#16A34A' },
   'Sura (ARL)':       { etiqueta: 'Funcional',    color: '#16A34A', nota: 'solo nombre de empresa' },

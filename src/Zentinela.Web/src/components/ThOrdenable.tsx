@@ -16,12 +16,15 @@ export function ThOrdenable({
   sort,
   onSort,
   align = 'left',
+  resaltado = false,
 }: {
   label: string;
   sortKey?: string;
   sort?: SortState;
   onSort?: (key: string) => void;
   align?: 'left' | 'center' | 'right';
+  /** Fondo naranja claro + borde inferior de marca (encabezado destacado). */
+  resaltado?: boolean;
 }) {
   const clickeable = !!sortKey && !!onSort;
   const activo     = clickeable && sort?.key === sortKey;
@@ -35,8 +38,9 @@ export function ThOrdenable({
         textAlign: align,
         fontSize: '11px',
         fontWeight: 600,
-        color: activo ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-        borderBottom: '0.5px solid var(--z-border)',
+        color: activo ? 'var(--z-brand)' : 'var(--z-text-primary)',
+        background: resaltado ? 'var(--z-brand-light)' : undefined,
+        borderBottom: resaltado ? '2px solid var(--z-brand)' : '0.5px solid var(--z-border)',
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
         whiteSpace: 'nowrap',

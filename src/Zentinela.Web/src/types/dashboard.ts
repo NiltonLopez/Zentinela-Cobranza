@@ -38,6 +38,9 @@ export interface MetricasDirectorDto {
   tasaEfectividad: number;
   proyeccionPromesas: number;
   totalIncumplidos: number;
+  gestionesExcluidasPorTecho: number;
+  valorExcluidoPorTecho: number;
+  titularesExcluidos: number[];
 }
 
 export interface FilaLiderDto {

@@ -512,6 +512,10 @@ public class InformesRecaudoService : IInformesRecaudoService
         if (liderCarteras.Count == 0)
             return new InformeAgenciasExternasResponse();
 
+        // Mismos parámetros temporales que el informe líder-cartera.
+        var (diasDelMes, diasTranscurridos)        = CalcularDias(año, mes);
+        var (diasHabilesDelMes, diasHabilesTransc) = CalcularDiasHabiles(año, mes);
+
         var paresExternos = liderCarteras
             .Select(lc => new { lc.LiderID, lc.CarteraID })
             .ToHashSet();
@@ -552,11 +556,48 @@ public class InformesRecaudoService : IInformesRecaudoService
             .Where(a => paresExternos.Contains(new { a.LiderID, a.CarteraID }))
             .ToList();
 
+        // Metas del mes para las relaciones externas (mismo origen que líderes:
+        // Meta_Lider_Cartera_Mes), cribadas por par externo exacto.
+        var metasRaw = await _callCenter.MetaLiderCarteraMes
+            .Where(m => m.Año == año && m.Mes == mes
+                     && carteraIDs.Contains(m.CarteraID) && liderIDs.Contains(m.LiderID))
+            .AsNoTracking()
+            .ToListAsync();
+
+        var metas = metasRaw
+            .Where(m => paresExternos.Contains(new { m.LiderID, m.CarteraID }))
+            .ToList();
+
+        // Asesores activos por (líder, cartera) externa.
+        var asesoresRaw = await _callCenter.CarteraAgentes
+            .Where(ca => carteraIDs.Contains(ca.CarteraID) && liderIDs.Contains(ca.LiderID))
+            .GroupBy(ca => new { ca.LiderID, ca.CarteraID })
+            .Select(g => new { g.Key.LiderID, g.Key.CarteraID, Total = g.Select(x => x.AgenteID).Distinct().Count() })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var asesores = asesoresRaw
+            .Where(a => paresExternos.Contains(new { a.LiderID, a.CarteraID }))
+            .ToList();
+
         var filas = liderCarteras
             .Select(lc =>
             {
                 var pago = pagos.FirstOrDefault(p => p.LiderID == lc.LiderID && p.CarteraID == lc.CarteraID);
                 var asig = asignaciones.FirstOrDefault(a => a.LiderID == lc.LiderID && a.CarteraID == lc.CarteraID);
+                var meta = metas.FirstOrDefault(m => m.LiderID == lc.LiderID && m.CarteraID == lc.CarteraID);
+                var ases = asesores.FirstOrDefault(a => a.LiderID == lc.LiderID && a.CarteraID == lc.CarteraID);
+
+                var recaudo   = pago?.Recaudo   ?? 0m;
+                var valorMeta = meta?.ValorMeta ?? 0m;
+
+                var deberiaHoy = diasHabilesDelMes > 0
+                    ? valorMeta * diasHabilesTransc / diasHabilesDelMes
+                    : 0m;
+
+                var proyeccion = diasTranscurridos > 0
+                    ? recaudo / diasTranscurridos * diasDelMes
+                    : 0m;
 
                 return new FilaAgenciaExternaDto
                 {
@@ -564,9 +605,15 @@ public class InformesRecaudoService : IInformesRecaudoService
                     NombreLider       = lc.Lider.Nombre,
                     CarteraID         = lc.CarteraID,
                     NombreCartera     = lc.Cartera.NombreCartera,
-                    Recaudo           = pago?.Recaudo    ?? 0m,
+                    TotalAsesores     = ases?.Total ?? 0,
+                    Recaudo           = recaudo,
                     Honorarios        = pago?.Honorarios ?? 0m,
                     TotalAsignaciones = asig?.Total      ?? 0,
+                    ValorMeta         = valorMeta,
+                    TipoMeta          = meta == null ? null : (meta.TipoMeta == 1 ? "Honorarios" : "Recaudo"),
+                    TieneMeta         = meta != null,
+                    DeberiaLlevarHoy  = deberiaHoy,
+                    ProyeccionCierre  = proyeccion,
                 };
             })
             .OrderBy(f => f.NombreLider)
@@ -578,6 +625,7 @@ public class InformesRecaudoService : IInformesRecaudoService
             TotalRecaudo      = filas.Sum(f => f.Recaudo),
             TotalHonorarios   = filas.Sum(f => f.Honorarios),
             TotalAsignaciones = filas.Sum(f => f.TotalAsignaciones),
+            TotalMeta         = filas.Sum(f => f.ValorMeta),
             TotalAgencias     = filas.Select(f => f.LiderID).Distinct().Count(),
             Filas             = filas,
         };

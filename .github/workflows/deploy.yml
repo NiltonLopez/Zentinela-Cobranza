@@ -1,0 +1,90 @@
+name: Deploy Zentinela a Producción
+
+on:
+  push:
+    branches:
+      - production
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publicar API (folder local, self-contained)
+        run: |
+          $publish = "$env:GITHUB_WORKSPACE\publish_api"
+          if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
+          dotnet publish src/Zentinela.API/Zentinela.API.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -o $publish
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Detener App Pool de la API
+        run: |
+          Import-Module WebAdministration
+          if ((Get-WebAppPoolState -Name "ZentinelaAPI").Value -ne "Stopped") {
+            Stop-WebAppPool -Name "ZentinelaAPI"
+            Start-Sleep -Seconds 3
+          }
+
+      - name: Copiar API a IIS (preserva appsettings.Production.json del servidor)
+        run: |
+          robocopy "$env:GITHUB_WORKSPACE\publish_api" "C:\inetpub\wwwroot\ZentinelaAPI" /E /XF appsettings.Production.json
+          if ($LASTEXITCODE -ge 8) { exit 1 } else { exit 0 }
+
+      - name: Iniciar App Pool de la API
+        if: always()
+        run: |
+          Import-Module WebAdministration
+          if ((Get-WebAppPoolState -Name "ZentinelaAPI").Value -ne "Started") {
+            Start-WebAppPool -Name "ZentinelaAPI"
+          }
+
+      # Smoke test: verifica que el API arrancó bien tras el swap de binarios y que
+      # conecta a la BD (/health). Si no responde 200 tras reintentos, el deploy FALLA
+      # en rojo (en vez de un "success" engañoso) — permite detectar/revertir un deploy
+      # roto (binario incompleto, BD inaccesible) antes de que lo sufran los usuarios.
+      # NOTA: si el sitio del API no está en :80 con host header 'zentinelaapi', ajustar el --resolve.
+      - name: Smoke test API (/health)
+        run: |
+          $healthy = $false
+          for ($i = 1; $i -le 12; $i++) {
+            $code = (& curl.exe -s -o NUL -w "%{http_code}" --max-time 10 --resolve zentinelaapi:80:127.0.0.1 http://zentinelaapi/health)
+            Write-Host "Intento $i -> HTTP $code"
+            if ($code -eq "200") { $healthy = $true; break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $healthy) {
+            Write-Error "Smoke test FALLIDO: /health no devolvio 200 tras 12 intentos. El deploy quedo roto (binario incompleto o BD inaccesible)."
+            exit 1
+          }
+          Write-Host "Smoke test OK: el API responde y conecta a la BD."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias React
+        working-directory: src/Zentinela.Web
+        run: npm install
+
+      - name: Build React
+        working-directory: src/Zentinela.Web
+        run: npm run build
+
+      - name: Copiar React a IIS
+        run: |
+          robocopy src\Zentinela.Web\dist C:\inetpub\wwwroot\Zentinela /E /PURGE
+          exit 0
+
+      - name: Deploy completado
+        run: echo "Zentinela desplegado exitosamente en producción"

@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   obtenerDashboardLider,
   obtenerCarterasLiderPropias,
 } from '../../api/dashboardApi';
-import type { FilaAsesorDto } from '../../types/dashboard';
+import type { FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { useAuth } from '../../context/AuthContext';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
+import { formatearTiempoTranscurrido } from '../../utils/formatters';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -68,18 +70,17 @@ function formatearPesos(valor: number): string {
   return valor.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 }
 
+/** Como formatearPesos, pero separa el número de la unidad "millones" cuando el valor es grande, para poder mostrar la unidad en un tamaño más chico sin que se corte de línea. */
+function formatearPesosCorto(valor: number): { valor: string; unidad?: string } {
+  if (Math.abs(valor) < 1_000_000) return { valor: formatearPesos(valor) };
+  // Truncamos (no redondeamos) los millones para nunca mostrar un valor mayor al real.
+  const millones = Math.trunc(valor / 1_000_000);
+  return { valor: `$ ${millones.toLocaleString('es-CO')}`, unidad: 'millones' };
+}
+
 function formatearFechaCorta(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
-}
-
-function formatearFechaHora(iso: string | null): string {
-  if (!iso) return 'Sin datos';
-  const fecha = new Date(iso);
-  return fecha.toLocaleDateString('es-CO', {
-    day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
 }
 
 // ── Presets ───────────────────────────────────────────────────────────────────
@@ -96,8 +97,114 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: {
-  label: string; valor: string; sub?: string; valorSize?: number;
+// ── Barra de frase motivadora ─────────────────────────────────────────────────
+// Frases seleccionadas según el % de avance de gestión del equipo, en un ticker
+// que se desplaza igual que BarraDestacadosLider (DashboardDirectorPage.tsx).
+
+const RANGOS_FRASE: { min: number; max: number; frases: string[]; fraseCierre?: string[] }[] = [
+  {
+    min: 0, max: 40,
+    frases: [
+      'Tu liderazgo marca el ritmo del equipo.',
+      'Tu equipo cuenta con tu guía para superarlos.',
+      'Vamos con todo, aún hay camino por recorrer.',
+      'Tu equipo te necesita enfocado hoy.',
+    ],
+  },
+  {
+    min: 40, max: 60,
+    frases: [
+      'Tu equipo ya recorrió la mitad del camino, se nota tu acompañamiento.',
+      'Confía en el talento de tu equipo.',
+      'La constancia que le has transmitido a tu equipo los ha traído hasta aquí.',
+      'Buen progreso del equipo hasta ahora, sigue impulsándolos.',
+      'Tu equipo avanza, no bajes el ritmo.',
+    ],
+  },
+  {
+    min: 60, max: 80,
+    frases: [
+      'Tu liderazgo se siente en el resultado.',
+      'Mantén ese gran ritmo hoy, ayuda a tu equipo a asegurar la meta.',
+      'Ya casi lo logran, ¡con todo!',
+    ],
+  },
+  {
+    min: 80, max: 100,
+    frases: [
+      'Gracias por tu liderazgo y por la entrega que le contagiaste a tu equipo.',
+      '¡Excelente gestión de equipo!',
+      'A cerrar con broche de oro.',
+    ],
+    // Solo se agrega dentro de los últimos días del mes calendario.
+    fraseCierre: ['Es momento de celebrar con tu equipo el cierre de mes.'],
+  },
+];
+
+function esCierreDeMes(): boolean {
+  const hoy = new Date();
+  const ultimoDiaMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  return hoy.getDate() >= ultimoDiaMes - 2;
+}
+
+function BarraFraseLider({ pct }: { pct: number }) {
+  const frases = useMemo(() => {
+    const rango = RANGOS_FRASE.find(r => pct >= r.min && pct <= r.max) ?? RANGOS_FRASE[0];
+    const base = [...rango.frases];
+    if (rango.fraseCierre && esCierreDeMes()) base.push(...rango.fraseCierre);
+    return base;
+  }, [pct]);
+
+  const [pausado, setPausado] = useState(false);
+
+  if (frases.length === 0) return null;
+
+  // Pista duplicada: al recorrer el 50% del ancho total vuelve a verse igual → loop continuo sin salto.
+  const pista = [...frases, ...frases];
+
+  return (
+    <div
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      style={{
+        background: 'var(--z-brand)',
+        borderRadius: '2px', padding: '7px 0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        overflow: 'hidden',
+        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+      }}
+    >
+      <style>{`
+        @keyframes zentinelaFraseLectura {
+          from { transform: translateX(0%); }
+          to   { transform: translateX(-50%); }
+        }
+      `}</style>
+      <div style={{
+        display: 'flex', width: 'max-content',
+        animationName: 'zentinelaFraseLectura',
+        animationDuration: '28s',
+        animationTimingFunction: 'linear',
+        animationIterationCount: 'infinite',
+        animationPlayState: pausado ? 'paused' : 'running',
+      }}>
+        {pista.map((frase, i) => (
+          <span key={i} style={{
+            fontSize: '14px', fontWeight: 600, color: '#fff',
+            padding: '0 24px', borderRight: '1px solid rgba(255,255,255,0.3)',
+            whiteSpace: 'nowrap',
+          }}>
+            {frase}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta }: {
+  label: string; valor: string; unidad?: string; valorReal?: string; sub?: string; valorSize?: number;
+  alerta?: { cantidad: number; onClick: () => void };
 }) {
   return (
     <div style={{
@@ -107,13 +214,36 @@ function TarjetaMetrica({ label, valor, sub, valorSize = 26 }: {
       padding: '20px 22px',
       flex: '1 1 160px',
       minWidth: '160px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
         {label}
       </p>
-      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, wordBreak: 'break-word' }}>
+      <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-text-primary)', lineHeight: 1, whiteSpace: 'nowrap' }}>
         {valor}
+        {unidad && (
+          <span style={{ fontSize: '13px', fontWeight: 600, marginLeft: '4px' }}>{unidad}</span>
+        )}
       </p>
+      {valorReal && (
+        <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '4px', lineHeight: 1.4 }}>{valorReal}</p>
+      )}
+      {alerta && (
+        <button
+          onClick={alerta.onClick}
+          title="Hay gestiones con un valor de promesa irregular que no se sumaron a la proyección"
+          style={{
+            marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px',
+            fontSize: '11px', fontWeight: 600, color: '#854F0B', background: '#FAEEDA',
+            border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+          </svg>
+          {alerta.cantidad} gestión{alerta.cantidad === 1 ? '' : 'es'} irregular{alerta.cantidad === 1 ? '' : 'es'}
+        </button>
+      )}
       {sub && (
         <p style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginTop: '8px', lineHeight: 1.4 }}>{sub}</p>
       )}
@@ -140,6 +270,7 @@ function TarjetaAvance({ gestionados, asignados }: { gestionados: number; asigna
       display: 'flex',
       alignItems: 'center',
       gap: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
       <svg width="96" height="96" viewBox="0 0 96 96" style={{ flexShrink: 0 }}>
         <circle cx="48" cy="48" r={radio} fill="none" stroke="var(--z-border)" strokeWidth={grosor} />
@@ -199,16 +330,21 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ background: 'var(--z-bg-page)' }}>
-          <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} />
-          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
-          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
-          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
-          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Asesor"          sortKey="nombreAsesor"        sort={sort} onSort={toggle} resaltado />
+          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" resaltado />
+          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" resaltado />
+          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" resaltado />
+          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" resaltado />
         </tr>
       </thead>
       <tbody>
         {items.map(f => (
-          <tr key={f.agenteID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+          <tr
+            key={f.agenteID}
+            style={{ borderBottom: '0.5px solid var(--z-border)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--z-bg-page)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreAsesor}
               <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px', fontWeight: 400 }}>
@@ -234,6 +370,85 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
   );
 }
 
+function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDirectorDto; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100,
+    }}>
+      <div style={{
+        background: 'var(--z-bg-card)',
+        border: '0.5px solid var(--z-border)',
+        borderRadius: '12px',
+        padding: '28px 32px',
+        maxWidth: '440px',
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--z-text-primary)', marginBottom: '6px' }}>
+          Gestiones excluidas de la proyección
+        </p>
+        <p style={{ fontSize: '13px', color: 'var(--z-text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+          No se incluyeron en la "Proyección promesas" por tener un valor de promesa que parece irregular.
+        </p>
+
+        <div style={{ display: 'flex', gap: '24px', marginBottom: '20px' }}>
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+              Gestiones
+            </p>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
+              {metricas.gestionesExcluidasPorTecho}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+              Valor excluido
+            </p>
+            <p style={{ fontSize: '18px', fontWeight: 700, color: '#C2410C' }}>
+              {formatearPesos(metricas.valorExcluidoPorTecho)}
+            </p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+          Titulares a revisar
+        </p>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
+          {metricas.titularesExcluidos.map(id => (
+            <span key={id} style={{
+              fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)',
+              background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)',
+              borderRadius: '6px', padding: '4px 10px',
+            }}>
+              {id}
+            </span>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: '1px solid var(--z-border)',
+              background: 'transparent',
+              color: 'var(--z-text-muted)',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function DashboardLiderPage() {
@@ -242,6 +457,7 @@ export function DashboardLiderPage() {
 
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
   const [carteraNombre, setCarteraNombre] = useState<string>('');
+  const [modalExcluidosAbierto, setModalExcluidosAbierto] = useState(false);
 
   const [preset,      setPreset]      = useState<Preset>('ciclo');
   const [customDesde, setCustomDesde] = useState<string>('');
@@ -265,9 +481,12 @@ export function DashboardLiderPage() {
 
   const tituloFiltro = carteraNombre || 'Todas mis carteras';
 
-  const handleCambiarCartera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = Number(e.target.value);
-    if (!val) {
+  const pctAvance = data && data.metricas.totalAsignados > 0
+    ? Math.min((data.metricas.totalGestiones / data.metricas.totalAsignados) * 100, 100)
+    : 0;
+
+  const handleCambiarCartera = (val: number | null) => {
+    if (val === null) {
       setCarteraID(null);
       setCarteraNombre('');
     } else {
@@ -280,9 +499,9 @@ export function DashboardLiderPage() {
   const estiloBtnPreset = (activo: boolean): React.CSSProperties => ({
     padding: '5px 12px',
     borderRadius: '20px',
-    border: '0.5px solid var(--z-border)',
-    background: activo ? 'var(--z-text-primary)' : 'var(--z-bg-page)',
-    color: activo ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+    border: activo ? '0.5px solid var(--z-brand)' : '0.5px solid var(--z-border)',
+    background: activo ? 'var(--z-brand)' : 'var(--z-bg-page)',
+    color: activo ? '#FFFFFF' : 'var(--z-text-muted)',
     fontSize: '12px',
     fontWeight: activo ? 600 : 400,
     cursor: 'pointer',
@@ -299,6 +518,8 @@ export function DashboardLiderPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
+
+      {data && <BarraFraseLider pct={pctAvance} />}
 
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -324,20 +545,12 @@ export function DashboardLiderPage() {
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Cartera
             </label>
-            <select
-              value={carteraID ?? ''}
+            <ZDropdown
+              options={[{ value: null, label: 'Todas mis carteras' }, ...carteras.map(c => ({ value: c.id, label: c.nombreCartera }))]}
+              value={carteraID}
               onChange={handleCambiarCartera}
-              style={{
-                padding: '7px 10px', fontSize: '13px', borderRadius: '6px',
-                border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)',
-                color: 'var(--z-text-primary)', outline: 'none',
-              }}
-            >
-              <option value="">Todas mis carteras</option>
-              {carteras.map(c => (
-                <option key={c.id} value={c.id}>{c.nombreCartera}</option>
-              ))}
-            </select>
+              background="var(--z-bg-page)"
+            />
           </div>
 
           {carteraID !== null && (
@@ -414,7 +627,7 @@ export function DashboardLiderPage() {
           </div>
           {data && (
             <span style={{ fontSize: '12px', color: 'var(--z-text-muted)' }}>
-              Actualizado: {formatearFechaHora(data.metricas.fechaActualizacion)}
+              Actualizado: {formatearTiempoTranscurrido(data.metricas.fechaActualizacion)}
             </span>
           )}
         </div>
@@ -439,9 +652,14 @@ export function DashboardLiderPage() {
             />
             <TarjetaMetrica
               label="Proyección promesas"
-              valor={formatearPesos(data.metricas.proyeccionPromesas)}
+              valor={formatearPesosCorto(data.metricas.proyeccionPromesas).valor}
+              unidad={formatearPesosCorto(data.metricas.proyeccionPromesas).unidad}
+              valorReal={formatearPesos(data.metricas.proyeccionPromesas)}
               sub="Suma de acuerdos y abonos del período"
               valorSize={18}
+              alerta={data.metricas.gestionesExcluidasPorTecho > 0
+                ? { cantidad: data.metricas.gestionesExcluidasPorTecho, onClick: () => setModalExcluidosAbierto(true) }
+                : undefined}
             />
             <TarjetaMetrica
               label="Incumplidos"
@@ -468,6 +686,13 @@ export function DashboardLiderPage() {
           )}
         </div>
       </section>
+
+      {modalExcluidosAbierto && data && (
+        <ModalGestionesExcluidas
+          metricas={data.metricas}
+          onClose={() => setModalExcluidosAbierto(false)}
+        />
+      )}
 
     </div>
   );

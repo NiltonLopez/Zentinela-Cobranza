@@ -82,3 +82,31 @@ Los encabezados de la plantilla Excel generada son exactamente los nombres de co
 | EF Core `AddRange` | Inviable a 1M filas; genera miles de batches de INSERTs individuales |
 | TVP (Table-Valued Parameter) | Funciona hasta ~100K filas; para 1M es borderline y más complejo de mantener |
 | Validar solo en frontend | Sin segunda línea de defensa; el backend siempre debe validar |
+
+---
+
+## Actualización 2026-07-06 — Timeout con carteras grandes
+
+Al probar por primera vez el cargue contra una cartera+líder con volumen real (`Titular_Cartera` ≈ 2.24M filas; el peor caso individual ≈ 197K filas para una sola combinación), aparecía `SqlException (0x80131904): Execution Timeout Expired` en el paso de **validación** (`ValidarExcelAsync`), no en la confirmación.
+
+Se identificaron dos causas y se corrigieron:
+
+1. **Sin `CommandTimeout` elevado.** `CallCenterDbContext` usa el default de 30 s y `AsignacionMasivaService` era el único de los flujos de cargue masivo que no lo subía (a diferencia de `CargueReporteService` y `CalificadorCarteraService`). Se añadió `SetCommandTimeout(300)` en `ValidarExcelAsync` y en `ConfirmarCargueAsync`, más `BulkCopyTimeout = 300` en el `SqlBulkCopy`.
+
+2. **Query degenerada en la validación (causa raíz).** La consulta de "titulares ya asignados" filtraba con la lista completa de candidatos del Excel:
+
+   ```csharp
+   // ANTES — IN/OPENJSON con miles de parámetros contra 2.24M filas → plan degenerado
+   .Where(tc => tc.CarteraID == carteraID && tc.LiderID == liderID
+             && candidatos.Contains(tc.TitularID))
+   ```
+
+   Se reescribió para traer **todos** los `TitularID` de la cartera+líder con un seek limpio sobre el índice `IX_TitularCartera_Lider_Cartera (LiderID, CarteraID)` y filtrar en memoria:
+
+   ```csharp
+   // DESPUÉS — seek de índice + filtro en memoria (peor caso ≈ 197K longs ≈ 1.5 MB)
+   .Where(tc => tc.CarteraID == carteraID && tc.LiderID == liderID)
+   .Select(tc => tc.TitularID)
+   ```
+
+   El timeout elevado queda como red de seguridad para el guardado (DELETE + bulk, legítimamente pesado); la reescritura hace que la validación vuelva a ser rápida en lugar de solo "no cortarse".

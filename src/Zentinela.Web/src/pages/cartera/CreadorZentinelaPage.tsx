@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import {
   obtenerColumnas,
   obtenerPreview,
@@ -17,6 +18,19 @@ interface SeleccionCartera {
 
 const claveSeleccion = (carteraID: number, liderID: number | null) =>
   `${carteraID}|${liderID ?? ''}`;
+
+// Con responseType 'blob', un error del backend (p. ej. 400 "usa CSV") llega como Blob,
+// no como JSON — hay que leer su texto y parsearlo para mostrar el mensaje real.
+async function mensajeErrorExport(err: unknown, formato: string): Promise<string> {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const json = JSON.parse(await data.text());
+      if (json?.mensaje) return String(json.mensaje);
+    } catch { /* no era JSON */ }
+  }
+  return `No se pudo generar el ${formato}. Intenta de nuevo o usa el otro formato.`;
+}
 
 // ── Tipificaciones conocidas para dropdowns ───────────────────────────────────
 const TIPIFICACIONES = [
@@ -127,14 +141,18 @@ export function CreadorZentinelaPage() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
+  const [errorExport, setErrorExport] = useState<string | null>(null);
+
   const exportMutation = useMutation({
     mutationFn: (filtro: FiltroBaseMadreRequest) => exportarExcel(filtro),
-    onSuccess: (blob) => dispararDescarga(blob, 'xlsx'),
+    onSuccess: (blob) => { setErrorExport(null); dispararDescarga(blob, 'xlsx'); },
+    onError: async (err) => setErrorExport(await mensajeErrorExport(err, 'Excel')),
   });
 
   const exportCsvMutation = useMutation({
     mutationFn: (filtro: FiltroBaseMadreRequest) => exportarCsv(filtro),
-    onSuccess: (blob) => dispararDescarga(blob, 'csv'),
+    onSuccess: (blob) => { setErrorExport(null); dispararDescarga(blob, 'csv'); },
+    onError: async (err) => setErrorExport(await mensajeErrorExport(err, 'CSV')),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -194,7 +212,7 @@ export function CreadorZentinelaPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: '960px' }}>
+    <div style={{ maxWidth: '1300px' }}>
       {/* eslint-disable-next-line jsx-a11y/anchor-has-content */}
       <a ref={anchorRef} style={{ display: 'none' }} />
 
@@ -217,10 +235,16 @@ export function CreadorZentinelaPage() {
       }}>
         <div style={{ marginBottom: '16px' }}>
           <label style={labelStyle}>Cartera</label>
-          <select
+          <ZDropdown
+            options={[
+              { value: '', label: 'Selecciona una cartera...' },
+              ...opciones.map(o => ({
+                value: claveSeleccion(o.carteraID, o.liderID),
+                label: o.etiqueta,
+              })),
+            ]}
             value={seleccion ? claveSeleccion(seleccion.carteraID, seleccion.liderID) : ''}
-            onChange={e => {
-              const v = e.target.value;
+            onChange={(v) => {
               if (!v) { setSeleccion(null); setFiltroActivo(null); return; }
               const [cid, lid] = v.split('|');
               setSeleccion({
@@ -229,18 +253,7 @@ export function CreadorZentinelaPage() {
               });
               setFiltroActivo(null);
             }}
-            style={{ ...inputStyle, cursor: 'pointer' }}
-          >
-            <option value="">Selecciona una cartera...</option>
-            {opciones.map(o => (
-              <option
-                key={claveSeleccion(o.carteraID, o.liderID)}
-                value={claveSeleccion(o.carteraID, o.liderID)}
-              >
-                {o.etiqueta}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         {/* Toggle filtros */}
@@ -604,9 +617,13 @@ export function CreadorZentinelaPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)' }}>
               {preview
-                ? `${preview.total.toLocaleString('es-CO')} titular${preview.total !== 1 ? 'es' : ''} encontrado${preview.total !== 1 ? 's' : ''}`
+                ? (preview.totalTipo === 'Exacto'
+                    ? `${preview.total.toLocaleString('es-CO')} titular${preview.total !== 1 ? 'es' : ''} encontrado${preview.total !== 1 ? 's' : ''}`
+                    : preview.totalTipo === 'Aproximado'
+                      ? `~${preview.total.toLocaleString('es-CO')} titulares (aprox.)`
+                      : `más de ${preview.total.toLocaleString('es-CO')} titulares`)
                 : 'Consultando...'}
-              {preview && preview.total > 10 && (
+              {preview && (preview.totalTipo !== 'Exacto' || preview.total > 10) && (
                 <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}> — mostrando primeros 10</span>
               )}
             </p>
@@ -669,9 +686,9 @@ export function CreadorZentinelaPage() {
             </div>
           </div>
 
-          {(exportMutation.isError || exportCsvMutation.isError) && (
+          {errorExport && (
             <p style={{ fontSize: '12px', color: '#dc2626', marginBottom: '12px' }}>
-              Error al generar la descarga. Intenta de nuevo.
+              {errorExport}
             </p>
           )}
 

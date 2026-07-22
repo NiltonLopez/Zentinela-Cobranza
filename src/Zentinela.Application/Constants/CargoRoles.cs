@@ -21,4 +21,14 @@ public static class CargoRoles
     /// </summary>
     public static string? ObtenerRol(int cargoID) =>
         _mapa.TryGetValue(cargoID, out var rol) ? rol : null;
+
+    /// <summary>
+    /// CargoID de DBRecursosHumanos que pueden desempeñarse como líder de cobranza
+    /// y, por tanto, ser dados de alta en la tabla Lider (Gestión de Líderes y Carteras):
+    /// 2 = Líder de Cobranza, 7 = Coordinador de Cartera, 8 = Director Operativo.
+    /// </summary>
+    public static readonly IReadOnlySet<int> CargosLider = new HashSet<int> { 2, 7, 8 };
+
+    /// <summary>True si el cargo puede ser dado de alta como líder de cobranza.</summary>
+    public static bool EsCargoLider(int cargoID) => CargosLider.Contains(cargoID);
 }

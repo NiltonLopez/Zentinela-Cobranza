@@ -13,6 +13,7 @@ import type {
   GuardarMetaAgenteRequest,
 } from '../../types/metas';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -21,14 +22,15 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-type TabMeta = 'lider' | 'agente';
+type TabMeta = 'lider' | 'agente' | 'externa';
 
 // ── Estilos base ──────────────────────────────────────────────────────────────
 
 const TH: React.CSSProperties = {
   padding: '10px 12px', fontSize: 11, fontWeight: 600,
-  color: 'var(--z-text-muted)', textTransform: 'uppercase',
+  color: 'var(--z-text-primary)', textTransform: 'uppercase',
   letterSpacing: '0.04em', whiteSpace: 'nowrap', textAlign: 'left',
+  background: 'var(--z-brand-light)', borderBottom: '2px solid var(--z-brand)',
 };
 const TD: React.CSSProperties = {
   padding: '8px 12px', fontSize: 13,
@@ -141,7 +143,11 @@ function FilaLider({
   const sinMeta      = !fila.tieneMeta;
 
   return (
-    <tr style={sinMeta ? { background: '#fff7ed' } : {}}>
+    <tr
+      style={sinMeta ? { background: '#fff7ed' } : {}}
+      onMouseEnter={(e) => { e.currentTarget.style.background = sinMeta ? '#fdead1' : 'var(--z-bg-page)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = sinMeta ? '#fff7ed' : 'transparent'; }}
+    >
       <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{fila.nombreCartera}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreLider}</td>
       <td style={{ ...TD, textAlign: 'center' }}>{fila.capacidadActual}</td>
@@ -203,7 +209,11 @@ function FilaAgente({
   const sinMeta      = !fila.tieneMeta;
 
   return (
-    <tr style={sinMeta ? { background: '#fff7ed' } : {}}>
+    <tr
+      style={sinMeta ? { background: '#fff7ed' } : {}}
+      onMouseEnter={(e) => { e.currentTarget.style.background = sinMeta ? '#fdead1' : 'var(--z-bg-page)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = sinMeta ? '#fff7ed' : 'transparent'; }}
+    >
       <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{fila.nombreAgente}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreCartera ?? '—'}</td>
       <td style={{ ...TD, color: 'var(--z-text-muted)' }}>{fila.nombreLider ?? '—'}</td>
@@ -274,15 +284,18 @@ export function AsignacionMetasPage() {
   }, [data]);
 
   const filasFiltradas = useMemo(() => {
-    if (!data) return { lider: [], agente: [] };
+    if (!data) return { lider: [], agente: [], externa: [] };
     const termino = busqueda.trim().toLowerCase();
 
-    const lider = data.liderCarteras.filter(f => {
+    const filtrarLiderCartera = (filas: typeof data.liderCarteras) => filas.filter(f => {
       if (soloSinMeta && f.tieneMeta) return false;
       if (termino && !f.nombreCartera.toLowerCase().includes(termino) &&
                      !f.nombreLider.toLowerCase().includes(termino)) return false;
       return true;
     });
+
+    const lider   = filtrarLiderCartera(data.liderCarteras);
+    const externa = filtrarLiderCartera(data.liderCarterasExternas);
 
     const agente = data.agentes.filter(f => {
       if (soloSinMeta && f.tieneMeta) return false;
@@ -291,7 +304,7 @@ export function AsignacionMetasPage() {
       return true;
     });
 
-    return { lider, agente };
+    return { lider, agente, externa };
   }, [data, soloSinMeta, busqueda, liderFiltro]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
@@ -305,6 +318,13 @@ export function AsignacionMetasPage() {
     conMeta: data.agentes.filter(f => f.tieneMeta).length,
     sinMeta: data.agentes.filter(f => !f.tieneMeta).length,
   } : null;
+
+  const kpiExterna = data ? {
+    conMeta: data.liderCarterasExternas.filter(f => f.tieneMeta).length,
+    sinMeta: data.liderCarterasExternas.filter(f => !f.tieneMeta).length,
+  } : null;
+
+  const kpiActivo = tab === 'lider' ? kpiLider : tab === 'agente' ? kpiAgente : kpiExterna;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200 }}>
@@ -341,18 +361,32 @@ export function AsignacionMetasPage() {
       {data && (
         <>
           {/* Tabs */}
+          <style>{`
+            .z-tab { position: relative; transition: color 0.2s ease; }
+            .z-tab::after {
+              content: '';
+              position: absolute;
+              left: 50%; right: 50%; bottom: -1px; height: 2px;
+              background: var(--z-brand);
+              transition: left 0.22s ease, right 0.22s ease;
+            }
+            .z-tab:hover { color: var(--z-brand); }
+            .z-tab:hover::after { left: 14px; right: 14px; }
+            .z-tab-activa::after,
+            .z-tab-activa:hover::after { left: 0; right: 0; }
+          `}</style>
           <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
-            {([['lider', 'Líderes-Carteras'], ['agente', 'Agentes']] as [TabMeta, string][]).map(([id, label]) => (
+            {([['lider', 'Líderes-Carteras'], ['agente', 'Agentes'], ['externa', 'Agencias Externas']] as [TabMeta, string][]).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => { setTab(id); setBusqueda(''); setLiderFiltro(''); }}
+                className={`z-tab${tab === id ? ' z-tab-activa' : ''}`}
                 style={{
                   padding: '9px 20px', fontSize: 13,
                   fontWeight: tab === id ? 600 : 400,
                   color: tab === id ? 'var(--z-brand)' : 'var(--z-text-muted)',
                   background: 'none', border: 'none',
-                  borderBottom: `2px solid ${tab === id ? 'var(--z-brand)' : 'transparent'}`,
-                  cursor: 'pointer', marginBottom: -1, transition: 'color 0.15s',
+                  cursor: 'pointer', marginBottom: -1,
                 }}
               >
                 {label}
@@ -368,7 +402,7 @@ export function AsignacionMetasPage() {
               borderRadius: 8, padding: '10px 16px',
             }}>
               <span style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>
-                {tab === 'lider' ? kpiLider?.conMeta : kpiAgente?.conMeta}
+                {kpiActivo?.conMeta}
               </span>
               <span style={{ fontSize: 12, color: '#15803d' }}>con meta</span>
             </div>
@@ -378,7 +412,7 @@ export function AsignacionMetasPage() {
               borderRadius: 8, padding: '10px 16px',
             }}>
               <span style={{ fontSize: 20, fontWeight: 700, color: '#ea580c' }}>
-                {tab === 'lider' ? kpiLider?.sinMeta : kpiAgente?.sinMeta}
+                {kpiActivo?.sinMeta}
               </span>
               <span style={{ fontSize: 12, color: '#c2410c' }}>sin meta</span>
             </div>
@@ -396,26 +430,17 @@ export function AsignacionMetasPage() {
             </button>
 
             {tab === 'agente' && lideresConAgentes.length > 0 && (
-              <select
+              <ZDropdown
+                options={[{ value: '', label: '— Todos los líderes —' }, ...lideresConAgentes.map(nombre => ({ value: nombre, label: nombre }))]}
                 value={liderFiltro}
-                onChange={e => setLiderFiltro(e.target.value)}
-                style={{
-                  padding: '7px 10px', borderRadius: 6, border: '1px solid var(--z-border)',
-                  background: 'var(--z-bg-card)',
-                  color: liderFiltro ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
-                  fontSize: 13, outline: 'none', cursor: 'pointer', minWidth: 180,
-                }}
-              >
-                <option value="">— Todos los líderes —</option>
-                {lideresConAgentes.map(nombre => (
-                  <option key={nombre} value={nombre}>{nombre}</option>
-                ))}
-              </select>
+                onChange={setLiderFiltro}
+                style={{ minWidth: 180 }}
+              />
             )}
 
             <input
               type="text"
-              placeholder={tab === 'lider' ? 'Buscar cartera o líder…' : 'Buscar agente…'}
+              placeholder={tab === 'agente' ? 'Buscar agente…' : 'Buscar cartera o líder…'}
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
               style={{
@@ -451,6 +476,42 @@ export function AsignacionMetasPage() {
                         </td>
                       </tr>
                     ) : filasFiltradas.lider.map(f => (
+                      <FilaLider
+                        key={`${f.liderID}-${f.carteraID}-${f.tipoMeta ?? 'x'}-${f.valorMeta ?? 'x'}`}
+                        fila={f} año={data.año} mes={data.mes} onGuardado={refrescar}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Tabla Agencias Externas — mismo formato y guardado que Líderes-Carteras */}
+          {tab === 'externa' && (
+            <div style={{ background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--z-bg-page)', borderBottom: '1px solid var(--z-border)' }}>
+                      <th style={TH}>Cartera</th>
+                      <th style={TH}>Líder</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Asesores</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Cuentas asignadas</th>
+                      <th style={TH}>Tipo de meta</th>
+                      <th style={TH}>Valor meta</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Estado</th>
+                      <th style={TH}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasFiltradas.externa.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)', padding: '32px 0' }}>
+                          {soloSinMeta ? 'Todas las agencias externas tienen meta para este mes.' : 'No hay agencias externas registradas.'}
+                        </td>
+                      </tr>
+                    ) : filasFiltradas.externa.map(f => (
                       <FilaLider
                         key={`${f.liderID}-${f.carteraID}-${f.tipoMeta ?? 'x'}-${f.valorMeta ?? 'x'}`}
                         fila={f} año={data.año} mes={data.mes} onGuardado={refrescar}

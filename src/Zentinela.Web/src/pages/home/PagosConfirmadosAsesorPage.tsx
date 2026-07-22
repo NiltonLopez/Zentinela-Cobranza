@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { obtenerPagosAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
+import { ZDropdown } from '../../components/ZDropdown';
 import { FiltrosPeriodo, calcularRango } from '../../components/pagos/FiltrosPeriodo';
 import { TarjetaResumenPagos } from '../../components/pagos/TarjetaResumenPagos';
 import { formatearMoneda, formatearFecha, formatearFechaHora } from '../../utils/formatters';
@@ -10,17 +11,16 @@ import type { PagoAsesorDto } from '../../types/dashboard';
 
 // ── Fila de tabla ─────────────────────────────────────────────────────────────
 
-function FilaPago({ pago, idx }: { pago: PagoAsesorDto; idx: number }) {
-  const bg = idx % 2 === 0 ? 'var(--z-bg-card)' : 'var(--z-bg-page)';
+function FilaPago({ pago }: { pago: PagoAsesorDto }) {
+  const bg = 'var(--z-bg-card)';
   const tdStyle: React.CSSProperties = {
     padding: '10px 14px',
     fontSize: '13px',
     color: 'var(--z-text-primary)',
-    borderBottom: '0.5px solid var(--z-border)',
     background: bg,
   };
   return (
-    <tr>
+    <tr style={{ borderBottom: '0.5px solid var(--z-border)' }}>
       <td style={tdStyle}>
         {pago.nombreCliente}
         <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', marginLeft: '6px' }}>
@@ -97,11 +97,12 @@ export function PagosConfirmadosAsesorPage() {
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '220px' }}>
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
-            <select value={carteraFiltro} onChange={e => setCarteraFiltro(e.target.value)}
-              style={{ padding: '7px 10px', fontSize: '13px', borderRadius: '6px', border: '0.5px solid var(--z-border)', background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', outline: 'none' }}>
-              <option value="">Todas mis carteras</option>
-              {carteras.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <ZDropdown
+              options={[{ value: '', label: 'Todas mis carteras' }, ...carteras.map(c => ({ value: c, label: c }))]}
+              value={carteraFiltro}
+              onChange={setCarteraFiltro}
+              background="var(--z-bg-page)"
+            />
           </div>
           {carteraFiltro && (
             <button onClick={() => setCarteraFiltro('')}
@@ -160,8 +161,9 @@ export function PagosConfirmadosAsesorPage() {
                       padding: '10px 14px',
                       textAlign: (col === 'Valor pagado' || col === 'Honorarios') ? 'right' : 'left',
                       fontSize: '11px', fontWeight: 600,
-                      color: 'var(--z-text-muted)',
-                      borderBottom: '0.5px solid var(--z-border)',
+                      color: 'var(--z-text-primary)',
+                      background: 'var(--z-brand-light)',
+                      borderBottom: '2px solid var(--z-brand)',
                       letterSpacing: '0.04em',
                       textTransform: 'uppercase',
                       whiteSpace: 'nowrap',
@@ -172,8 +174,8 @@ export function PagosConfirmadosAsesorPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagosFiltrados.map((p, i) => (
-                  <FilaPago key={p.pagoID} pago={p} idx={i} />
+                {pagosFiltrados.map(p => (
+                  <FilaPago key={p.pagoID} pago={p} />
                 ))}
               </tbody>
             </table>

@@ -34,10 +34,18 @@ Líderes de cobranza del sistema.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| ID | int (identity) | NO | SI | — |
+| ID | int | NO | SI | — |
 | Nombre | varchar(100) | NO | — | — |
 | Email | varchar(150) | SI | — | — |
 | Activo | bit | NO | — | — |
+| NumeroDocumento | bigint | SI | — | — |
+
+`ID` **NO es IDENTITY**: se asigna manualmente como `MAX(ID)+1` al dar de alta un líder
+(mismo patrón que `Cartera`). El mapping EF usa `ValueGeneratedNever()`.
+
+`NumeroDocumento` es la cédula del empleado en `DBRecursosHumanos.Empleado` (vínculo lógico
+líder ↔ empleado). Es **nullable**: los líderes externos (agencias, no empleados) pueden no
+tener documento. Ver ADR-027.
 
 ### Lider_Cartera
 Relación muchos-a-muchos entre Lider y Cartera.
@@ -142,6 +150,24 @@ Historial de estados de gestión por titular, acumulado con cada cargue de repor
 | ValorPromesa | money | SI | — | |
 | MotivoNoPago | varchar(100) | SI | — | |
 | FechaActualizacion | datetime | NO | — | Timestamp del cargue en Zentinela — UPDATE si misma Rotacion, INSERT si nueva |
+
+### HistoricoVirtualidad
+Histórico consolidado de solicitudes de virtualidad (IVR / SMS / Correo) con resultado actualizable. Una sola tabla con discriminador `Canal`. `Estado = NULL` = fase Solicitud (sin resultado); se actualiza junto con `FechaResultado` en la fase Resultado (por PK). Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| ID | bigint | NO | SI | — |
+| Canal | varchar(10) | NO | — | CHECK IN (IVR, SMS, Correo) |
+| NumeroDocumento | bigint | NO | — | — |
+| Destino | varchar(255) | NO | — | teléfono (IVR/SMS) o email (Correo) |
+| CarteraID | int | NO | — | FK compuesta → Lider_Cartera |
+| LiderID | int | NO | — | FK compuesta → Lider_Cartera |
+| FechaEnvio | date | NO | — | — |
+| Estado | varchar(50) | SI | — | NULL = sin resultado (fase Solicitud) |
+| FechaResultado | datetime2 | SI | — | poblada en fase Resultado |
+| FechaCargue | datetime2 | NO | — | DEFAULT GETDATE() |
+
+Índices: `IX_HistoricoVirtualidad_Canal_Cartera_Fecha` (Canal, CarteraID, FechaEnvio), `IX_HistoricoVirtualidad_Canal_Destino` (Canal, Destino).
 
 ### PORTAFOLIO
 Tabla de portafolio completo con datos de cliente, financiacion y contacto (importada desde fuente externa).
@@ -1315,7 +1341,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | Fosyga | `IX_Fosyga_TitularID_Fecha` |
 | MutualSer | `IX_MutualSer_TitularID_FechaConsulta` (creado en migración `2026-05-07_mutualser_in_basemadre.sql`) |
 | Positiva | `IX_Positiva_TitularID_Fecha` |
-| PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
+| PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` (la tabla seguía siendo HEAP sin este índice en producción pese a estar documentado aquí; backfill en migración `2026-07-08_index_positivaempresas_titularid.sql`) |
 | RGM | `IX_RGM_TitularID_Fecha` |
 | RUES | `IX_RUES_TitularID_Fecha` |
 | Runt | `IX_Runt_TitularID_Fecha` |

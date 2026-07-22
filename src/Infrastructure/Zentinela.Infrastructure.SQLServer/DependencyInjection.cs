@@ -22,6 +22,7 @@ public static class DependencyInjection
     {
         // ── Configuración tipada (IOptions<JwtSettings>) ──────────────────────
         services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+        services.Configure<ProyeccionPromesasSettings>(configuration.GetSection("ProyeccionPromesas"));
 
         // ── DbContexts ────────────────────────────────────────────────────────
         services.AddDbContext<ZentinelaDbContext>(options =>
@@ -101,6 +102,7 @@ public static class DependencyInjection
         services.AddScoped<IVirtualidadLlamadasService, VirtualidadLlamadasService>();
         services.AddScoped<IVirtualidadEntrantesService, VirtualidadEntrantesService>();
         services.AddScoped<IVirtualidadPagosImpactoService, VirtualidadPagosImpactoService>();
+        services.AddScoped<IHistoricoVirtualidadService, HistoricoVirtualidadService>();
         services.AddScoped<IRastreoLineasService, RastreoLineasService>();
 
         // ── Auditoría de Gestiones — evaluador de congruencia perfil↔gestión (Gemini) ──

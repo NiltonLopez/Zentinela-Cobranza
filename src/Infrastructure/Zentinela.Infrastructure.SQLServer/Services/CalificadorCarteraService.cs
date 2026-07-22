@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using System.Text;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
@@ -16,6 +17,13 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// sets (escalares + 7 desgloses + localización). C# sólo hidrata el DTO. Reemplaza
 /// los 9 bloques C# en memoria que iteraban sobre 60-190k filas y, desde esta
 /// optimización, también la segunda pasada del TVF que calculaba localización.
+///
+/// La lista de titulares de la cartera se calcula UNA sola vez (query previa,
+/// ~0.7s) y se pasa como TVP (dbo.TitularIDList) a dbo.fn_BaseMadreParaTitulares,
+/// que cada fuente cruza directamente por JOIN. Reemplaza a fn_BaseMadrePorCartera
+/// (usada por EscribirLocalizacionCsvAsync y por el Creador, sin cambios), cuya CTE
+/// TitularesCartera se reevaluaba 18 veces por llamada (confirmado con el plan de
+/// ejecución real) — dominaba ~16.8 de ~25s en una cartera de 147k filas.
 /// </summary>
 public class CalificadorCarteraService : ICalificadorCarteraService
 {
@@ -114,6 +122,10 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     /// calculaba localización. Los nombres de columna y orden de filas replican
     /// exactamente lo que producía el código C# (Cantidad DESC, OrdenRango para
     /// Rotación, top 10 + Otras para EPS).
+    ///
+    /// FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares): recibe la lista de
+    /// titulares ya calculada (ver CalificarAsync) en vez de recalcularla — @LiderID
+    /// no se pasa aquí porque el filtro de líder ya quedó aplicado en esa lista.
     /// </summary>
     private const string SqlAgregados = """
         SET NOCOUNT ON;
@@ -176,7 +188,19 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Modelo,
             Placa
         INTO #t
-        FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID);
+        FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares)
+        -- OPTION (RECOMPILE) es OBLIGATORIO, no un ajuste opcional: sin él, el
+        -- optimizador asume que @Titulares (TVP) trae ~1 fila sin importar cuántas
+        -- traiga en realidad, y arma un plan de nested loops que para una cartera
+        -- de 147k filas NUNCA termina (medido: sesión matada tras 6+ min sin
+        -- avanzar). Con RECOMPILE, el optimizador mide el tamaño real de @Titulares
+        -- en cada ejecución y arma un plan correcto (medido: 3.3s).
+        -- MAXDOP 4 (servidor de 8 núcleos, 2026-07-08): sin tope, cada llamada pide
+        -- los 8 núcleos completos; dos usuarios calificando a la vez se ahogan entre
+        -- sí (incidente: retry storm en carteras chicas, ver
+        -- project_calificador_retry_storm.md). Con el tope, cada corrida es algo
+        -- más lenta sola pero el servidor resiste concurrencia real.
+        OPTION (RECOMPILE, MAXDOP 4);
 
         DECLARE @Total int  = (SELECT COUNT(*) FROM #t);
         DECLARE @Hoy   date = CAST(GETDATE() AS date);
@@ -397,6 +421,13 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                       AND NULLIF(NULLIF(t.EmClaro,  ''), '0') IS NULL
                       AND dc.TitularID IS NOT NULL
                      THEN 1 ELSE 0 END) AS ClaroNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelMiVacuna,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmMiVacuna,  ''), '0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS MiVacunaEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelMiVacuna,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmMiVacuna,  ''), '0') IS NULL
+                      AND mv.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS MiVacunaNoEnc,
             SUM(CASE WHEN NULLIF(NULLIF(t.CelMutualSer, ''),'0') IS NOT NULL
                        OR NULLIF(NULLIF(t.CelMutualSer2,''),'0') IS NOT NULL
                        OR NULLIF(NULLIF(t.EmMutualSer,  ''),'0') IS NOT NULL
@@ -462,6 +493,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM MiVacuna)         mv ON mv.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM MutualSer)        ms ON ms.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TRY_CAST(TitularID AS BIGINT) AS TitularID FROM NuevaEps) ne ON ne.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM ARLSura)          ar ON ar.TitularID = t.TitularID
@@ -473,12 +505,41 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         DROP TABLE #t;
         """;
 
-    // Carteras pesadas (P99 ~190k filas, admin sin líder ~395k) + cold cache pueden
-    // sumar 30-60s entre TVF, materialización y desgloses. El default de 30s para
-    // ADO.NET y EF Core no alcanza — subimos a 3 min para dar margen.
-    private const int CommandTimeoutSegundos = 180;
+    // "Cartera Completa" (sin líder) en las carteras más grandes hoy supera lo que
+    // asumía el comentario anterior: medido en vivo, Cartera 22 sin líder (627.981
+    // filas) tarda ~222s solo en la materialización (INTO #t), por encima de los
+    // 180s previos — causaba "Execution Timeout Expired" y el líder lo veía como
+    // "no carga". El acceso normal de un líder a su propia cartera, aun siendo
+    // grande (222.591 filas, Cartera 8 / Líder 6), mide 65s — muy por debajo del
+    // presupuesto. Subimos a 420s para dar margen real sobre el peor caso medido.
+    private const int CommandTimeoutSegundos = 420;
 
-    public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID)
+    // Carteras CHICAS (ver docs/sql/migrations/2026-07-11_fn_BaseMadreParaTitulares_CarteraChica.sql):
+    // el optimizador arma, solo para pocas filas en el TVP @Titulares, un plan de
+    // Nested Loops que reescanea @Titulares completo por cada fila externa (O(n²) —
+    // medido exacto: 3.135² = 9.828.225 reescaneos para 3.135 titulares), causando
+    // el síntoma CXSYNC_PORT / "queda cargando". Medido: 3.135 titulares tardaban
+    // 148.8s con la función original; 4.8s con HASH JOIN forzado en las 6 CTEs que
+    // explotan (Camara, DatosClaro, Fosyga, MutualSer, Positiva, PositivaEmpresas).
+    // Forzar HASH JOIN de forma universal ROMPE las carteras grandes (116.997
+    // titulares: 3.3s -> 64.3s), así que el branching es indispensable, no cosmético.
+    //
+    // Umbral CALIBRADO empíricamente el 2026-07-14 (sondeo serial de combos con líder,
+    // midiendo cada función por separado con SET STATISTICS + sys.dm_exec_requests):
+    //   filas    NORMAL          CHICA (HASH)
+    //   ≤35.592  falla (>60s)    rápida (11-19s)   -> usar CHICA
+    //   36.612   17.7s           19.3s             (empatan; frontera)
+    //   56.723   rápida          58.9s (degrada)   -> usar NORMAL
+    //   116.997  3.3s            64.3s             -> usar NORMAL
+    // Las dos funciones se cruzan ~36k: por debajo NORMAL arma mal plan (Nested Loops
+    // O(n²), CXSYNC_PORT) y CHICA gana; por encima CHICA se degrada y NORMAL gana. Por
+    // eso el umbral va JUSTO en el cruce (36.000, en el hueco limpio 35.592-36.612), no
+    // con "margen" hacia arriba: subirlo mandaría los combos de 40-56k a CHICA, que ahí
+    // es MÁS lenta que NORMAL. Combos que hoy pasan a CHICA por este valor: 28.247,
+    // 29.877, 32.028, 33.695, 34.005, 35.592 (antes fallaban en NORMAL).
+    private const int UmbralCarteraChica = 36_000;
+
+    public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID, CancellationToken ct = default)
     {
         // Hit de caché: el batch de 9 result sets cuesta 1-3s P90 y las recargas
         // son muy frecuentes. Si hay entry vigente la devolvemos directo (<100ms).
@@ -489,23 +550,63 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
         var conn = _db.Database.GetDbConnection();
         var wasOpen = conn.State == ConnectionState.Open;
-        if (!wasOpen) await conn.OpenAsync();
+        if (!wasOpen) await conn.OpenAsync(ct);
 
         try
         {
             var dto = new CalificadorCarteraDto();
 
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText    = SqlAgregados;
+            // Precalcula la lista de TitularID UNA sola vez (antes se recalculaba 18
+            // veces dentro del TVF vía la CTE TitularesCartera — dominaba ~16.8 de
+            // ~25s en una cartera de 147k filas). Ver
+            // docs/sql/migrations/2026-07-06_fn_BaseMadreParaTitulares.sql.
+            var titulares = new DataTable();
+            titulares.Columns.Add("TitularID", typeof(long));
+
+            await using (var cmdIds = conn.CreateCommand())
+            {
+                cmdIds.CommandText = """
+                    SELECT TitularID
+                    FROM dbo.Titular_Cartera
+                    WHERE CarteraID = @CarteraID AND (@LiderID IS NULL OR LiderID = @LiderID)
+                    """;
+                cmdIds.CommandTimeout = CommandTimeoutSegundos;
+                AddParam(cmdIds, "@CarteraID", carteraID);
+                AddParam(cmdIds, "@LiderID",   (object?)liderID ?? DBNull.Value);
+
+                await using var readerIds = await cmdIds.ExecuteReaderAsync(ct);
+                while (await readerIds.ReadAsync(ct))
+                    titulares.Rows.Add(readerIds.GetInt64(0));
+            }
+
+            // Cartera sin titulares para este filtro: mismo comportamiento que ya
+            // existía para "sin datos", sin necesidad de invocar el TVF con un TVP vacío.
+            if (titulares.Rows.Count == 0)
+                return new CalificadorCarteraDto { TotalTitulares = 0 };
+
+            // Cartera chica -> función hermana con HASH JOIN forzado (ver
+            // UmbralCarteraChica arriba). Reemplazo de texto simple: ambas funciones
+            // tienen exactamente las mismas columnas de salida, solo cambia el plan.
+            var nombreFuncion = titulares.Rows.Count <= UmbralCarteraChica
+                ? "dbo.fn_BaseMadreParaTitulares_CarteraChica"
+                : "dbo.fn_BaseMadreParaTitulares";
+
+            await using var cmd = (SqlCommand)conn.CreateCommand();
+            cmd.CommandText    = SqlAgregados.Replace(
+                "FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares)",
+                $"FROM {nombreFuncion}(@CarteraID, @Titulares)");
             cmd.CommandTimeout = CommandTimeoutSegundos;
             AddParam(cmd, "@CarteraID", carteraID);
-            // null → DBNull para que fn_BaseMadrePorCartera reciba NULL y omita el filtro de líder
-            AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
+            cmd.Parameters.Add(new SqlParameter("@Titulares", SqlDbType.Structured)
+            {
+                TypeName = "dbo.TitularIDList",
+                Value    = titulares,
+            });
 
-            await using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
 
             // Result set 1 — escalares
-            if (!await reader.ReadAsync())
+            if (!await reader.ReadAsync(ct))
                 return new CalificadorCarteraDto { TotalTitulares = 0 };
 
             var total = reader.GetInt32(reader.GetOrdinal("Total"));
@@ -533,17 +634,17 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             dto.EdadPromedioRegistraduria  = await GetNullableDecimalAsync(reader, "EdadPromedioRegistraduria");
 
             // Result sets 2-8 — desgloses (etiqueta, cantidad, porcentaje)
-            await reader.NextResultAsync(); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesglosePerfil         = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseEPS            = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader);
-            await reader.NextResultAsync(); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader);
+            await reader.NextResultAsync(ct); dto.DesgloseRotacion       = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesglosePerfil         = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseTipoAfiliado   = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseRegimen        = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseEPS            = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseDepartamento   = await ReadDesgloseAsync(reader, ct);
+            await reader.NextResultAsync(ct); dto.DesgloseFuentesCelular = await ReadDesgloseAsync(reader, ct);
 
             // Result set 9 — localización (15 fuentes, una sola fila)
-            await reader.NextResultAsync();
-            dto.Localizacion = await LeerLocalizacionAsync(reader, total);
+            await reader.NextResultAsync(ct);
+            dto.Localizacion = await LeerLocalizacionAsync(reader, total, ct);
 
             // Solo cacheamos resultados con datos. TotalTitulares == 0 (manejado arriba
             // con returns tempranos) probablemente sea transitorio y no debemos ocultar
@@ -573,10 +674,10 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         return await reader.IsDBNullAsync(ord) ? null : reader.GetDecimal(ord);
     }
 
-    private static async Task<List<DesglosePar>> ReadDesgloseAsync(DbDataReader reader)
+    private static async Task<List<DesglosePar>> ReadDesgloseAsync(DbDataReader reader, CancellationToken ct)
     {
         var list = new List<DesglosePar>();
-        while (await reader.ReadAsync())
+        while (await reader.ReadAsync(ct))
         {
             list.Add(new DesglosePar
             {
@@ -594,9 +695,9 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     /// Usa GetOrdinal por nombre para mantener consistencia con el resto de la clase.
     /// </summary>
     private static async Task<List<LocalizacionFuente>> LeerLocalizacionAsync(
-        DbDataReader reader, int total)
+        DbDataReader reader, int total, CancellationToken ct)
     {
-        if (!await reader.ReadAsync()) return [];
+        if (!await reader.ReadAsync(ct)) return [];
 
         // Si todas las SUMs vienen NULL (sucede con #t vacía aunque ya cubrimos total==0 arriba),
         // tratamos cada columna como 0.
@@ -617,6 +718,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Fuente("Tigo",          Sum("TigoEnc"),        Sum("TigoNoEnc"),        total),
             Fuente("SOS",           Sum("SosEnc"),         Sum("SosNoEnc"),         total),
             Fuente("Claro",         Sum("ClaroEnc"),       Sum("ClaroNoEnc"),       total),
+            Fuente("MiVacuna",      Sum("MiVacunaEnc"),    Sum("MiVacunaNoEnc"),    total),
             Fuente("MutualSer",     Sum("MutualSerEnc"),   Sum("MutualSerNoEnc"),   total),
             Fuente("NuevaEps",      Sum("NuevaEpsEnc"),    Sum("NuevaEpsNoEnc"),    total),
             Fuente("Sura (ARL)",    Sum("SuraEnc"),        Sum("SuraNoEnc"),        total),
@@ -710,6 +812,11 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             "[Celular Claro] AS CelClaro, [Email Claro] AS EmClaro",
             "NULLIF(NULLIF(t.CelClaro,''),'0') IS NOT NULL " +
             "OR NULLIF(NULLIF(t.EmClaro,''),'0') IS NOT NULL"),
+
+        ["mivacuna"] = new("mivacuna", "MiVacuna", "MiVacuna", "FechaConsulta",
+            "[Celular MiVacuna] AS CelMiVacuna, [Email MiVacuna] AS EmMiVacuna",
+            "NULLIF(NULLIF(t.CelMiVacuna,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmMiVacuna,''),'0') IS NOT NULL"),
 
         ["mutualser"] = new("mutualser", "MutualSer", "MutualSer", "FechaConsulta",
             "[Celular MutualSer] AS CelMutualSer, [Celular 2 MutualSer] AS CelMutualSer2, " +
@@ -809,7 +916,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             LEFT JOIN src        ON src.TitularID  = t.TitularID
             LEFT JOIN dbo.Titular ti ON ti.NumeroDocumento = t.TitularID
             WHERE {predicado}
-            ORDER BY t.TitularID;
+            ORDER BY t.TitularID
+            OPTION (MAXDOP 4);
             """;
 
         _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
