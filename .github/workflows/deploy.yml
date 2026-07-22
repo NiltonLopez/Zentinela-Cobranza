@@ -10,8 +10,19 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      # clean: false — este runner es self-hosted con disco persistente entre corridas.
+      # actions/checkout limpia por defecto (git clean -ffdx), lo que borra node_modules
+      # (ignorado por git) en CADA deploy y obliga a un "npm install" 100% desde cero
+      # (~20 min: descarga todo el árbol, incluidos binarios nativos pesados de Vite/rolldown).
+      # Con clean:false, node_modules persiste entre corridas y npm install solo instala
+      # el delta cuando cambia package-lock.json — casi instantáneo si no cambió nada.
+      # Es seguro: los archivos versionados igual se resetean al commit desplegado; solo se
+      # preservan node_modules/bin/obj (no versionados). Vite regenera dist/ completo en
+      # cada build (emptyOutDir), así que no quedan artefactos de build viejos.
       - name: Checkout código
         uses: actions/checkout@v4
+        with:
+          clean: false
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -72,10 +83,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/Zentinela.Web/package-lock.json
 
+      # --prefer-offline: usa el cache local de npm en vez de siempre golpear el registry.
+      # --no-audit --no-fund: se salta las llamadas de red de auditoría/funding (no afectan
+      # las versiones instaladas). No se usa "npm ci" a propósito: npm ci borra node_modules
+      # SIEMPRE antes de instalar, lo que anularía el ahorro de clean:false en el checkout.
       - name: Instalar dependencias React
         working-directory: src/Zentinela.Web
-        run: npm install
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Build React
         working-directory: src/Zentinela.Web
