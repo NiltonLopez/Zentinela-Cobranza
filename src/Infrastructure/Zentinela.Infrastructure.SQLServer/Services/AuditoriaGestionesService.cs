@@ -255,6 +255,10 @@ public class AuditoriaGestionesService : IAuditoriaGestionesService
             lotes.Add(slice.Select((r, k) => new GestionParaEvaluar(i + k, r.UltimoPerfil, r.Gestion)).ToList());
         }
 
+        // Un lote que fracasa tras agotar sus reintentos NO puede tumbar la auditoría entera:
+        // antes, con Task.WhenAll propagando, un único lote perdido descartaba el trabajo de
+        // los otros ~146 (ya facturados). Ahora se pierde solo ese lote y se cuenta aparte.
+        int lotesFallidos = 0;
         using var limitador = new SemaphoreSlim(_concurrenciaIA);
         var tareas = lotes.Select(async lote =>
         {
@@ -265,9 +269,19 @@ public class AuditoriaGestionesService : IAuditoriaGestionesService
                 if (_delayEntreLotesMs > 0) await Task.Delay(_delayEntreLotesMs, ct);
                 return await _evaluador.EvaluarLoteAsync(lote, ct);
             }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                // Cancelar sí debe abortar (es el usuario); cualquier otro fallo se absorbe.
+                Interlocked.Increment(ref lotesFallidos);
+                return (IReadOnlyList<VeredictoGestion>)[];
+            }
             finally { limitador.Release(); }
         });
         var resultados = await Task.WhenAll(tareas);
+
+        // Nº de gestiones que se quedaron sin evaluar por lotes caídos, para poder avisarlo
+        // en el informe en vez de reportar un resultado incompleto como si fuera completo.
+        var gestionesSinEvaluar = lotesFallidos * TamanoLote;
 
         // El armado de hallazgos se hace AQUÍ (secuencial): la lista no es thread-safe.
         foreach (var v in resultados.SelectMany(r => r))
@@ -355,6 +369,7 @@ public class AuditoriaGestionesService : IAuditoriaGestionesService
                 TotalGestiones           = total,
                 TotalGestionesConTexto   = totalConTexto,
                 GestionesEvaluadasIA     = conGestion.Count,
+                GestionesSinEvaluar      = gestionesSinEvaluar,
                 TotalCriticas            = totalCriticas,
                 TotalMedias              = totalMedias,
                 TotalBajas               = totalBajas,
