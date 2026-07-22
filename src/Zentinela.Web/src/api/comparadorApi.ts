@@ -1,13 +1,18 @@
 import api from './authApi';
-import type { CarteraDropdownDto, ComparadorCarterasDto } from '../types/comparador';
+import type { OpcionCarteraDto, ComparadorCarterasDto } from '../types/comparador';
 
-export const obtenerOpcionesComparador = async (): Promise<CarteraDropdownDto[]> => {
-  const res = await api.get<CarteraDropdownDto[]>('/api/comparador/opciones');
+export const obtenerOpcionesComparador = async (): Promise<OpcionCarteraDto[]> => {
+  const res = await api.get<OpcionCarteraDto[]>('/api/comparador/opciones');
   return res.data;
 };
 
-export const compararCartera = async (carteraID: number): Promise<ComparadorCarterasDto> => {
-  const res = await api.get<ComparadorCarterasDto>(`/api/comparador/${carteraID}`);
+export const compararCartera = async (
+  carteraID: number,
+  liderID?: number | null,
+): Promise<ComparadorCarterasDto> => {
+  const params: Record<string, string> = {};
+  if (liderID != null) params.liderID = String(liderID);
+  const res = await api.get<ComparadorCarterasDto>(`/api/comparador/${carteraID}`, { params });
   return res.data;
 };
 
@@ -30,9 +35,13 @@ export const descargarExcelComparativo = async (
   otraCarteraID: number,
   nombreSeleccionada: string,
   nombreOtra: string,
+  liderID?: number | null,
 ): Promise<void> => {
+  const params: Record<string, string> = {};
+  if (liderID != null) params.liderID = String(liderID);
   const res = await api.get(`/api/comparador/${carteraID}/excel/${otraCarteraID}`, {
     responseType: 'blob',
+    params,
   });
   descargarBlob(res.data, '', `Comparativo_${sanitizar(nombreSeleccionada)}_vs_${sanitizar(nombreOtra)}.xlsx`);
 };
@@ -40,9 +49,13 @@ export const descargarExcelComparativo = async (
 export const descargarExcelCompleto = async (
   carteraID: number,
   nombreSeleccionada: string,
+  liderID?: number | null,
 ): Promise<void> => {
+  const params: Record<string, string> = {};
+  if (liderID != null) params.liderID = String(liderID);
   const res = await api.get(`/api/comparador/${carteraID}/excel`, {
     responseType: 'blob',
+    params,
   });
   descargarBlob(res.data, '', `Comparativo_Completo_${sanitizar(nombreSeleccionada)}.xlsx`);
 };

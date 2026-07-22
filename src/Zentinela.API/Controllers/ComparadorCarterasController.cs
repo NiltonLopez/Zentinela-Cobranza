@@ -32,31 +32,26 @@ public class ComparadorCarterasController : ControllerBase
     }
 
     /// <summary>
-    /// Comparativo titular a titular: cartera seleccionada vs todas las demás.
+    /// Comparativo titular a titular: cartera (o líder-cartera) seleccionada vs todas las demás.
     /// Devuelve una sección por cartera con vista previa de hasta 5 titulares.
     /// </summary>
     [HttpGet("{carteraID:int}")]
-    public async Task<IActionResult> Comparar(int carteraID)
+    public async Task<IActionResult> Comparar(int carteraID, [FromQuery] int? liderID)
     {
-        var resultado = await _service.CompararAsync(carteraID);
+        var resultado = await _service.CompararAsync(carteraID, liderID);
         return Ok(resultado);
     }
 
     /// <summary>
-    /// Descarga Excel con todos los titulares coincidentes entre carteraID y otraCarteraID.
+    /// Descarga Excel con todos los titulares coincidentes entre carteraID (o líder-cartera) y otraCarteraID.
     /// </summary>
     [HttpGet("{carteraID:int}/excel/{otraCarteraID:int}")]
-    public async Task<IActionResult> DescargarExcel(int carteraID, int otraCarteraID)
+    public async Task<IActionResult> DescargarExcel(int carteraID, int otraCarteraID, [FromQuery] int? liderID)
     {
-        var opciones = await _service.ObtenerOpcionesAsync(ObtenerContexto());
-        var lista    = opciones.ToList();
+        var nombreSeleccionada = await _service.ObtenerNombreCarteraAsync(carteraID);
+        var nombreOtra         = await _service.ObtenerNombreCarteraAsync(otraCarteraID);
 
-        var nombreSeleccionada = lista.FirstOrDefault(o => o.CarteraID == carteraID)?.NombreCartera
-                                 ?? $"Cartera {carteraID}";
-        var nombreOtra         = lista.FirstOrDefault(o => o.CarteraID == otraCarteraID)?.NombreCartera
-                                 ?? $"Cartera {otraCarteraID}";
-
-        var titulares = await _service.ObtenerParaExcelAsync(carteraID, otraCarteraID);
+        var titulares = await _service.ObtenerParaExcelAsync(carteraID, liderID, otraCarteraID);
         var bytes     = _excel.GenerarComparativoCartera(titulares, nombreSeleccionada, nombreOtra);
 
         var nombreArchivo = $"Comparativo_{Sanitizar(nombreSeleccionada)}_vs_{Sanitizar(nombreOtra)}.xlsx";
@@ -70,13 +65,11 @@ public class ComparadorCarterasController : ControllerBase
     /// identificados por una columna "Cartera de referencia".
     /// </summary>
     [HttpGet("{carteraID:int}/excel")]
-    public async Task<IActionResult> DescargarExcelCompleto(int carteraID)
+    public async Task<IActionResult> DescargarExcelCompleto(int carteraID, [FromQuery] int? liderID)
     {
-        var opciones = await _service.ObtenerOpcionesAsync(ObtenerContexto());
-        var nombreSeleccionada = opciones.FirstOrDefault(o => o.CarteraID == carteraID)?.NombreCartera
-                                 ?? $"Cartera {carteraID}";
+        var nombreSeleccionada = await _service.ObtenerNombreCarteraAsync(carteraID);
 
-        var titulares = await _service.ObtenerTodosParaExcelAsync(carteraID);
+        var titulares = await _service.ObtenerTodosParaExcelAsync(carteraID, liderID);
         var bytes     = _excel.GenerarComparativoCompleto(titulares, nombreSeleccionada);
 
         var nombreArchivo = $"Comparativo_Completo_{Sanitizar(nombreSeleccionada)}.xlsx";

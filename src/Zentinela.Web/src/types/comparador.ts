@@ -1,6 +1,7 @@
-export interface CarteraDropdownDto {
+export interface OpcionCarteraDto {
   carteraID: number;
-  nombreCartera: string;
+  liderID: number | null;
+  etiqueta: string;
 }
 
 export interface TitularComparativoDto {
