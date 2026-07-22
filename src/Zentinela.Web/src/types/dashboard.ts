@@ -52,6 +52,15 @@ export interface FilaLiderDto {
   proyeccionPromesas: number;
 }
 
+export interface FilaCarteraDto {
+  carteraID: number;
+  nombreCartera: string;
+  totalGestiones: number;
+  tasaContactabilidad: number;
+  tasaEfectividad: number;
+  proyeccionPromesas: number;
+}
+
 export interface FilaAsesorDto {
   agenteID: number;
   nombreAsesor: string;
@@ -64,6 +73,7 @@ export interface FilaAsesorDto {
 export interface DashboardDirectorDto {
   metricas: MetricasDirectorDto;
   filasLider: FilaLiderDto[];
+  filasCartera: FilaCarteraDto[];
   filasAsesor: FilaAsesorDto[];
 }
 

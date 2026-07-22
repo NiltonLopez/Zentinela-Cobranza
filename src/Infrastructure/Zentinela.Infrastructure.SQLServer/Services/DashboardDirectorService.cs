@@ -193,15 +193,22 @@ public class DashboardDirectorService : IDashboardDirectorService
         };
 
         // ── Desglose ─────────────────────────────────────────────────────────
-        List<FilaLiderDto>  filasLider  = [];
-        List<FilaAsesorDto> filasAsesor = [];
+        List<FilaLiderDto>   filasLider   = [];
+        List<FilaCarteraDto> filasCartera = [];
+        List<FilaAsesorDto>  filasAsesor  = [];
 
         if (!liderID.HasValue)
         {
+            // Vista global: se calculan ambos agrupamientos del mismo universo de
+            // registros — el frontend alterna cuál mostrar sin pedir de nuevo al backend.
             // Para el desglose por líder los registros sin AgenteID aún cuentan
             // (titulares sin asesor pero con perfil de gestión); se preserva el null.
             filasLider = await ConstruirFilasLiderAsync(registros
                 .Select(r => (r.CarteraID, r.AgenteID, r.UltimoPerfil, r.ValorPromesa))
+                .ToList());
+
+            filasCartera = await ConstruirFilasCarteraAsync(registros
+                .Select(r => (r.CarteraID, r.UltimoPerfil, r.ValorPromesa))
                 .ToList());
         }
         else
@@ -216,9 +223,10 @@ public class DashboardDirectorService : IDashboardDirectorService
 
         return new DashboardDirectorDto
         {
-            Metricas    = metricas,
-            FilasLider  = filasLider,
-            FilasAsesor = filasAsesor,
+            Metricas     = metricas,
+            FilasLider   = filasLider,
+            FilasCartera = filasCartera,
+            FilasAsesor  = filasAsesor,
         };
     }
 
@@ -260,6 +268,8 @@ public class DashboardDirectorService : IDashboardDirectorService
         if (carteraID.HasValue)
         {
             q = q.Where(tc => tc.CarteraID == carteraID.Value);
+            if (liderID.HasValue)
+                q = q.Where(tc => tc.LiderID == liderID.Value);
         }
         else
         {
@@ -364,6 +374,43 @@ public class DashboardDirectorService : IDashboardDirectorService
                 {
                     LiderID             = grp.Key,
                     NombreLider         = lideres.TryGetValue(grp.Key, out var nom) ? nom : $"Líder {grp.Key}",
+                    TotalGestiones      = total,
+                    TasaContactabilidad = total > 0
+                        ? Math.Round((decimal)contactos / total, 4) : 0,
+                    TasaEfectividad     = contactos > 0
+                        ? Math.Round((decimal)acuerdos / contactos, 4) : 0,
+                    ProyeccionPromesas  = Math.Round(proyeccion, 0),
+                };
+            })
+            .OrderByDescending(f => f.TotalGestiones)
+            .ToList();
+    }
+
+    private async Task<List<FilaCarteraDto>> ConstruirFilasCarteraAsync(
+        List<(int CarteraID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
+    {
+        var carteraIDs = registros.Select(r => r.CarteraID).Distinct().ToList();
+
+        var nombrePorCartera = await _callCenter.Carteras
+            .Where(c => carteraIDs.Contains(c.ID))
+            .AsNoTracking()
+            .ToDictionaryAsync(c => c.ID, c => c.NombreCartera);
+
+        return registros
+            .GroupBy(r => r.CarteraID)
+            .Select(grp =>
+            {
+                var total     = grp.Count();
+                var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
+                var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
+                var proyeccion = grp
+                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+                    .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
+
+                return new FilaCarteraDto
+                {
+                    CarteraID           = grp.Key,
+                    NombreCartera       = nombrePorCartera.TryGetValue(grp.Key, out var nom) ? nom : $"Cartera {grp.Key}",
                     TotalGestiones      = total,
                     TasaContactabilidad = total > 0
                         ? Math.Round((decimal)contactos / total, 4) : 0,

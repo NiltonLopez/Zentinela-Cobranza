@@ -5,7 +5,7 @@ import {
   obtenerLideresDropdown,
   obtenerCarterasLider,
 } from '../../api/dashboardApi';
-import type { FilaLiderDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
+import type { FilaLiderDto, FilaCarteraDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
@@ -16,6 +16,7 @@ import { formatearTiempoTranscurrido } from '../../utils/formatters';
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 type Preset = 'hoy' | 'ayer' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
+type VistaDesglose = 'lider' | 'cartera';
 
 interface Rango { desde: string; hasta: string; }
 
@@ -364,6 +365,73 @@ function TablaLideres({ filas, onSeleccionar }: {
   );
 }
 
+function TablaCarteras({ filas, onSeleccionar }: {
+  filas: FilaCarteraDto[];
+  onSeleccionar: (carteraID: number, nombre: string) => void;
+}) {
+  const { items, sort, toggle } = useSort<FilaCarteraDto>(
+    filas,
+    { key: 'totalGestiones', dir: 'desc' },
+    (f, k) => (f as unknown as Record<string, string | number>)[k],
+  );
+
+  if (filas.length === 0) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+        Sin datos de carteras para este período.
+      </div>
+    );
+  }
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ background: 'var(--z-bg-page)' }}>
+          <ThOrdenable label="Cartera"         sortKey="nombreCartera"       sort={sort} onSort={toggle} />
+          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="" align="center" />
+        </tr>
+      </thead>
+      <tbody>
+        {items.map(f => (
+          <tr key={f.carteraID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+              {f.nombreCartera}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {f.totalGestiones.toLocaleString('es-CO')}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaContactabilidad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaEfectividad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+              {formatearPesos(f.proyeccionPromesas)}
+            </td>
+            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+              <button
+                onClick={() => onSeleccionar(f.carteraID, f.nombreCartera)}
+                style={{
+                  padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
+                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Ver detalle
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
   const { items, sort, toggle } = useSort<FilaAsesorDto>(
     filas,
@@ -513,6 +581,7 @@ export function DashboardDirectorPage() {
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
   const [carteraNombre, setCarteraNombre] = useState<string>('');
   const [modalExcluidosAbierto, setModalExcluidosAbierto] = useState(false);
+  const [vistaDesglose, setVistaDesglose] = useState<VistaDesglose>('lider');
 
   // Selector de fechas
   const [preset,      setPreset]      = useState<Preset>('ciclo');
@@ -555,6 +624,16 @@ export function DashboardDirectorPage() {
     setCarteraNombre('');
   };
 
+  // "Ver detalle" desde el desglose por cartera: filtra el dashboard a esa
+  // cartera (sin líder) — la vista global recalcula el desglose por líder
+  // restringido a esa cartera, igual que el filtro manual de Cartera.
+  const handleSeleccionarCartera = (id: number, nombre: string) => {
+    setCarteraID(id);
+    setCarteraNombre(nombre);
+    setLiderID(null);
+    setLiderNombre('');
+  };
+
   const handleCambiarLider = (val: number | null) => {
     if (val === null) {
       setLiderID(null);
@@ -588,7 +667,8 @@ export function DashboardDirectorPage() {
     setCarteraNombre('');
   };
 
-  const mostrarDesgloseLider  = !liderID && (data?.filasLider?.length ?? 0) > 0;
+  const mostrarDesgloseLider  = !liderID
+    && ((data?.filasLider?.length ?? 0) > 0 || (data?.filasCartera?.length ?? 0) > 0);
   const mostrarDesgloseAsesor = liderID !== null;
 
   // Estilo de botón preset
@@ -793,21 +873,46 @@ export function DashboardDirectorPage() {
         ) : null}
       </section>
 
-      {/* Desglose por líder (vista global) */}
+      {/* Desglose por líder / cartera (vista global) */}
       {mostrarDesgloseLider && (
         <section>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px' }}>
-            Desglose por líder
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+              Desglose por {vistaDesglose === 'lider' ? 'líder' : 'cartera'}
+            </h2>
+            <div style={{ display: 'flex', gap: '4px', padding: '3px', borderRadius: '8px', background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)' }}>
+              {(['lider', 'cartera'] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setVistaDesglose(v)}
+                  style={{
+                    padding: '5px 12px', borderRadius: '6px', border: 'none',
+                    background: vistaDesglose === v ? 'var(--z-text-primary)' : 'transparent',
+                    color: vistaDesglose === v ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+                    fontSize: '12px', fontWeight: vistaDesglose === v ? 600 : 400, cursor: 'pointer',
+                  }}
+                >
+                  {v === 'lider' ? 'Por líder' : 'Por cartera'}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
             borderRadius: '8px', overflow: 'hidden',
             boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
-            <TablaLideres
-              filas={data!.filasLider}
-              onSeleccionar={handleSeleccionarLider}
-            />
+            {vistaDesglose === 'lider' ? (
+              <TablaLideres
+                filas={data!.filasLider}
+                onSeleccionar={handleSeleccionarLider}
+              />
+            ) : (
+              <TablaCarteras
+                filas={data!.filasCartera}
+                onSeleccionar={handleSeleccionarCartera}
+              />
+            )}
           </div>
         </section>
       )}

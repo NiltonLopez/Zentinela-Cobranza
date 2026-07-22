@@ -32,6 +32,17 @@ public class FilaLiderDto
     public decimal ProyeccionPromesas  { get; set; }
 }
 
+public class FilaCarteraDto
+{
+    public int     CarteraID           { get; set; }
+    public string  NombreCartera       { get; set; } = string.Empty;
+    public int     TotalGestiones      { get; set; }
+    public decimal TasaContactabilidad { get; set; }
+    public decimal TasaEfectividad     { get; set; }
+    /// <summary>Suma de ValorPromesa donde UltimoPerfil es acuerdo o abono.</summary>
+    public decimal ProyeccionPromesas  { get; set; }
+}
+
 public class FilaAsesorDto
 {
     public int     AgenteID            { get; set; }
@@ -67,9 +78,11 @@ public class LiderCarteraVinculoDto
 
 public class DashboardDirectorDto
 {
-    public MetricasDirectorDto Metricas    { get; set; } = new();
+    public MetricasDirectorDto  Metricas     { get; set; } = new();
     /// <summary>Poblado cuando no hay filtro de líder (vista global).</summary>
-    public List<FilaLiderDto>  FilasLider  { get; set; } = [];
+    public List<FilaLiderDto>   FilasLider   { get; set; } = [];
+    /// <summary>Poblado cuando no hay filtro de líder (vista global) — mismo universo que FilasLider, agrupado por cartera.</summary>
+    public List<FilaCarteraDto> FilasCartera { get; set; } = [];
     /// <summary>Poblado cuando se filtra por un líder específico.</summary>
-    public List<FilaAsesorDto> FilasAsesor { get; set; } = [];
+    public List<FilaAsesorDto>  FilasAsesor  { get; set; } = [];
 }
