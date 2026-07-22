@@ -10,7 +10,7 @@ import {
 } from '../../api/historicoVirtualidadApi';
 import type {
   CanalVirtualidad, FilaSolicitud, ValidarSolicitudResponse,
-  ValidarResultadoResponse,
+  ValidarResultadoResponse, ErrorAgrupado,
 } from '../../types/historicoVirtualidad';
 
 // ── Metadatos de canal ──────────────────────────────────────────────────────
@@ -115,6 +115,26 @@ const cajaError: React.CSSProperties = {
   padding: '10px 14px', fontSize: 13, color: '#dc2626',
 };
 
+// Errores agrupados por mensaje (no una fila por cada titular con el mismo error).
+// Cubre TODAS las filas del archivo, no solo la muestra de preview.
+function ListaErroresAgrupados({ errores }: { errores: ErrorAgrupado[] }) {
+  if (errores.length === 0) return null;
+  return (
+    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px' }}>
+      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
+        Errores encontrados — agrupados por tipo
+      </p>
+      <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {errores.map((e, i) => (
+          <li key={i} style={{ fontSize: 13, color: '#b91c1c' }}>
+            {e.mensaje} <strong>({e.cantidad} fila{e.cantidad !== 1 ? 's' : ''})</strong>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ── Sección Solicitud ─────────────────────────────────────────────────────────
 
 function SeccionSolicitud({ canal }: { canal: CanalVirtualidad }) {
@@ -196,7 +216,9 @@ function SeccionSolicitud({ canal }: { canal: CanalVirtualidad }) {
           </div>
         )}
 
-        <TablaPreviewSolicitud filas={preview.preview} canal={canal} soloErrores={verErrores} />
+        {verErrores
+          ? <ListaErroresAgrupados errores={preview.erroresAgrupados} />
+          : <TablaPreviewSolicitud filas={preview.preview} canal={canal} />}
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button onClick={() => mutConfirmar.mutate()} disabled={preview.totalValidas === 0} style={btnPrimario(preview.totalValidas > 0)}>
@@ -235,8 +257,8 @@ function SeccionSolicitud({ canal }: { canal: CanalVirtualidad }) {
   );
 }
 
-function TablaPreviewSolicitud({ filas, canal, soloErrores }: { filas: FilaSolicitud[]; canal: CanalVirtualidad; soloErrores: boolean }) {
-  const visibles = soloErrores ? filas.filter(f => !f.esValida) : filas;
+function TablaPreviewSolicitud({ filas, canal }: { filas: FilaSolicitud[]; canal: CanalVirtualidad }) {
+  const visibles = filas;
   if (visibles.length === 0) return null;
   return (
     <div style={{ background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)', borderRadius: 8, overflow: 'hidden' }}>
@@ -330,7 +352,6 @@ function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
   }
 
   if (etapa === 'preview' && preview) {
-    const visibles = verErrores ? preview.preview.filter(f => !f.esValida) : preview.preview;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -339,13 +360,15 @@ function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
             <ChipConteo numero={preview.totalErrores} label="con error — no se aplicarán" bg="#fef2f2" border="#fca5a5" colorNum="#dc2626" colorLabel="#b91c1c" onClick={() => setVerErrores(v => !v)} abierto={verErrores} />
           )}
         </div>
-        {visibles.length > 0 && (
+        {verErrores ? (
+          <ListaErroresAgrupados errores={preview.erroresAgrupados} />
+        ) : preview.preview.length > 0 && (
           <div style={{ background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--z-bg-page)' }}><th style={TH}>ID</th><th style={TH}>Estado</th><th style={TH}>Validación</th></tr></thead>
                 <tbody>
-                  {visibles.map((f, i) => (
+                  {preview.preview.map((f, i) => (
                     <tr key={i}>
                       <td style={TD}>{f.id || '—'}</td>
                       <td style={TD}>{f.estado || '—'}</td>
