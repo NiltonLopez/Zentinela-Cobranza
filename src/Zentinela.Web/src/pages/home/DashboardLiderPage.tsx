@@ -164,8 +164,8 @@ function fraseLiderDelMes(liderDelMes: LiderDelMes, liderID: number): ItemFrase 
     return {
       icono: <IconoTrofeo size={20} />,
       texto: esUsuarioActual
-        ? `¡Eres el líder del mes! ${porcentaje}% de cumplimiento de meta.`
-        : `Líder del mes: ${liderDelMes.nombreLider} con ${porcentaje}% de cumplimiento de meta.`,
+        ? `¡Eres el líder actual del mes! ${porcentaje}% de cumplimiento de meta.`
+        : `Líder actual del mes: ${liderDelMes.nombreLider} con ${porcentaje}% de cumplimiento de meta.`,
     };
   }
 
@@ -187,7 +187,7 @@ function fraseLiderDelMes(liderDelMes: LiderDelMes, liderID: number): ItemFrase 
   };
 }
 
-export function BarraFraseLider({ pct, liderDelMes, liderID }: { pct: number; liderDelMes: LiderDelMes[]; liderID: number }) {
+function BarraFraseLider({ pct, liderDelMes, liderID }: { pct: number; liderDelMes: LiderDelMes[]; liderID: number }) {
   const frases = useMemo<ItemFrase[]>(() => {
     const rango = RANGOS_FRASE.find(r => pct >= r.min && pct <= r.max) ?? RANGOS_FRASE[0];
     const base: ItemFrase[] = rango.frases.map(texto => ({ texto }));

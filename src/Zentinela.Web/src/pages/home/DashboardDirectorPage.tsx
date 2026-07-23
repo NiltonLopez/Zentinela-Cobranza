@@ -159,12 +159,12 @@ function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, 
 }
 
 const LABEL_LIDER_DEL_MES: Record<LiderDelMes['tipo'], string> = {
-  'cumplimiento':       'Líder del mes',
+  'cumplimiento':       'Líder actual del mes',
   'honorarios-totales': 'Más honorarios recaudados',
   'productividad':      'Mejor productividad',
 };
 
-export function BarraDestacadosLider({ filas, liderDelMes }: { filas: FilaLiderDto[]; liderDelMes: LiderDelMes[] }) {
+function BarraDestacadosLider({ filas, liderDelMes }: { filas: FilaLiderDto[]; liderDelMes: LiderDelMes[] }) {
   // Líder destacado por categoría — si el mismo líder gana varias, su nombre se repite.
   const items = useMemo(() => {
     if (filas.length === 0) return [];
