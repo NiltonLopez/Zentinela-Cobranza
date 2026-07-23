@@ -5,8 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 import { obtenerDashboardAsesor } from '../../api/dashboardApi';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ThOrdenable } from '../../components/ThOrdenable';
+import { IconoCategoria, type CategoriaRanking } from '../../components/IconoCategoria';
 import { useSort } from '../../hooks/useSort';
 import { useDuracionTicker } from '../../hooks/useDuracionTicker';
+import { MARGEN_BARRA_COMPLETA } from '../../utils/layout';
 import type { AcuerdoVigenteDto, DashboardAsesorDto, PagosConfirmadosDto } from '../../types/dashboard';
 
 // ── Selector de período ───────────────────────────────────────────────────────
@@ -246,10 +248,10 @@ function mezclarConSemilla<T>(arr: T[], semilla: number): T[] {
   return copia;
 }
 
-function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel }: { semillaTexto: string; frasesDinamicas: FraseItem[]; frasesNivel: FraseItem[] }) {
+function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel, frasesCategoria }: { semillaTexto: string; frasesDinamicas: FraseItem[]; frasesNivel: FraseItem[]; frasesCategoria: FraseItem[] }) {
   const frases = useMemo(
-    () => mezclarConSemilla([...frasesDinamicas, ...frasesNivel], hashTexto(semillaTexto || 'zentinela')),
-    [semillaTexto, frasesDinamicas, frasesNivel],
+    () => mezclarConSemilla([...frasesDinamicas, ...frasesNivel, ...frasesCategoria], hashTexto(semillaTexto || 'zentinela')),
+    [semillaTexto, frasesDinamicas, frasesNivel, frasesCategoria],
   );
 
   const [pausado, setPausado] = useState(false);
@@ -264,11 +266,11 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel 
       onMouseEnter={() => setPausado(true)}
       onMouseLeave={() => setPausado(false)}
       style={{
-        background: 'var(--z-bg-card)',
+        background: 'var(--z-brand)',
         borderRadius: '2px', padding: '8px 0',
         boxShadow: '0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06)',
         overflow: 'hidden',
-        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+        marginLeft: MARGEN_BARRA_COMPLETA, marginRight: MARGEN_BARRA_COMPLETA, marginTop: '-22px', marginBottom: '24px',
       }}
     >
       <style>{`
@@ -288,13 +290,13 @@ function BarraFrasesMotivacionales({ semillaTexto, frasesDinamicas, frasesNivel 
         {pista.map((item, i) => (
           <div key={`${item.texto}-${i}`} style={{
             display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '0 28px', borderRight: '0.5px solid var(--z-border)',
+            padding: '0 24px', borderRight: '1px solid rgba(255,255,255,0.3)',
             whiteSpace: 'nowrap',
           }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '20px', color: 'var(--z-brand)' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#fff' }}>
               {item.icono}
             </span>
-            <span style={{ fontSize: '16px', fontWeight: 500, color: 'var(--z-brand)' }}>
+            <span style={{ fontSize: '15px', fontWeight: 600, color: '#fff' }}>
               {item.texto}
             </span>
           </div>
@@ -347,6 +349,137 @@ function TablaAcuerdos({ acuerdos }: { acuerdos: AcuerdoVigenteDto[] }) {
       </tbody>
     </table>
     </div>
+  );
+}
+
+// ── Nivel de ranking del asesor (diamante/oro/plata/bronce) ──────────────────
+// La categoría llega calculada del backend (DashboardAsesorService.ObtenerCategoriaRankingAsync).
+// PENDIENTE: rangos/umbrales y valores de honorarios de los beneficios aún por
+// pactar formalmente con negocio — ver texto de beneficios abajo.
+
+type NivelRanking = 'diamante' | 'oro' | 'plata' | 'bronce';
+
+const NIVEL_POR_CATEGORIA_BACKEND: Record<string, NivelRanking> = {
+  Diamante: 'diamante', Oro: 'oro', Plata: 'plata', Bronce: 'bronce',
+};
+
+const CONFIG_NIVEL: Record<NivelRanking, { etiqueta: string; color: string; beneficios: string[] }> = {
+  diamante: {
+    etiqueta: 'Diamante', color: '#38BDF8',
+    beneficios: [
+      'Descanso todos los sábados (sujeto a cumplimiento mensual y conciliación con líder)',
+      '30 minutos de desayuno',
+      'Comisión el primer día de cada mes (si el mes anterior cumplió)',
+      'Almuerzo el día 15',
+      'Bono de $300.000 por cada asesor de plata apadrinado y llevado a oro o superior (vigencia 2 meses)',
+      'Derecho a reclamar boleta de la rifa actual',
+      'Rifa de un bono de $300.000 entre los asesores de la categoría',
+      'Si conservan la categoría hasta diciembre: descanso del 28 de diciembre al 2 de enero',
+    ],
+  },
+  oro: {
+    etiqueta: 'Oro', color: '#F5B800',
+    beneficios: [
+      'Comisión el día 5 de cada mes (si el mes anterior cumplió)',
+      'Descanso 3 sábados al mes (sujeto a cumplimiento mensual y conciliación con líder)',
+      '25 minutos de desayuno',
+      'Bono de $200.000 por cada asesor de plata o bronce apadrinado y mejorado de categoría (vigencia 2 meses)',
+      'Desayuno adicional el día 15',
+      'Rifa de un bono de $300.000 entre los asesores de la categoría',
+    ],
+  },
+  plata: {
+    etiqueta: 'Plata', color: '#9CA3AF',
+    beneficios: ['Aplican las comisiones vigentes', 'Cumplimiento obligatorio de productividad'],
+  },
+  bronce: {
+    etiqueta: 'Bronce', color: '#B87333',
+    beneficios: ['Aplican las comisiones vigentes', 'Cumplimiento obligatorio de productividad'],
+  },
+};
+
+// Frases motivacionales según la categoría de ranking vigente (a diferencia de
+// FRASES_POR_NIVEL, que dependen del % de avance de meta). Se muestran todas las
+// de la categoría actual en la barra desplazable. [Nombre] se reemplaza por el
+// primer nombre del asesor al construirlas.
+const FRASES_POR_CATEGORIA: Record<NivelRanking, FraseItem[]> = {
+  bronce: [
+    { icono: 'schedule',            texto: 'Estás en nivel Bronce. Sabemos que ha sido un mes retador, pero estás a tiempo.' },
+    { icono: 'trending_up',         texto: 'Tu lugar está más arriba. No te quedes en Bronce: revisa tu base, mantente activo.' },
+    { icono: 'flag_circle',         texto: '¡Ánimo, [Nombre]! El nivel Bronce es solo el punto de partida.' },
+    { icono: 'bolt',                texto: 'Recupera el ritmo.' },
+  ],
+  plata: [
+    { icono: 'thumb_up',            texto: '¡Bien hecho! Ya estás en nivel Plata.' },
+    { icono: 'shield',               texto: 'No bajes la guardia para proteger tu categoría.' },
+    { icono: 'military_tech',       texto: 'Asegura tu nivel Plata y pon la mirada en el nivel Oro.' },
+  ],
+  oro: [
+    { icono: 'workspace_premium',   texto: 'Estás en nivel Oro. Protege tu categoría con el último esfuerzo del día.' },
+    { icono: 'star',                texto: 'Estar en Oro demuestra tu gran talento.' },
+    { icono: 'rocket_launch',       texto: '¡No te detengas ahora! Falta poco para alcanzar Diamante.' },
+  ],
+  diamante: [
+    { icono: 'emoji_events',        texto: 'Estás en lo más alto: Nivel Diamante.' },
+    { icono: 'military_tech',       texto: 'Sigue liderando con el ejemplo.' },
+    { icono: 'celebration',         texto: '¡Lo lograste! Mantén esa energía en lo más alto.' },
+    { icono: 'center_focus_strong', texto: 'No pierdas el foco, sigue así.' },
+  ],
+};
+
+// Solo se muestran si ya se conoce la categoría del asesor (ver data.categoriaRanking).
+function construirFrasesCategoria(data: DashboardAsesorDto | undefined, nombreAsesor: string | undefined): FraseItem[] {
+  if (!data?.categoriaRanking) return [];
+  const nivel = NIVEL_POR_CATEGORIA_BACKEND[data.categoriaRanking];
+  if (!nivel) return [];
+
+  const primerNombre = nombreAsesor?.trim().split(' ')[0] || '';
+  return FRASES_POR_CATEGORIA[nivel].map(({ icono, texto }) => ({
+    icono,
+    texto: texto.replace('[Nombre]', primerNombre),
+  }));
+}
+
+function InsigniaNivelAsesor({ nivel, promedioAnual }: { nivel: NivelRanking; promedioAnual: number | null }) {
+  const [mostrarBeneficios, setMostrarBeneficios] = useState(false);
+  const cfg = CONFIG_NIVEL[nivel];
+
+  return (
+    <span
+      onMouseEnter={() => setMostrarBeneficios(true)}
+      onMouseLeave={() => setMostrarBeneficios(false)}
+      style={{
+        position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+        border: `0.5px solid ${cfg.color}`, background: `${cfg.color}1A`, color: cfg.color,
+        cursor: 'default', userSelect: 'none',
+      }}
+    >
+      <IconoCategoria categoria={cfg.etiqueta as CategoriaRanking} size={18} />
+      Categoría: {cfg.etiqueta}
+      {promedioAnual !== null && (
+        <span style={{ fontWeight: 400, opacity: 0.85 }}>
+          · Prom. anual: {formatearMoneda(promedioAnual)}
+        </span>
+      )}
+
+      {mostrarBeneficios && (
+        <span style={{
+          position: 'absolute', top: 0, left: '100%', marginLeft: 8, zIndex: 10,
+          background: 'var(--z-bg-card)', color: 'var(--z-text-primary)', fontFamily: 'inherit', fontWeight: 400,
+          fontSize: 11.5, lineHeight: 1.5, padding: '10px 12px', borderRadius: 8, width: 280,
+          border: `0.5px solid var(--z-border)`, borderLeft: `2px solid ${cfg.color}`,
+          whiteSpace: 'normal', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.14)',
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: cfg.color }}>Beneficios {cfg.etiqueta}:</div>
+          {cfg.beneficios.map((b) => (
+            <div key={b} style={{ display: 'flex', gap: 6, color: 'var(--z-text-muted)', marginBottom: 3 }}>
+              <span>•</span><span>{b}</span>
+            </div>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -625,6 +758,7 @@ export function DashboardAsesorPage() {
 
   const frasesDinamicas = useMemo(() => construirFrasesDinamicas(data, rango), [data, rango]);
   const frasesNivel     = useMemo(() => construirFrasesNivel(data, mesOffset), [data, mesOffset]);
+  const frasesCategoria = useMemo(() => construirFrasesCategoria(data, usuario?.nombreCompleto), [data, usuario?.nombreCompleto]);
 
   return (
     <>
@@ -635,6 +769,7 @@ export function DashboardAsesorPage() {
         semillaTexto={usuario?.email ?? usuario?.nombreCompleto ?? ''}
         frasesDinamicas={frasesDinamicas}
         frasesNivel={frasesNivel}
+        frasesCategoria={frasesCategoria}
       />
 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '960px' }}>
@@ -651,6 +786,14 @@ export function DashboardAsesorPage() {
                 ? `Supervisor: ${data.nombreSupervisor}`
                 : 'Sin supervisor asignado'}
           </p>
+          {!isLoading && data?.categoriaRanking && NIVEL_POR_CATEGORIA_BACKEND[data.categoriaRanking] && (
+            <div style={{ marginTop: 6 }}>
+              <InsigniaNivelAsesor
+                nivel={NIVEL_POR_CATEGORIA_BACKEND[data.categoriaRanking]}
+                promedioAnual={data.promedioAnualCategoria}
+              />
+            </div>
+          )}
         </div>
       </div>
 

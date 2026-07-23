@@ -79,6 +79,7 @@ public static class DependencyInjection
         // Debe vivir entre requests para servir de algo.
         services.AddMemoryCache();
         services.AddSingleton<ICalificadorCarteraCache, CalificadorCarteraCache>();
+        services.AddSingleton<ICategoriaRankingCache, CategoriaRankingCache>();
 
         // ── Servicios de infraestructura ──────────────────────────────────────
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -86,6 +87,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IRegistroService, RegistroService>();
         services.AddScoped<IDashboardAsesorService, DashboardAsesorService>();
+        services.AddScoped<ICategoriaRankingService, CategoriaRankingService>();
         services.AddScoped<IDashboardDirectorService, DashboardDirectorService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IBaseMadreRepository, BaseMadreRepository>();

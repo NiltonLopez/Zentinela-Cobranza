@@ -9,6 +9,11 @@
   --z-text-primary: #1C1C1A;
   --z-text-muted: #888780;
   --z-brand-light: #FEF0EC;
+  /* Ancho fijo del Sidebar (ver components/layout/Sidebar.tsx) — usado por las
+     barras desplazables para calcular su ancho real disponible (ver AppLayout.tsx:
+     .z-page-content tiene max-width:1440px + padding 32px, así que en pantallas
+     anchas queda centrado con espacio a los lados que el -32px de las barras no cubre). */
+  --z-sidebar-width: 180px;
 }
 
 *, *::before, *::after {

@@ -4,6 +4,7 @@ import {
   obtenerDashboardLider,
   obtenerCarterasLiderPropias,
 } from '../../api/dashboardApi';
+import { getInformeLideres } from '../../api/informesRecaudoApi';
 import type { FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import { useAuth } from '../../context/AuthContext';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
@@ -11,6 +12,9 @@ import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
 import { useSort } from '../../hooks/useSort';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
+import { MARGEN_BARRA_COMPLETA } from '../../utils/layout';
+import { calcularLiderDelMes, type LiderDelMes } from '../../utils/liderDelMes';
+import { IconoTrofeo, IconoBolsaDinero, IconoEscalaSubiendo } from '../../components/IconosLiderDelMes';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -147,13 +151,50 @@ function esCierreDeMes(): boolean {
   return hoy.getDate() >= ultimoDiaMes - 2;
 }
 
-function BarraFraseLider({ pct }: { pct: number }) {
-  const frases = useMemo(() => {
+interface ItemFrase {
+  texto: string;
+  icono?: React.ReactNode;
+}
+
+function fraseLiderDelMes(liderDelMes: LiderDelMes, liderID: number): ItemFrase {
+  const esUsuarioActual = liderDelMes.liderID === liderID;
+
+  if (liderDelMes.tipo === 'cumplimiento') {
+    const porcentaje = (liderDelMes.valor * 100).toFixed(1);
+    return {
+      icono: <IconoTrofeo size={20} />,
+      texto: esUsuarioActual
+        ? `¡Eres el líder actual del mes! ${porcentaje}% de cumplimiento de meta.`
+        : `Líder actual del mes: ${liderDelMes.nombreLider} con ${porcentaje}% de cumplimiento de meta.`,
+    };
+  }
+
+  // Plan B: sin metas cargadas ese mes (o todas en 0%) — se destacan honorarios totales y productividad por separado.
+  const valor = formatearPesos(liderDelMes.valor);
+  if (liderDelMes.tipo === 'honorarios-totales') {
+    return {
+      icono: <IconoBolsaDinero size={20} />,
+      texto: esUsuarioActual
+        ? `¡Tienes más honorarios recaudados este mes! ${valor}.`
+        : `Más honorarios recaudados: ${liderDelMes.nombreLider} con ${valor}.`,
+    };
+  }
+  return {
+    icono: <IconoEscalaSubiendo size={20} />,
+    texto: esUsuarioActual
+      ? `¡Tienes la mejor productividad este mes! ${valor} en honorarios por asesor.`
+      : `Mejor productividad: ${liderDelMes.nombreLider} con ${valor} en honorarios por asesor.`,
+  };
+}
+
+function BarraFraseLider({ pct, liderDelMes, liderID }: { pct: number; liderDelMes: LiderDelMes[]; liderID: number }) {
+  const frases = useMemo<ItemFrase[]>(() => {
     const rango = RANGOS_FRASE.find(r => pct >= r.min && pct <= r.max) ?? RANGOS_FRASE[0];
-    const base = [...rango.frases];
-    if (rango.fraseCierre && esCierreDeMes()) base.push(...rango.fraseCierre);
+    const base: ItemFrase[] = rango.frases.map(texto => ({ texto }));
+    if (rango.fraseCierre && esCierreDeMes()) base.push(...rango.fraseCierre.map(texto => ({ texto })));
+    liderDelMes.forEach(item => base.push(fraseLiderDelMes(item, liderID)));
     return base;
-  }, [pct]);
+  }, [pct, liderDelMes, liderID]);
 
   const [pausado, setPausado] = useState(false);
 
@@ -168,10 +209,10 @@ function BarraFraseLider({ pct }: { pct: number }) {
       onMouseLeave={() => setPausado(false)}
       style={{
         background: 'var(--z-brand)',
-        borderRadius: '2px', padding: '7px 0',
+        borderRadius: '2px', padding: '8px 0',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         overflow: 'hidden',
-        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+        marginLeft: MARGEN_BARRA_COMPLETA, marginRight: MARGEN_BARRA_COMPLETA, marginTop: '-22px', marginBottom: '24px',
       }}
     >
       <style>{`
@@ -188,13 +229,15 @@ function BarraFraseLider({ pct }: { pct: number }) {
         animationIterationCount: 'infinite',
         animationPlayState: pausado ? 'paused' : 'running',
       }}>
-        {pista.map((frase, i) => (
+        {pista.map((item, i) => (
           <span key={i} style={{
-            fontSize: '14px', fontWeight: 600, color: '#fff',
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '15px', fontWeight: 600, color: '#fff',
             padding: '0 24px', borderRight: '1px solid rgba(255,255,255,0.3)',
             whiteSpace: 'nowrap',
           }}>
-            {frase}
+            {item.icono}
+            {item.texto}
           </span>
         ))}
       </div>
@@ -484,6 +527,20 @@ export function DashboardLiderPage() {
     staleTime: 3 * 60 * 1000,
   });
 
+  // Líder del mes (cumplimiento de meta) — siempre el mes calendario en curso,
+  // independiente del preset de fechas (que solo afecta las métricas de gestión).
+  const hoy = new Date();
+  const { data: informeLideresData } = useQuery({
+    queryKey: ['inf-lideres-mes-actual', hoy.getFullYear(), hoy.getMonth() + 1],
+    queryFn:  () => getInformeLideres(hoy.getFullYear(), hoy.getMonth() + 1),
+    enabled:  liderID !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+  const liderDelMes = useMemo(
+    () => calcularLiderDelMes(informeLideresData?.liderCarteras ?? []),
+    [informeLideresData],
+  );
+
   const tituloFiltro = carteraNombre || 'Todas mis carteras';
 
   const pctAvance = data && data.metricas.totalAsignados > 0
@@ -522,9 +579,10 @@ export function DashboardLiderPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
+    <>
+      {data && <BarraFraseLider pct={pctAvance} liderDelMes={liderDelMes} liderID={liderID} />}
 
-      {data && <BarraFraseLider pct={pctAvance} />}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
 
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -700,5 +758,6 @@ export function DashboardLiderPage() {
       )}
 
     </div>
+    </>
   );
 }

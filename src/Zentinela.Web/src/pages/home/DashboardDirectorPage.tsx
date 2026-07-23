@@ -1,17 +1,23 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import {
   obtenerDashboardDirector,
   obtenerLideresDropdown,
   obtenerCarterasLider,
 } from '../../api/dashboardApi';
+import { getCategoriasAgentes, getInformeLideres } from '../../api/informesRecaudoApi';
 import type { FilaLiderDto, FilaCarteraDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
+import type { CategoriaAgenteDto } from '../../types/informesRecaudo';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
 import { ThOrdenable } from '../../components/ThOrdenable';
+import { IconoCategoria, type CategoriaRanking } from '../../components/IconoCategoria';
 import { useSort } from '../../hooks/useSort';
 import { useDuracionTicker } from '../../hooks/useDuracionTicker';
 import { formatearTiempoTranscurrido } from '../../utils/formatters';
+import { MARGEN_BARRA_COMPLETA } from '../../utils/layout';
+import { calcularLiderDelMes, type LiderDelMes } from '../../utils/liderDelMes';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -195,7 +201,13 @@ function ToggleModoProyeccion({ modo, onChange }: {
   );
 }
 
-function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
+const LABEL_LIDER_DEL_MES: Record<LiderDelMes['tipo'], string> = {
+  'cumplimiento':       'Líder actual del mes',
+  'honorarios-totales': 'Más honorarios recaudados',
+  'productividad':      'Mejor productividad',
+};
+
+function BarraDestacadosLider({ filas, liderDelMes }: { filas: FilaLiderDto[]; liderDelMes: LiderDelMes[] }) {
   // Líder destacado por categoría — si el mismo líder gana varias, su nombre se repite.
   const items = useMemo(() => {
     if (filas.length === 0) return [];
@@ -203,13 +215,23 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
     const masContactabilidad = filas.reduce((a, b) => (b.tasaContactabilidad > a.tasaContactabilidad ? b : a));
     const masEfectividad     = filas.reduce((a, b) => (b.tasaEfectividad     > a.tasaEfectividad      ? b : a));
     const masProyeccion      = filas.reduce((a, b) => (b.proyeccionPromesas  > a.proyeccionPromesas    ? b : a));
-    return [
+    const destacados = [
       { label: 'Más gestiones',        nombre: masGestiones.nombreLider,       valor: masGestiones.totalGestiones.toLocaleString('es-CO') },
       { label: 'Mayor contactabilidad', nombre: masContactabilidad.nombreLider, valor: pct(masContactabilidad.tasaContactabilidad) },
       { label: 'Mayor efectividad',    nombre: masEfectividad.nombreLider,     valor: pct(masEfectividad.tasaEfectividad) },
       { label: 'Mayor proyección',     nombre: masProyeccion.nombreLider,      valor: formatearPesos(masProyeccion.proyeccionPromesas) },
     ];
-  }, [filas]);
+    // Plan B: sin metas cargadas ese mes (o todas en 0%) — honorarios totales y productividad se
+    // destacan por separado, cada uno con su propio ganador.
+    liderDelMes.forEach(item => {
+      destacados.push({
+        label: LABEL_LIDER_DEL_MES[item.tipo],
+        nombre: item.nombreLider,
+        valor: item.tipo === 'cumplimiento' ? pct(item.valor) : formatearPesos(item.valor),
+      });
+    });
+    return destacados;
+  }, [filas, liderDelMes]);
 
   const [pausado, setPausado] = useState(false);
   const { ref: pistaRef, duracion: duracionAnimacion } = useDuracionTicker([items]);
@@ -225,10 +247,10 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
       onMouseLeave={() => setPausado(false)}
       style={{
         background: 'var(--z-brand)',
-        borderRadius: '2px', padding: '7px 0',
+        borderRadius: '2px', padding: '8px 0',
         boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
         overflow: 'hidden',
-        marginLeft: '-32px', marginRight: '-32px', marginTop: '-22px', marginBottom: '24px',
+        marginLeft: MARGEN_BARRA_COMPLETA, marginRight: MARGEN_BARRA_COMPLETA, marginTop: '-22px', marginBottom: '24px',
       }}
     >
       <style>{`
@@ -254,7 +276,7 @@ function BarraDestacadosLider({ filas }: { filas: FilaLiderDto[] }) {
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {it.label}
             </span>
-            <span style={{ fontSize: '15px', color: '#fff', fontWeight: 700, textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '15px', color: '#fff', fontWeight: 600, textTransform: 'uppercase' }}>
               {it.nombre}
               {' · '}{it.valor}
             </span>
@@ -416,6 +438,7 @@ function TablaCarteras({ filas, onSeleccionar }: {
     { key: 'totalGestiones', dir: 'desc' },
     (f, k) => (f as unknown as Record<string, string | number>)[k],
   );
+  const [filaHover, setFilaHover] = useState<number | null>(null);
 
   if (filas.length === 0) {
     return (
@@ -428,7 +451,7 @@ function TablaCarteras({ filas, onSeleccionar }: {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-brand-light)' }}>
           <ThOrdenable label="Cartera"         sortKey="nombreCartera"       sort={sort} onSort={toggle} />
           <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
@@ -438,30 +461,43 @@ function TablaCarteras({ filas, onSeleccionar }: {
         </tr>
       </thead>
       <tbody>
-        {items.map(f => (
-          <tr key={f.carteraID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+        {items.map((f, i) => (
+          <tr
+            key={f.carteraID}
+            onMouseEnter={() => setFilaHover(f.carteraID)}
+            onMouseLeave={() => setFilaHover(prev => (prev === f.carteraID ? null : prev))}
+            style={{
+              borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+              borderBottom: '0.5px solid var(--z-border)',
+              background: filaHover === f.carteraID ? 'var(--z-bg-page)' : 'transparent',
+              transition: 'background 0.12s ease',
+            }}
+          >
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreCartera}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {f.totalGestiones.toLocaleString('es-CO')}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaContactabilidad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaEfectividad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
               {formatearPesos(f.proyeccionPromesas)}
             </td>
-            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
               <button
                 onClick={() => onSeleccionar(f.carteraID, f.nombreCartera)}
                 style={{
                   padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  background: filaHover === f.carteraID ? 'var(--z-bg-card)' : 'var(--z-bg-page)',
+                  color: 'var(--z-text-primary)',
                   fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                  boxShadow: filaHover === f.carteraID ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  transition: 'background 0.12s ease, box-shadow 0.12s ease',
                 }}
               >
                 Ver detalle
@@ -474,11 +510,15 @@ function TablaCarteras({ filas, onSeleccionar }: {
   );
 }
 
-function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
+function TablaAsesores({ filas, categoriaPorAgente }: {
+  filas: FilaAsesorDto[]; categoriaPorAgente: Map<number, CategoriaAgenteDto>;
+}) {
   const { items, sort, toggle } = useSort<FilaAsesorDto>(
     filas,
     { key: 'totalGestiones', dir: 'desc' },
-    (f, k) => (f as unknown as Record<string, string | number>)[k],
+    (f, k) => k === 'categoria'
+      ? categoriaPorAgente.get(f.agenteID)?.promedioAnual ?? null
+      : (f as unknown as Record<string, string | number>)[k],
   );
 
   if (filas.length === 0) {
@@ -498,10 +538,15 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          {categoriaPorAgente.size > 0 && (
+            <ThOrdenable label="Categoría" sortKey="categoria" sort={sort} onSort={toggle} align="center" />
+          )}
         </tr>
       </thead>
       <tbody>
-        {items.map((f, i) => (
+        {items.map((f, i) => {
+          const categoria = categoriaPorAgente.get(f.agenteID);
+          return (
           <tr
             key={f.agenteID}
             style={{
@@ -529,8 +574,24 @@ function TablaAsesores({ filas }: { filas: FilaAsesorDto[] }) {
             <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
               {formatearPesos(f.proyeccionPromesas)}
             </td>
+            {categoriaPorAgente.size > 0 && (
+              <td style={{ padding: '11px 14px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                {categoria
+                  ? (
+                    <span
+                      title={`${categoria.categoria}${categoria.ajustePorBajoRendimiento ? ' (bajó por rendimiento vs. mes anterior)' : ''}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    >
+                      <IconoCategoria categoria={categoria.categoria as CategoriaRanking} size={22} />
+                      <span style={{ color: 'var(--z-text-muted)' }}>{formatearPesos(categoria.promedioAnual)}</span>
+                    </span>
+                  )
+                  : <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>—</span>}
+              </td>
+            )}
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );
@@ -623,6 +684,7 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function DashboardDirectorPage() {
+  const { usuario } = useAuth();
   const [liderID,       setLiderID]       = useState<number | null>(null);
   const [liderNombre,   setLiderNombre]   = useState<string>('');
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
@@ -639,6 +701,31 @@ export function DashboardDirectorPage() {
   const [customHasta, setCustomHasta] = useState<string>('');
 
   const rango = calcularRango(preset, customDesde, customHasta);
+
+  // Categoría de ranking — solo Admin/Director (el backend la restringe igual).
+  // Se usa el fin del rango seleccionado como mes de referencia (o el mes actual sin rango).
+  const fechaRefCategoria = rango?.hasta ? new Date(rango.hasta + 'T00:00:00') : new Date();
+  const { data: categoriasData } = useQuery({
+    queryKey: ['inf-categorias', fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1],
+    queryFn:  () => getCategoriasAgentes(fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1),
+    enabled:  usuario?.rol === 'Admin' || usuario?.rol === 'Director',
+  });
+  const categoriaPorAgente = useMemo(() => {
+    const mapa = new Map<number, CategoriaAgenteDto>();
+    categoriasData?.forEach(c => mapa.set(c.agenteID, c));
+    return mapa;
+  }, [categoriasData]);
+
+  // Líder del mes (cumplimiento de meta) — mismo mes de referencia que la categoría de ranking.
+  const { data: informeLideresData } = useQuery({
+    queryKey: ['inf-lideres', fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1],
+    queryFn:  () => getInformeLideres(fechaRefCategoria.getFullYear(), fechaRefCategoria.getMonth() + 1),
+    enabled:  usuario?.rol === 'Admin' || usuario?.rol === 'Director',
+  });
+  const liderDelMes = useMemo(
+    () => calcularLiderDelMes(informeLideresData?.liderCarteras ?? []),
+    [informeLideresData],
+  );
 
   // Dropdowns
   const { data: lideres = [] } = useQuery({
@@ -738,7 +825,7 @@ export function DashboardDirectorPage() {
     <>
       {/* Líderes destacados del período (solo vista global) — fuera de la columna de
           contenido para ocupar todo el ancho disponible, no solo los 1000px del resto. */}
-      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} />}
+      {mostrarDesgloseLider && <BarraDestacadosLider filas={data!.filasLider} liderDelMes={liderDelMes} />}
 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px' }}>
 
@@ -1011,7 +1098,7 @@ export function DashboardDirectorPage() {
             {isLoading ? (
               <CargandoSpiral mensaje="Cargando asesores..." />
             ) : (
-              <TablaAsesores filas={data?.filasAsesor ?? []} />
+              <TablaAsesores filas={data?.filasAsesor ?? []} categoriaPorAgente={categoriaPorAgente} />
             )}
           </div>
         </section>

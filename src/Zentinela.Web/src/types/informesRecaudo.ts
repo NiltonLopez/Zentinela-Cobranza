@@ -26,6 +26,18 @@ export interface InformeAgentesResponse {
   agentes: InformeAgenteMes[];
 }
 
+// ── Categoría de ranking (Diamante/Oro/Plata/Bronce) — solo Admin/Director ────
+export interface CategoriaAgenteDto {
+  agenteID: number;
+  nombreAgente: string;
+  categoria: string;
+  categoriaPorPromedio: string;
+  promedioAnual: number;
+  honorarioMesActual: number | null;
+  honorarioMesAnterior: number | null;
+  ajustePorBajoRendimiento: boolean;
+}
+
 // ── Informe de Líderes ────────────────────────────────────────────────────────
 
 export interface InformeLiderCartera {
