@@ -18,7 +18,15 @@ public class MetricasDirectorDto
     public int          GestionesExcluidasPorTecho { get; set; }
     /// <summary>Suma de los ValorPromesa excluidos por superar el techo.</summary>
     public decimal      ValorExcluidoPorTecho      { get; set; }
-    public List<long>   TitularesExcluidos         { get; set; } = [];
+    public List<TitularExcluidoDto> TitularesExcluidos { get; set; } = [];
+}
+
+/// <summary>Titular con una gestión excluida de la proyección por superar el techo (ver ADR-026).</summary>
+public class TitularExcluidoDto
+{
+    public long   TitularID     { get; set; }
+    public int    CarteraID     { get; set; }
+    public string NombreCartera { get; set; } = string.Empty;
 }
 
 public class FilaLiderDto

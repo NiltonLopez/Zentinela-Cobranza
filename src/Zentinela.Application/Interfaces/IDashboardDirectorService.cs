@@ -8,6 +8,6 @@ public interface IDashboardDirectorService
     Task<List<CarteraDropdownDto>>        ObtenerCarterasLiderAsync(int liderID);
     Task<List<CarteraDropdownDto>>        ObtenerCarterasAsync();
     Task<List<LiderCarteraVinculoDto>>    ObtenerVinculosLiderCarteraAsync();
-    Task<DashboardDirectorDto>     ObtenerDashboardAsync(int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta);
+    Task<DashboardDirectorDto>     ObtenerDashboardAsync(int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta, bool soloVigentes = false);
     Task<List<PagoDirectorDto>>    ObtenerPagosAsync(int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta);
 }

@@ -44,11 +44,13 @@ export const obtenerDashboardLider = async (
   carteraID?: number | null,
   fechaDesde?: string,
   fechaHasta?: string,
+  soloVigentes?: boolean,
 ): Promise<DashboardDirectorDto> => {
   const params: Record<string, string> = {};
-  if (carteraID != null) params.carteraID  = String(carteraID);
-  if (fechaDesde)        params.fechaDesde = fechaDesde;
-  if (fechaHasta)        params.fechaHasta = fechaHasta;
+  if (carteraID != null) params.carteraID    = String(carteraID);
+  if (fechaDesde)        params.fechaDesde   = fechaDesde;
+  if (fechaHasta)        params.fechaHasta   = fechaHasta;
+  if (soloVigentes)      params.soloVigentes = 'true';
   const response = await api.get<DashboardDirectorDto>('/api/dashboard/lider', { params });
   return response.data;
 };
@@ -93,12 +95,14 @@ export const obtenerDashboardDirector = async (
   carteraID?: number | null,
   fechaDesde?: string,
   fechaHasta?: string,
+  soloVigentes?: boolean,
 ): Promise<DashboardDirectorDto> => {
   const params: Record<string, string> = {};
-  if (liderID != null)    params.liderID    = String(liderID);
-  if (carteraID != null)  params.carteraID  = String(carteraID);
-  if (fechaDesde)         params.fechaDesde = fechaDesde;
-  if (fechaHasta)         params.fechaHasta = fechaHasta;
+  if (liderID != null)    params.liderID      = String(liderID);
+  if (carteraID != null)  params.carteraID    = String(carteraID);
+  if (fechaDesde)         params.fechaDesde   = fechaDesde;
+  if (fechaHasta)         params.fechaHasta   = fechaHasta;
+  if (soloVigentes)       params.soloVigentes = 'true';
   const response = await api.get<DashboardDirectorDto>('/api/dashboard/director', { params });
   return response.data;
 };

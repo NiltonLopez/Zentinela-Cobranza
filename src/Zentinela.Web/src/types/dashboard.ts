@@ -40,7 +40,13 @@ export interface MetricasDirectorDto {
   totalIncumplidos: number;
   gestionesExcluidasPorTecho: number;
   valorExcluidoPorTecho: number;
-  titularesExcluidos: number[];
+  titularesExcluidos: TitularExcluidoDto[];
+}
+
+export interface TitularExcluidoDto {
+  titularID: number;
+  carteraID: number;
+  nombreCartera: string;
 }
 
 export interface FilaLiderDto {

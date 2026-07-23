@@ -100,9 +100,11 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta }: {
+function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta, extra, minWidth = 160 }: {
   label: string; valor: string; unidad?: string; valorReal?: string; sub?: string; valorSize?: number;
   alerta?: { cantidad: number; onClick: () => void };
+  extra?: React.ReactNode;
+  minWidth?: number;
 }) {
   return (
     <div style={{
@@ -110,15 +112,24 @@ function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, 
       border: '0.5px solid var(--z-border)',
       borderRadius: '8px',
       padding: '20px 22px',
-      flex: '1 1 160px',
-      minWidth: '160px',
+      flex: `1 1 ${minWidth}px`,
+      minWidth: `${minWidth}px`,
       display: 'flex',
       flexDirection: 'column',
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
-        {label}
-      </p>
+      {/* float (no flex): el toggle queda fijo arriba a la derecha e independiente
+          del ancho del label — el label fluye alrededor y hace wrap si no cabe,
+          en vez de competir por espacio y truncarse. */}
+      <div style={{ marginBottom: '10px', overflow: 'hidden' }}>
+        {extra && <div style={{ float: 'right', marginLeft: '8px' }}>{extra}</div>}
+        <p style={{
+          fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)',
+          textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0,
+        }}>
+          {label}
+        </p>
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, whiteSpace: 'nowrap' }}>
           {valor}
@@ -150,6 +161,37 @@ function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, 
         )}
       </div>
     </div>
+  );
+}
+
+// Un solo botón compacto: en reposo muestra el modo activo (resaltado); en hover
+// muestra el otro modo en gris, listo para hacer clic y cambiar. Evita el par de
+// pills lado a lado, que no cabía en tarjetas angostas.
+function ToggleModoProyeccion({ modo, onChange }: {
+  modo: 'periodo' | 'vigente'; onChange: (m: 'periodo' | 'vigente') => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const otro = modo === 'periodo' ? 'vigente' : 'periodo';
+  const mostrar = hover ? otro : modo;
+  const etiqueta = (m: 'periodo' | 'vigente') => m === 'periodo' ? 'Período' : 'Vigente';
+
+  return (
+    <button
+      onClick={() => onChange(otro)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={`Cambiar a "${etiqueta(otro)}"`}
+      style={{
+        padding: '2px 8px', borderRadius: '4px', border: 'none',
+        fontSize: '9px', fontWeight: 700, letterSpacing: '0.02em',
+        textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap',
+        background: hover ? 'var(--z-bg-page)' : 'var(--z-brand)',
+        color: hover ? 'var(--z-text-muted)' : '#fff',
+        transition: 'background 0.15s, color 0.15s',
+      }}
+    >
+      {etiqueta(mostrar)}
+    </button>
   );
 }
 
@@ -540,15 +582,20 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
         <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Titulares a revisar
         </p>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-          {metricas.titularesExcluidos.map(id => (
-            <span key={id} style={{
-              fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)',
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '24px' }}>
+          {metricas.titularesExcluidos.map(t => (
+            <div key={`${t.titularID}-${t.carteraID}`} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
               background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)',
-              borderRadius: '6px', padding: '4px 10px',
+              borderRadius: '6px', padding: '5px 10px',
             }}>
-              {id}
-            </span>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)' }}>
+                {t.titularID}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', fontWeight: 600 }}>
+                {t.nombreCartera}
+              </span>
+            </div>
           ))}
         </div>
 
@@ -582,6 +629,9 @@ export function DashboardDirectorPage() {
   const [carteraNombre, setCarteraNombre] = useState<string>('');
   const [modalExcluidosAbierto, setModalExcluidosAbierto] = useState(false);
   const [vistaDesglose, setVistaDesglose] = useState<VistaDesglose>('lider');
+  // Proyección promesas: "periodo" suma todas las promesas hechas dentro del rango de
+  // fechas elegido; "vigente" acota además a las que aún no vencen (FechaPromesa >= hoy).
+  const [modoProyeccion, setModoProyeccion] = useState<'periodo' | 'vigente'>('periodo');
 
   // Selector de fechas
   const [preset,      setPreset]      = useState<Preset>('ciclo');
@@ -606,8 +656,8 @@ export function DashboardDirectorPage() {
 
   // Dashboard — rango null → backend usa último ciclo
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard-director', liderID, carteraID, rango?.desde ?? null, rango?.hasta ?? null],
-    queryFn: () => obtenerDashboardDirector(liderID, carteraID, rango?.desde, rango?.hasta),
+    queryKey: ['dashboard-director', liderID, carteraID, rango?.desde ?? null, rango?.hasta ?? null, modoProyeccion],
+    queryFn: () => obtenerDashboardDirector(liderID, carteraID, rango?.desde, rango?.hasta, modoProyeccion === 'vigente'),
     staleTime: 3 * 60 * 1000,
   });
 
@@ -855,14 +905,18 @@ export function DashboardDirectorPage() {
             />
             <TarjetaMetrica
               label="Proyección promesas"
+              minWidth={210}
               valor={formatearPesosCorto(data.metricas.proyeccionPromesas).valor}
               unidad={formatearPesosCorto(data.metricas.proyeccionPromesas).unidad}
               valorReal={formatearPesos(data.metricas.proyeccionPromesas)}
-              sub="Suma de acuerdos y abonos del período"
+              sub={modoProyeccion === 'vigente'
+                ? 'Promesas del período aún no vencidas'
+                : 'Suma de acuerdos y abonos del período'}
               valorSize={18}
               alerta={data.metricas.gestionesExcluidasPorTecho > 0
                 ? { cantidad: data.metricas.gestionesExcluidasPorTecho, onClick: () => setModalExcluidosAbierto(true) }
                 : undefined}
+              extra={<ToggleModoProyeccion modo={modoProyeccion} onChange={setModoProyeccion} />}
             />
             <TarjetaMetrica
               label="Incumplidos"
