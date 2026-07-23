@@ -32,6 +32,17 @@ public class EvaluadorCongruenciaGemini : IEvaluadorCongruencia, IDisposable
 
     public void Dispose() => _client.Dispose();
 
+    /// <summary>
+    /// ¿Conviene reintentar este error? Todo 5xx (ServerError) es transitorio por definición.
+    /// De los 4xx solo el 429 (cuota por minuto agotada); un 401/403/400 no mejora reintentando.
+    /// El SDK 1.12.0 no expone el código de estado como propiedad, así que se busca en el
+    /// mensaje, que lo incluye ("...status code 429..." / "RESOURCE_EXHAUSTED").
+    /// </summary>
+    private static bool EsTransitorio(Exception ex) =>
+        ex is ServerError
+        || ex.Message.Contains("429", StringComparison.Ordinal)
+        || ex.Message.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase);
+
     // Arma el prompt de auditoría para un lote (compartido por evaluación y conteo de tokens).
     private static string ConstruirPrompt(IReadOnlyList<GestionParaEvaluar> lote)
     {
@@ -129,10 +140,26 @@ public class EvaluadorCongruenciaGemini : IEvaluadorCongruencia, IDisposable
             },
         };
 
+        // Vertex responde 429 (RESOURCE_EXHAUSTED) cuando se le mandan varios lotes a la vez:
+        // medido con 15 peticiones simultáneas, 2 rebotaron. Un 429 NO es un fallo real, es
+        // "vuelve a intentar"; sin reintento un solo lote rebotado abortaba toda la auditoría
+        // (y con ella todo lo ya facturado). Un único reintento tras 2 s.
         GenerateContentResponse resp;
         try
         {
             resp = await _client.Models.GenerateContentAsync(_modelo, prompt, config, ct);
+        }
+        catch (Exception ex) when ((ex is ClientError or ServerError) && EsTransitorio(ex))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);   // respeta la cancelación del usuario
+            try
+            {
+                resp = await _client.Models.GenerateContentAsync(_modelo, prompt, config, ct);
+            }
+            catch (Exception ex2) when (ex2 is ClientError or ServerError)
+            {
+                throw new HttpRequestException($"Gemini generateContent falló tras reintentar: {ex2.Message}", ex2);
+            }
         }
         catch (Exception ex) when (ex is ClientError or ServerError)
         {

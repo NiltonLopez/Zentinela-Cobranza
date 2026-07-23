@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Zentinela.Application;
 using Zentinela.Application.Config;
 using Zentinela.Application.DTOs.Carteras;
+using Zentinela.Application.DTOs.CreadorZentinela;
 using Zentinela.Application.Interfaces;
+using Zentinela.Core.Interfaces;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
@@ -18,60 +20,88 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 public class ComparadorCarterasService : IComparadorCarterasService
 {
     private readonly CallCenterDbContext _db;
+    private readonly ICarteraRepository  _carteraRepo;
 
-    public ComparadorCarterasService(CallCenterDbContext db)
+    public ComparadorCarterasService(CallCenterDbContext db, ICarteraRepository carteraRepo)
     {
-        _db = db;
+        _db          = db;
+        _carteraRepo = carteraRepo;
     }
 
     // ── Dropdown ──────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<CarteraDropdownDto>> ObtenerOpcionesAsync(
+    // Misma estructura que CreadorZentinelaService.ObtenerOpcionesAsync: Líder → una
+    // entrada por cartera propia. Admin/Director → combinaciones (Cartera, Líder)
+    // más una entrada agregada "Cartera Completo" por cada cartera.
+    public async Task<IEnumerable<OpcionCarteraDto>> ObtenerOpcionesAsync(
         ContextoUsuario contexto)
     {
         if (contexto.LiderID.HasValue
             && contexto.Rol is Roles.Lider or Roles.LiderExterno)
         {
-            var lid = contexto.LiderID.Value;
-            return await _db.LiderCarteras
-                .Where(lc => lc.LiderID == lid && lc.Activo)
-                .Select(lc => new CarteraDropdownDto
-                {
-                    CarteraID     = lc.CarteraID,
-                    NombreCartera = lc.Cartera.NombreCartera,
-                })
-                .Distinct()
-                .OrderBy(c => c.NombreCartera)
-                .AsNoTracking()
-                .ToListAsync();
+            var carteras = await _carteraRepo.ObtenerPorLiderAsync(contexto.LiderID.Value);
+            return carteras.Select(c => new OpcionCarteraDto
+            {
+                CarteraID = c.ID,
+                LiderID   = contexto.LiderID,
+                Etiqueta  = c.NombreCartera,
+            }).ToList();
         }
 
-        return await _db.LiderCarteras
-            .Where(lc => lc.Activo)
-            .Select(lc => new CarteraDropdownDto
+        var combinaciones = await _carteraRepo.ObtenerCombinacionesActivasAsync();
+        var resultado = new List<OpcionCarteraDto>();
+
+        foreach (var grupo in combinaciones.GroupBy(lc => lc.CarteraID))
+        {
+            var nombreCartera = grupo.First().Cartera.NombreCartera;
+
+            foreach (var lc in grupo)
             {
-                CarteraID     = lc.CarteraID,
-                NombreCartera = lc.Cartera.NombreCartera,
-            })
-            .Distinct()
-            .OrderBy(c => c.NombreCartera)
-            .AsNoTracking()
-            .ToListAsync();
+                resultado.Add(new OpcionCarteraDto
+                {
+                    CarteraID = lc.CarteraID,
+                    LiderID   = lc.LiderID,
+                    Etiqueta  = $"{nombreCartera} — {lc.Lider.Nombre}",
+                });
+            }
+
+            resultado.Add(new OpcionCarteraDto
+            {
+                CarteraID = grupo.Key,
+                LiderID   = null,
+                Etiqueta  = $"{nombreCartera} Completo",
+            });
+        }
+
+        return resultado;
     }
+
+    public async Task<string> ObtenerNombreCarteraAsync(int carteraID) =>
+        await _db.Carteras
+            .Where(c => c.ID == carteraID)
+            .Select(c => c.NombreCartera)
+            .FirstOrDefaultAsync()
+        ?? $"Cartera {carteraID}";
 
     // ── Comparador principal ──────────────────────────────────────────────────
 
-    public async Task<ComparadorCarterasDto> CompararAsync(int carteraID)
+    public async Task<ComparadorCarterasDto> CompararAsync(int carteraID, int? liderID)
     {
-        // 1. Titulares de la cartera seleccionada que tienen reporte cargado
-        var enSeleccionada = await (
+        // 1. Titulares de la cartera seleccionada que tienen reporte cargado.
+        // liderID acota la base a las asignaciones de ese líder en la cartera
+        // (entrada "Cartera — Líder" del selector); null = cartera completa.
+        var enSeleccionadaQuery =
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
             join c in _db.Carteras on tc.CarteraID equals c.ID
             where tc.CarteraID == carteraID
-            select new { tc.TitularID, ue.UltimoPerfil, ue.NumeroMarcado, NombreCartera = c.NombreCartera }
-        ).AsNoTracking().ToListAsync();
+            select new { tc.TitularID, tc.LiderID, ue.UltimoPerfil, ue.NumeroMarcado, NombreCartera = c.NombreCartera };
+
+        if (liderID.HasValue)
+            enSeleccionadaQuery = enSeleccionadaQuery.Where(x => x.LiderID == liderID.Value);
+
+        var enSeleccionada = await enSeleccionadaQuery.AsNoTracking().ToListAsync();
 
         var nombreSeleccionada = enSeleccionada.FirstOrDefault()?.NombreCartera ?? "";
 
@@ -160,17 +190,21 @@ public class ComparadorCarterasService : IComparadorCarterasService
     // ── Datos completos para Excel ────────────────────────────────────────────
 
     public async Task<IEnumerable<TitularComparativoDto>> ObtenerParaExcelAsync(
-        int carteraID, int otraCarteraID)
+        int carteraID, int? liderID, int otraCarteraID)
     {
         // Titulares de la cartera seleccionada que califican como base del comparativo
         // (peso < Paz y Salvo, es decir Negativo o Positivo).
-        var enSeleccionada = await (
+        var enSeleccionadaQuery =
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
             where tc.CarteraID == carteraID
-            select new { tc.TitularID, ue.UltimoPerfil, ue.NumeroMarcado }
-        ).AsNoTracking().ToListAsync();
+            select new { tc.TitularID, tc.LiderID, ue.UltimoPerfil, ue.NumeroMarcado };
+
+        if (liderID.HasValue)
+            enSeleccionadaQuery = enSeleccionadaQuery.Where(x => x.LiderID == liderID.Value);
+
+        var enSeleccionada = await enSeleccionadaQuery.AsNoTracking().ToListAsync();
 
         var mejorEnSel = enSeleccionada
             .GroupBy(x => x.TitularID)
@@ -227,10 +261,10 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
     // ── Excel completo — todas las carteras ───────────────────────────────────
 
-    public async Task<IEnumerable<TitularComparativoDto>> ObtenerTodosParaExcelAsync(int carteraID)
+    public async Task<IEnumerable<TitularComparativoDto>> ObtenerTodosParaExcelAsync(int carteraID, int? liderID)
     {
         // Reutiliza CompararAsync que ya tiene toda la lógica de deduplicación
-        var resultado = await CompararAsync(carteraID);
+        var resultado = await CompararAsync(carteraID, liderID);
 
         if (resultado.Comparaciones.Count == 0) return [];
 
@@ -266,13 +300,17 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
         // También necesitamos los titulares "para comparar" que no están en el preview
         // (tienen más de 5 en alguna sección). Re-consultamos sin límite.
-        var enSeleccionadaCompleto = await (
+        var enSeleccionadaCompletoQuery =
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
             where tc.CarteraID == carteraID
-            select new { tc.TitularID, ue.UltimoPerfil, ue.NumeroMarcado }
-        ).AsNoTracking().ToListAsync();
+            select new { tc.TitularID, tc.LiderID, ue.UltimoPerfil, ue.NumeroMarcado };
+
+        if (liderID.HasValue)
+            enSeleccionadaCompletoQuery = enSeleccionadaCompletoQuery.Where(x => x.LiderID == liderID.Value);
+
+        var enSeleccionadaCompleto = await enSeleccionadaCompletoQuery.AsNoTracking().ToListAsync();
 
         var mejorEnSelFull = enSeleccionadaCompleto
             .GroupBy(x => x.TitularID)

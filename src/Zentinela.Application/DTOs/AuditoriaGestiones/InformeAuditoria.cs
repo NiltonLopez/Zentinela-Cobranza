@@ -13,6 +13,7 @@ public class InformeAuditoria
     public int     TotalGestiones           { get; set; }
     public int     TotalGestionesConTexto   { get; set; }   // gestiones con texto en el rango (universo IA)
     public int     GestionesEvaluadasIA     { get; set; }   // las que realmente fueron a la IA (tope MaxGestionesIA)
+    public int     GestionesSinEvaluar      { get; set; }   // se enviaron a la IA pero su lote falló tras reintentar
     public int     TotalCriticas            { get; set; }   // inconsistencias perfil ↔ gestión (IA)
     public int     TotalMedias              { get; set; }   // promesas incompletas
     public int     TotalBajas               { get; set; }   // valor de promesa < 5 dígitos

@@ -95,12 +95,13 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> ObtenerDashboardLider(
         [FromQuery] int?      carteraID,
         [FromQuery] DateOnly? fechaDesde,
-        [FromQuery] DateOnly? fechaHasta)
+        [FromQuery] DateOnly? fechaHasta,
+        [FromQuery] bool      soloVigentes = false)
     {
         if (!int.TryParse(User.FindFirstValue("liderID"), out var liderID))
             return Forbid();
 
-        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta);
+        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta, soloVigentes);
         return Ok(resultado);
     }
 
@@ -189,9 +190,10 @@ public class DashboardController : ControllerBase
         [FromQuery] int?      liderID,
         [FromQuery] int?      carteraID,
         [FromQuery] DateOnly? fechaDesde,
-        [FromQuery] DateOnly? fechaHasta)
+        [FromQuery] DateOnly? fechaHasta,
+        [FromQuery] bool      soloVigentes = false)
     {
-        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta);
+        var resultado = await _directorService.ObtenerDashboardAsync(liderID, carteraID, fechaDesde, fechaHasta, soloVigentes);
         return Ok(resultado);
     }
 

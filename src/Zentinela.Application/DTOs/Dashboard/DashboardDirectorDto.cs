@@ -18,13 +18,32 @@ public class MetricasDirectorDto
     public int          GestionesExcluidasPorTecho { get; set; }
     /// <summary>Suma de los ValorPromesa excluidos por superar el techo.</summary>
     public decimal      ValorExcluidoPorTecho      { get; set; }
-    public List<long>   TitularesExcluidos         { get; set; } = [];
+    public List<TitularExcluidoDto> TitularesExcluidos { get; set; } = [];
+}
+
+/// <summary>Titular con una gestión excluida de la proyección por superar el techo (ver ADR-026).</summary>
+public class TitularExcluidoDto
+{
+    public long   TitularID     { get; set; }
+    public int    CarteraID     { get; set; }
+    public string NombreCartera { get; set; } = string.Empty;
 }
 
 public class FilaLiderDto
 {
     public int     LiderID             { get; set; }
     public string  NombreLider         { get; set; } = string.Empty;
+    public int     TotalGestiones      { get; set; }
+    public decimal TasaContactabilidad { get; set; }
+    public decimal TasaEfectividad     { get; set; }
+    /// <summary>Suma de ValorPromesa donde UltimoPerfil es acuerdo o abono.</summary>
+    public decimal ProyeccionPromesas  { get; set; }
+}
+
+public class FilaCarteraDto
+{
+    public int     CarteraID           { get; set; }
+    public string  NombreCartera       { get; set; } = string.Empty;
     public int     TotalGestiones      { get; set; }
     public decimal TasaContactabilidad { get; set; }
     public decimal TasaEfectividad     { get; set; }
@@ -67,9 +86,11 @@ public class LiderCarteraVinculoDto
 
 public class DashboardDirectorDto
 {
-    public MetricasDirectorDto Metricas    { get; set; } = new();
+    public MetricasDirectorDto  Metricas     { get; set; } = new();
     /// <summary>Poblado cuando no hay filtro de líder (vista global).</summary>
-    public List<FilaLiderDto>  FilasLider  { get; set; } = [];
+    public List<FilaLiderDto>   FilasLider   { get; set; } = [];
+    /// <summary>Poblado cuando no hay filtro de líder (vista global) — mismo universo que FilasLider, agrupado por cartera.</summary>
+    public List<FilaCarteraDto> FilasCartera { get; set; } = [];
     /// <summary>Poblado cuando se filtra por un líder específico.</summary>
-    public List<FilaAsesorDto> FilasAsesor { get; set; } = [];
+    public List<FilaAsesorDto>  FilasAsesor  { get; set; } = [];
 }

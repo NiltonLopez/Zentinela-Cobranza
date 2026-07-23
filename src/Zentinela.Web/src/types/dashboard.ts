@@ -40,12 +40,27 @@ export interface MetricasDirectorDto {
   totalIncumplidos: number;
   gestionesExcluidasPorTecho: number;
   valorExcluidoPorTecho: number;
-  titularesExcluidos: number[];
+  titularesExcluidos: TitularExcluidoDto[];
+}
+
+export interface TitularExcluidoDto {
+  titularID: number;
+  carteraID: number;
+  nombreCartera: string;
 }
 
 export interface FilaLiderDto {
   liderID: number;
   nombreLider: string;
+  totalGestiones: number;
+  tasaContactabilidad: number;
+  tasaEfectividad: number;
+  proyeccionPromesas: number;
+}
+
+export interface FilaCarteraDto {
+  carteraID: number;
+  nombreCartera: string;
   totalGestiones: number;
   tasaContactabilidad: number;
   tasaEfectividad: number;
@@ -64,6 +79,7 @@ export interface FilaAsesorDto {
 export interface DashboardDirectorDto {
   metricas: MetricasDirectorDto;
   filasLider: FilaLiderDto[];
+  filasCartera: FilaCarteraDto[];
   filasAsesor: FilaAsesorDto[];
 }
 

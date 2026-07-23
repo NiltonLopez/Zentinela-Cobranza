@@ -22,13 +22,20 @@ export interface AlertaSolicitud {
   totalEnvios:   number;
 }
 
+// Un tipo de error con su conteo de filas — no se limita a la muestra de `preview`.
+export interface ErrorAgrupado {
+  mensaje:  string;
+  cantidad: number;
+}
+
 export interface ValidarSolicitudResponse {
-  totalFilas:   number;
-  totalValidas: number;
-  totalErrores: number;
-  preview:      FilaSolicitud[];
-  filasValidas: FilaSolicitud[];
-  alertas:      AlertaSolicitud[];
+  totalFilas:       number;
+  totalValidas:     number;
+  totalErrores:     number;
+  preview:          FilaSolicitud[];
+  filasValidas:     FilaSolicitud[];
+  alertas:          AlertaSolicitud[];
+  erroresAgrupados: ErrorAgrupado[];
 }
 
 // ── Fase Resultado ──────────────────────────────────────────────────────────
@@ -41,9 +48,10 @@ export interface FilaResultado {
 }
 
 export interface ValidarResultadoResponse {
-  totalFilas:   number;
-  totalValidas: number;
-  totalErrores: number;
-  preview:      FilaResultado[];
-  filasValidas: FilaResultado[];
+  totalFilas:       number;
+  totalValidas:     number;
+  totalErrores:     number;
+  preview:          FilaResultado[];
+  filasValidas:     FilaResultado[];
+  erroresAgrupados: ErrorAgrupado[];
 }

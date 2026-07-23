@@ -79,16 +79,23 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
   const [filtroLider,   setFiltroLider]   = useState(() => esLider ? String(usuario?.liderID ?? '') : '');
   const [filtroCartera, setFiltroCartera] = useState('');
   const [busqueda,      setBusqueda]      = useState('');
+  // Umbral gerencial: "Asesores con menos de $X en honorarios" — filtro opcional
+  // para generar el reporte de asesores por debajo del honorario exigido.
+  const [umbralTexto,    setUmbralTexto]    = useState('');
+  const [soloBajoUmbral, setSoloBajoUmbral] = useState(false);
+  const umbral = umbralTexto ? Number(umbralTexto) : 0;
   // Ref siempre actualizado: la fn de descarga lo lee en el momento del clic (datos frescos)
-  const latestRef  = useRef<{ agentesVisibles: (InformeAgenteMes & { caida: number })[]; esLider: boolean }>({ agentesVisibles: [], esLider: false });
+  const latestRef  = useRef<{ agentesVisibles: (InformeAgenteMes & { caida: number })[]; esLider: boolean; soloBajoUmbral: boolean; umbral: number }>({ agentesVisibles: [], esLider: false, soloBajoUmbral: false, umbral: 0 });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['inf-agentes', año, mes],
     queryFn:  () => getInformeAgentes(año, mes),
   });
 
-  // Filtrado cliente-lado
-  const agentesVisibles = useMemo(() => {
+  // Filtrado cliente-lado (líder / cartera / búsqueda) — base sobre la que se
+  // calcula el conteo de asesores bajo el umbral y, si el toggle está activo,
+  // se restringe además a esos asesores.
+  const agentesFiltrados = useMemo(() => {
     if (!data) return [];
     const termino = busqueda.trim().toLowerCase();
     return data.agentes.filter(a => {
@@ -98,6 +105,13 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
       return true;
     });
   }, [data, filtroLider, filtroCartera, busqueda]);
+
+  const bajoUmbralCount = umbral > 0 ? agentesFiltrados.filter(a => a.honorarios < umbral).length : 0;
+
+  const agentesVisibles = useMemo(() => {
+    if (!(soloBajoUmbral && umbral > 0)) return agentesFiltrados;
+    return agentesFiltrados.filter(a => a.honorarios < umbral);
+  }, [agentesFiltrados, soloBajoUmbral, umbral]);
 
   // Filas con cumplimiento calculado para poder ordenar por esa columna.
   // El estado de orden vive aquí (no en la tabla hija) para que la descarga lo respete.
@@ -114,14 +128,15 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
   const agentesOrdenados = sortAgentes.sorted as unknown as (InformeAgenteMes & { cumplimiento: number; caida: number })[];
 
   // Actualizar ref en cada render para que la descarga use el filtro Y el orden actual
-  latestRef.current = { agentesVisibles: agentesOrdenados, esLider };
+  latestRef.current = { agentesVisibles: agentesOrdenados, esLider, soloBajoUmbral, umbral };
 
   useEffect(() => {
     if (!onRegisterDownload) return;
     const nombreMes = MESES[mes - 1];
     onRegisterDownload((): PdfExportDescriptor | null => {
-      const { agentesVisibles, esLider } = latestRef.current;
+      const { agentesVisibles, esLider, soloBajoUmbral, umbral } = latestRef.current;
       if (agentesVisibles.length === 0) return null;
+      const esReporteUmbral = soloBajoUmbral && umbral > 0;
 
       const headCols = ['#', 'Agente', ...(esLider ? [] : ['Líder']), 'Cartera',
         'Gestiones', 'Recaudo', 'Honorarios', 'Tipo Meta',
@@ -156,8 +171,12 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
       return {
         columnas: headCols,
         generar: (idx) => buildExportarPDF({
-          tituloArchivo: `Informe_Agentes_${nombreMes}_${año}`,
-          tituloPDF:     `Informe Agentes — ${nombreMes} ${año}`,
+          tituloArchivo: esReporteUmbral
+            ? `Asesores_Bajo_Honorarios_${nombreMes}_${año}`
+            : `Informe_Agentes_${nombreMes}_${año}`,
+          tituloPDF: esReporteUmbral
+            ? `Asesores con menos de ${cop(umbral)} en Honorarios — ${nombreMes} ${año}`
+            : `Informe Agentes — ${nombreMes} ${año}`,
           subtitulo:     `Generado el ${new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}`,
           pdfTable: filtrarColumnas(pdfTable, idx),
           // Sin gráfico: el informe de Agentes ya no incluye página de gráfica.
@@ -230,6 +249,48 @@ function TabAgentes({ año, mes, onRegisterDownload }: {
             }}
           />
         </div>
+      </div>
+
+      {/* Generador de informe gerencial: asesores bajo el honorario exigido */}
+      <div style={{
+        display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center',
+        background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
+        borderRadius: 10, padding: '12px 16px',
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--z-text-muted)', whiteSpace: 'nowrap' }}>
+          Honorarios exigidos ($):
+        </span>
+        <input
+          type="number" min="0" placeholder="Ej: 1500000"
+          value={umbralTexto}
+          onChange={e => setUmbralTexto(e.target.value)}
+          style={{
+            background: 'var(--z-bg-page)', border: '1px solid var(--z-border)',
+            borderRadius: 6, padding: '5px 10px', fontSize: 13,
+            color: 'var(--z-text-primary)', width: 160, outline: 'none',
+          }}
+        />
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
+          color: umbral > 0 ? 'var(--z-text-primary)' : 'var(--z-text-muted)',
+          cursor: umbral > 0 ? 'pointer' : 'not-allowed',
+        }}>
+          <input
+            type="checkbox"
+            checked={soloBajoUmbral}
+            disabled={umbral <= 0}
+            onChange={e => setSoloBajoUmbral(e.target.checked)}
+          />
+          Ver solo asesores con menos de {umbral > 0 ? cop(umbral) : '$0'} en honorarios
+        </label>
+        {umbral > 0 && (
+          <span style={{
+            fontSize: 12, fontWeight: 600, color: C.rojo, marginLeft: 'auto',
+            background: `${C.rojo}18`, padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap',
+          }}>
+            {bajoUmbralCount} asesor{bajoUmbralCount !== 1 ? 'es' : ''} bajo el umbral
+          </span>
+        )}
       </div>
 
       {/* Tabla */}

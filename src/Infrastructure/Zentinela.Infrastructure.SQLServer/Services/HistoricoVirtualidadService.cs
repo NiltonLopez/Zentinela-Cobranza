@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Zentinela.Application.DTOs.Virtualidad.Historico;
@@ -118,12 +119,13 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
 
         return new ValidarSolicitudResponse
         {
-            TotalFilas   = filas.Count,
-            TotalValidas = validas.Count,
-            TotalErrores = filas.Count - validas.Count,
-            Preview      = filas.Take(10).ToList(),
-            FilasValidas = validas,
-            Alertas      = alertas,
+            TotalFilas       = filas.Count,
+            TotalValidas     = validas.Count,
+            TotalErrores     = filas.Count - validas.Count,
+            Preview          = filas.Take(10).ToList(),
+            FilasValidas     = validas,
+            Alertas          = alertas,
+            ErroresAgrupados = AgruparErrores(filas.Where(f => !f.EsValida).Select(f => f.ErrorMensaje)),
         };
     }
 
@@ -241,6 +243,7 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
             {
                 TotalErrores = 1,
                 Preview = [new FilaResultadoDto { EsValida = false, ErrorMensaje = $"Canal '{canal}' no soportado." }],
+                ErroresAgrupados = [new ErrorAgrupadoDto { Mensaje = $"Canal '{canal}' no soportado.", Cantidad = 1 }],
             };
 
         var estadosValidos = EstadosPorCanal.GetValueOrDefault(canal, [])
@@ -284,11 +287,12 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         var validas = filas.Where(f => f.EsValida).ToList();
         return new ValidarResultadoResponse
         {
-            TotalFilas   = filas.Count,
-            TotalValidas = validas.Count,
-            TotalErrores = filas.Count - validas.Count,
-            Preview      = filas.Take(10).ToList(),
-            FilasValidas = validas,
+            TotalFilas       = filas.Count,
+            TotalValidas     = validas.Count,
+            TotalErrores     = filas.Count - validas.Count,
+            Preview          = filas.Take(10).ToList(),
+            FilasValidas     = validas,
+            ErroresAgrupados = AgruparErrores(filas.Where(f => !f.EsValida).Select(f => f.ErrorMensaje)),
         };
     }
 
@@ -425,10 +429,26 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
     private static void Invalidar(FilaResultadoDto dto, string msg)
     { dto.EsValida = false; dto.ErrorMensaje ??= msg; }
 
+    // Los mensajes de parseo llevan "Línea N: " al inicio (distinto por fila); se quita
+    // para agrupar por el tipo de error real, en vez de mostrar una línea repetida por
+    // cada fila del archivo. Los mensajes de resolución (cartera/líder no encontrado) no
+    // llevan ese prefijo y ya agrupan naturalmente por el nombre específico que falló.
+    private static readonly Regex PrefijoLinea = new(@"^Línea \d+: ", RegexOptions.Compiled);
+
+    private static List<ErrorAgrupadoDto> AgruparErrores(IEnumerable<string?> mensajes) =>
+        mensajes
+            .Where(m => !string.IsNullOrEmpty(m))
+            .Select(m => PrefijoLinea.Replace(m!, ""))
+            .GroupBy(m => m)
+            .Select(g => new ErrorAgrupadoDto { Mensaje = g.Key, Cantidad = g.Count() })
+            .OrderByDescending(e => e.Cantidad)
+            .ToList();
+
     private static ValidarSolicitudResponse ErrorResponse(string mensaje) => new()
     {
         TotalErrores = 1,
         Preview = [new FilaSolicitudDto { EsValida = false, ErrorMensaje = mensaje }],
+        ErroresAgrupados = [new ErrorAgrupadoDto { Mensaje = mensaje, Cantidad = 1 }],
     };
 
     /// <summary>Índice Normalizar(nombre) -> (ID, Nombre). Ante nombres duplicados

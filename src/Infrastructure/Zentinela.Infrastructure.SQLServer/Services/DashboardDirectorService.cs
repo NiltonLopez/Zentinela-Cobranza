@@ -101,7 +101,7 @@ public class DashboardDirectorService : IDashboardDirectorService
     // ── Dashboard principal ───────────────────────────────────────────────────
 
     public async Task<DashboardDirectorDto> ObtenerDashboardAsync(
-        int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta)
+        int? liderID, int? carteraID, DateOnly? fechaDesde, DateOnly? fechaHasta, bool soloVigentes = false)
     {
         // FechaActualizacion es informativa (cuándo corrió el ETL)
         var fechaActualizacion = await ObtenerFechaActualizacionAsync(liderID, carteraID);
@@ -155,7 +155,7 @@ public class DashboardDirectorService : IDashboardDirectorService
         var totalAsignados = await ContarAsignadosAsync(liderID, carteraID);
 
         var registros = await query
-            .Select(u => new { u.TitularID, u.CarteraID, u.AgenteID, u.UltimoPerfil, u.ValorPromesa })
+            .Select(u => new { u.TitularID, u.CarteraID, u.AgenteID, u.UltimoPerfil, u.ValorPromesa, u.FechaPromesa })
             .AsNoTracking()
             .ToListAsync();
 
@@ -163,8 +163,13 @@ public class DashboardDirectorService : IDashboardDirectorService
         var totalGestiones     = registros.Count;
         var contactosPositivos = registros.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
         var acuerdosAbonos     = registros.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
+
+        // soloVigentes: solo cuenta promesas cuya FechaPromesa >= hoy (acuerdos aún no vencidos).
+        // Se activa cuando el usuario elige ver la proyección "Vigente" en vez de "Período seleccionado".
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
         var acuerdosRegistros  = registros
-            .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+            .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty)
+                     && (!soloVigentes || (r.FechaPromesa.HasValue && r.FechaPromesa.Value >= hoy)))
             .ToList();
         var proyeccionPromesas = acuerdosRegistros
             .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
@@ -173,6 +178,22 @@ public class DashboardDirectorService : IDashboardDirectorService
             .ToList();
         var totalIncumplidos   = registros.Count(r =>
             string.Equals(r.UltimoPerfil, "Incumplido", StringComparison.OrdinalIgnoreCase));
+
+        // Nombre de cartera por cada titular excluido, para el modal "Gestiones excluidas".
+        var carteraIDsExcluidos = excluidosPorTecho.Select(r => r.CarteraID).Distinct().ToList();
+        var nombrePorCarteraExcluidos = await _callCenter.Carteras
+            .Where(c => carteraIDsExcluidos.Contains(c.ID))
+            .AsNoTracking()
+            .ToDictionaryAsync(c => c.ID, c => c.NombreCartera);
+
+        var titularesExcluidos = excluidosPorTecho
+            .Select(r => new TitularExcluidoDto
+            {
+                TitularID     = r.TitularID,
+                CarteraID     = r.CarteraID,
+                NombreCartera = nombrePorCarteraExcluidos.TryGetValue(r.CarteraID, out var nom) ? nom : $"Cartera {r.CarteraID}",
+            })
+            .ToList();
 
         var metricas = new MetricasDirectorDto
         {
@@ -189,20 +210,27 @@ public class DashboardDirectorService : IDashboardDirectorService
             TotalAsignados      = totalAsignados,
             GestionesExcluidasPorTecho = excluidosPorTecho.Count,
             ValorExcluidoPorTecho      = excluidosPorTecho.Sum(r => r.ValorPromesa ?? 0m),
-            TitularesExcluidos         = excluidosPorTecho.Select(r => r.TitularID).ToList(),
+            TitularesExcluidos         = titularesExcluidos,
         };
 
         // ── Desglose ─────────────────────────────────────────────────────────
-        List<FilaLiderDto>  filasLider  = [];
-        List<FilaAsesorDto> filasAsesor = [];
+        List<FilaLiderDto>   filasLider   = [];
+        List<FilaCarteraDto> filasCartera = [];
+        List<FilaAsesorDto>  filasAsesor  = [];
 
         if (!liderID.HasValue)
         {
+            // Vista global: se calculan ambos agrupamientos del mismo universo de
+            // registros — el frontend alterna cuál mostrar sin pedir de nuevo al backend.
             // Para el desglose por líder los registros sin AgenteID aún cuentan
             // (titulares sin asesor pero con perfil de gestión); se preserva el null.
             filasLider = await ConstruirFilasLiderAsync(registros
-                .Select(r => (r.CarteraID, r.AgenteID, r.UltimoPerfil, r.ValorPromesa))
-                .ToList());
+                .Select(r => (r.CarteraID, r.AgenteID, r.UltimoPerfil, r.ValorPromesa, r.FechaPromesa))
+                .ToList(), soloVigentes, hoy);
+
+            filasCartera = await ConstruirFilasCarteraAsync(registros
+                .Select(r => (r.CarteraID, r.UltimoPerfil, r.ValorPromesa, r.FechaPromesa))
+                .ToList(), soloVigentes, hoy);
         }
         else
         {
@@ -210,15 +238,16 @@ public class DashboardDirectorService : IDashboardDirectorService
             // (no hay asesor al cual atribuir la gestión); se filtran fuera.
             filasAsesor = await ConstruirFilasAsesorAsync(registros
                 .Where(r => r.AgenteID.HasValue)
-                .Select(r => (AgenteID: r.AgenteID!.Value, r.UltimoPerfil, r.ValorPromesa))
-                .ToList());
+                .Select(r => (AgenteID: r.AgenteID!.Value, r.UltimoPerfil, r.ValorPromesa, r.FechaPromesa))
+                .ToList(), soloVigentes, hoy);
         }
 
         return new DashboardDirectorDto
         {
-            Metricas    = metricas,
-            FilasLider  = filasLider,
-            FilasAsesor = filasAsesor,
+            Metricas     = metricas,
+            FilasLider   = filasLider,
+            FilasCartera = filasCartera,
+            FilasAsesor  = filasAsesor,
         };
     }
 
@@ -260,6 +289,8 @@ public class DashboardDirectorService : IDashboardDirectorService
         if (carteraID.HasValue)
         {
             q = q.Where(tc => tc.CarteraID == carteraID.Value);
+            if (liderID.HasValue)
+                q = q.Where(tc => tc.LiderID == liderID.Value);
         }
         else
         {
@@ -305,7 +336,8 @@ public class DashboardDirectorService : IDashboardDirectorService
     }
 
     private async Task<List<FilaLiderDto>> ConstruirFilasLiderAsync(
-        List<(int CarteraID, int? AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
+        List<(int CarteraID, int? AgenteID, string? UltimoPerfil, decimal? ValorPromesa, DateOnly? FechaPromesa)> registros,
+        bool soloVigentes, DateOnly hoy)
     {
         // Resolver LiderID por agente real (Cartera_Agente), no por "primer líder
         // de la cartera". Cuando varias relaciones existen para la misma cartera
@@ -357,7 +389,8 @@ public class DashboardDirectorService : IDashboardDirectorService
                 var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
                 var proyeccion = grp
-                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty)
+                             && (!soloVigentes || (r.FechaPromesa.HasValue && r.FechaPromesa.Value >= hoy)))
                     .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
 
                 return new FilaLiderDto
@@ -376,8 +409,48 @@ public class DashboardDirectorService : IDashboardDirectorService
             .ToList();
     }
 
+    private async Task<List<FilaCarteraDto>> ConstruirFilasCarteraAsync(
+        List<(int CarteraID, string? UltimoPerfil, decimal? ValorPromesa, DateOnly? FechaPromesa)> registros,
+        bool soloVigentes, DateOnly hoy)
+    {
+        var carteraIDs = registros.Select(r => r.CarteraID).Distinct().ToList();
+
+        var nombrePorCartera = await _callCenter.Carteras
+            .Where(c => carteraIDs.Contains(c.ID))
+            .AsNoTracking()
+            .ToDictionaryAsync(c => c.ID, c => c.NombreCartera);
+
+        return registros
+            .GroupBy(r => r.CarteraID)
+            .Select(grp =>
+            {
+                var total     = grp.Count();
+                var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
+                var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
+                var proyeccion = grp
+                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty)
+                             && (!soloVigentes || (r.FechaPromesa.HasValue && r.FechaPromesa.Value >= hoy)))
+                    .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
+
+                return new FilaCarteraDto
+                {
+                    CarteraID           = grp.Key,
+                    NombreCartera       = nombrePorCartera.TryGetValue(grp.Key, out var nom) ? nom : $"Cartera {grp.Key}",
+                    TotalGestiones      = total,
+                    TasaContactabilidad = total > 0
+                        ? Math.Round((decimal)contactos / total, 4) : 0,
+                    TasaEfectividad     = contactos > 0
+                        ? Math.Round((decimal)acuerdos / contactos, 4) : 0,
+                    ProyeccionPromesas  = Math.Round(proyeccion, 0),
+                };
+            })
+            .OrderByDescending(f => f.TotalGestiones)
+            .ToList();
+    }
+
     private async Task<List<FilaAsesorDto>> ConstruirFilasAsesorAsync(
-        List<(int AgenteID, string? UltimoPerfil, decimal? ValorPromesa)> registros)
+        List<(int AgenteID, string? UltimoPerfil, decimal? ValorPromesa, DateOnly? FechaPromesa)> registros,
+        bool soloVigentes, DateOnly hoy)
     {
         // Obtener nombres desde DBRecursosHumanos
         var agenteIDs = registros.Select(r => (long)r.AgenteID).Distinct().ToList();
@@ -399,7 +472,8 @@ public class DashboardDirectorService : IDashboardDirectorService
                 var contactos = grp.Count(r => Tipificaciones.ContactoPositivo.Contains(r.UltimoPerfil ?? string.Empty));
                 var acuerdos  = grp.Count(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty));
                 var proyeccion = grp
-                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty))
+                    .Where(r => Tipificaciones.AcuerdoAbono.Contains(r.UltimoPerfil ?? string.Empty)
+                             && (!soloVigentes || (r.FechaPromesa.HasValue && r.FechaPromesa.Value >= hoy)))
                     .Sum(r => ProyeccionPromesasCalculator.ValorPromesaSano(r.ValorPromesa, _techoProyeccion));
 
                 nombrePorAgente.TryGetValue(grp.Key, out var nombre);

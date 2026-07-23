@@ -7,7 +7,7 @@ import {
   obtenerCarterasLider,
 } from '../../api/dashboardApi';
 import { getCategoriasAgentes, getInformeLideres } from '../../api/informesRecaudoApi';
-import type { FilaLiderDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
+import type { FilaLiderDto, FilaCarteraDto, FilaAsesorDto, MetricasDirectorDto } from '../../types/dashboard';
 import type { CategoriaAgenteDto } from '../../types/informesRecaudo';
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
@@ -22,6 +22,7 @@ import { calcularLiderDelMes, type LiderDelMes } from '../../utils/liderDelMes';
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 type Preset = 'hoy' | 'ayer' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
+type VistaDesglose = 'lider' | 'cartera';
 
 interface Rango { desde: string; hasta: string; }
 
@@ -105,9 +106,11 @@ const PRESETS: { valor: Preset; label: string }[] = [
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta }: {
+function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, alerta, extra, minWidth = 160 }: {
   label: string; valor: string; unidad?: string; valorReal?: string; sub?: string; valorSize?: number;
   alerta?: { cantidad: number; onClick: () => void };
+  extra?: React.ReactNode;
+  minWidth?: number;
 }) {
   return (
     <div style={{
@@ -115,15 +118,24 @@ function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, 
       border: '0.5px solid var(--z-border)',
       borderRadius: '8px',
       padding: '20px 22px',
-      flex: '1 1 160px',
-      minWidth: '160px',
+      flex: `1 1 ${minWidth}px`,
+      minWidth: `${minWidth}px`,
       display: 'flex',
       flexDirection: 'column',
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
     }}>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
-        {label}
-      </p>
+      {/* float (no flex): el toggle queda fijo arriba a la derecha e independiente
+          del ancho del label — el label fluye alrededor y hace wrap si no cabe,
+          en vez de competir por espacio y truncarse. */}
+      <div style={{ marginBottom: '10px', overflow: 'hidden' }}>
+        {extra && <div style={{ float: 'right', marginLeft: '8px' }}>{extra}</div>}
+        <p style={{
+          fontSize: '11px', fontWeight: 600, color: 'var(--z-text-primary)',
+          textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0,
+        }}>
+          {label}
+        </p>
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <p style={{ fontSize: `${valorSize}px`, fontWeight: 700, color: 'var(--z-brand)', lineHeight: 1, whiteSpace: 'nowrap' }}>
           {valor}
@@ -155,6 +167,37 @@ function TarjetaMetrica({ label, valor, unidad, valorReal, sub, valorSize = 26, 
         )}
       </div>
     </div>
+  );
+}
+
+// Un solo botón compacto: en reposo muestra el modo activo (resaltado); en hover
+// muestra el otro modo en gris, listo para hacer clic y cambiar. Evita el par de
+// pills lado a lado, que no cabía en tarjetas angostas.
+function ToggleModoProyeccion({ modo, onChange }: {
+  modo: 'periodo' | 'vigente'; onChange: (m: 'periodo' | 'vigente') => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const otro = modo === 'periodo' ? 'vigente' : 'periodo';
+  const mostrar = hover ? otro : modo;
+  const etiqueta = (m: 'periodo' | 'vigente') => m === 'periodo' ? 'Período' : 'Vigente';
+
+  return (
+    <button
+      onClick={() => onChange(otro)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={`Cambiar a "${etiqueta(otro)}"`}
+      style={{
+        padding: '2px 8px', borderRadius: '4px', border: 'none',
+        fontSize: '9px', fontWeight: 700, letterSpacing: '0.02em',
+        textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap',
+        background: hover ? 'var(--z-bg-page)' : 'var(--z-brand)',
+        color: hover ? 'var(--z-text-muted)' : '#fff',
+        transition: 'background 0.15s, color 0.15s',
+      }}
+    >
+      {etiqueta(mostrar)}
+    </button>
   );
 }
 
@@ -386,6 +429,73 @@ function TablaLideres({ filas, onSeleccionar }: {
   );
 }
 
+function TablaCarteras({ filas, onSeleccionar }: {
+  filas: FilaCarteraDto[];
+  onSeleccionar: (carteraID: number, nombre: string) => void;
+}) {
+  const { items, sort, toggle } = useSort<FilaCarteraDto>(
+    filas,
+    { key: 'totalGestiones', dir: 'desc' },
+    (f, k) => (f as unknown as Record<string, string | number>)[k],
+  );
+
+  if (filas.length === 0) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>
+        Sin datos de carteras para este período.
+      </div>
+    );
+  }
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ background: 'var(--z-bg-page)' }}>
+          <ThOrdenable label="Cartera"         sortKey="nombreCartera"       sort={sort} onSort={toggle} />
+          <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Efectividad"     sortKey="tasaEfectividad"     sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="Proyección"      sortKey="proyeccionPromesas"  sort={sort} onSort={toggle} align="right" />
+          <ThOrdenable label="" align="center" />
+        </tr>
+      </thead>
+      <tbody>
+        {items.map(f => (
+          <tr key={f.carteraID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+              {f.nombreCartera}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {f.totalGestiones.toLocaleString('es-CO')}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaContactabilidad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+              {pct(f.tasaEfectividad)}
+            </td>
+            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+              {formatearPesos(f.proyeccionPromesas)}
+            </td>
+            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+              <button
+                onClick={() => onSeleccionar(f.carteraID, f.nombreCartera)}
+                style={{
+                  padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
+                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Ver detalle
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function TablaAsesores({ filas, categoriaPorAgente }: {
   filas: FilaAsesorDto[]; categoriaPorAgente: Map<number, CategoriaAgenteDto>;
 }) {
@@ -519,15 +629,20 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
         <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Titulares a revisar
         </p>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-          {metricas.titularesExcluidos.map(id => (
-            <span key={id} style={{
-              fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)',
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '24px' }}>
+          {metricas.titularesExcluidos.map(t => (
+            <div key={`${t.titularID}-${t.carteraID}`} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
               background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)',
-              borderRadius: '6px', padding: '4px 10px',
+              borderRadius: '6px', padding: '5px 10px',
             }}>
-              {id}
-            </span>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)' }}>
+                {t.titularID}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', fontWeight: 600 }}>
+                {t.nombreCartera}
+              </span>
+            </div>
           ))}
         </div>
 
@@ -561,6 +676,10 @@ export function DashboardDirectorPage() {
   const [carteraID,     setCarteraID]     = useState<number | null>(null);
   const [carteraNombre, setCarteraNombre] = useState<string>('');
   const [modalExcluidosAbierto, setModalExcluidosAbierto] = useState(false);
+  const [vistaDesglose, setVistaDesglose] = useState<VistaDesglose>('lider');
+  // Proyección promesas: "periodo" suma todas las promesas hechas dentro del rango de
+  // fechas elegido; "vigente" acota además a las que aún no vencen (FechaPromesa >= hoy).
+  const [modoProyeccion, setModoProyeccion] = useState<'periodo' | 'vigente'>('periodo');
 
   // Selector de fechas
   const [preset,      setPreset]      = useState<Preset>('ciclo');
@@ -610,8 +729,8 @@ export function DashboardDirectorPage() {
 
   // Dashboard — rango null → backend usa último ciclo
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard-director', liderID, carteraID, rango?.desde ?? null, rango?.hasta ?? null],
-    queryFn: () => obtenerDashboardDirector(liderID, carteraID, rango?.desde, rango?.hasta),
+    queryKey: ['dashboard-director', liderID, carteraID, rango?.desde ?? null, rango?.hasta ?? null, modoProyeccion],
+    queryFn: () => obtenerDashboardDirector(liderID, carteraID, rango?.desde, rango?.hasta, modoProyeccion === 'vigente'),
     staleTime: 3 * 60 * 1000,
   });
 
@@ -626,6 +745,16 @@ export function DashboardDirectorPage() {
     setLiderNombre(nombre);
     setCarteraID(null);
     setCarteraNombre('');
+  };
+
+  // "Ver detalle" desde el desglose por cartera: filtra el dashboard a esa
+  // cartera (sin líder) — la vista global recalcula el desglose por líder
+  // restringido a esa cartera, igual que el filtro manual de Cartera.
+  const handleSeleccionarCartera = (id: number, nombre: string) => {
+    setCarteraID(id);
+    setCarteraNombre(nombre);
+    setLiderID(null);
+    setLiderNombre('');
   };
 
   const handleCambiarLider = (val: number | null) => {
@@ -661,7 +790,8 @@ export function DashboardDirectorPage() {
     setCarteraNombre('');
   };
 
-  const mostrarDesgloseLider  = !liderID && (data?.filasLider?.length ?? 0) > 0;
+  const mostrarDesgloseLider  = !liderID
+    && ((data?.filasLider?.length ?? 0) > 0 || (data?.filasCartera?.length ?? 0) > 0);
   const mostrarDesgloseAsesor = liderID !== null;
 
   // Estilo de botón preset
@@ -848,14 +978,18 @@ export function DashboardDirectorPage() {
             />
             <TarjetaMetrica
               label="Proyección promesas"
+              minWidth={210}
               valor={formatearPesosCorto(data.metricas.proyeccionPromesas).valor}
               unidad={formatearPesosCorto(data.metricas.proyeccionPromesas).unidad}
               valorReal={formatearPesos(data.metricas.proyeccionPromesas)}
-              sub="Suma de acuerdos y abonos del período"
+              sub={modoProyeccion === 'vigente'
+                ? 'Promesas del período aún no vencidas'
+                : 'Suma de acuerdos y abonos del período'}
               valorSize={18}
               alerta={data.metricas.gestionesExcluidasPorTecho > 0
                 ? { cantidad: data.metricas.gestionesExcluidasPorTecho, onClick: () => setModalExcluidosAbierto(true) }
                 : undefined}
+              extra={<ToggleModoProyeccion modo={modoProyeccion} onChange={setModoProyeccion} />}
             />
             <TarjetaMetrica
               label="Incumplidos"
@@ -866,21 +1000,46 @@ export function DashboardDirectorPage() {
         ) : null}
       </section>
 
-      {/* Desglose por líder (vista global) */}
+      {/* Desglose por líder / cartera (vista global) */}
       {mostrarDesgloseLider && (
         <section>
-          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', marginBottom: '12px' }}>
-            Desglose por líder
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+              Desglose por {vistaDesglose === 'lider' ? 'líder' : 'cartera'}
+            </h2>
+            <div style={{ display: 'flex', gap: '4px', padding: '3px', borderRadius: '8px', background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)' }}>
+              {(['lider', 'cartera'] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setVistaDesglose(v)}
+                  style={{
+                    padding: '5px 12px', borderRadius: '6px', border: 'none',
+                    background: vistaDesglose === v ? 'var(--z-text-primary)' : 'transparent',
+                    color: vistaDesglose === v ? 'var(--z-bg-page)' : 'var(--z-text-muted)',
+                    fontSize: '12px', fontWeight: vistaDesglose === v ? 600 : 400, cursor: 'pointer',
+                  }}
+                >
+                  {v === 'lider' ? 'Por líder' : 'Por cartera'}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{
             background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
             borderRadius: '8px', overflow: 'hidden',
             boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
           }}>
-            <TablaLideres
-              filas={data!.filasLider}
-              onSeleccionar={handleSeleccionarLider}
-            />
+            {vistaDesglose === 'lider' ? (
+              <TablaLideres
+                filas={data!.filasLider}
+                onSeleccionar={handleSeleccionarLider}
+              />
+            ) : (
+              <TablaCarteras
+                filas={data!.filasCartera}
+                onSeleccionar={handleSeleccionarCartera}
+              />
+            )}
           </div>
         </section>
       )}

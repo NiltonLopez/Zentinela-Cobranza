@@ -106,6 +106,19 @@ function ErrorPanel({ mensaje }: { mensaje: string }) {
   );
 }
 
+/// Aviso ámbar (no es un error: el informe es válido, pero está incompleto).
+function AvisoPanel({ mensaje }: { mensaje: string }) {
+  return (
+    <div style={{
+      background: '#fffbeb', border: '1px solid #f59e0b30', borderLeft: '4px solid #f59e0b',
+      borderRadius: 8, padding: '12px 16px', color: '#92400e', fontSize: 13,
+      display: 'flex', alignItems: 'center', gap: 8,
+    }}>
+      <span>⚠</span> {mensaje}
+    </div>
+  );
+}
+
 const thStyle: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left', color: C.gray, fontSize: 11, fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid var(--z-border)',
@@ -574,6 +587,29 @@ export function AuditoriaGestionesPage() {
               </span>
             )}
           </div>
+
+          {/* Aviso de auditoría incompleta. Dos causas distintas, se nombran por separado:
+              · lotes que la IA no alcanzó a responder (fallaron tras el reintento)
+              · gestiones que nunca se enviaron por el tope de costo (MaxGestionesIA)
+              Sin esto, un informe parcial se leería como si fuera completo. */}
+          {(() => {
+            const nuncaEnviadas = Math.max(0, informe.totalGestionesConTexto - informe.gestionesEvaluadasIA);
+            const sinEvaluar    = informe.gestionesSinEvaluar;
+            if (nuncaEnviadas === 0 && sinEvaluar === 0) return null;
+
+            const n = (x: number) => x.toLocaleString('es-CO');
+            const auditadas = informe.gestionesEvaluadasIA - sinEvaluar;
+            const motivos = [
+              sinEvaluar    > 0 && `${n(sinEvaluar)} quedaron sin evaluar porque la IA no respondió`,
+              nuncaEnviadas > 0 && `${n(nuncaEnviadas)} no se enviaron por el tope de costo`,
+            ].filter(Boolean).join(' y ');
+
+            return (
+              <AvisoPanel mensaje={
+                `Solo se pudieron auditar ${n(auditadas)} de ${n(informe.totalGestionesConTexto)} gestiones con texto: ${motivos}.`
+              } />
+            );
+          })()}
 
           {/* ── Distribución de cards estilo "Consistencia y Cartera" ───────────── */}
           <div style={{

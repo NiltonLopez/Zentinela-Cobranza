@@ -66,6 +66,7 @@ export interface InformeAuditoria {
   totalGestiones: number;
   totalGestionesConTexto: number;     // gestiones con texto en el rango (universo IA)
   gestionesEvaluadasIA: number;       // las que realmente fueron a la IA (tope por costo)
+  gestionesSinEvaluar: number;        // se enviaron a la IA pero su lote falló tras reintentar
   totalCriticas: number;              // inconsistencias perfil ↔ gestión (IA)
   totalMedias: number;                // promesas incompletas
   totalBajas: number;                 // valor de promesa < 5 dígitos

@@ -23,14 +23,25 @@ public class AlertaSolicitudDto
     public int    TotalEnvios   { get; set; }
 }
 
+/// <summary>Un tipo de error con su conteo de filas — evita repetir el mismo
+/// mensaje una vez por fila cuando muchas comparten la misma causa.</summary>
+public class ErrorAgrupadoDto
+{
+    public string Mensaje  { get; set; } = string.Empty;
+    public int    Cantidad { get; set; }
+}
+
 public class ValidarSolicitudResponse
 {
-    public int                     TotalFilas   { get; set; }
-    public int                     TotalValidas { get; set; }
-    public int                     TotalErrores { get; set; }
-    public List<FilaSolicitudDto>  Preview      { get; set; } = [];
-    public List<FilaSolicitudDto>  FilasValidas { get; set; } = [];
-    public List<AlertaSolicitudDto> Alertas     { get; set; } = [];
+    public int                      TotalFilas       { get; set; }
+    public int                      TotalValidas     { get; set; }
+    public int                      TotalErrores     { get; set; }
+    public List<FilaSolicitudDto>   Preview          { get; set; } = [];
+    public List<FilaSolicitudDto>   FilasValidas     { get; set; } = [];
+    public List<AlertaSolicitudDto> Alertas          { get; set; } = [];
+    /// <summary>Todos los errores del archivo agrupados por mensaje — no se limita
+    /// a la muestra de <see cref="Preview"/>.</summary>
+    public List<ErrorAgrupadoDto>   ErroresAgrupados { get; set; } = [];
 }
 
 public class ConfirmarSolicitudRequest
@@ -52,11 +63,14 @@ public class FilaResultadoDto
 
 public class ValidarResultadoResponse
 {
-    public int                    TotalFilas   { get; set; }
-    public int                    TotalValidas { get; set; }
-    public int                    TotalErrores { get; set; }
-    public List<FilaResultadoDto> Preview      { get; set; } = [];
-    public List<FilaResultadoDto> FilasValidas { get; set; } = [];
+    public int                    TotalFilas       { get; set; }
+    public int                    TotalValidas     { get; set; }
+    public int                    TotalErrores     { get; set; }
+    public List<FilaResultadoDto> Preview          { get; set; } = [];
+    public List<FilaResultadoDto> FilasValidas     { get; set; } = [];
+    /// <summary>Todos los errores del archivo agrupados por mensaje — no se limita
+    /// a la muestra de <see cref="Preview"/>.</summary>
+    public List<ErrorAgrupadoDto> ErroresAgrupados { get; set; } = [];
 }
 
 public class ConfirmarResultadoRequest

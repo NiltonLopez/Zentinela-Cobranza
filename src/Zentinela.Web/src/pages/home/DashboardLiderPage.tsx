@@ -459,15 +459,20 @@ function ModalGestionesExcluidas({ metricas, onClose }: { metricas: MetricasDire
         <p style={{ fontSize: '10px', fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Titulares a revisar
         </p>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-          {metricas.titularesExcluidos.map(id => (
-            <span key={id} style={{
-              fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)',
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '24px' }}>
+          {metricas.titularesExcluidos.map(t => (
+            <div key={`${t.titularID}-${t.carteraID}`} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
               background: 'var(--z-bg-page)', border: '0.5px solid var(--z-border)',
-              borderRadius: '6px', padding: '4px 10px',
+              borderRadius: '6px', padding: '5px 10px',
             }}>
-              {id}
-            </span>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--z-text-primary)' }}>
+                {t.titularID}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--z-text-muted)', fontWeight: 600 }}>
+                {t.nombreCartera}
+              </span>
+            </div>
           ))}
         </div>
 

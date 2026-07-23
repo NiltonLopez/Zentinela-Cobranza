@@ -10,6 +10,16 @@ import type { ComparadorVsCarteraDto, TitularComparativoDto } from '../../types/
 import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
 
+// ── Selección de cartera (misma estructura que Creador Zentinela) ─────────────
+
+interface SeleccionCartera {
+  carteraID: number;
+  liderID:   number | null;
+}
+
+const claveSeleccion = (carteraID: number, liderID: number | null) =>
+  `${carteraID}|${liderID ?? ''}`;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(n: number): string {
@@ -133,10 +143,12 @@ function TablaTitulares({
 function SeccionCartera({
   seccion,
   carteraSeleccionadaID,
+  liderSeleccionadoID,
   nombreSeleccionada,
 }: {
   seccion: ComparadorVsCarteraDto;
   carteraSeleccionadaID: number;
+  liderSeleccionadoID: number | null;
   nombreSeleccionada: string;
 }) {
   const [descargando, setDescargando] = useState(false);
@@ -144,7 +156,11 @@ function SeccionCartera({
   const handleDescargar = async () => {
     setDescargando(true);
     try {
-      await descargarExcelComparativo(carteraSeleccionadaID, seccion.carteraID, nombreSeleccionada, seccion.nombreCartera);
+      await descargarExcelComparativo(
+        carteraSeleccionadaID, seccion.carteraID,
+        nombreSeleccionada, seccion.nombreCartera,
+        liderSeleccionadoID,
+      );
     } finally {
       setDescargando(false);
     }
@@ -234,28 +250,28 @@ function SeccionCartera({
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export function ComparadorCarterasPage() {
-  const [carteraID, setCarteraID] = useState<number | null>(null);
+  const [seleccion, setSeleccion] = useState<SeleccionCartera | null>(null);
   const [descargandoCompleto, setDescargandoCompleto] = useState(false);
 
   const handleDescargarCompleto = async () => {
-    if (!carteraID) return;
+    if (!seleccion) return;
     setDescargandoCompleto(true);
     try {
-      await descargarExcelCompleto(carteraID, data!.nombreCarteraSeleccionada);
+      await descargarExcelCompleto(seleccion.carteraID, data!.nombreCarteraSeleccionada, seleccion.liderID);
     } finally {
       setDescargandoCompleto(false);
     }
   };
 
-  const { data: opciones, isLoading: cargandoOpciones } = useQuery({
+  const { data: opciones = [], isLoading: cargandoOpciones } = useQuery({
     queryKey: ['comparador-opciones'],
     queryFn: obtenerOpcionesComparador,
   });
 
   const { data, isLoading: cargandoDatos, isError } = useQuery({
-    queryKey: ['comparador', carteraID],
-    queryFn: () => compararCartera(carteraID!),
-    enabled: carteraID !== null,
+    queryKey: ['comparador', seleccion?.carteraID, seleccion?.liderID],
+    queryFn: () => compararCartera(seleccion!.carteraID, seleccion!.liderID),
+    enabled: seleccion !== null,
   });
 
   return (
@@ -281,11 +297,21 @@ export function ComparadorCarterasPage() {
         </label>
         <ZDropdown
           options={[
-            { value: null, label: '— Selecciona una cartera —' },
-            ...(opciones ?? []).map(o => ({ value: o.carteraID, label: o.nombreCartera })),
+            { value: '', label: '— Selecciona una cartera —' },
+            ...opciones.map(o => ({
+              value: claveSeleccion(o.carteraID, o.liderID),
+              label: o.etiqueta,
+            })),
           ]}
-          value={carteraID}
-          onChange={setCarteraID}
+          value={seleccion ? claveSeleccion(seleccion.carteraID, seleccion.liderID) : ''}
+          onChange={(v) => {
+            if (!v) { setSeleccion(null); return; }
+            const [cid, lid] = v.split('|');
+            setSeleccion({
+              carteraID: Number(cid),
+              liderID:   lid === '' ? null : Number(lid),
+            });
+          }}
           disabled={cargandoOpciones}
           style={{ minWidth: 300 }}
         />
@@ -380,6 +406,7 @@ export function ComparadorCarterasPage() {
                 key={seccion.carteraID}
                 seccion={seccion}
                 carteraSeleccionadaID={data.carteraID}
+                liderSeleccionadoID={seleccion?.liderID ?? null}
                 nombreSeleccionada={data.nombreCarteraSeleccionada}
               />
             ))
