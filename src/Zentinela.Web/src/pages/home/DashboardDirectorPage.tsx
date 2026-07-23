@@ -438,6 +438,7 @@ function TablaCarteras({ filas, onSeleccionar }: {
     { key: 'totalGestiones', dir: 'desc' },
     (f, k) => (f as unknown as Record<string, string | number>)[k],
   );
+  const [filaHover, setFilaHover] = useState<number | null>(null);
 
   if (filas.length === 0) {
     return (
@@ -450,7 +451,7 @@ function TablaCarteras({ filas, onSeleccionar }: {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ background: 'var(--z-bg-page)' }}>
+        <tr style={{ background: 'var(--z-brand-light)' }}>
           <ThOrdenable label="Cartera"         sortKey="nombreCartera"       sort={sort} onSort={toggle} />
           <ThOrdenable label="Gestiones"       sortKey="totalGestiones"      sort={sort} onSort={toggle} align="right" />
           <ThOrdenable label="Contactabilidad" sortKey="tasaContactabilidad" sort={sort} onSort={toggle} align="right" />
@@ -460,30 +461,43 @@ function TablaCarteras({ filas, onSeleccionar }: {
         </tr>
       </thead>
       <tbody>
-        {items.map(f => (
-          <tr key={f.carteraID} style={{ borderBottom: '0.5px solid var(--z-border)' }}>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
+        {items.map((f, i) => (
+          <tr
+            key={f.carteraID}
+            onMouseEnter={() => setFilaHover(f.carteraID)}
+            onMouseLeave={() => setFilaHover(prev => (prev === f.carteraID ? null : prev))}
+            style={{
+              borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+              borderBottom: '0.5px solid var(--z-border)',
+              background: filaHover === f.carteraID ? 'var(--z-bg-page)' : 'transparent',
+              transition: 'background 0.12s ease',
+            }}
+          >
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>
               {f.nombreCartera}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {f.totalGestiones.toLocaleString('es-CO')}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaContactabilidad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right' }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
               {pct(f.tasaEfectividad)}
             </td>
-            <td style={{ padding: '11px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500 }}>
+            <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
               {formatearPesos(f.proyeccionPromesas)}
             </td>
-            <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
               <button
                 onClick={() => onSeleccionar(f.carteraID, f.nombreCartera)}
                 style={{
                   padding: '4px 12px', borderRadius: '6px', border: '0.5px solid var(--z-border)',
-                  background: 'var(--z-bg-page)', color: 'var(--z-text-primary)',
+                  background: filaHover === f.carteraID ? 'var(--z-bg-card)' : 'var(--z-bg-page)',
+                  color: 'var(--z-text-primary)',
                   fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                  boxShadow: filaHover === f.carteraID ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  transition: 'background 0.12s ease, box-shadow 0.12s ease',
                 }}
               >
                 Ver detalle

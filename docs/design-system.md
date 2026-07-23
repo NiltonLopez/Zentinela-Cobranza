@@ -256,7 +256,81 @@ Cada ítem tiene un indicador visual circular (6x6px). Activo: `var(--z-brand)`.
 
 ---
 
+## Tablas de desglose (dashboards)
+
+Patrón usado por `TablaLideres`, `TablaCarteras` y `TablaAsesores` en `DashboardDirectorPage.tsx` (y equivalente en `DashboardLiderPage.tsx`). Las tres deben mantenerse alineadas — si se agrega una tabla de desglose nueva, seguir exactamente este patrón en vez del más simple/antiguo (fondo `var(--z-bg-page)` en el header, sin acento superior, sin hover), que quedó desactualizado.
+
+### Estructura
+
+```tsx
+const [filaHover, setFilaHover] = useState<number | null>(null);
+
+<table style={{ width: '100%', borderCollapse: 'collapse' }}>
+  <thead>
+    <tr style={{ background: 'var(--z-brand-light)' }}>
+      <ThOrdenable label="..." sortKey="..." sort={sort} onSort={toggle} />
+      {/* ... */}
+      <ThOrdenable label="" align="center" /> {/* columna de acción, si aplica */}
+    </tr>
+  </thead>
+  <tbody>
+    {items.map((f, i) => (
+      <tr
+        key={f.id}
+        onMouseEnter={() => setFilaHover(f.id)}
+        onMouseLeave={() => setFilaHover(prev => (prev === f.id ? null : prev))}
+        style={{
+          borderTop: i === 0 ? '2px solid var(--z-brand)' : undefined,
+          borderBottom: '0.5px solid var(--z-border)',
+          background: filaHover === f.id ? 'var(--z-bg-page)' : 'transparent',
+          transition: 'background 0.12s ease',
+        }}
+      >
+        <td style={{ padding: '12px 14px', fontSize: '13px', color: 'var(--z-text-primary)', fontWeight: 500 }}>...</td>
+        {/* columnas numéricas: agregar fontVariantNumeric: 'tabular-nums' */}
+      </tr>
+    ))}
+  </tbody>
+</table>
+```
+
+### Reglas
+
+| Elemento | Valor |
+|---|---|
+| Header (`thead tr`) | `background: var(--z-brand-light)` |
+| Primera fila | `borderTop: '2px solid var(--z-brand)'` (acento, solo `i === 0`) |
+| Filas | `borderBottom: '0.5px solid var(--z-border)'`, hover con `background: var(--z-bg-page)` y `transition: 'background 0.12s ease'` |
+| Padding de celda | `12px 14px` (no `11px`, que es el valor antiguo) |
+| Columnas numéricas | `fontVariantNumeric: 'tabular-nums'` para que los dígitos no salten de ancho al reordenar |
+| Botón "Ver detalle" (si aplica) | Mismo hover que la fila: `background` pasa a `var(--z-bg-card)` y agrega `boxShadow: '0 1px 3px rgba(0,0,0,0.08)'` cuando `filaHover === f.id` |
+| Estado vacío | `<div style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: 'var(--z-text-muted)' }}>Sin datos de ... para este período.</div>` |
+
+---
+
+## Barra desplazable (ticker)
+
+Patrón compartido por las tres barras de "frases"/"destacados" de los dashboards: `BarraFraseLider` (Líder), `BarraDestacadosLider` (Director) y `BarraFrasesMotivacionales` (Asesor). Utilidad compartida: `MARGEN_BARRA_COMPLETA` en `src/Zentinela.Web/src/utils/layout.ts`.
+
+### Reglas
+
+| Elemento | Valor |
+|---|---|
+| Fondo | `var(--z-brand)` |
+| Texto | `#fff`, `15px`, `font-weight: 600` |
+| Separador entre ítems | `1px solid rgba(255,255,255,0.3)` |
+| Padding del contenedor | `8px 0` |
+| Padding por ítem | `0 24px` |
+| Márgenes (ancho completo) | `marginLeft`/`marginRight: MARGEN_BARRA_COMPLETA`, `marginTop: '-22px'`, `marginBottom: '24px'` — **no** usar `-32px` fijo (no cubre el espacio de centrado en pantallas >1440px, ver comentario en `layout.ts`) |
+| Animación | `@keyframes` con `translateX(0%)` → `translateX(-50%)`, `animation-timing-function: linear`, `animation-iteration-count: infinite`; la pista se duplica (`[...items, ...items]`) para loop continuo sin salto |
+| Pausa en hover | `onMouseEnter`/`onMouseLeave` sobre un state `pausado`, aplicado a `animationPlayState` |
+| Iconos (si el ítem lleva uno) | SVG propio `viewBox="0 0 24 24"`, prop `size` (20px en los tickers), `color` default `#fff` — no usar emojis |
+
+---
+
 ## Rutas y navegación
+
+> **Nota de vigencia:** esta sección (rutas, tabs de Navbar, ítems de Sidebar y roles) describe una versión anterior del sistema. Los roles actuales son `Admin`, `Líder`, `Director`, `Asesor`, `Líder Externo`, `Asesor Externo` y `Auxiliar de Sistemas` (no `Supervisor`/`Analista`), y las rutas reales viven bajo `/home`, `/cartera/*`, `/informes/*`, `/administracion/*` y `/consultas/*` (ver `App.tsx`). Queda pendiente reescribir esta sección con el mapa de rutas y roles actual.
 
 ### Mapa de rutas completo
 
