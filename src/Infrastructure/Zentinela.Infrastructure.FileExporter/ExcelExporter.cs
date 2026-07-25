@@ -479,11 +479,13 @@ public class ExcelExporter : IExcelExporter
         var encabezados = new[]
         {
             "Número Documento", "Nombre",
+            $"Categoría en {nombreCarteraSeleccionada}",
             $"Perfil en {nombreCarteraSeleccionada}",
+            $"Categoría en {nombreOtraCartera}",
             $"Perfil en {nombreOtraCartera}",
             $"Teléfono ({nombreCarteraSeleccionada})",
             $"Teléfono ({nombreOtraCartera})",
-            "Saldo Total", "Fecha Última Gestión", "Valor Promesa",
+            "Saldo Total", "Fecha Última Gestión", "Fecha Promesa", "Valor Promesa",
         };
 
         for (var i = 0; i < encabezados.Length; i++)
@@ -506,27 +508,35 @@ public class ExcelExporter : IExcelExporter
             ws.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
             ws.Cell(r, 2).Value = t.Nombre;
-            ws.Cell(r, 3).Value = t.PerfilSeleccionada        ?? "";
-            ws.Cell(r, 4).Value = t.PerfilOtraCartera          ?? "";
-            ws.Cell(r, 5).Value = t.NumeroMarcadoSeleccionada  ?? "";
-            ws.Cell(r, 6).Value = t.NumeroMarcadoOtra          ?? "";
+            ws.Cell(r, 3).Value = t.CategoriaSeleccionada      ?? "";
+            ws.Cell(r, 4).Value = t.PerfilSeleccionada         ?? "";
+            ws.Cell(r, 5).Value = t.CategoriaOtraCartera       ?? "";
+            ws.Cell(r, 6).Value = t.PerfilOtraCartera          ?? "";
+            ws.Cell(r, 7).Value = t.NumeroMarcadoSeleccionada  ?? "";
+            ws.Cell(r, 8).Value = t.NumeroMarcadoOtra          ?? "";
 
             if (t.SaldoTotal.HasValue)
             {
-                ws.Cell(r, 7).Value = t.SaldoTotal.Value;
-                ws.Cell(r, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(r, 9).Value = t.SaldoTotal.Value;
+                ws.Cell(r, 9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
             if (t.FechaUltimaGestion.HasValue)
             {
-                ws.Cell(r, 8).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(r, 8).Style.NumberFormat.Format = "DD/MM/YYYY";
+                ws.Cell(r, 10).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(r, 10).Style.NumberFormat.Format = "DD/MM/YYYY";
+            }
+
+            if (t.FechaPromesa.HasValue)
+            {
+                ws.Cell(r, 11).Value = t.FechaPromesa.Value.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(r, 11).Style.NumberFormat.Format = "DD/MM/YYYY";
             }
 
             if (t.ValorPromesa.HasValue)
             {
-                ws.Cell(r, 9).Value = t.ValorPromesa.Value;
-                ws.Cell(r, 9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(r, 12).Value = t.ValorPromesa.Value;
+                ws.Cell(r, 12).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
         }
 
@@ -558,11 +568,13 @@ public class ExcelExporter : IExcelExporter
         var encabezados = new[]
         {
             "Cartera de referencia", "Número Documento", "Nombre",
+            $"Categoría en {nombreCarteraSeleccionada}",
             $"Perfil en {nombreCarteraSeleccionada}",
+            "Categoría en cartera de referencia",
             "Perfil en cartera de referencia",
             $"Teléfono ({nombreCarteraSeleccionada})",
             "Teléfono (cartera de referencia)",
-            "Saldo Total", "Fecha Última Gestión", "Valor Promesa",
+            "Saldo Total", "Fecha Última Gestión", "Fecha Promesa", "Valor Promesa",
         };
 
         for (var i = 0; i < encabezados.Length; i++)
@@ -587,27 +599,35 @@ public class ExcelExporter : IExcelExporter
             ws.Cell(r, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
             ws.Cell(r, 3).Value = t.Nombre;
-            ws.Cell(r, 4).Value = t.PerfilSeleccionada        ?? "";
-            ws.Cell(r, 5).Value = t.PerfilOtraCartera          ?? "";
-            ws.Cell(r, 6).Value = t.NumeroMarcadoSeleccionada  ?? "";
-            ws.Cell(r, 7).Value = t.NumeroMarcadoOtra          ?? "";
+            ws.Cell(r, 4).Value = t.CategoriaSeleccionada      ?? "";
+            ws.Cell(r, 5).Value = t.PerfilSeleccionada         ?? "";
+            ws.Cell(r, 6).Value = t.CategoriaOtraCartera       ?? "";
+            ws.Cell(r, 7).Value = t.PerfilOtraCartera          ?? "";
+            ws.Cell(r, 8).Value = t.NumeroMarcadoSeleccionada  ?? "";
+            ws.Cell(r, 9).Value = t.NumeroMarcadoOtra          ?? "";
 
             if (t.SaldoTotal.HasValue)
             {
-                ws.Cell(r, 8).Value = t.SaldoTotal.Value;
-                ws.Cell(r, 8).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(r, 10).Value = t.SaldoTotal.Value;
+                ws.Cell(r, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
             if (t.FechaUltimaGestion.HasValue)
             {
-                ws.Cell(r, 9).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(r, 9).Style.NumberFormat.Format = "DD/MM/YYYY";
+                ws.Cell(r, 11).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(r, 11).Style.NumberFormat.Format = "DD/MM/YYYY";
+            }
+
+            if (t.FechaPromesa.HasValue)
+            {
+                ws.Cell(r, 12).Value = t.FechaPromesa.Value.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(r, 12).Style.NumberFormat.Format = "DD/MM/YYYY";
             }
 
             if (t.ValorPromesa.HasValue)
             {
-                ws.Cell(r, 10).Value = t.ValorPromesa.Value;
-                ws.Cell(r, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(r, 13).Value = t.ValorPromesa.Value;
+                ws.Cell(r, 13).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
         }
 

@@ -40,32 +40,32 @@ function fmtFecha(s: string | null): string {
 
 // ── Componentes ───────────────────────────────────────────────────────────────
 
-// Espejo de PerfilClasificacion.cs (backend). Si se agregan códigos allá,
-// agregarlos también acá para que la chip salga del color correcto.
-const PERFILES_PAZ_Y_SALVO = new Set([
-  'paz y salvo', 'consignación por aplicar', 'pago total', 'normalizado',
-]);
-const PERFILES_CONTACTO_POSITIVO = new Set([
-  'acuerdo de pago abono', 'acuerdo de pago total', 'realizo abono', 'recordar',
-  'incumplido', 'no hubo acuerdo', 'potencial acuerdo', 'renuente', 'no gestionar',
-  'contacto positivo', 'promesa de pago', 'acuerdo',
-]);
+// Colores por categoría estandarizada (ADR-029). La clasificación vive SOLO en el
+// backend (PerfilClasificacion.cs); aquí únicamente se mapea etiqueta → color.
+const COLOR_CATEGORIA: Record<string, string> = {
+  'Ya pago':          '#22C55E',
+  'Promesa':          '#3B82F6',
+  'Contacto directo': '#8B5CF6',
+  'Tercero':          '#F59E0B',
+  'Sin contacto':     '#F97316',
+  'Sin gestión':      '#EF4444',
+  'Otros':            '#6B7280',
+};
 
-function ChipPerfil({ perfil }: { perfil: string | null }) {
-  if (!perfil) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>Sin dato</span>;
+function ChipCategoria({ categoria, perfil }: { categoria: string | null; perfil: string | null }) {
+  if (!categoria) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>Sin dato</span>;
 
-  const key = perfil.toLowerCase();
-  const color =
-    PERFILES_PAZ_Y_SALVO.has(key)        ? '#22C55E' :
-    PERFILES_CONTACTO_POSITIVO.has(key)  ? '#3B82F6' :
-    '#EF4444';
+  const color = COLOR_CATEGORIA[categoria] ?? '#6B7280';
 
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '2px 8px',
-      borderRadius: 12, background: `${color}22`, color, whiteSpace: 'nowrap',
-    }}>
-      {perfil}
+    <span
+      title={perfil ?? undefined}
+      style={{
+        fontSize: 11, fontWeight: 600, padding: '2px 8px',
+        borderRadius: 12, background: `${color}22`, color, whiteSpace: 'nowrap',
+      }}
+    >
+      {categoria}
     </span>
   );
 }
@@ -81,11 +81,11 @@ function TablaTitulares({
 }) {
   const cols = [
     'Número Doc.', 'Nombre',
-    `Perfil en ${nombreSeleccionada}`,
-    `Perfil en ${nombreOtra}`,
+    `Categoría en ${nombreSeleccionada}`,
+    `Categoría en ${nombreOtra}`,
     `Tel. ${nombreSeleccionada}`,
     `Tel. ${nombreOtra}`,
-    'Saldo', 'Última gestión', 'Valor promesa',
+    'Saldo', 'Última gestión', 'Fecha promesa', 'Valor promesa',
   ];
 
   return (
@@ -112,22 +112,25 @@ function TablaTitulares({
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{t.nombre}</td>
               <td style={{ padding: '8px 10px' }}>
-                <ChipPerfil perfil={t.perfilSeleccionada} />
+                <ChipCategoria categoria={t.categoriaSeleccionada} perfil={t.perfilSeleccionada} />
               </td>
               <td style={{ padding: '8px 10px' }}>
-                <ChipPerfil perfil={t.perfilOtraCartera} />
+                <ChipCategoria categoria={t.categoriaOtraCartera} perfil={t.perfilOtraCartera} />
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                {t.numeroMarcadoSeleccionada ?? '—'}
+                {t.numeroMarcadoSeleccionada ?? 'No registra'}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                {t.numeroMarcadoOtra ?? '—'}
+                {t.numeroMarcadoOtra ?? 'No registra'}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                 {t.saldoTotal != null ? fmtCOP(t.saldoTotal) : '—'}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
                 {fmtFecha(t.fechaUltimaGestion)}
+              </td>
+              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                {fmtFecha(t.fechaPromesa)}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                 {t.valorPromesa != null ? fmtCOP(t.valorPromesa) : '—'}
@@ -191,8 +194,8 @@ function SeccionCartera({
           </h3>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', marginTop: 4 }}>
             <strong style={{ color: 'var(--z-accent)' }}>{fmt(seccion.totalCoincidencias)}</strong>
-            {' '}titular{seccion.totalCoincidencias !== 1 ? 'es' : ''} con estado positivo o pago
-            en esta cartera que no tienen gestión en{' '}
+            {' '}titular{seccion.totalCoincidencias !== 1 ? 'es' : ''} con mejor categoría de gestión
+            en esta cartera que en{' '}
             <strong>{nombreSeleccionada}</strong>
           </p>
         </div>
@@ -284,8 +287,8 @@ export function ComparadorCarterasPage() {
             Comparador de Carteras
           </h1>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
-            Identifica titulares sin gestión en la cartera seleccionada que ya tienen
-            contacto positivo o pago en otra cartera.
+            Clasifica los titulares en categorías estandarizadas de gestión e identifica
+            los que ya tienen una mejor categoría en otra cartera.
           </p>
         </div>
       </div>
@@ -353,7 +356,7 @@ export function ComparadorCarterasPage() {
                 Base del comparativo
               </p>
               <p style={{ fontSize: 28, fontWeight: 700, color: '#EF4444' }}>
-                {fmt(data.totalSinGestion)}
+                {fmt(data.totalBaseComparativo)}
               </p>
             </div>
             <div>
@@ -365,6 +368,26 @@ export function ComparadorCarterasPage() {
                 {data.comparaciones.length}
               </p>
             </div>
+            {data.desglosePorCategoria.length > 0 && (
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                            letterSpacing: '0.08em', color: 'var(--z-text-muted)', marginBottom: 6 }}>
+                  Cartera por categoría
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
+                  {data.desglosePorCategoria.map(c => (
+                    <span key={c.categoria} style={{
+                      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+                      background: `${COLOR_CATEGORIA[c.categoria] ?? '#6B7280'}22`,
+                      color: COLOR_CATEGORIA[c.categoria] ?? '#6B7280',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {c.categoria}: {fmt(c.total)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {data.comparaciones.length > 0 && (
               <div style={{ marginLeft: 'auto' }}>
