@@ -52,6 +52,70 @@ const COLOR_CATEGORIA: Record<string, string> = {
   'Otros':            '#6B7280',
 };
 
+// Descripción corta por categoría, mostrada como tooltip nativo en los chips
+// del resumen "Cartera por categoría" (ver ADR-029 §1 para la regla completa).
+const DESCRIPCION_CATEGORIA: Record<string, string> = {
+  'Ya pago':          'Paz y salvo, pago reflejado, caso especial o normalizado',
+  'Promesa':          'FechaPromesa vigente, o acuerdo de pago con gestión reciente',
+  'Contacto directo': 'Contacto con el titular (recordatorio, compromiso, PQR) o promesa vencida',
+  'Tercero':          'Contacto con un tercero o familiar, no con el titular',
+  'Sin contacto':     'Intento de contacto sin respuesta: buzón, número errado o ilocalizado',
+  'Sin gestión':      'Sin perfil ni intento de marcación registrado',
+  'Otros':            'Perfil real sin mapear a ninguna categoría (residual, revisar)',
+};
+
+function ChipDesglose({ categoria, total }: { categoria: string; total: number }) {
+  const [hover, setHover] = useState(false);
+  const color = COLOR_CATEGORIA[categoria] ?? '#6B7280';
+  const descripcion = DESCRIPCION_CATEGORIA[categoria];
+
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', display: 'inline-block' }}
+    >
+      <span style={{
+        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+        background: `${color}22`, color, whiteSpace: 'nowrap',
+      }}>
+        {categoria}: {fmt(total)}
+      </span>
+      {hover && descripcion && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 5px)', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 10, pointerEvents: 'none',
+        }}>
+          <span style={{
+            display: 'block', width: 220, background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
+            borderRadius: 6, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }}>
+            {/* Franja del color de la píldora, para asociar el tooltip con su chip */}
+            <span style={{ display: 'block', height: 3, background: color }} />
+            <span style={{
+              display: 'block', padding: '8px 10px', fontSize: 11, fontWeight: 400, lineHeight: 1.4,
+              color: 'var(--z-text-primary)', whiteSpace: 'normal', textAlign: 'left',
+            }}>
+              {descripcion}
+            </span>
+          </span>
+          {/* Flechita que conecta el tooltip con la píldora */}
+          <span style={{
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+            borderTop: '5px solid var(--z-border)',
+          }} />
+          <span style={{
+            position: 'absolute', top: 'calc(100% - 1px)', left: '50%', transform: 'translateX(-50%)',
+            width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+            borderTop: '5px solid var(--z-bg-card)',
+          }} />
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ChipCategoria({ categoria, perfil }: { categoria: string | null; perfil: string | null }) {
   if (!categoria) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>Sin dato</span>;
 
@@ -376,14 +440,7 @@ export function ComparadorCarterasPage() {
                 </p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
                   {data.desglosePorCategoria.map(c => (
-                    <span key={c.categoria} style={{
-                      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
-                      background: `${COLOR_CATEGORIA[c.categoria] ?? '#6B7280'}22`,
-                      color: COLOR_CATEGORIA[c.categoria] ?? '#6B7280',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {c.categoria}: {fmt(c.total)}
-                    </span>
+                    <ChipDesglose key={c.categoria} categoria={c.categoria} total={c.total} />
                   ))}
                 </div>
               </div>
