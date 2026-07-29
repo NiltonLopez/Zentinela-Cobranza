@@ -36,6 +36,21 @@ export interface CarteraDropdown {
   nombre: string;
 }
 
+// ── Borrar período ─────────────────────────────────────────────────────────────
+
+export interface ConteoPeriodo {
+  cantidad: number;
+  valorPagadoTotal: number;
+  honorariosTotal: number;
+}
+
+export interface PeriodoPago {
+  carteraID: number;
+  nombreCartera: string;
+  anio: number;
+  mes: number;
+}
+
 // ── Pago individual ────────────────────────────────────────────────────────────
 
 export interface RegistrarPagoIndividualRequest {

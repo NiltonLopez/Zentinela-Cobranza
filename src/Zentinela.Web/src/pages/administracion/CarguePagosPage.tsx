@@ -1,15 +1,24 @@
 import { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { PagoIndividualForm } from './cargue-pagos/PagoIndividualForm';
 import { CargueMasivo } from './cargue-pagos/CargueMasivo';
+import { BorrarPeriodoPagos } from './cargue-pagos/BorrarPeriodoPagos';
 
-type TabPago = 'individual' | 'masivo';
-
-const TABS: [TabPago, string][] = [
-  ['individual', 'Pago individual'],
-  ['masivo',     'Cargue masivo'],
-];
+type TabPago = 'individual' | 'masivo' | 'borrar-periodo';
 
 export function CarguePagosPage() {
+  const { usuario } = useAuth();
+  // Borrar período es irreversible sobre pagos ya confirmados — el backend ya lo
+  // restringe a Admin (el resto del módulo también permite Auxiliar de Sistemas);
+  // se oculta la pestaña para no llevar a un 403 al final del flujo.
+  const esAdmin = usuario?.rol === 'Admin';
+
+  const TABS: [TabPago, string][] = [
+    ['individual', 'Pago individual'],
+    ['masivo',     'Cargue masivo'],
+    ...(esAdmin ? [['borrar-periodo', 'Eliminar pagos'] as [TabPago, string]] : []),
+  ];
+
   const [tab, setTab] = useState<TabPago>('individual');
 
   return (
@@ -62,7 +71,9 @@ export function CarguePagosPage() {
       </div>
 
       {/* Contenido del tab */}
-      {tab === 'individual' ? <PagoIndividualForm /> : <CargueMasivo />}
+      {tab === 'individual' && <PagoIndividualForm />}
+      {tab === 'masivo' && <CargueMasivo />}
+      {tab === 'borrar-periodo' && esAdmin && <BorrarPeriodoPagos />}
     </div>
   );
 }

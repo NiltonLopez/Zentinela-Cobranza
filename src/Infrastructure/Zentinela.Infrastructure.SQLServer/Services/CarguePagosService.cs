@@ -874,6 +874,67 @@ public class CarguePagosService : ICarguePagosService
             .Where(p => p.CarteraID == carteraID)
             .MaxAsync(p => (DateTime?)p.FechaRegistro);
 
+    // ── Borrado de período mensual ────────────────────────────────────────────
+
+    public async Task<List<PeriodoPagoDto>> ObtenerPeriodosDisponiblesAsync()
+    {
+        // DISTINCT (CarteraID, Año, Mes) traducido a SQL — no carga cada Pago a memoria,
+        // solo las combinaciones únicas (a lo sumo carteras × meses con datos).
+        var periodos = await _context.Pagos
+            .Select(p => new { p.CarteraID, Anio = p.FechaPago.Year, Mes = p.FechaPago.Month })
+            .Distinct()
+            .ToListAsync();
+
+        var carteraIDs = periodos.Select(p => p.CarteraID).Distinct().ToList();
+        var nombrePorCartera = await _context.Carteras
+            .Where(c => carteraIDs.Contains(c.ID))
+            .ToDictionaryAsync(c => c.ID, c => c.NombreCartera);
+
+        return periodos
+            .Select(p => new PeriodoPagoDto
+            {
+                CarteraID     = p.CarteraID,
+                NombreCartera = nombrePorCartera.TryGetValue(p.CarteraID, out var nom) ? nom : $"Cartera {p.CarteraID}",
+                Anio          = p.Anio,
+                Mes           = p.Mes,
+            })
+            .OrderBy(p => p.NombreCartera)
+            .ThenByDescending(p => p.Anio)
+            .ThenByDescending(p => p.Mes)
+            .ToList();
+    }
+
+    private static (DateOnly Desde, DateOnly Hasta) RangoDelMes(int anio, int mes)
+    {
+        var desde = new DateOnly(anio, mes, 1);
+        return (desde, desde.AddMonths(1).AddDays(-1));
+    }
+
+    private IQueryable<Pago> FiltrarPeriodo(int anio, int mes, int? carteraID)
+    {
+        var (desde, hasta) = RangoDelMes(anio, mes);
+        var query = _context.Pagos.Where(p => p.FechaPago >= desde && p.FechaPago <= hasta);
+        if (carteraID.HasValue) query = query.Where(p => p.CarteraID == carteraID.Value);
+        return query;
+    }
+
+    public async Task<ConteoPeriodoResponse> ContarPeriodoAsync(int anio, int mes, int? carteraID)
+    {
+        var query = FiltrarPeriodo(anio, mes, carteraID);
+
+        // Agregados en una sola consulta — si no hay filas, Sum sobre un IQueryable
+        // vacío devuelve 0 (no null), así que no hace falta un fallback aparte.
+        return new ConteoPeriodoResponse
+        {
+            Cantidad         = await query.CountAsync(),
+            ValorPagadoTotal = await query.SumAsync(p => p.ValorPagado),
+            HonorariosTotal  = await query.SumAsync(p => p.Honorarios),
+        };
+    }
+
+    public async Task<int> BorrarPeriodoAsync(int anio, int mes, int? carteraID) =>
+        await FiltrarPeriodo(anio, mes, carteraID).ExecuteDeleteAsync();
+
     // ── Plantilla ─────────────────────────────────────────────────────────────
 
     public byte[] GenerarPlantilla()

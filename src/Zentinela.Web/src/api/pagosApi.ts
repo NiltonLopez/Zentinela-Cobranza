@@ -2,7 +2,7 @@ import api from './authApi';
 import type {
   ValidarPagosResponse, CarteraDropdown, PagoFila,
   RegistrarPagoIndividualRequest, RegistrarPagoIndividualResponse,
-  AsesorCartera, TitularEnCartera,
+  AsesorCartera, TitularEnCartera, ConteoPeriodo, PeriodoPago,
 } from '../types/pagos';
 
 export const generarPlantillaPagos = async (masivo = false): Promise<void> => {
@@ -78,5 +78,34 @@ export const buscarTitularEnCartera = async (
   cedula: number,
 ): Promise<TitularEnCartera> => {
   const res = await api.get<TitularEnCartera>('/api/pagos/titular', { params: { carteraID, cedula } });
+  return res.data;
+};
+
+// ── Borrar período ─────────────────────────────────────────────────────────────
+
+export const obtenerPeriodosDisponiblesPagos = async (): Promise<PeriodoPago[]> => {
+  const res = await api.get<PeriodoPago[]>('/api/pagos/periodos-disponibles');
+  return res.data;
+};
+
+export const contarPeriodoPagos = async (
+  anio: number,
+  mes: number,
+  carteraID: number | null, // null = todas las carteras
+): Promise<ConteoPeriodo> => {
+  const params: Record<string, number> = { anio, mes };
+  if (carteraID != null) params.carteraID = carteraID;
+  const res = await api.get<ConteoPeriodo>('/api/pagos/periodo/conteo', { params });
+  return res.data;
+};
+
+export const borrarPeriodoPagos = async (
+  anio: number,
+  mes: number,
+  carteraID: number | null,
+): Promise<{ borrados: number; mensaje: string }> => {
+  const res = await api.delete<{ borrados: number; mensaje: string }>('/api/pagos/periodo', {
+    data: { anio, mes, carteraID },
+  });
   return res.data;
 };

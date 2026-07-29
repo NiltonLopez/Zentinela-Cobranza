@@ -185,4 +185,53 @@ public class PagosController : ControllerBase
         var titular = await _service.BuscarTitularAsync(carteraID, cedula);
         return Ok(titular);
     }
+
+    /// <summary>
+    /// Combinaciones (cartera, año, mes) con al menos un Pago cargado — alimenta los
+    /// selects dinámicos y mutuamente dependientes del tab "Eliminar pagos".
+    /// </summary>
+    [HttpGet("periodos-disponibles")]
+    public async Task<IActionResult> ObtenerPeriodosDisponibles()
+    {
+        var periodos = await _service.ObtenerPeriodosDisponiblesAsync();
+        return Ok(periodos);
+    }
+
+    /// <summary>
+    /// Vista previa de un borrado de período: cuántos pagos y por cuánto dinero hay
+    /// en el mes (carteraID null/0 = todas las carteras). No borra nada.
+    /// </summary>
+    [HttpGet("periodo/conteo")]
+    public async Task<IActionResult> ContarPeriodo(
+        [FromQuery] int anio, [FromQuery] int mes, [FromQuery] int? carteraID)
+    {
+        if (mes < 1 || mes > 12)
+            return BadRequest(new { mensaje = "Mes inválido." });
+        if (anio < 2000 || anio > 2100)
+            return BadRequest(new { mensaje = "Año inválido." });
+
+        var conteo = await _service.ContarPeriodoAsync(anio, mes, carteraID is > 0 ? carteraID : null);
+        return Ok(conteo);
+    }
+
+    /// <summary>
+    /// Borra en bloque los pagos de un período mensual (carteraID null/0 = todas las
+    /// carteras). Operación irreversible — restringida a Admin (más estricta que el
+    /// resto del módulo, que también permite Auxiliar de Sistemas). El frontend debe
+    /// haber mostrado el conteo de <see cref="ContarPeriodo"/> y pedido confirmación
+    /// explícita antes de llamar este endpoint.
+    /// </summary>
+    [HttpDelete("periodo")]
+    [Authorize(Roles = Roles.Admin)]
+    public async Task<IActionResult> BorrarPeriodo([FromBody] BorrarPeriodoRequest request)
+    {
+        if (request.Mes < 1 || request.Mes > 12)
+            return BadRequest(new { mensaje = "Mes inválido." });
+        if (request.Anio < 2000 || request.Anio > 2100)
+            return BadRequest(new { mensaje = "Año inválido." });
+
+        var carteraID = request.CarteraID is > 0 ? request.CarteraID : null;
+        var borrados  = await _service.BorrarPeriodoAsync(request.Anio, request.Mes, carteraID);
+        return Ok(new { borrados, mensaje = $"Se borraron {borrados} pagos del período seleccionado." });
+    }
 }

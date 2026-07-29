@@ -56,4 +56,24 @@ public interface ICarguePagosService
 
     /// <summary>Fecha del último pago registrado (FechaRegistro) para la cartera. Null si no hay pagos aún.</summary>
     Task<DateTime?> ObtenerUltimaActualizacionAsync(int carteraID);
+
+    /// <summary>
+    /// Todas las combinaciones (cartera, año, mes) para las que existe al menos un Pago —
+    /// alimenta los selects dinámicos y mutuamente dependientes del tab "Eliminar pagos".
+    /// </summary>
+    Task<List<PeriodoPagoDto>> ObtenerPeriodosDisponiblesAsync();
+
+    /// <summary>
+    /// Vista previa (sin borrar) de cuántos pagos y por cuánto dinero hay en el período
+    /// mensual dado. Filtra por Pago.FechaPago. carteraID null = todas las carteras.
+    /// </summary>
+    Task<ConteoPeriodoResponse> ContarPeriodoAsync(int anio, int mes, int? carteraID);
+
+    /// <summary>
+    /// Borra en bloque los pagos del período mensual dado (por Pago.FechaPago).
+    /// carteraID null = todas las carteras. Operación irreversible — la UI debe mostrar
+    /// el conteo de <see cref="ContarPeriodoAsync"/> y pedir confirmación antes de llamar esto.
+    /// Devuelve la cantidad de filas borradas.
+    /// </summary>
+    Task<int> BorrarPeriodoAsync(int anio, int mes, int? carteraID);
 }

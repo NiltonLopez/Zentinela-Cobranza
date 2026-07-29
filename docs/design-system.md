@@ -117,6 +117,57 @@ import { ZButton } from '../components/ZButton';
 
 ---
 
+### ZDropdown
+
+Ubicación: `src/Zentinela.Web/src/components/ZDropdown.tsx`
+
+**Regla obligatoria:** todo select nuevo en el aplicativo debe usar `ZDropdown`, nunca un
+`<select>` nativo. El `<select>` del navegador no se puede estilizar (el panel de opciones
+queda con el look del sistema operativo, inconsistente entre Windows/Mac/navegadores) —
+`ZDropdown` reemplaza el `<select>` con un botón + panel flotante propio, con la estética
+del resto de la app (tokens `var(--z-*)`, hover, foco). Ejemplo de referencia: el selector
+de cartera del tab **"Cargue masivo"** en `CarguePagosPage` (`CargueMasivo.tsx`).
+
+Si un `<select>` nativo aparece en código nuevo (o al tocar código viejo), reemplazarlo por
+`ZDropdown` como parte del cambio.
+
+#### Props
+
+| Prop | Tipo | Default | Descripción |
+|---|---|---|---|
+| `options` | `ZDropdownOption<T>[]` | — | `{ value: T, label: string, sublabel?: string }[]` — incluir una opción con `value` vacío/null como placeholder ("— Selecciona... —") si el campo es opcional |
+| `value` | `T` | — | Valor seleccionado actualmente |
+| `onChange` | `(value: T) => void` | — | Callback al elegir una opción (cierra el panel automáticamente) |
+| `style` | `React.CSSProperties` | — | Estilos adicionales (ej. `{ width: '320px' }`); `minWidth` se combina con el ancho auto-calculado |
+| `background` | `string` | `'var(--z-bg-card)'` | Fondo del botón cerrado — usar `'var(--z-bg-page)'` cuando el dropdown vive dentro de una tarjeta con fondo `var(--z-bg-card)`, para que se distinga del contenedor |
+| `disabled` | `boolean` | `false` | Deshabilita el botón (opacidad reducida, cursor `not-allowed`) |
+
+Es genérico (`ZDropdown<T>`): `T` puede ser `string`, `number`, o cualquier tipo primitivo
+usado como `value` (ej. `''` para "sin selección" mezclado con `number` para IDs reales).
+
+El ancho del botón se auto-calcula midiendo el texto real de la opción más larga (canvas
+`measureText`, tope de 340px) — no hace falta fijar un ancho manualmente salvo que se quiera
+forzar uno específico vía `style.width`.
+
+#### Ejemplo de uso
+
+```tsx
+import { ZDropdown } from '../../components/ZDropdown';
+
+<ZDropdown
+  options={[
+    { value: '', label: '— Selecciona una cartera —' },
+    ...carteras.map(c => ({ value: c.id, label: c.nombre })),
+  ]}
+  value={carteraID}
+  onChange={setCarteraID}
+  background="var(--z-bg-page)"
+  style={{ width: '320px' }}
+/>
+```
+
+---
+
 ### MetricCard
 
 Ubicación: `src/Zentinela.Web/src/components/MetricCard.tsx`
