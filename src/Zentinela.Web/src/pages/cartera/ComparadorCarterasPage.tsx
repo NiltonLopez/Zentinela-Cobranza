@@ -40,32 +40,96 @@ function fmtFecha(s: string | null): string {
 
 // ── Componentes ───────────────────────────────────────────────────────────────
 
-// Espejo de PerfilClasificacion.cs (backend). Si se agregan códigos allá,
-// agregarlos también acá para que la chip salga del color correcto.
-const PERFILES_PAZ_Y_SALVO = new Set([
-  'paz y salvo', 'consignación por aplicar', 'pago total', 'normalizado',
-]);
-const PERFILES_CONTACTO_POSITIVO = new Set([
-  'acuerdo de pago abono', 'acuerdo de pago total', 'realizo abono', 'recordar',
-  'incumplido', 'no hubo acuerdo', 'potencial acuerdo', 'renuente', 'no gestionar',
-  'contacto positivo', 'promesa de pago', 'acuerdo',
-]);
+// Colores por categoría estandarizada (ADR-029). La clasificación vive SOLO en el
+// backend (PerfilClasificacion.cs); aquí únicamente se mapea etiqueta → color.
+const COLOR_CATEGORIA: Record<string, string> = {
+  'Ya pago':          '#22C55E',
+  'Promesa':          '#3B82F6',
+  'Contacto directo': '#8B5CF6',
+  'Tercero':          '#F59E0B',
+  'Sin contacto':     '#F97316',
+  'Sin gestión':      '#EF4444',
+  'Otros':            '#6B7280',
+};
 
-function ChipPerfil({ perfil }: { perfil: string | null }) {
-  if (!perfil) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>Sin dato</span>;
+// Descripción corta por categoría, mostrada como tooltip nativo en los chips
+// del resumen "Cartera por categoría" (ver ADR-029 §1 para la regla completa).
+const DESCRIPCION_CATEGORIA: Record<string, string> = {
+  'Ya pago':          'Paz y salvo, pago reflejado, caso especial o normalizado',
+  'Promesa':          'FechaPromesa vigente, o acuerdo de pago con gestión reciente',
+  'Contacto directo': 'Contacto con el titular (recordatorio, compromiso, PQR) o promesa vencida',
+  'Tercero':          'Contacto con un tercero o familiar, no con el titular',
+  'Sin contacto':     'Intento de contacto sin respuesta: buzón, número errado o ilocalizado',
+  'Sin gestión':      'Sin perfil ni intento de marcación registrado',
+  'Otros':            'Perfil real sin mapear a ninguna categoría (residual, revisar)',
+};
 
-  const key = perfil.toLowerCase();
-  const color =
-    PERFILES_PAZ_Y_SALVO.has(key)        ? '#22C55E' :
-    PERFILES_CONTACTO_POSITIVO.has(key)  ? '#3B82F6' :
-    '#EF4444';
+function ChipDesglose({ categoria, total }: { categoria: string; total: number }) {
+  const [hover, setHover] = useState(false);
+  const color = COLOR_CATEGORIA[categoria] ?? '#6B7280';
+  const descripcion = DESCRIPCION_CATEGORIA[categoria];
 
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '2px 8px',
-      borderRadius: 12, background: `${color}22`, color, whiteSpace: 'nowrap',
-    }}>
-      {perfil}
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: 'relative', display: 'inline-block' }}
+    >
+      <span style={{
+        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12,
+        background: `${color}22`, color, whiteSpace: 'nowrap',
+      }}>
+        {categoria}: {fmt(total)}
+      </span>
+      {hover && descripcion && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 5px)', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 10, pointerEvents: 'none',
+        }}>
+          <span style={{
+            display: 'block', width: 220, background: 'var(--z-bg-card)', border: '1px solid var(--z-border)',
+            borderRadius: 6, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }}>
+            {/* Franja del color de la píldora, para asociar el tooltip con su chip */}
+            <span style={{ display: 'block', height: 3, background: color }} />
+            <span style={{
+              display: 'block', padding: '8px 10px', fontSize: 11, fontWeight: 400, lineHeight: 1.4,
+              color: 'var(--z-text-primary)', whiteSpace: 'normal', textAlign: 'left',
+            }}>
+              {descripcion}
+            </span>
+          </span>
+          {/* Flechita que conecta el tooltip con la píldora */}
+          <span style={{
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+            borderTop: '5px solid var(--z-border)',
+          }} />
+          <span style={{
+            position: 'absolute', top: 'calc(100% - 1px)', left: '50%', transform: 'translateX(-50%)',
+            width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+            borderTop: '5px solid var(--z-bg-card)',
+          }} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ChipCategoria({ categoria, perfil }: { categoria: string | null; perfil: string | null }) {
+  if (!categoria) return <span style={{ color: 'var(--z-text-muted)', fontSize: 12 }}>Sin dato</span>;
+
+  const color = COLOR_CATEGORIA[categoria] ?? '#6B7280';
+
+  return (
+    <span
+      title={perfil ?? undefined}
+      style={{
+        fontSize: 11, fontWeight: 600, padding: '2px 8px',
+        borderRadius: 12, background: `${color}22`, color, whiteSpace: 'nowrap',
+      }}
+    >
+      {categoria}
     </span>
   );
 }
@@ -81,11 +145,11 @@ function TablaTitulares({
 }) {
   const cols = [
     'Número Doc.', 'Nombre',
-    `Perfil en ${nombreSeleccionada}`,
-    `Perfil en ${nombreOtra}`,
+    `Categoría en ${nombreSeleccionada}`,
+    `Categoría en ${nombreOtra}`,
     `Tel. ${nombreSeleccionada}`,
     `Tel. ${nombreOtra}`,
-    'Saldo', 'Última gestión', 'Valor promesa',
+    'Saldo', 'Última gestión', 'Fecha promesa', 'Valor promesa',
   ];
 
   return (
@@ -112,22 +176,25 @@ function TablaTitulares({
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{t.nombre}</td>
               <td style={{ padding: '8px 10px' }}>
-                <ChipPerfil perfil={t.perfilSeleccionada} />
+                <ChipCategoria categoria={t.categoriaSeleccionada} perfil={t.perfilSeleccionada} />
               </td>
               <td style={{ padding: '8px 10px' }}>
-                <ChipPerfil perfil={t.perfilOtraCartera} />
+                <ChipCategoria categoria={t.categoriaOtraCartera} perfil={t.perfilOtraCartera} />
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                {t.numeroMarcadoSeleccionada ?? '—'}
+                {t.numeroMarcadoSeleccionada ?? 'No registra'}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                {t.numeroMarcadoOtra ?? '—'}
+                {t.numeroMarcadoOtra ?? 'No registra'}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                 {t.saldoTotal != null ? fmtCOP(t.saldoTotal) : '—'}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
                 {fmtFecha(t.fechaUltimaGestion)}
+              </td>
+              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                {fmtFecha(t.fechaPromesa)}
               </td>
               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                 {t.valorPromesa != null ? fmtCOP(t.valorPromesa) : '—'}
@@ -191,8 +258,8 @@ function SeccionCartera({
           </h3>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', marginTop: 4 }}>
             <strong style={{ color: 'var(--z-accent)' }}>{fmt(seccion.totalCoincidencias)}</strong>
-            {' '}titular{seccion.totalCoincidencias !== 1 ? 'es' : ''} con estado positivo o pago
-            en esta cartera que no tienen gestión en{' '}
+            {' '}titular{seccion.totalCoincidencias !== 1 ? 'es' : ''} con mejor categoría de gestión
+            en esta cartera que en{' '}
             <strong>{nombreSeleccionada}</strong>
           </p>
         </div>
@@ -284,8 +351,8 @@ export function ComparadorCarterasPage() {
             Comparador de Carteras
           </h1>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
-            Identifica titulares sin gestión en la cartera seleccionada que ya tienen
-            contacto positivo o pago en otra cartera.
+            Clasifica los titulares en categorías estandarizadas de gestión e identifica
+            los que ya tienen una mejor categoría en otra cartera.
           </p>
         </div>
       </div>
@@ -353,7 +420,7 @@ export function ComparadorCarterasPage() {
                 Base del comparativo
               </p>
               <p style={{ fontSize: 28, fontWeight: 700, color: '#EF4444' }}>
-                {fmt(data.totalSinGestion)}
+                {fmt(data.totalBaseComparativo)}
               </p>
             </div>
             <div>
@@ -365,6 +432,19 @@ export function ComparadorCarterasPage() {
                 {data.comparaciones.length}
               </p>
             </div>
+            {data.desglosePorCategoria.length > 0 && (
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                            letterSpacing: '0.08em', color: 'var(--z-text-muted)', marginBottom: 6 }}>
+                  Cartera por categoría
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
+                  {data.desglosePorCategoria.map(c => (
+                    <ChipDesglose key={c.categoria} categoria={c.categoria} total={c.total} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {data.comparaciones.length > 0 && (
               <div style={{ marginLeft: 'auto' }}>

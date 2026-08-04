@@ -11,11 +11,11 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 
 /// <summary>
 /// Compara titular a titular la cartera seleccionada contra todas las demás carteras.
-/// Identifica oportunidades de gestión: titulares cuyo perfil en otra cartera tiene
-/// peso estrictamente mayor que en la seleccionada. Esto cubre dos casos:
-///   1) Seleccionada = Contacto Negativo → muestra coincidencias en Contacto Positivo o Paz y Salvo.
-///   2) Seleccionada = Contacto Positivo → muestra coincidencias en Paz y Salvo.
-/// Los titulares ya en Paz y Salvo (peso máximo) en la seleccionada se excluyen de la base.
+/// Cada titular se clasifica en las categorías estandarizadas de PerfilClasificacion
+/// (ADR-029): Ya pago > Promesa > Contacto directo > Tercero > Sin contacto >
+/// Sin gestión > Otros. Se muestran como oportunidad los titulares cuya categoría
+/// en otra cartera es estrictamente mejor que en la seleccionada. Los ya en
+/// Ya pago (peso máximo) en la seleccionada quedan fuera de la base.
 /// </summary>
 public class ComparadorCarterasService : IComparadorCarterasService
 {
@@ -87,103 +87,57 @@ public class ComparadorCarterasService : IComparadorCarterasService
 
     public async Task<ComparadorCarterasDto> CompararAsync(int carteraID, int? liderID)
     {
-        // 1. Titulares de la cartera seleccionada que tienen reporte cargado.
-        // liderID acota la base a las asignaciones de ese líder en la cartera
-        // (entrada "Cartera — Líder" del selector); null = cartera completa.
-        var enSeleccionadaQuery =
-            from tc in _db.TitularCarteras
-            join ue in _db.UltimosEstadosTitular
-                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
-            join c in _db.Carteras on tc.CarteraID equals c.ID
-            where tc.CarteraID == carteraID
-            select new { tc.TitularID, tc.LiderID, ue.UltimoPerfil, ue.NumeroMarcado, NombreCartera = c.NombreCartera };
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        var (nombreSeleccionada, porTitular) =
+            await ObtenerMejorPorTitularAsync(carteraID, liderID, hoy);
 
-        if (liderID.HasValue)
-            enSeleccionadaQuery = enSeleccionadaQuery.Where(x => x.LiderID == liderID.Value);
-
-        var enSeleccionada = await enSeleccionadaQuery.AsNoTracking().ToListAsync();
-
-        var nombreSeleccionada = enSeleccionada.FirstOrDefault()?.NombreCartera ?? "";
-
-        // Un titular puede tener varias filas (un agente por fila).
-        // Tomamos la fila con el mejor perfil entre todos sus agentes.
-        var mejorEnSeleccionada = enSeleccionada
-            .GroupBy(x => x.TitularID)
-            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
+        // Desglose de toda la cartera por categoría (incluye Ya pago), de mejor a peor.
+        var desglose = porTitular.Values
+            .GroupBy(e => e.Categoria)
+            .OrderByDescending(g => (int)g.Key)
+            .Select(g => new CategoriaTotalDto
+            {
+                Categoria = PerfilClasificacion.Etiqueta(g.Key),
+                Total     = g.Count(),
+            })
             .ToList();
 
-        var numMarcadoSeleccionadaDict = mejorEnSeleccionada.ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
+        var baseComparativo = FiltrarBase(porTitular);
 
-        // Base del comparativo: titulares cuyo mejor perfil en la seleccionada NO es
-        // Paz y Salvo (peso < 2). Incluye Contacto Negativo y Contacto Positivo.
-        var paraComparar = mejorEnSeleccionada
-            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) < 2)
-            .ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
-
-        if (paraComparar.Count == 0)
+        if (baseComparativo.Count == 0)
         {
             return new ComparadorCarterasDto
             {
                 CarteraID                 = carteraID,
                 NombreCarteraSeleccionada = nombreSeleccionada,
-                TotalSinGestion           = 0,
+                TotalBaseComparativo      = 0,
+                DesglosePorCategoria      = desglose,
                 Comparaciones             = [],
             };
         }
 
-        var pesoEnSeleccionada = paraComparar
-            .ToDictionary(kv => kv.Key, kv => PerfilClasificacion.Peso(kv.Value));
+        var coincidencias = await ObtenerCoincidenciasAsync(
+            carteraID, baseComparativo, hoy, soloOtraCarteraID: null);
 
-        // 2. Buscar esos mismos titulares en otras carteras
-        var titularIDs = paraComparar.Keys.ToList();
-
-        var enOtras = await (
-            from tc in _db.TitularCarteras
-            join ue in _db.UltimosEstadosTitular
-                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
-            join c in _db.Carteras on tc.CarteraID equals c.ID
-            where tc.CarteraID != carteraID && titularIDs.Contains(tc.TitularID)
-            select new
-            {
-                tc.TitularID,
-                tc.CarteraID,
-                NombreCartera      = c.NombreCartera,
-                ue.UltimoPerfil,
-                ue.NumeroMarcado,
-                ue.SaldoTotal,
-                ue.FechaUltimaGestion,
-                ue.ValorPromesa,
-                ue.MotivoNoPago,
-                tc.Titular.Nombre,
-            }
-        ).AsNoTracking().ToListAsync();
-
-        // 3. Deduplicar por (TitularID, CarteraID) tomando el mejor perfil por agente,
-        //    luego conservar solo los que en la otra cartera tienen peso mayor que en la seleccionada.
-        var coincidencias = enOtras
-            .GroupBy(x => new { x.TitularID, x.CarteraID, x.NombreCartera })
-            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
-            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSeleccionada[x.TitularID])
-            .GroupBy(x => new { x.CarteraID, x.NombreCartera })
+        var secciones = coincidencias
+            .GroupBy(c => new { c.CarteraID, c.NombreCartera })
             .Select(g => new ComparadorVsCarteraDto
             {
                 CarteraID          = g.Key.CarteraID,
                 NombreCartera      = g.Key.NombreCartera,
                 TotalCoincidencias = g.Count(),
-                Preview            = g.Take(5).Select(x => MapTitular(x.TitularID, x.Nombre,
-                    paraComparar.GetValueOrDefault(x.TitularID), x.UltimoPerfil, g.Key.NombreCartera,
-                    numMarcadoSeleccionadaDict.GetValueOrDefault(x.TitularID), x.NumeroMarcado,
-                    x.SaldoTotal, x.FechaUltimaGestion, x.ValorPromesa)).ToList(),
+                Preview            = g.Take(5).Select(c => c.Dto).ToList(),
             })
-            .OrderByDescending(c => c.TotalCoincidencias)
+            .OrderByDescending(s => s.TotalCoincidencias)
             .ToList();
 
         return new ComparadorCarterasDto
         {
             CarteraID                 = carteraID,
             NombreCarteraSeleccionada = nombreSeleccionada,
-            TotalSinGestion           = paraComparar.Count,
-            Comparaciones             = coincidencias,
+            TotalBaseComparativo      = baseComparativo.Count,
+            DesglosePorCategoria      = desglose,
+            Comparaciones             = secciones,
         };
     }
 
@@ -192,92 +146,167 @@ public class ComparadorCarterasService : IComparadorCarterasService
     public async Task<IEnumerable<TitularComparativoDto>> ObtenerParaExcelAsync(
         int carteraID, int? liderID, int otraCarteraID)
     {
-        // Titulares de la cartera seleccionada que califican como base del comparativo
-        // (peso < Paz y Salvo, es decir Negativo o Positivo).
-        var enSeleccionadaQuery =
-            from tc in _db.TitularCarteras
-            join ue in _db.UltimosEstadosTitular
-                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
-            where tc.CarteraID == carteraID
-            select new { tc.TitularID, tc.LiderID, ue.UltimoPerfil, ue.NumeroMarcado };
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        var (_, porTitular) = await ObtenerMejorPorTitularAsync(carteraID, liderID, hoy);
 
-        if (liderID.HasValue)
-            enSeleccionadaQuery = enSeleccionadaQuery.Where(x => x.LiderID == liderID.Value);
+        var baseComparativo = FiltrarBase(porTitular);
+        if (baseComparativo.Count == 0) return [];
 
-        var enSeleccionada = await enSeleccionadaQuery.AsNoTracking().ToListAsync();
+        var coincidencias = await ObtenerCoincidenciasAsync(
+            carteraID, baseComparativo, hoy, otraCarteraID);
 
-        var mejorEnSel = enSeleccionada
-            .GroupBy(x => x.TitularID)
-            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
-            .ToList();
-
-        var paraCompararDict = mejorEnSel
-            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) < 2)
-            .ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
-
-        var numMarcadoSelDict = mejorEnSel
-            .ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
-
-        if (paraCompararDict.Count == 0) return [];
-
-        var pesoEnSel = paraCompararDict
-            .ToDictionary(kv => kv.Key, kv => PerfilClasificacion.Peso(kv.Value));
-
-        var titularIDs = paraCompararDict.Keys.ToList();
-
-        var enOtra = await (
-            from tc in _db.TitularCarteras
-            join ue in _db.UltimosEstadosTitular
-                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
-            where tc.CarteraID == otraCarteraID && titularIDs.Contains(tc.TitularID)
-            select new
-            {
-                tc.TitularID,
-                ue.UltimoPerfil,
-                ue.NumeroMarcado,
-                ue.SaldoTotal,
-                ue.FechaUltimaGestion,
-                ue.ValorPromesa,
-                ue.MotivoNoPago,
-                tc.Titular.Nombre,
-            }
-        ).AsNoTracking().ToListAsync();
-
-        var nombreOtra = await _db.Carteras
-            .Where(c => c.ID == otraCarteraID)
-            .Select(c => c.NombreCartera)
-            .FirstOrDefaultAsync() ?? $"Cartera {otraCarteraID}";
-
-        return enOtra
-            .GroupBy(x => x.TitularID)
-            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
-            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSel[x.TitularID])
-            .Select(x => MapTitular(x.TitularID, x.Nombre,
-                paraCompararDict.GetValueOrDefault(x.TitularID), x.UltimoPerfil, nombreOtra,
-                numMarcadoSelDict.GetValueOrDefault(x.TitularID), x.NumeroMarcado,
-                x.SaldoTotal, x.FechaUltimaGestion, x.ValorPromesa))
+        return coincidencias
+            .OrderBy(c => c.Dto.Nombre)
+            .Select(c => c.Dto)
             .ToList();
     }
 
-    // ── Excel completo — todas las carteras ───────────────────────────────────
-
-    public async Task<IEnumerable<TitularComparativoDto>> ObtenerTodosParaExcelAsync(int carteraID, int? liderID)
+    public async Task<IEnumerable<TitularComparativoDto>> ObtenerTodosParaExcelAsync(
+        int carteraID, int? liderID)
     {
-        // Reutiliza CompararAsync que ya tiene toda la lógica de deduplicación
-        var resultado = await CompararAsync(carteraID, liderID);
+        var hoy = DateOnly.FromDateTime(DateTime.Today);
+        var (_, porTitular) = await ObtenerMejorPorTitularAsync(carteraID, liderID, hoy);
 
-        if (resultado.Comparaciones.Count == 0) return [];
+        var baseComparativo = FiltrarBase(porTitular);
+        if (baseComparativo.Count == 0) return [];
 
-        // Para el Excel completo necesitamos TODOS los titulares, no solo el preview de 5.
-        // Repetimos la consulta sin límite agrupando por cartera.
-        var sinGestionDict = resultado.Comparaciones
-            .SelectMany(c => c.Preview)
-            .GroupBy(t => t.NumeroDocumento)
-            .ToDictionary(g => g.Key, g => g.First().PerfilSeleccionada);
+        var coincidencias = await ObtenerCoincidenciasAsync(
+            carteraID, baseComparativo, hoy, soloOtraCarteraID: null);
 
-        var titularIDs = sinGestionDict.Keys.ToList();
+        return coincidencias
+            .OrderBy(c => c.NombreCartera)
+            .ThenBy(c => c.Dto.Nombre)
+            .Select(c => c.Dto)
+            .ToList();
+    }
 
-        var enOtras = await (
+    // ── Núcleo compartido ─────────────────────────────────────────────────────
+
+    /// <summary>Texto mostrado cuando ninguna fila del histórico tiene teléfono útil.</summary>
+    private const string SinTelefono = "No registra";
+
+    /// <summary>Mejor estado por titular en la cartera seleccionada, ya clasificado.</summary>
+    private sealed record EstadoSeleccionada(
+        CategoriaPerfil Categoria, string? MejorPerfil, string NumeroMarcado);
+
+    private sealed record Coincidencia(
+        int CarteraID, string NombreCartera, TitularComparativoDto Dto);
+
+    /// <summary>
+    /// Mejor teléfono por (titular, cartera) según HistoricoEstadoTitular: clasifica
+    /// cada fila histórica (no solo la del último cargue) y toma el NumeroMarcado de
+    /// la de mejor categoría. Si no hay fila clasificable o el teléfono viene vacío,
+    /// se devuelve <see cref="SinTelefono"/>.
+    /// </summary>
+    private async Task<Dictionary<(long TitularID, int CarteraID), string>> ObtenerMejoresTelefonosAsync(
+        IEnumerable<long> titularIDs, DateOnly hoy, int? soloCarteraID = null, int? excluirCarteraID = null)
+    {
+        var ids = titularIDs.ToList();
+        var query = _db.HistoricoEstadosTitular.Where(h => ids.Contains(h.TitularID));
+
+        if (soloCarteraID.HasValue)
+            query = query.Where(h => h.CarteraID == soloCarteraID.Value);
+        if (excluirCarteraID.HasValue)
+            query = query.Where(h => h.CarteraID != excluirCarteraID.Value);
+
+        var filas = await query.AsNoTracking().ToListAsync();
+
+        return filas
+            .Select(h => new
+            {
+                h.TitularID,
+                h.CarteraID,
+                h.NumeroMarcado,
+                h.FechaUltimaGestion,
+                Categoria = PerfilClasificacion.Clasificar(
+                    h.MejorPerfil, h.UltimoPerfil, h.FechaPromesa, h.Rotacion, h.FechaUltimaGestion, hoy),
+            })
+            .GroupBy(h => (h.TitularID, h.CarteraID))
+            .ToDictionary(
+                g => g.Key,
+                // Empate en categoría → gana la de FechaUltimaGestion más reciente.
+                g => g.MaxBy(h => (h.Categoria, h.FechaUltimaGestion))!.NumeroMarcado is { Length: > 0 } tel
+                    ? tel
+                    : SinTelefono);
+    }
+
+    /// <summary>
+    /// Titulares de la cartera seleccionada con reporte cargado, clasificados y
+    /// deduplicados: un titular puede tener varias filas (una por agente) y se
+    /// conserva la de mejor categoría. liderID acota a las asignaciones de ese
+    /// líder (entrada "Cartera — Líder" del selector); null = cartera completa.
+    /// </summary>
+    private async Task<(string NombreCartera, Dictionary<long, EstadoSeleccionada> PorTitular)>
+        ObtenerMejorPorTitularAsync(int carteraID, int? liderID, DateOnly hoy)
+    {
+        var query =
+            from tc in _db.TitularCarteras
+            join ue in _db.UltimosEstadosTitular
+                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
+            join c in _db.Carteras on tc.CarteraID equals c.ID
+            where tc.CarteraID == carteraID
+            select new
+            {
+                tc.TitularID,
+                tc.LiderID,
+                ue.MejorPerfil,
+                ue.UltimoPerfil,
+                ue.FechaPromesa,
+                ue.Rotacion,
+                ue.FechaUltimaGestion,
+                NombreCartera = c.NombreCartera,
+            };
+
+        if (liderID.HasValue)
+            query = query.Where(x => x.LiderID == liderID.Value);
+
+        var filas = await query.AsNoTracking().ToListAsync();
+
+        var nombreCartera = filas.FirstOrDefault()?.NombreCartera ?? "";
+
+        var telefonos = await ObtenerMejoresTelefonosAsync(
+            filas.Select(f => f.TitularID).Distinct(), hoy, soloCarteraID: carteraID);
+
+        var porTitular = filas
+            .Select(x => new
+            {
+                x.TitularID,
+                x.MejorPerfil,
+                Categoria = PerfilClasificacion.Clasificar(
+                    x.MejorPerfil, x.UltimoPerfil, x.FechaPromesa, x.Rotacion, x.FechaUltimaGestion, hoy),
+            })
+            .GroupBy(x => x.TitularID)
+            .Select(g => g.MaxBy(x => (int)x.Categoria)!)
+            .ToDictionary(
+                x => x.TitularID,
+                x => new EstadoSeleccionada(
+                    x.Categoria, x.MejorPerfil,
+                    telefonos.GetValueOrDefault((x.TitularID, carteraID), SinTelefono)));
+
+        return (nombreCartera, porTitular);
+    }
+
+    /// <summary>Base del comparativo: todo lo que no está en Ya pago (peso máximo).</summary>
+    private static Dictionary<long, EstadoSeleccionada> FiltrarBase(
+        Dictionary<long, EstadoSeleccionada> porTitular) =>
+        porTitular
+            .Where(kv => kv.Value.Categoria < CategoriaPerfil.YaPago)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+    /// <summary>
+    /// Busca los titulares de la base en otras carteras, deduplica por
+    /// (Titular, Cartera) con la mejor categoría y conserva solo los que allá
+    /// tienen categoría estrictamente mejor que en la seleccionada.
+    /// </summary>
+    private async Task<List<Coincidencia>> ObtenerCoincidenciasAsync(
+        int carteraID,
+        Dictionary<long, EstadoSeleccionada> baseComparativo,
+        DateOnly hoy,
+        int? soloOtraCarteraID)
+    {
+        var titularIDs = baseComparativo.Keys.ToList();
+
+        var query =
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
@@ -287,100 +316,58 @@ public class ComparadorCarterasService : IComparadorCarterasService
             {
                 tc.TitularID,
                 tc.CarteraID,
-                NombreCartera      = c.NombreCartera,
+                NombreCartera = c.NombreCartera,
+                ue.MejorPerfil,
                 ue.UltimoPerfil,
-                ue.NumeroMarcado,
                 ue.SaldoTotal,
                 ue.FechaUltimaGestion,
+                ue.FechaPromesa,
                 ue.ValorPromesa,
-                ue.MotivoNoPago,
+                ue.Rotacion,
                 tc.Titular.Nombre,
-            }
-        ).AsNoTracking().ToListAsync();
+            };
 
-        // También necesitamos los titulares "para comparar" que no están en el preview
-        // (tienen más de 5 en alguna sección). Re-consultamos sin límite.
-        var enSeleccionadaCompletoQuery =
-            from tc in _db.TitularCarteras
-            join ue in _db.UltimosEstadosTitular
-                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
-            where tc.CarteraID == carteraID
-            select new { tc.TitularID, tc.LiderID, ue.UltimoPerfil, ue.NumeroMarcado };
+        if (soloOtraCarteraID.HasValue)
+            query = query.Where(x => x.CarteraID == soloOtraCarteraID.Value);
 
-        if (liderID.HasValue)
-            enSeleccionadaCompletoQuery = enSeleccionadaCompletoQuery.Where(x => x.LiderID == liderID.Value);
+        var filas = await query.AsNoTracking().ToListAsync();
 
-        var enSeleccionadaCompleto = await enSeleccionadaCompletoQuery.AsNoTracking().ToListAsync();
+        var telefonos = soloOtraCarteraID.HasValue
+            ? await ObtenerMejoresTelefonosAsync(titularIDs, hoy, soloCarteraID: soloOtraCarteraID.Value)
+            : await ObtenerMejoresTelefonosAsync(titularIDs, hoy, excluirCarteraID: carteraID);
 
-        var mejorEnSelFull = enSeleccionadaCompleto
-            .GroupBy(x => x.TitularID)
-            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
-            .ToList();
-
-        var paraCompararFull = mejorEnSelFull
-            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) < 2)
-            .ToDictionary(x => x.TitularID, x => x.UltimoPerfil);
-
-        var pesoEnSelFull = paraCompararFull
-            .ToDictionary(kv => kv.Key, kv => PerfilClasificacion.Peso(kv.Value));
-
-        var numMarcadoSelFullDict = mejorEnSelFull
-            .ToDictionary(x => x.TitularID, x => x.NumeroMarcado);
-
-        var allIDs = paraCompararFull.Keys.ToList();
-
-        var todasEnOtras = await (
-            from tc in _db.TitularCarteras
-            join ue in _db.UltimosEstadosTitular
-                on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
-            join c in _db.Carteras on tc.CarteraID equals c.ID
-            where tc.CarteraID != carteraID && allIDs.Contains(tc.TitularID)
-            select new
+        return filas
+            .Select(x => new
             {
-                tc.TitularID,
-                tc.CarteraID,
-                NombreCartera      = c.NombreCartera,
-                ue.UltimoPerfil,
-                ue.NumeroMarcado,
-                ue.SaldoTotal,
-                ue.FechaUltimaGestion,
-                ue.ValorPromesa,
-                ue.MotivoNoPago,
-                tc.Titular.Nombre,
-            }
-        ).AsNoTracking().ToListAsync();
-
-        return todasEnOtras
-            .GroupBy(x => new { x.TitularID, x.CarteraID, x.NombreCartera })
-            .Select(g => g.MaxBy(x => PerfilClasificacion.Peso(x.UltimoPerfil))!)
-            .Where(x => PerfilClasificacion.Peso(x.UltimoPerfil) > pesoEnSelFull[x.TitularID])
-            .OrderBy(x => x.NombreCartera)
-            .ThenBy(x => x.Nombre)
-            .Select(x => MapTitular(x.TitularID, x.Nombre,
-                paraCompararFull.GetValueOrDefault(x.TitularID), x.UltimoPerfil, x.NombreCartera,
-                numMarcadoSelFullDict.GetValueOrDefault(x.TitularID), x.NumeroMarcado,
-                x.SaldoTotal, x.FechaUltimaGestion, x.ValorPromesa))
+                Fila = x,
+                Categoria = PerfilClasificacion.Clasificar(
+                    x.MejorPerfil, x.UltimoPerfil, x.FechaPromesa, x.Rotacion, x.FechaUltimaGestion, hoy),
+            })
+            .GroupBy(y => new { y.Fila.TitularID, y.Fila.CarteraID })
+            .Select(g => g.MaxBy(y => (int)y.Categoria)!)
+            .Where(y => y.Categoria > baseComparativo[y.Fila.TitularID].Categoria)
+            .Select(y =>
+            {
+                var sel = baseComparativo[y.Fila.TitularID];
+                return new Coincidencia(y.Fila.CarteraID, y.Fila.NombreCartera,
+                    new TitularComparativoDto
+                    {
+                        NumeroDocumento           = y.Fila.TitularID,
+                        Nombre                    = y.Fila.Nombre,
+                        CategoriaSeleccionada     = PerfilClasificacion.Etiqueta(sel.Categoria),
+                        PerfilSeleccionada        = sel.MejorPerfil,
+                        CategoriaOtraCartera      = PerfilClasificacion.Etiqueta(y.Categoria),
+                        PerfilOtraCartera         = y.Fila.MejorPerfil,
+                        NombreOtraCartera         = y.Fila.NombreCartera,
+                        NumeroMarcadoSeleccionada = sel.NumeroMarcado,
+                        NumeroMarcadoOtra         = telefonos.GetValueOrDefault(
+                            (y.Fila.TitularID, y.Fila.CarteraID), SinTelefono),
+                        SaldoTotal                = y.Fila.SaldoTotal,
+                        FechaUltimaGestion        = y.Fila.FechaUltimaGestion,
+                        FechaPromesa              = y.Fila.FechaPromesa,
+                        ValorPromesa              = y.Fila.ValorPromesa,
+                    });
+            })
             .ToList();
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static TitularComparativoDto MapTitular(
-        long titularID, string nombre,
-        string? perfilSeleccionada, string? perfilOtra, string nombreOtraCartera,
-        string? numeroMarcadoSeleccionada, string? numeroMarcadoOtra,
-        decimal? saldoTotal, DateOnly? fechaUltimaGestion, decimal? valorPromesa)
-        => new()
-        {
-            NumeroDocumento           = titularID,
-            Nombre                    = nombre,
-            PerfilSeleccionada        = perfilSeleccionada,
-            PerfilOtraCartera         = perfilOtra,
-            NombreOtraCartera         = nombreOtraCartera,
-            NumeroMarcadoSeleccionada = numeroMarcadoSeleccionada,
-            NumeroMarcadoOtra         = numeroMarcadoOtra,
-            SaldoTotal                = saldoTotal,
-            FechaUltimaGestion        = fechaUltimaGestion,
-            ValorPromesa              = valorPromesa,
-        };
 }
