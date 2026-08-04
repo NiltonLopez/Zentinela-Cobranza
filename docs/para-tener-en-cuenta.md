@@ -3,7 +3,28 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-07-09**.
+Última actualización: **2026-08-04**.
+
+---
+
+## Fuente TigoUne — gemela de Tigo, tabla vacía al integrarse (2026-08-04)
+
+- **`dbo.TigoUne` es estructuralmente idéntica a `dbo.Tigo`** (TitularID bigint,
+  NumeroTelefono varchar(10), Email varchar(255), EstadoEnTigoUne bit,
+  FechaConsulta date). Se integró replicando el patrón de Tigo en las 4 capas:
+  columnas `[Celular TigoUne]` / `[Email TigoUne]` en `vw_BaseMadre` **y en los
+  tres iTVF** (`fn_BaseMadrePorCartera`, `fn_BaseMadreParaTitulares`,
+  `fn_BaseMadreParaTitulares_CarteraChica`), selector celular+email, panel de
+  localización, Rastreo de Líneas y ConsultaIntegrada. Cardinalidad 1:1.
+- **La tabla estaba VACÍA (0 filas) al momento de integrar**, igual que su staging
+  `TigoUneAuxiliar`. El cableado está completo y validado (migración ejecutada en
+  transacción con rollback contra la BD real), pero el smoke con datos reales y el
+  estado visual `Funcional` quedan pendientes del primer cargue. Por eso
+  `ESTADO_FUENTE['TigoUne']` está en `Inactivo` con nota "sin datos cargados aún".
+- **Migración:** `docs/sql/migrations/2026-08-04_tigoune_in_basemadre.sql`.
+  **Aún no aplicada a producción** al cierre de esta integración — requiere
+  confirmación porque toca objetos SQL compartidos que toda consulta del
+  Calificador/Creador usa.
 
 ---
 

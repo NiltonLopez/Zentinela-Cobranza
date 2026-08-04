@@ -26,6 +26,7 @@ public partial class ApplicationDbContext : DbContext
     public virtual DbSet<Simit> Simits { get; set; }
     public virtual DbSet<So> Sos { get; set; }
     public virtual DbSet<Tigo> Tigos { get; set; }
+    public virtual DbSet<TigoUne> TigoUnes { get; set; }
     public virtual DbSet<DatosClaro> DatosClaros { get; set; }
     public virtual DbSet<MiVacuna> MiVacunas { get; set; }
     public virtual DbSet<MutualSer> MutualSers { get; set; }
@@ -64,6 +65,7 @@ public partial class ApplicationDbContext : DbContext
         modelBuilder.Entity<Simit>().HasNoKey().ToTable("SIMIT");
         modelBuilder.Entity<So>().HasNoKey().ToTable("SOS");
         modelBuilder.Entity<Tigo>().HasNoKey().ToTable("Tigo");
+        modelBuilder.Entity<TigoUne>().HasNoKey().ToTable("TigoUne");
         modelBuilder.Entity<DatosClaro>().HasNoKey().ToTable("DatosClaro");
         modelBuilder.Entity<MiVacuna>().HasNoKey().ToTable("MiVacuna");
         modelBuilder.Entity<MutualSer>().HasNoKey().ToTable("MutualSer");

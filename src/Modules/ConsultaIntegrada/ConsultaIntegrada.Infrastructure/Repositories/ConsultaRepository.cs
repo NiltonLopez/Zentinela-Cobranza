@@ -143,6 +143,17 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        var tigoUne = await _context.TigoUnes.FirstOrDefaultAsync(t => t.TitularId == titular.NumeroDocumento);
+        if (tigoUne != null)
+        {
+            contactabilidad["TigoUne"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"] = tigoUne.NumeroTelefono ?? "N/A",
+                ["Email"] = tigoUne.Email ?? "N/A",
+                ["FechaConsulta"] = FormatDateOnly(tigoUne.FechaConsulta)
+            };
+        }
+
         var sos = await _context.Sos.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
         if (sos != null)
         {

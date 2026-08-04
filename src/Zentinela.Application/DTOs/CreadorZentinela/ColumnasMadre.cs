@@ -42,6 +42,8 @@ public static class ColumnasMadre
         new("EmailPositiva",              "Email Positiva",                TipoColumna.Texto),
         new("CelularTigo",                "Celular Tigo",                  TipoColumna.Texto),
         new("EmailTigo",                  "Email Tigo",                    TipoColumna.Texto),
+        new("CelularTigoUne",             "Celular TigoUne",               TipoColumna.Texto),
+        new("EmailTigoUne",               "Email TigoUne",                 TipoColumna.Texto),
         new("CelularSOS",                 "Celular SOS",                   TipoColumna.Texto),
         new("CelularClaro",               "Celular Claro",                 TipoColumna.Texto),
         new("EmailClaro",                 "Email Claro",                   TipoColumna.Texto),

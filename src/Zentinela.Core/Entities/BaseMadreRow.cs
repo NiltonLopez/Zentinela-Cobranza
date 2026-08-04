@@ -43,6 +43,8 @@ public class BaseMadreRow
     public string? EmailPositiva            { get; set; }
     public string? CelularTigo              { get; set; }
     public string? EmailTigo                { get; set; }
+    public string? CelularTigoUne           { get; set; }
+    public string? EmailTigoUne             { get; set; }
     public string? CelularSOS               { get; set; }
     public string? CelularClaro             { get; set; }
     public string? EmailClaro               { get; set; }

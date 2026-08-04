@@ -12,7 +12,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// alineadas con el bloque Localización del Calificador de Cartera) y devuelve,
 /// agrupado por tabla, los titulares asociados.
 ///
-/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer, MiVacuna, NuevaEps.
+/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, SOS, DatosClaro, MutualSer, MiVacuna, NuevaEps.
 /// NO incluye auditorías, listas negras, directorios, ni logs salientes — esas
 /// no son fuentes de localización.
 ///
@@ -95,7 +95,7 @@ public class RastreoLineasService : IRastreoLineasService
 
     // ── SQL: UNION ALL sobre las fuentes de Localización ─────────────────────
     // Solo tablas del bloque Localización del Calificador con columna de teléfono:
-    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer.
+    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, SOS, DatosClaro, MutualSer.
     // Cajacopi y Positiva tienen Celular y Fijo → 2 SELECTs cada una.
     // MutualSer tiene Celular, Celular2 y Fijo → 3 SELECTs.
     // ISNULL en Nombre por si algún TitularID no existe en dbo.Titular (orphan).
@@ -162,6 +162,14 @@ public class RastreoLineasService : IRastreoLineasService
             SELECT 'Tigo', 'Tigo',
                    x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
               FROM dbo.Tigo x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroTelefono = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- TigoUne
+            SELECT 'TigoUne', 'TigoUne',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.TigoUne x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
              WHERE x.NumeroTelefono = @numero
              GROUP BY x.TitularID, t.Nombre

@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-06-12  
+> Generado: 2026-04-02 — Actualizado: 2026-08-04  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -526,6 +526,17 @@ Datos de contacto obtenidos de Tigo.
 | EstadoEnTigo | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+### TigoUne
+Datos de contacto obtenidos de Tigo Une. Estructura idéntica a `Tigo` (fuente gemela). A la fecha de integración (2026-08-04) la tabla está **vacía** — el cableado queda listo para el primer cargue.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | NO | — | Titular |
+| NumeroTelefono | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| EstadoEnTigoUne | bit | NO | — | — |
+| FechaConsulta | date | NO | — | — |
+
 ---
 
 ## Tablas Auxiliar (staging)
@@ -939,7 +950,7 @@ Envíos IVR (voz automatizada) a titulares. Espejo de `MensajesEnviados`. Carga 
 
 El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCallCenter` que exponga columna(s) de teléfono usable, vía un único `UNION ALL` parametrizado en `RastreoLineasService.SqlConsulta`. Resuelve nombre del titular con `LEFT JOIN dbo.Titular`.
 
-**Tablas vigentes (8)** — fuente única de verdad: el código del service.
+**Tablas vigentes (9)** — fuente única de verdad: el código del service.
 
 | Tabla | Columna(s) consultadas | Etiqueta(s) en UI |
 |---|---|---|
@@ -948,6 +959,7 @@ El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCa
 | SaludTotal | `NumeroTelefono` | `Salud Total` |
 | Positiva | `NumeroTelefonoCelular`, `NumeroTelefonoFijo` | `Positiva (celular)`, `Positiva (fijo)` |
 | Tigo | `NumeroTelefono` | `Tigo` |
+| TigoUne | `NumeroTelefono` | `TigoUne` |
 | SOS | `Telefono` | `SOS` |
 | DatosClaro | `NumeroTelefono` | `Claro` |
 | MutualSer | `NumeroTelefonoCelular`, `NumeroTelefonoCelular2`, `NumeroTelefonoFijo` | `MutualSer (celular 1)`, `MutualSer (celular 2)`, `MutualSer (fijo)` |
@@ -1349,6 +1361,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | SIMIT | `IX_SIMIT_TitularID_Fecha` |
 | SOS | `IX_SOS_TitularID_Fecha` |
 | Tigo | `IX_Tigo_TitularID_Fecha` |
+| TigoUne | `IX_TigoUne_TitularID_FechaConsulta` |
 
 #### Columnas expuestas por `vw_BaseMadre` (alias en SQL)
 
@@ -1363,6 +1376,7 @@ Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en 
 | `[Celular MutualSer]`, `[Celular 2 MutualSer]`, `[Telefono Fijo MutualSer]`, `[Email MutualSer]`, `[Regimen MutualSer]`, `[Tipo Afiliado MutualSer]`, `[Departamento MutualSer]`, `[Municipio MutualSer]`, `[Estado MutualSer]`, `[Ultima Consulta MutualSer]` | `CelularMutualSer`, `Celular2MutualSer`, `TelefonoFijoMutualSer`, `EmailMutualSer`, `RegimenMutualSer`, `TipoAfiliadoMutualSer`, `DepartamentoMutualSer`, `MunicipioMutualSer`, `EstadoMutualSer`, `UltimaConsultaMutualSer` | MutualSer |
 | `[Celular Positiva]`, `[Email Positiva]` | `CelularPositiva`, `EmailPositiva` | Positiva |
 | `[Celular Tigo]`, `[Email Tigo]` | `CelularTigo`, `EmailTigo` | Tigo |
+| `[Celular TigoUne]`, `[Email TigoUne]` | `CelularTigoUne`, `EmailTigoUne` | TigoUne |
 | `[Celular SOS]` | `CelularSOS` | SOS |
 
 #### Estado operativo de las fuentes (visual en Calificador)
@@ -1378,6 +1392,7 @@ Indicador junto al nombre de cada fuente en la tabla de localización (`Califica
 | Compensados | Intermitente | — |
 | Positiva | Funcional | — |
 | Tigo | Inactivo | — |
+| TigoUne | Inactivo | Gemela de Tigo; tabla vacía al integrarse (2026-08-04), pendiente primer cargue |
 | SOS | Funcional | — |
 | Claro | Inactivo | — |
 | MutualSer | Funcional | 1:1 — aporta 2 celulares + email + régimen + dept/municipio + estado |
