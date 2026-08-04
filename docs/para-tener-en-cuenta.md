@@ -7,6 +7,22 @@ backlog: los items se cierran o se descartan con razón explícita.
 
 ---
 
+## Fuente Coosalud — EPS rica tipo NuevaEps, tabla vacía al integrarse (2026-08-04)
+
+- **`dbo.Coosalud` es una fuente 1:1 tipo EPS**, estructuralmente cercana a NuevaEps
+  pero **ampliada**: además de celular, estado afiliación, tipo afiliado, fecha
+  nacimiento y geografía, trae **email, régimen y nivel Sisbén**. Se exponen **11
+  columnas** en `vw_BaseMadre` + los 3 iTVF (decisión del usuario: exponer todas).
+- **TitularID es bigint** (como Tigo/TigoUne), NO varchar como NuevaEps — por eso en
+  ConsultaIntegrada se compara directo contra `titular.NumeroDocumento` sin `.ToString()`.
+- **La tabla estaba VACÍA (0 filas)** al integrar (staging `CoosaludAuxiliar` también).
+  `ESTADO_FUENTE['Coosalud']` en `Inactivo` hasta el primer cargue.
+- **Localización**: entra con predicado celular OR email OR depto OR municipio (patrón
+  NuevaEps). Requiere 4 columnas en `#t` de `SqlAgregados`: CelCoosalud, EmCoosalud,
+  DepartamentoCoosalud, MunicipioCoosalud.
+- **Migración:** `docs/sql/migrations/2026-08-04_coosalud_in_basemadre.sql`. Aplicada
+  a producción tras validación con rollback.
+
 ## Fuente TigoUne — gemela de Tigo, tabla vacía al integrarse (2026-08-04)
 
 - **`dbo.TigoUne` es estructuralmente idéntica a `dbo.Tigo`** (TitularID bigint,

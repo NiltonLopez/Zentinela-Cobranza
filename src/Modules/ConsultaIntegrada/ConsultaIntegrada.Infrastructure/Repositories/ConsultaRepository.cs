@@ -154,6 +154,26 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        // Coosalud es 1:1 por TitularID (bigint) — contactabilidad + afiliación.
+        var coosalud = await _context.Coosaluds.FirstOrDefaultAsync(c => c.TitularId == titular.NumeroDocumento);
+        if (coosalud != null)
+        {
+            contactabilidad["Coosalud"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"]    = coosalud.NumeroTelefono   ?? "N/A",
+                ["Email"]              = coosalud.Email            ?? "N/A",
+                ["Régimen"]            = coosalud.Regimen          ?? "N/A",
+                ["Tipo Afiliado"]      = coosalud.TipoAfiliado     ?? "N/A",
+                ["Estado Afiliación"]  = coosalud.EstadoAfiliacion ?? "N/A",
+                ["Nivel Sisbén"]       = coosalud.NivelSisben      ?? "N/A",
+                ["Departamento"]       = coosalud.DepartamentoOrigen ?? "N/A",
+                ["Municipio"]          = coosalud.MunicipioOrigen  ?? "N/A",
+                ["Fecha Nacimiento"]   = coosalud.FechaNacimiento.HasValue ? FormatDateOnly(coosalud.FechaNacimiento.Value) : "N/A",
+                ["Estado"]             = coosalud.EstadoEnCoosalud ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = FormatDateOnly(coosalud.FechaConsulta),
+            };
+        }
+
         var sos = await _context.Sos.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
         if (sos != null)
         {

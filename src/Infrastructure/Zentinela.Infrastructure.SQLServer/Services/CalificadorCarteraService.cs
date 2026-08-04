@@ -146,6 +146,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Celular Positiva]                AS CelPositiva,
             [Celular Tigo]                    AS CelTigo,
             [Celular TigoUne]                 AS CelTigoUne,
+            [Celular Coosalud]                AS CelCoosalud,
             [Celular SOS]                     AS CelSOS,
             [Celular Claro]                   AS CelClaro,
             [Celular MutualSer]               AS CelMutualSer,
@@ -158,6 +159,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Email Positiva]                  AS EmPositiva,
             [Email Tigo]                      AS EmTigo,
             [Email TigoUne]                   AS EmTigoUne,
+            [Email Coosalud]                  AS EmCoosalud,
             [Email Claro]                     AS EmClaro,
             [Email MutualSer]                 AS EmMutualSer,
             [Email MiVacuna]                  AS EmMiVacuna,
@@ -180,6 +182,8 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             [Municipio MutualSer]         AS MunicipioMutualSer,
             [Departamento NuevaEps]       AS DepartamentoNuevaEps,
             [Municipio NuevaEps]          AS MunicipioNuevaEps,
+            [Departamento Coosalud]       AS DepartamentoCoosalud,
+            [Municipio Coosalud]          AS MunicipioCoosalud,
             [NIT Sura]                    AS NITSura,
             [Empresa Sura]                AS EmpresaSura,
             [NIT Positiva]                AS NITPositiva,
@@ -227,36 +231,36 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             (SELECT COUNT(*) FROM #t
                 WHERE CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
                    OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
-                   OR CelTigo       NOT IN ('','0') OR CelTigoUne    NOT IN ('','0') OR CelSOS       NOT IN ('','0')
+                   OR CelTigo       NOT IN ('','0') OR CelTigoUne    NOT IN ('','0') OR CelCoosalud  NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                    OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
                    OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna  NOT IN ('','0')
                    OR CelNuevaEps   NOT IN ('','0')) AS ConCelular,
             (SELECT COUNT(*) FROM #t
                 WHERE EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                    OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
-                   OR EmTigo       NOT IN ('','0') OR EmTigoUne    NOT IN ('','0') OR EmClaro    NOT IN ('','0')
+                   OR EmTigo       NOT IN ('','0') OR EmTigoUne    NOT IN ('','0') OR EmCoosalud  NOT IN ('','0') OR EmClaro    NOT IN ('','0')
                    OR EmMutualSer  NOT IN ('','0') OR EmMiVacuna NOT IN ('','0'))   AS ConEmail,
             (SELECT COUNT(*) FROM #t
                 WHERE (CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
                     OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
-                    OR CelTigo       NOT IN ('','0') OR CelTigoUne    NOT IN ('','0') OR CelSOS       NOT IN ('','0')
+                    OR CelTigo       NOT IN ('','0') OR CelTigoUne    NOT IN ('','0') OR CelCoosalud  NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                     OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
                     OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0')
                     OR CelNuevaEps   NOT IN ('','0'))
                   AND (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                     OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
-                    OR EmTigo       NOT IN ('','0') OR EmTigoUne    NOT IN ('','0') OR EmClaro    NOT IN ('','0')
+                    OR EmTigo       NOT IN ('','0') OR EmTigoUne    NOT IN ('','0') OR EmCoosalud  NOT IN ('','0') OR EmClaro    NOT IN ('','0')
                     OR EmMutualSer  NOT IN ('','0') OR EmMiVacuna NOT IN ('','0'))) AS ConCelularYEmail,
             (SELECT COUNT(*) FROM #t
                 WHERE NOT (CelCajacopi   NOT IN ('','0') OR CelCamara    NOT IN ('','0')
                         OR CelSaludTotal NOT IN ('','0') OR CelPositiva  NOT IN ('','0')
-                        OR CelTigo       NOT IN ('','0') OR CelTigoUne    NOT IN ('','0') OR CelSOS       NOT IN ('','0')
+                        OR CelTigo       NOT IN ('','0') OR CelTigoUne    NOT IN ('','0') OR CelCoosalud  NOT IN ('','0') OR CelSOS       NOT IN ('','0')
                         OR CelClaro      NOT IN ('','0') OR CelMutualSer NOT IN ('','0')
                         OR CelMutualSer2 NOT IN ('','0') OR CelMiVacuna NOT IN ('','0')
                         OR CelNuevaEps   NOT IN ('','0'))
                   AND NOT (EmCajacopi   NOT IN ('','0') OR EmCamara   NOT IN ('','0')
                         OR EmSaludTotal NOT IN ('','0') OR EmPositiva NOT IN ('','0')
-                        OR EmTigo       NOT IN ('','0') OR EmTigoUne    NOT IN ('','0') OR EmClaro    NOT IN ('','0')
+                        OR EmTigo       NOT IN ('','0') OR EmTigoUne    NOT IN ('','0') OR EmCoosalud  NOT IN ('','0') OR EmClaro    NOT IN ('','0')
                         OR EmMutualSer  NOT IN ('','0') OR EmMiVacuna NOT IN ('','0'))) AS SinContacto,
             (SELECT COUNT(*) FROM #t WHERE EdadReg > 0)                             AS ConEdadRegistraduria,
             CASE WHEN (SELECT COUNT(*) FROM #t WHERE EdadReg > 0) > 0
@@ -333,6 +337,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             UNION ALL SELECT 'Positiva',   SUM(CASE WHEN CelPositiva   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'Tigo',       SUM(CASE WHEN CelTigo       NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'TigoUne',    SUM(CASE WHEN CelTigoUne    NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
+            UNION ALL SELECT 'Coosalud',   SUM(CASE WHEN CelCoosalud   NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'SOS',        SUM(CASE WHEN CelSOS        NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'Claro',      SUM(CASE WHEN CelClaro      NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
             UNION ALL SELECT 'MutualSer (1)', SUM(CASE WHEN CelMutualSer  NOT IN ('','0') THEN 1 ELSE 0 END) FROM #t
@@ -344,7 +349,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                CAST(ROUND(CAST(Cantidad AS decimal(18,4)) / NULLIF(@Total, 0) * 100, 1) AS decimal(10,1)) AS Porcentaje
         FROM F WHERE Cantidad > 0 ORDER BY Cantidad DESC;
 
-        -- Result set 9: localización (16 fuentes, encontrados/no-encontrados)
+        -- Result set 9: localización (17 fuentes, encontrados/no-encontrados)
         -- Reusa #t y agrega LEFT JOIN DISTINCT contra cada tabla fuente para
         -- distinguir "no encontrado" (existe fila pero datos vacíos) de
         -- "falta buscar" (no existe fila en la tabla fuente).
@@ -415,6 +420,17 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                       AND NULLIF(NULLIF(t.EmTigoUne,  ''), '0') IS NULL
                       AND tu.TitularID IS NOT NULL
                      THEN 1 ELSE 0 END) AS TigoUneNoEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelCoosalud,        ''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.EmCoosalud,         ''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.DepartamentoCoosalud,''),'0') IS NOT NULL
+                       OR NULLIF(NULLIF(t.MunicipioCoosalud,   ''),'0') IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CoosaludEnc,
+            SUM(CASE WHEN NULLIF(NULLIF(t.CelCoosalud,        ''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.EmCoosalud,         ''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.DepartamentoCoosalud,''),'0') IS NULL
+                      AND NULLIF(NULLIF(t.MunicipioCoosalud,   ''),'0') IS NULL
+                      AND cs.TitularID IS NOT NULL
+                     THEN 1 ELSE 0 END) AS CoosaludNoEnc,
             SUM(CASE WHEN NULLIF(NULLIF(t.CelSOS,    ''), '0') IS NOT NULL
                        OR (t.NitSOS IS NOT NULL AND t.NitSOS != 0)
                        OR NULLIF(NULLIF(t.EmpresaSOS,''), '0') IS NOT NULL
@@ -502,6 +518,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         LEFT JOIN (SELECT DISTINCT TitularID FROM Positiva)         p  ON p.TitularID  = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM Tigo)             ti ON ti.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM TigoUne)          tu ON tu.TitularID = t.TitularID
+        LEFT JOIN (SELECT DISTINCT TitularID FROM Coosalud)         cs ON cs.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM SOS)              s  ON s.TitularID  = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM DatosClaro)       dc ON dc.TitularID = t.TitularID
         LEFT JOIN (SELECT DISTINCT TitularID FROM MiVacuna)         mv ON mv.TitularID = t.TitularID
@@ -728,6 +745,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             Fuente("Positiva",      Sum("PositivaEnc"),    Sum("PositivaNoEnc"),    total),
             Fuente("Tigo",          Sum("TigoEnc"),        Sum("TigoNoEnc"),        total),
             Fuente("TigoUne",       Sum("TigoUneEnc"),     Sum("TigoUneNoEnc"),     total),
+            Fuente("Coosalud",      Sum("CoosaludEnc"),    Sum("CoosaludNoEnc"),    total),
             Fuente("SOS",           Sum("SosEnc"),         Sum("SosNoEnc"),         total),
             Fuente("Claro",         Sum("ClaroEnc"),       Sum("ClaroNoEnc"),       total),
             Fuente("MiVacuna",      Sum("MiVacunaEnc"),    Sum("MiVacunaNoEnc"),    total),
@@ -817,6 +835,14 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             "[Celular TigoUne] AS CelTigoUne, [Email TigoUne] AS EmTigoUne",
             "NULLIF(NULLIF(t.CelTigoUne,''),'0') IS NOT NULL " +
             "OR NULLIF(NULLIF(t.EmTigoUne,''),'0') IS NOT NULL"),
+
+        ["coosalud"] = new("coosalud", "Coosalud", "Coosalud", "FechaConsulta",
+            "[Celular Coosalud] AS CelCoosalud, [Email Coosalud] AS EmCoosalud, " +
+            "[Departamento Coosalud] AS DepartamentoCoosalud, [Municipio Coosalud] AS MunicipioCoosalud",
+            "NULLIF(NULLIF(t.CelCoosalud,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.EmCoosalud,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.DepartamentoCoosalud,''),'0') IS NOT NULL " +
+            "OR NULLIF(NULLIF(t.MunicipioCoosalud,''),'0') IS NOT NULL"),
 
         ["sos"] = new("sos", "SOS", "SOS", "FechaConsulta",
             "[Celular SOS] AS CelSOS, [Nit Sos] AS NitSOS, [Empresa SOS] AS EmpresaSOS",

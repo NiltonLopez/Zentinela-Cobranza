@@ -49,6 +49,17 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.EmailTigo)               .HasColumnName("Email Tigo");
         builder.Property(b => b.CelularTigoUne)          .HasColumnName("Celular TigoUne");
         builder.Property(b => b.EmailTigoUne)            .HasColumnName("Email TigoUne");
+        builder.Property(b => b.CelularCoosalud)         .HasColumnName("Celular Coosalud");
+        builder.Property(b => b.EmailCoosalud)           .HasColumnName("Email Coosalud");
+        builder.Property(b => b.RegimenCoosalud)         .HasColumnName("Regimen Coosalud");
+        builder.Property(b => b.TipoAfiliadoCoosalud)    .HasColumnName("Tipo Afiliado Coosalud");
+        builder.Property(b => b.EstadoAfiliacionCoosalud).HasColumnName("Estado Afiliacion Coosalud");
+        builder.Property(b => b.NivelSisbenCoosalud)     .HasColumnName("Nivel Sisben Coosalud");
+        builder.Property(b => b.DepartamentoCoosalud)    .HasColumnName("Departamento Coosalud");
+        builder.Property(b => b.MunicipioCoosalud)       .HasColumnName("Municipio Coosalud");
+        builder.Property(b => b.FechaNacimientoCoosalud) .HasColumnName("Fecha Nacimiento Coosalud");
+        builder.Property(b => b.EstadoCoosalud)          .HasColumnName("Estado Coosalud");
+        builder.Property(b => b.UltimaConsultaCoosalud)  .HasColumnName("Ultima Consulta Coosalud");
         builder.Property(b => b.CelularSOS)              .HasColumnName("Celular SOS");
         builder.Property(b => b.CelularClaro)            .HasColumnName("Celular Claro");
         builder.Property(b => b.EmailClaro)              .HasColumnName("Email Claro");
