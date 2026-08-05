@@ -527,7 +527,7 @@ Datos de contacto obtenidos de Tigo.
 | FechaConsulta | date | NO | — | — |
 
 ### TigoUne
-Datos de contacto obtenidos de Tigo Une. Estructura idéntica a `Tigo` (fuente gemela). A la fecha de integración (2026-08-04) la tabla está **vacía** — el cableado queda listo para el primer cargue.
+Datos de contacto obtenidos de Tigo Une. Estructura idéntica a `Tigo` (fuente gemela). Con datos desde 2026-08-05 (5.192 titulares; vacía al integrarse el 2026-08-04).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -538,7 +538,7 @@ Datos de contacto obtenidos de Tigo Une. Estructura idéntica a `Tigo` (fuente g
 | FechaConsulta | date | NO | — | — |
 
 ### Coosalud
-Contactabilidad + afiliación Coosalud (EPS). Fuente 1:1 tipo NuevaEps ampliada (celular, email, régimen, tipo afiliado, estado afiliación, nivel Sisbén, geografía, fecha nacimiento). A la fecha de integración (2026-08-04) la tabla está **vacía** — cableado listo para el primer cargue.
+Contactabilidad + afiliación Coosalud (EPS). Fuente 1:1 tipo NuevaEps ampliada (celular, email, régimen, tipo afiliado, estado afiliación, nivel Sisbén, geografía, fecha nacimiento). Con datos desde 2026-08-05 (369.049 titulares; vacía al integrarse el 2026-08-04).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1431,8 +1431,8 @@ Indicador junto al nombre de cada fuente en la tabla de localización (`Califica
 | Compensados | Intermitente | — |
 | Positiva | Funcional | — |
 | Tigo | Inactivo | — |
-| TigoUne | Inactivo | Gemela de Tigo; tabla vacía al integrarse (2026-08-04), pendiente primer cargue |
-| Coosalud | Inactivo | EPS tipo NuevaEps ampliada; tabla vacía al integrarse (2026-08-04), pendiente primer cargue |
+| TigoUne | Funcional | Gemela de Tigo; con datos desde 2026-08-05 (5.192 titulares) |
+| Coosalud | Funcional | EPS tipo NuevaEps ampliada; con datos desde 2026-08-05 (369.049 titulares) |
 | Savia Salud | Funcional | EPS con datos (193.752 filas al integrarse 2026-08-05); celular en NumeroCelular, sin email |
 | SOS | Funcional | — |
 | Claro | Inactivo | — |

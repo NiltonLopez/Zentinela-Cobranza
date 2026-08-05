@@ -39,7 +39,8 @@ backlog: los items se cierran o se descartan con razón explícita.
 - **TitularID es bigint** (como Tigo/TigoUne), NO varchar como NuevaEps — por eso en
   ConsultaIntegrada se compara directo contra `titular.NumeroDocumento` sin `.ToString()`.
 - **La tabla estaba VACÍA (0 filas)** al integrar (staging `CoosaludAuxiliar` también).
-  `ESTADO_FUENTE['Coosalud']` en `Inactivo` hasta el primer cargue.
+  `ESTADO_FUENTE['Coosalud']` pasó a `Funcional` el 2026-08-05 al llegar datos
+  (369.049 titulares).
 - **Localización**: entra con predicado celular OR email OR depto OR municipio (patrón
   NuevaEps). Requiere 4 columnas en `#t` de `SqlAgregados`: CelCoosalud, EmCoosalud,
   DepartamentoCoosalud, MunicipioCoosalud.
@@ -59,7 +60,8 @@ backlog: los items se cierran o se descartan con razón explícita.
   `TigoUneAuxiliar`. El cableado está completo y validado (migración ejecutada en
   transacción con rollback contra la BD real), pero el smoke con datos reales y el
   estado visual `Funcional` quedan pendientes del primer cargue. Por eso
-  `ESTADO_FUENTE['TigoUne']` está en `Inactivo` con nota "sin datos cargados aún".
+  `ESTADO_FUENTE['TigoUne']` pasó a `Funcional` el 2026-08-05 al llegar datos
+  (5.192 titulares).
 - **Migración:** `docs/sql/migrations/2026-08-04_tigoune_in_basemadre.sql`.
   **Aún no aplicada a producción** al cierre de esta integración — requiere
   confirmación porque toca objetos SQL compartidos que toda consulta del
