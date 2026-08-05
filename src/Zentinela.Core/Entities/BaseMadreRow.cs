@@ -56,6 +56,13 @@ public class BaseMadreRow
     public DateOnly? FechaNacimientoCoosalud  { get; set; }
     public string?   EstadoCoosalud           { get; set; }
     public DateOnly? UltimaConsultaCoosalud   { get; set; }
+    public string?   CelularSaviaSalud        { get; set; }
+    public string?   RegimenSaviaSalud        { get; set; }
+    public string?   TipoAfiliadoSaviaSalud   { get; set; }
+    public string?   EstadoAfiliacionSaviaSalud { get; set; }
+    public DateOnly? FechaNacimientoSaviaSalud { get; set; }
+    public string?   EstadoSaviaSalud         { get; set; }
+    public DateOnly? UltimaConsultaSaviaSalud { get; set; }
     public string? CelularSOS               { get; set; }
     public string? CelularClaro             { get; set; }
     public string? EmailClaro               { get; set; }

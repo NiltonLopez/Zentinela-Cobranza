@@ -154,6 +154,22 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        // Savia Salud es 1:1 por TitularID (bigint) — contactabilidad + afiliación, sin email.
+        var saviaSalud = await _context.SaviaSaluds.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
+        if (saviaSalud != null)
+        {
+            contactabilidad["Savia Salud"] = new Dictionary<string, string>
+            {
+                ["Celular"]            = saviaSalud.NumeroCelular      ?? "N/A",
+                ["Régimen"]            = saviaSalud.Regimen            ?? "N/A",
+                ["Tipo Afiliado"]      = saviaSalud.TipoAfiliado       ?? "N/A",
+                ["Estado Afiliación"]  = saviaSalud.EstadoDeAfiliacion ?? "N/A",
+                ["Fecha Nacimiento"]   = saviaSalud.FechaDeNacimiento.HasValue ? FormatDateOnly(saviaSalud.FechaDeNacimiento.Value) : "N/A",
+                ["Estado"]             = saviaSalud.Estado == true ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = saviaSalud.FechaConsulta.HasValue ? FormatDateOnly(saviaSalud.FechaConsulta.Value) : "N/A",
+            };
+        }
+
         // Coosalud es 1:1 por TitularID (bigint) — contactabilidad + afiliación.
         var coosalud = await _context.Coosaluds.FirstOrDefaultAsync(c => c.TitularId == titular.NumeroDocumento);
         if (coosalud != null)

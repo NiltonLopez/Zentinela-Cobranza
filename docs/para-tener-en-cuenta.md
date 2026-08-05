@@ -7,6 +7,29 @@ backlog: los items se cierran o se descartan con razón explícita.
 
 ---
 
+## Fuente Savia Salud — EPS con datos; NumeroTelefono vacío, TitularID nullable (2026-08-05)
+
+- **`dbo.SaviaSalud` es la primera fuente nueva de esta tanda que llega CON datos**
+  (193.752 filas, 1:1). Se expusieron **7 columnas**: celular (`NumeroCelular`),
+  régimen, tipo afiliado, estado afiliación, fecha nacimiento, estado (bit), última
+  consulta. Marcada `Funcional` en `ESTADO_FUENTE` (se actualiza a diario).
+- **`NumeroTelefono` (varchar 10) está 100% vacío** en las 193k filas → NO se mapea
+  (columna muerta). El celular real vive en **`NumeroCelular`** (varchar 100, pero
+  contiene un solo móvil de 10 dígitos). El selector de celular y el Rastreo usan
+  `NumeroCelular`.
+- **Sin email** → NO entra al switch/selector de email ni a `FUENTES_EMAIL`.
+- **`TitularID` es bigint NULLABLE** (a diferencia de las demás fuentes, NOT NULL).
+  El JOIN por igualdad (`TC.TitularID = SV.TitularID`) descarta las filas con
+  TitularID NULL de forma natural — no requiere manejo especial. La entidad de
+  ConsultaIntegrada usa `long? TitularId`.
+- **Localización**: predicado celular OR régimen OR estado afiliación (no hay
+  geografía). Requiere 3 columnas en `#t`: CelSaviaSalud, RegimenSaviaSalud,
+  EstadoAfiliacionSaviaSalud.
+- **Etiqueta con espacio**: en el panel/CSV la fuente se llama **"Savia Salud"**
+  (con espacio); slug `saviasalud`; nombre en código/tabla `SaviaSalud` (sin espacio).
+- **Migración:** `docs/sql/migrations/2026-08-05_saviasalud_in_basemadre.sql`. Aplicada
+  y smoke con datos reales OK (cartera 22).
+
 ## Fuente Coosalud — EPS rica tipo NuevaEps, tabla vacía al integrarse (2026-08-04)
 
 - **`dbo.Coosalud` es una fuente 1:1 tipo EPS**, estructuralmente cercana a NuevaEps

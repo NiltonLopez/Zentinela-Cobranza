@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-08-04  
+> Generado: 2026-04-02 — Actualizado: 2026-08-05  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -555,6 +555,21 @@ Contactabilidad + afiliación Coosalud (EPS). Fuente 1:1 tipo NuevaEps ampliada 
 | EstadoEnCoosalud | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+### SaviaSalud
+Contactabilidad + afiliación Savia Salud (EPS). Fuente 1:1 **con datos** (193.752 filas al integrarse, 2026-08-05). Celular en `NumeroCelular`; `NumeroTelefono` está 100% vacío y NO se mapea. Sin email.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | SI | — | Titular |
+| FechaDeNacimiento | date | SI | — | — |
+| TipoAfiliado | varchar(50) | SI | — | — |
+| EstadoDeAfiliacion | varchar(50) | SI | — | — |
+| Regimen | varchar(70) | SI | — | — |
+| NumeroTelefono | varchar(10) | SI | — | — (vacío, no mapeado) |
+| NumeroCelular | varchar(100) | SI | — | — |
+| Estado | bit | SI | — | — |
+| FechaConsulta | date | SI | — | — |
+
 ---
 
 ## Tablas Auxiliar (staging)
@@ -968,7 +983,7 @@ Envíos IVR (voz automatizada) a titulares. Espejo de `MensajesEnviados`. Carga 
 
 El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCallCenter` que exponga columna(s) de teléfono usable, vía un único `UNION ALL` parametrizado en `RastreoLineasService.SqlConsulta`. Resuelve nombre del titular con `LEFT JOIN dbo.Titular`.
 
-**Tablas vigentes (10)** — fuente única de verdad: el código del service.
+**Tablas vigentes (11)** — fuente única de verdad: el código del service.
 
 | Tabla | Columna(s) consultadas | Etiqueta(s) en UI |
 |---|---|---|
@@ -979,6 +994,7 @@ El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCa
 | Tigo | `NumeroTelefono` | `Tigo` |
 | TigoUne | `NumeroTelefono` | `TigoUne` |
 | Coosalud | `NumeroTelefono` | `Coosalud` |
+| SaviaSalud | `NumeroCelular` | `Savia Salud` |
 | SOS | `Telefono` | `SOS` |
 | DatosClaro | `NumeroTelefono` | `Claro` |
 | MutualSer | `NumeroTelefonoCelular`, `NumeroTelefonoCelular2`, `NumeroTelefonoFijo` | `MutualSer (celular 1)`, `MutualSer (celular 2)`, `MutualSer (fijo)` |
@@ -1382,6 +1398,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | Tigo | `IX_Tigo_TitularID_Fecha` |
 | TigoUne | `IX_TigoUne_TitularID_FechaConsulta` |
 | Coosalud | `IX_Coosalud_TitularID_FechaConsulta` |
+| SaviaSalud | `IX_SaviaSalud_TitularID_FechaConsulta` |
 
 #### Columnas expuestas por `vw_BaseMadre` (alias en SQL)
 
@@ -1398,6 +1415,7 @@ Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en 
 | `[Celular Tigo]`, `[Email Tigo]` | `CelularTigo`, `EmailTigo` | Tigo |
 | `[Celular TigoUne]`, `[Email TigoUne]` | `CelularTigoUne`, `EmailTigoUne` | TigoUne |
 | `[Celular Coosalud]`, `[Email Coosalud]`, `[Regimen Coosalud]`, `[Tipo Afiliado Coosalud]`, `[Estado Afiliacion Coosalud]`, `[Nivel Sisben Coosalud]`, `[Departamento Coosalud]`, `[Municipio Coosalud]`, `[Fecha Nacimiento Coosalud]`, `[Estado Coosalud]`, `[Ultima Consulta Coosalud]` | `CelularCoosalud`, `EmailCoosalud`, `RegimenCoosalud`, `TipoAfiliadoCoosalud`, `EstadoAfiliacionCoosalud`, `NivelSisbenCoosalud`, `DepartamentoCoosalud`, `MunicipioCoosalud`, `FechaNacimientoCoosalud`, `EstadoCoosalud`, `UltimaConsultaCoosalud` | Coosalud |
+| `[Celular SaviaSalud]`, `[Regimen SaviaSalud]`, `[Tipo Afiliado SaviaSalud]`, `[Estado Afiliacion SaviaSalud]`, `[Fecha Nacimiento SaviaSalud]`, `[Estado SaviaSalud]`, `[Ultima Consulta SaviaSalud]` | `CelularSaviaSalud`, `RegimenSaviaSalud`, `TipoAfiliadoSaviaSalud`, `EstadoAfiliacionSaviaSalud`, `FechaNacimientoSaviaSalud`, `EstadoSaviaSalud`, `UltimaConsultaSaviaSalud` | SaviaSalud |
 | `[Celular SOS]` | `CelularSOS` | SOS |
 
 #### Estado operativo de las fuentes (visual en Calificador)
@@ -1415,6 +1433,7 @@ Indicador junto al nombre de cada fuente en la tabla de localización (`Califica
 | Tigo | Inactivo | — |
 | TigoUne | Inactivo | Gemela de Tigo; tabla vacía al integrarse (2026-08-04), pendiente primer cargue |
 | Coosalud | Inactivo | EPS tipo NuevaEps ampliada; tabla vacía al integrarse (2026-08-04), pendiente primer cargue |
+| Savia Salud | Funcional | EPS con datos (193.752 filas al integrarse 2026-08-05); celular en NumeroCelular, sin email |
 | SOS | Funcional | — |
 | Claro | Inactivo | — |
 | MutualSer | Funcional | 1:1 — aporta 2 celulares + email + régimen + dept/municipio + estado |

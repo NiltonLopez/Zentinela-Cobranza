@@ -60,6 +60,13 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.FechaNacimientoCoosalud) .HasColumnName("Fecha Nacimiento Coosalud");
         builder.Property(b => b.EstadoCoosalud)          .HasColumnName("Estado Coosalud");
         builder.Property(b => b.UltimaConsultaCoosalud)  .HasColumnName("Ultima Consulta Coosalud");
+        builder.Property(b => b.CelularSaviaSalud)        .HasColumnName("Celular SaviaSalud");
+        builder.Property(b => b.RegimenSaviaSalud)        .HasColumnName("Regimen SaviaSalud");
+        builder.Property(b => b.TipoAfiliadoSaviaSalud)   .HasColumnName("Tipo Afiliado SaviaSalud");
+        builder.Property(b => b.EstadoAfiliacionSaviaSalud).HasColumnName("Estado Afiliacion SaviaSalud");
+        builder.Property(b => b.FechaNacimientoSaviaSalud).HasColumnName("Fecha Nacimiento SaviaSalud");
+        builder.Property(b => b.EstadoSaviaSalud)         .HasColumnName("Estado SaviaSalud");
+        builder.Property(b => b.UltimaConsultaSaviaSalud) .HasColumnName("Ultima Consulta SaviaSalud");
         builder.Property(b => b.CelularSOS)              .HasColumnName("Celular SOS");
         builder.Property(b => b.CelularClaro)            .HasColumnName("Celular Claro");
         builder.Property(b => b.EmailClaro)              .HasColumnName("Email Claro");

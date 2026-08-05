@@ -40,7 +40,7 @@ public class FiltroBaseMadreRequest
 
     /// <summary>
     /// Fuentes de datos de celular que deben tener número registrado.
-    /// Claves válidas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, Coosalud, SOS, Claro,
+    /// Claves válidas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, Coosalud, SaviaSalud, SOS, Claro,
     /// MiVacuna, MutualSer (cel 1), MutualSer2 (cel 2), NuevaEps. MutualSer expone 2
     /// celulares como columnas independientes — ver docs/para-tener-en-cuenta.md.
     /// Solo se retornan titulares con número en TODAS las fuentes seleccionadas.

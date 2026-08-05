@@ -65,6 +65,7 @@ const FUENTES_CELULAR = [
   { key: 'Tigo',          label: 'Tigo'           },
   { key: 'TigoUne',       label: 'TigoUne'        },
   { key: 'Coosalud',      label: 'Coosalud'       },
+  { key: 'SaviaSalud',    label: 'Savia Salud'    },
   { key: 'SOS',           label: 'SOS'            },
   { key: 'Claro',         label: 'Claro'          },
   { key: 'MiVacuna',      label: 'MiVacuna'       },
