@@ -43,6 +43,26 @@ public class BaseMadreRow
     public string? EmailPositiva            { get; set; }
     public string? CelularTigo              { get; set; }
     public string? EmailTigo                { get; set; }
+    public string? CelularTigoUne           { get; set; }
+    public string? EmailTigoUne             { get; set; }
+    public string?   CelularCoosalud          { get; set; }
+    public string?   EmailCoosalud            { get; set; }
+    public string?   RegimenCoosalud          { get; set; }
+    public string?   TipoAfiliadoCoosalud     { get; set; }
+    public string?   EstadoAfiliacionCoosalud { get; set; }
+    public string?   NivelSisbenCoosalud      { get; set; }
+    public string?   DepartamentoCoosalud     { get; set; }
+    public string?   MunicipioCoosalud        { get; set; }
+    public DateOnly? FechaNacimientoCoosalud  { get; set; }
+    public string?   EstadoCoosalud           { get; set; }
+    public DateOnly? UltimaConsultaCoosalud   { get; set; }
+    public string?   CelularSaviaSalud        { get; set; }
+    public string?   RegimenSaviaSalud        { get; set; }
+    public string?   TipoAfiliadoSaviaSalud   { get; set; }
+    public string?   EstadoAfiliacionSaviaSalud { get; set; }
+    public DateOnly? FechaNacimientoSaviaSalud { get; set; }
+    public string?   EstadoSaviaSalud         { get; set; }
+    public DateOnly? UltimaConsultaSaviaSalud { get; set; }
     public string? CelularSOS               { get; set; }
     public string? CelularClaro             { get; set; }
     public string? EmailClaro               { get; set; }

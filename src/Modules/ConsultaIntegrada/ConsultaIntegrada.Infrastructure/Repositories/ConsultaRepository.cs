@@ -143,6 +143,53 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        var tigoUne = await _context.TigoUnes.FirstOrDefaultAsync(t => t.TitularId == titular.NumeroDocumento);
+        if (tigoUne != null)
+        {
+            contactabilidad["TigoUne"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"] = tigoUne.NumeroTelefono ?? "N/A",
+                ["Email"] = tigoUne.Email ?? "N/A",
+                ["FechaConsulta"] = FormatDateOnly(tigoUne.FechaConsulta)
+            };
+        }
+
+        // Savia Salud es 1:1 por TitularID (bigint) — contactabilidad + afiliación, sin email.
+        var saviaSalud = await _context.SaviaSaluds.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
+        if (saviaSalud != null)
+        {
+            contactabilidad["Savia Salud"] = new Dictionary<string, string>
+            {
+                ["Celular"]            = saviaSalud.NumeroCelular      ?? "N/A",
+                ["Régimen"]            = saviaSalud.Regimen            ?? "N/A",
+                ["Tipo Afiliado"]      = saviaSalud.TipoAfiliado       ?? "N/A",
+                ["Estado Afiliación"]  = saviaSalud.EstadoDeAfiliacion ?? "N/A",
+                ["Fecha Nacimiento"]   = saviaSalud.FechaDeNacimiento.HasValue ? FormatDateOnly(saviaSalud.FechaDeNacimiento.Value) : "N/A",
+                ["Estado"]             = saviaSalud.Estado == true ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = saviaSalud.FechaConsulta.HasValue ? FormatDateOnly(saviaSalud.FechaConsulta.Value) : "N/A",
+            };
+        }
+
+        // Coosalud es 1:1 por TitularID (bigint) — contactabilidad + afiliación.
+        var coosalud = await _context.Coosaluds.FirstOrDefaultAsync(c => c.TitularId == titular.NumeroDocumento);
+        if (coosalud != null)
+        {
+            contactabilidad["Coosalud"] = new Dictionary<string, string>
+            {
+                ["Número Teléfono"]    = coosalud.NumeroTelefono   ?? "N/A",
+                ["Email"]              = coosalud.Email            ?? "N/A",
+                ["Régimen"]            = coosalud.Regimen          ?? "N/A",
+                ["Tipo Afiliado"]      = coosalud.TipoAfiliado     ?? "N/A",
+                ["Estado Afiliación"]  = coosalud.EstadoAfiliacion ?? "N/A",
+                ["Nivel Sisbén"]       = coosalud.NivelSisben      ?? "N/A",
+                ["Departamento"]       = coosalud.DepartamentoOrigen ?? "N/A",
+                ["Municipio"]          = coosalud.MunicipioOrigen  ?? "N/A",
+                ["Fecha Nacimiento"]   = coosalud.FechaNacimiento.HasValue ? FormatDateOnly(coosalud.FechaNacimiento.Value) : "N/A",
+                ["Estado"]             = coosalud.EstadoEnCoosalud ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = FormatDateOnly(coosalud.FechaConsulta),
+            };
+        }
+
         var sos = await _context.Sos.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
         if (sos != null)
         {
