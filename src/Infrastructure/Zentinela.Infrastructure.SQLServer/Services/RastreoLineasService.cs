@@ -12,7 +12,13 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// alineadas con el bloque Localización del Calificador de Cartera) y devuelve,
 /// agrupado por tabla, los titulares asociados.
 ///
-/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, Coosalud, SaviaSalud, SOS, DatosClaro, MutualSer, MiVacuna, NuevaEps.
+/// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, SOS, DatosClaro,
+/// MutualSer, MiVacuna, NuevaEps, Coosalud, SaviaSalud.
+///
+/// IMPORTANTE — mantener sincronizado con <c>UsoBaseDatosService.SqlCruce</c>: ambos
+/// deben cubrir EXACTAMENTE el mismo conjunto de fuentes, o el mismo número da
+/// "encontrado" en un módulo y "no encontrado" en el otro. Al integrar una fuente
+/// nueva hay que tocar los dos (ver .claude/commands/agregar-fuente-datos.md).
 /// NO incluye auditorías, listas negras, directorios, ni logs salientes — esas
 /// no son fuentes de localización.
 ///
@@ -95,7 +101,7 @@ public class RastreoLineasService : IRastreoLineasService
 
     // ── SQL: UNION ALL sobre las fuentes de Localización ─────────────────────
     // Solo tablas del bloque Localización del Calificador con columna de teléfono:
-    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, Coosalud, SaviaSalud, SOS, DatosClaro, MutualSer.
+    // Cajacopi, Camara, SaludTotal, Positiva, Tigo, SOS, DatosClaro, MutualSer.
     // Cajacopi y Positiva tienen Celular y Fijo → 2 SELECTs cada una.
     // MutualSer tiene Celular, Celular2 y Fijo → 3 SELECTs.
     // ISNULL en Nombre por si algún TitularID no existe en dbo.Titular (orphan).
@@ -166,8 +172,8 @@ public class RastreoLineasService : IRastreoLineasService
              WHERE x.NumeroTelefono = @numero
              GROUP BY x.TitularID, t.Nombre
             UNION ALL
-            -- TigoUne
-            SELECT 'TigoUne', 'TigoUne',
+            -- Tigo Une
+            SELECT 'TigoUne', 'Tigo Une',
                    x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
               FROM dbo.TigoUne x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
@@ -182,12 +188,25 @@ public class RastreoLineasService : IRastreoLineasService
              WHERE x.NumeroTelefono = @numero
              GROUP BY x.TitularID, t.Nombre
             UNION ALL
-            -- SaviaSalud (columna NumeroCelular; NumeroTelefono está vacío)
-            SELECT 'SaviaSalud', 'Savia Salud',
+            -- Savia Salud tiene DOS columnas de teléfono y hay que consultar las dos.
+            -- La integración original solo miraba NumeroCelular con la nota "NumeroTelefono
+            -- está vacío": eso era cierto al integrarla, pero los datos llegaron después.
+            -- Verificado 2026-08-14: NumeroCelular 6.989 filas con dato, NumeroTelefono
+            -- 3.950 — omitirla dejaba fuera esos 3.950 números.
+            -- Ambas ramas comparten Tabla = 'SaviaSalud' para que cuente como una sola fuente.
+            SELECT 'SaviaSalud', 'Savia Salud (celular)',
                    x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
               FROM dbo.SaviaSalud x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
              WHERE x.NumeroCelular = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- Savia Salud (teléfono)
+            SELECT 'SaviaSalud', 'Savia Salud (teléfono)',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.SaviaSalud x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroTelefono = @numero
              GROUP BY x.TitularID, t.Nombre
             UNION ALL
             -- Claro (DatosClaro)

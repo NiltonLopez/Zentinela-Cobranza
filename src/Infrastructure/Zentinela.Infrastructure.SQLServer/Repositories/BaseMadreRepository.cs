@@ -79,23 +79,28 @@ public class BaseMadreRepository : IBaseMadreRepository
         //
         // MAXDOP 4 (servidor de 8 núcleos): sin tope la query pide los 8 núcleos y
         // monopoliza el servidor. Se conserva en la query de datos.
+        //
+        // HASH JOIN: la TVF tiene 20 CTEs y 23 joins. Con ese espacio de búsqueda el
+        // optimizador agota su presupuesto de compilación y entrega el primer plan que
+        // encontró; en carteras medianas/grandes ese plan usa Nested Loops + Merge Join
+        // y es catastrófico (cartera 20, 133k titulares: >180 s = timeout). Forzar hash
+        // colapsa el espacio de búsqueda y devuelve el plan correcto — el mismo que el
+        // optimizador ya elige solo en carteras chicas. Medido 2026-08-14:
+        //   cartera  27 ( 53k titulares): 2,02 s → 1,87 s
+        //   cartera  20 (133k titulares): TIMEOUT (>180 s) → 2,43 s
+        //   cartera   8 (527k titulares): 3,24 s
+        //   cartera  22 (551k titulares): 3,47 s
+        // (todas con @LiderID = NULL, es decir el caso admin "Cartera Completo").
 
-        // Export (sin límite): traer todo; total = filas materializadas. Ruta legada:
-        // el export real usa StreamFilasAsync, no este método.
+        // `limite` es obligatorio en la práctica: el único llamador (CreadorZentinelaService)
+        // siempre lo pasa — LimitePreview en la vista previa y LimiteExcel+1 en el export.
+        // La rama "sin límite" que vivía acá era inalcanzable y hacía SELECT * materializando
+        // la cartera entera en memoria (551k filas × 93 columnas = OOM seguro si alguien la
+        // hubiera despertado). El export real va por StreamFilasAsync, que streamea.
         if (!limite.HasValue)
-        {
-            var sqlTodo = $"""
-                SELECT *
-                FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
-                {whereClause}
-                OPTION (MAXDOP 4)
-                """;
-            var todas = await _context.BaseMadreRows
-                .FromSqlRaw(sqlTodo, CreateParams())
-                .AsNoTracking()
-                .ToListAsync();
-            return (todas, todas.Count, TipoTotalPreview.Exacto);
-        }
+            throw new ArgumentNullException(nameof(limite),
+                "ObtenerAsync requiere un límite: sin él la cartera completa se materializa en memoria. " +
+                "Para exportar sin tope usa StreamFilasAsync.");
 
         // Preview: TOP(limite+1) para saber si hay MÁS de `limite` filas sin el COUNT exacto.
         var topMas  = limite.Value + 1;
@@ -103,7 +108,7 @@ public class BaseMadreRepository : IBaseMadreRepository
             SELECT TOP ({topMas}) *
             FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
             {whereClause}
-            OPTION (MAXDOP 4)
+            OPTION (MAXDOP 4, HASH JOIN)
             """;
 
         var filasList = await _context.BaseMadreRows
@@ -185,13 +190,14 @@ public class BaseMadreRepository : IBaseMadreRepository
         // no materializar carteras enormes (guard). CSV va sin límite (stream liviano).
         var topClause = limite.HasValue ? $"TOP ({limite.Value}) " : string.Empty;
 
-        // MAXDOP 4: ver comentario en ObtenerAsync (mismo servidor de 8 núcleos,
-        // misma TVF) — sin tope el export monopoliza el servidor completo.
+        // MAXDOP 4 + HASH JOIN: ver comentario en ObtenerAsync (mismo servidor de 8
+        // núcleos, misma TVF) — sin tope el export monopoliza el servidor completo, y
+        // sin el hint el optimizador cae en Nested Loops y el export nunca termina.
         var sql = $"""
             SELECT {topClause}{string.Join(", ", aliasesSql)}
             FROM dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)
             {whereClause}
-            OPTION (MAXDOP 4)
+            OPTION (MAXDOP 4, HASH JOIN)
             """;
 
         var conn = _context.Database.GetDbConnection();

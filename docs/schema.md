@@ -152,7 +152,13 @@ Historial de estados de gestión por titular, acumulado con cada cargue de repor
 | FechaActualizacion | datetime | NO | — | Timestamp del cargue en Zentinela — UPDATE si misma Rotacion, INSERT si nueva |
 
 ### HistoricoVirtualidad
-Histórico consolidado de solicitudes de virtualidad (IVR / SMS / Correo) con resultado actualizable. Una sola tabla con discriminador `Canal`. `Estado = NULL` = fase Solicitud (sin resultado); se actualiza junto con `FechaResultado` en la fase Resultado (por PK). Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.
+Histórico consolidado de virtualidad (IVR / SMS / Correo). Una sola tabla con discriminador `Canal`. Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.
+
+**Dos formas de carga según el canal (ADR-031):**
+- **IVR — carga única:** el archivo del marcador ya trae el resultado, así que la fila se inserta completa con `Estado` traducido desde el código `Last App`. `FechaCargue` lleva el MISMO valor en todas las filas del lote, lo que permite revertir un cargue con `DELETE ... WHERE Canal='IVR' AND FechaCargue='<sello>'`.
+- **SMS / Correo — dos fases:** se inserta con `Estado = NULL` y una carga posterior lo actualiza por PK.
+
+`Estado = NULL` significa "sin resultado conocido". Las 239.701 filas IVR cargadas entre 2026-07-17 y 2026-08-04 por el flujo viejo de dos fases quedaron con `Estado NULL` de forma permanente (nunca recibieron su fase Resultado); cualquier informe que agrupe por `Estado` verá ese bucket. La columna `FechaResultado` se eliminó el 2026-08-14 (`docs/sql/migrations/2026-08-14_drop_fecharesultado_historicovirtualidad.sql`): era write-only, sin ninguna lectura en el código.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -163,9 +169,8 @@ Histórico consolidado de solicitudes de virtualidad (IVR / SMS / Correo) con re
 | CarteraID | int | NO | — | FK compuesta → Lider_Cartera |
 | LiderID | int | NO | — | FK compuesta → Lider_Cartera |
 | FechaEnvio | date | NO | — | — |
-| Estado | varchar(50) | SI | — | NULL = sin resultado (fase Solicitud) |
-| FechaResultado | datetime2 | SI | — | poblada en fase Resultado |
-| FechaCargue | datetime2 | NO | — | DEFAULT GETDATE() |
+| Estado | varchar(50) | SI | — | NULL = sin resultado conocido |
+| FechaCargue | datetime2 | NO | — | DEFAULT GETDATE(); el cargue IVR escribe un sello uniforme por lote |
 
 Índices: `IX_HistoricoVirtualidad_Canal_Cartera_Fecha` (Canal, CarteraID, FechaEnvio), `IX_HistoricoVirtualidad_Canal_Destino` (Canal, Destino).
 
@@ -979,11 +984,21 @@ Envíos IVR (voz automatizada) a titulares. Espejo de `MensajesEnviados`. Carga 
 **NombreCartera no se almacena** — se obtiene con JOIN a `dbo.Cartera`.
 **Script:** `docs/sql/create_IVREnviados.sql` (drop también la tabla legacy `dbo.IVREnvio`).
 
-### Tablas consultadas por el módulo "Rastreo de Líneas"
+### Tablas consultadas por búsqueda inversa de teléfono
 
-El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCallCenter` que exponga columna(s) de teléfono usable, vía un único `UNION ALL` parametrizado en `RastreoLineasService.SqlConsulta`. Resuelve nombre del titular con `LEFT JOIN dbo.Titular`.
+Dos módulos comparten EXACTAMENTE este set de tablas y columnas, y deben dar la misma
+respuesta para el mismo número:
 
-**Tablas vigentes (11)** — fuente única de verdad: el código del service.
+- **Rastreo de Líneas** (`/consultas/rastreo`) — un número por vez, `WHERE col = @numero`
+  en `RastreoLineasService.SqlConsulta`.
+- **Informes Generales → Uso de Base de Datos** (`/informes/generales`) — masivo, los mismos
+  `UNION ALL` pero como `JOIN` contra una tabla `#Telefonos`, en `UsoBaseDatosService.SqlCruce`
+  (ver ADR-030).
+
+Ambos resuelven el titular con `LEFT JOIN dbo.Titular`. **Si se agrega una fuente, hay que
+extender los DOS services.**
+
+**Tablas vigentes (13 tablas / 18 columnas)** — fuente única de verdad: el código de los services.
 
 | Tabla | Columna(s) consultadas | Etiqueta(s) en UI |
 |---|---|---|
@@ -992,12 +1007,25 @@ El sub-módulo `/consultas/rastreo` busca un celular en cualquier tabla de `DBCa
 | SaludTotal | `NumeroTelefono` | `Salud Total` |
 | Positiva | `NumeroTelefonoCelular`, `NumeroTelefonoFijo` | `Positiva (celular)`, `Positiva (fijo)` |
 | Tigo | `NumeroTelefono` | `Tigo` |
-| TigoUne | `NumeroTelefono` | `TigoUne` |
-| Coosalud | `NumeroTelefono` | `Coosalud` |
-| SaviaSalud | `NumeroCelular` | `Savia Salud` |
+| TigoUne | `NumeroTelefono` | `Tigo Une` |
 | SOS | `Telefono` | `SOS` |
 | DatosClaro | `NumeroTelefono` | `Claro` |
 | MutualSer | `NumeroTelefonoCelular`, `NumeroTelefonoCelular2`, `NumeroTelefonoFijo` | `MutualSer (celular 1)`, `MutualSer (celular 2)`, `MutualSer (fijo)` |
+| MiVacuna | `Celular` | `MiVacuna (celular)` |
+| NuevaEps | `NumeroTelefono` | `NuevaEps (teléfono)` |
+| Coosalud | `NumeroTelefono` | `Coosalud` |
+| SaviaSalud | `NumeroCelular`, `NumeroTelefono` | `Savia Salud (celular)`, `Savia Salud (teléfono)` |
+
+> ⚠ `NuevaEps.TitularID` es `varchar(30)`: ambos services lo envuelven en `TRY_CAST(... AS BIGINT)`
+> y descartan los no numéricos.
+>
+> ⚠ `SaviaSalud` se integró consultando solo `NumeroCelular`, con la nota de que
+> `NumeroTelefono` estaba vacío. Eso dejó de ser cierto cuando llegaron los datos —
+> verificado 2026-08-14: `NumeroCelular` 6.989 filas con dato, `NumeroTelefono` 3.950.
+> Ambas columnas se consultan; quitar la segunda vuelve a perder esos 3.950 números.
+>
+> ⚠ Ninguna columna de teléfono tiene índice (verificado 2026-08-10). El rastreo escalar
+> funciona igual, y el cruce masivo resuelve por hash join en ~1 s para 60 000 números.
 
 **Excluidas explícitamente** (no son fuentes con teléfono usable para rastreo): auditorías (`AuditoriaMensajeria`, `AuditoriaIVR`), logs salientes (`MensajesEnviados`, `IVREnviados`), listas negras (`ListaNegraTelefonos`), directorios (`NumeroTelefonoGeneral`), `CamaraEmpresa`, staging (`*Auxiliar`), respaldos (`*_bak`, `Staging_*`), `DatosExternos` (memoria del proyecto: ignorada) y vistas `vw_*`.
 
