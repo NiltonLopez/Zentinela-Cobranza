@@ -55,3 +55,86 @@ export interface ValidarResultadoResponse {
   filasValidas:     FilaResultado[];
   erroresAgrupados: ErrorAgrupado[];
 }
+
+// ── Catálogo por canal (fuente única: la sirve el backend) ──────────────────
+
+/** Debe coincidir con el enum ModoCargaCanal del backend (JsonStringEnumConverter). */
+export type ModoCargaCanal = 'DosFases' | 'ArchivoUnico';
+
+export interface MapeoEstado {
+  codigoCrudo: string;
+  estado:      string;
+  significado: string;
+}
+
+export interface CatalogoCanal {
+  canal:                CanalVirtualidad;
+  modo:                 ModoCargaCanal;
+  estados:              string[];
+  mapeoEstados:         MapeoEstado[];
+  columnasEsperadas:    string[];
+  extensionesAceptadas: string[];
+}
+
+// ── Carga única (canal IVR) ─────────────────────────────────────────────────
+
+export interface FilaIvr {
+  numeroDocumento: number;
+  destino:         string;
+  nombreCartera:   string;
+  nombreLider:     string;
+  carteraID:       number;
+  liderID:         number;
+  fechaEnvio:      string;
+  codigoCrudo:     string;
+  estado:          string | null;
+  esValida:        boolean;
+  errorMensaje:    string | null;
+}
+
+export interface ConteoEstado {
+  estado:      string;
+  codigoCrudo: string;
+  cantidad:    number;
+  porcentaje:  number;
+}
+
+export interface ConteoCartera {
+  nombreCartera: string;
+  nombreLider:   string;
+  cantidad:      number;
+}
+
+export interface Solapamiento {
+  carteraID:     number;
+  nombreCartera: string;
+  enArchivo:     number;
+  yaEnBaseDatos: number;
+}
+
+export interface ValidarCargaIvrResponse {
+  totalFilas:             number;
+  totalValidas:           number;
+  totalErrores:           number;
+  totalCodigoDesconocido: number;
+  huellaArchivo:          string;
+  preview:                FilaIvr[];
+  desglosePorEstado:      ConteoEstado[];
+  desglosePorCartera:     ConteoCartera[];
+  codigosDesconocidos:    string[];
+  fechaMin:               string | null;
+  fechaMax:               string | null;
+  solapamientos:          Solapamiento[];
+  alertas:                AlertaSolicitud[];
+  erroresAgrupados:       ErrorAgrupado[];
+  columnasEncontradas:    string[];
+  columnasFaltantes:      string[];
+  filasRepetidasEnArchivo: number;
+}
+
+export interface ConfirmarCargaIvrResponse {
+  insertados:  number;
+  descartados: number;
+  fechaCargue: string;
+  mensaje:     string;
+}

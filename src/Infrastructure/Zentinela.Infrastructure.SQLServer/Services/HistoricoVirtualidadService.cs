@@ -1,13 +1,25 @@
+using System.Data;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Zentinela.Application;
 using Zentinela.Application.DTOs.Virtualidad.Historico;
 using Zentinela.Application.Interfaces;
 using Zentinela.Core.Entities;
 using Zentinela.Infrastructure.SQLServer.Persistence;
+using Zentinela.Infrastructure.SQLServer.Services.Shared;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
+
+/// <summary>
+/// El archivo enviado a confirmar no corresponde al que se validó, o no cumple el contrato
+/// mínimo (columnas). El controller la traduce a 409 Conflict.
+/// </summary>
+public class CargaIvrConflictoException(string mensaje) : Exception(mensaje);
 
 /// <summary>
 /// Gestión de Histórico de Virtualidad (IVR / SMS / Correo).
@@ -21,15 +33,8 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
     public HistoricoVirtualidadService(CallCenterDbContext db) => _db = db;
 
     // ── Catálogo por canal ──────────────────────────────────────────────────
-
-    /// <summary>Estados válidos por canal (lista blanca). Ajustable con el negocio.</summary>
-    public IReadOnlyDictionary<string, string[]> EstadosPorCanal { get; } =
-        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["IVR"]    = ["Contestada", "No contestada", "Buzón", "Número errado"],
-            ["SMS"]    = ["Entregado", "No entregado"],
-            ["Correo"] = ["Entregado", "Rebotado", "Abierto"],
-        };
+    // La lista de estados y el modo de carga viven en CatalogoVirtualidad (capa Application),
+    // que es la fuente única que también consume el frontend por GET /catalogo.
 
     // Umbral de alerta por saturación de línea (>N envíos al mismo destino).
     // 0 = sin alerta (p. ej. Correo no aplica saturación de línea telefónica).
@@ -38,11 +43,31 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         ["IVR"] = 5, ["SMS"] = 4, ["Correo"] = 0,
     };
 
-    private static bool EsCanalValido(string canal) =>
-        canal is "IVR" or "SMS" or "Correo";
+    private static bool EsCanalValido(string canal) => CatalogoVirtualidad.EsCanalValido(canal);
 
     private static bool EsCorreo(string canal) =>
-        string.Equals(canal, "Correo", StringComparison.OrdinalIgnoreCase);
+        string.Equals(canal, CatalogoVirtualidad.CanalCorreo, StringComparison.OrdinalIgnoreCase);
+
+    public CatalogoCanalDto ObtenerCatalogo(string canal)
+    {
+        var esIvr = CatalogoVirtualidad.EsIvr(canal);
+        return new CatalogoCanalDto
+        {
+            Canal   = canal,
+            Modo    = CatalogoVirtualidad.ModoDe(canal),
+            Estados = CatalogoVirtualidad.EstadosPorCanal.GetValueOrDefault(canal, []),
+            MapeoEstados = esIvr
+                ? CatalogoVirtualidad.IvrLastApp
+                    .Select(x => new MapeoEstadoDto
+                    {
+                        CodigoCrudo = x.Codigo, Estado = x.Estado, Significado = x.Significado,
+                    })
+                    .ToList()
+                : [],
+            ColumnasEsperadas    = esIvr ? CatalogoVirtualidad.ColumnasIvr : [],
+            ExtensionesAceptadas = esIvr ? [".csv", ".xlsx"] : [".xlsx"],
+        };
+    }
 
     // ── Plantilla Solicitud ─────────────────────────────────────────────────
 
@@ -68,50 +93,14 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         if (filas.Count == 0)
             return new ValidarSolicitudResponse();
 
-        // Precarga de diccionarios de resolución por nombre (una consulta por catálogo).
-        var carteras = await _db.Carteras
-            .Where(c => c.Activa)
-            .Select(c => new { c.ID, c.NombreCartera })
-            .AsNoTracking().ToListAsync();
-        var carteraPorNombre = ConstruirIndicePorNombre(carteras.Select(c => (c.ID, c.NombreCartera)));
+        var indices = await CargarIndicesResolucionAsync();
 
-        var lideres = await _db.Lideres
-            .Select(l => new { l.ID, l.Nombre })
-            .AsNoTracking().ToListAsync();
-        var liderPorNombre = ConstruirIndicePorNombre(lideres.Select(l => (l.ID, l.Nombre)));
-
-        var pares = await _db.LiderCarteras
-            .Where(lc => lc.Activo)
-            .Select(lc => new { lc.LiderID, lc.CarteraID })
-            .AsNoTracking().ToListAsync();
-        var paresActivos = pares.Select(p => (p.LiderID, p.CarteraID)).ToHashSet();
-
-        // Resolución cartera/líder por nombre + validación del par.
         foreach (var f in filas.Where(f => f.EsValida))
         {
-            if (!carteraPorNombre.TryGetValue(Normalizar(f.NombreCartera), out var cartera))
-            {
-                f.EsValida = false;
-                f.ErrorMensaje = $"Cartera '{f.NombreCartera}' no encontrada (o inactiva).";
-                continue;
-            }
-            f.CarteraID     = cartera.ID;
-            f.NombreCartera = cartera.Nombre;
-
-            if (!liderPorNombre.TryGetValue(Normalizar(f.NombreLider), out var lider))
-            {
-                f.EsValida = false;
-                f.ErrorMensaje = $"Líder '{f.NombreLider}' no encontrado.";
-                continue;
-            }
-            f.LiderID     = lider.ID;
-            f.NombreLider = lider.Nombre;
-
-            if (!paresActivos.Contains((f.LiderID, f.CarteraID)))
-            {
-                f.EsValida = false;
-                f.ErrorMensaje = $"'{f.NombreLider}' no está asignado a la cartera '{f.NombreCartera}'.";
-            }
+            var r = indices.Resolver(f.NombreCartera, f.NombreLider);
+            if (r.Error is not null) { f.EsValida = false; f.ErrorMensaje = r.Error; continue; }
+            f.CarteraID = r.CarteraID; f.NombreCartera = r.NombreCartera;
+            f.LiderID   = r.LiderID;   f.NombreLider   = r.NombreLider;
         }
 
         var validas = filas.Where(f => f.EsValida).ToList();
@@ -183,16 +172,6 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
 
     // ── Fase Resultado ──────────────────────────────────────────────────────
 
-    public byte[] GenerarPlantillaResultado(string canal)
-    {
-        var estados = EstadosPorCanal.GetValueOrDefault(canal, []);
-        var ejemploEstado = estados.Length > 0 ? estados[0] : "Estado";
-        // Nota: normalmente se usa "Descargar pendientes" (trae los ID reales).
-        return ConstruirXlsx($"Resultado {canal}",
-            new[] { "ID", "Estado" },
-            new object[] { 1L, ejemploEstado });
-    }
-
     public async Task<byte[]> DescargarPendientesAsync(string canal, int? carteraID, DateOnly? desde, DateOnly? hasta)
     {
         var query =
@@ -246,7 +225,7 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
                 ErroresAgrupados = [new ErrorAgrupadoDto { Mensaje = $"Canal '{canal}' no soportado.", Cantidad = 1 }],
             };
 
-        var estadosValidos = EstadosPorCanal.GetValueOrDefault(canal, [])
+        var estadosValidos = CatalogoVirtualidad.EstadosPorCanal.GetValueOrDefault(canal, [])
             .ToDictionary(Normalizar, e => e); // normalizado -> valor canónico
 
         var filas = ParsearResultados(excelStream);
@@ -278,7 +257,7 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
             if (!estadosValidos.TryGetValue(Normalizar(f.Estado), out var estadoCanonico))
             {
                 f.EsValida = false;
-                f.ErrorMensaje = $"Estado '{f.Estado}' no válido para {canal}. Válidos: {string.Join(", ", EstadosPorCanal[canal])}.";
+                f.ErrorMensaje = $"Estado '{f.Estado}' no válido para {canal}. Válidos: {string.Join(", ", CatalogoVirtualidad.EstadosPorCanal[canal])}.";
                 continue;
             }
             f.Estado = estadoCanonico; // normaliza al valor del catálogo
@@ -308,12 +287,8 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
             .Where(s => ids.Contains(s.ID))
             .ToListAsync();
 
-        var ahora = DateTime.Now;
         foreach (var e in entidades)
-        {
             e.Estado = porId[e.ID];
-            e.FechaResultado = ahora;
-        }
 
         await _db.SaveChangesAsync();
         return entidades.Count;
@@ -421,7 +396,417 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         return resultado;
     }
 
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║  Carga única — canal IVR (ADR-031)                                    ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
+    // El archivo del marcador ya trae el resultado de cada llamada, así que no hay
+    // fase de Solicitud: se inserta la fila completa con el Estado ya traducido.
+
+    public async Task<ValidarCargaIvrResponse> ValidarCargaIvrAsync(Stream archivo, string nombreArchivo)
+    {
+        var (huella, filasCrudas) = await LeerArchivoAsync(archivo, nombreArchivo);
+        var resp = new ValidarCargaIvrResponse { HuellaArchivo = huella };
+
+        if (filasCrudas.Count < 2)
+        {
+            resp.ErroresAgrupados = [new ErrorAgrupadoDto
+            {
+                Mensaje  = "El archivo no tiene filas de datos (solo encabezado o vacío).",
+                Cantidad = 1,
+            }];
+            return resp;
+        }
+
+        var headers = ArchivoTabular.LeerHeaders(filasCrudas[0]);
+        resp.ColumnasEncontradas = filasCrudas[0].Select(h => h.Trim()).Where(h => h.Length > 0).ToList();
+
+        var idx = ResolverColumnasIvr(headers, out var faltantes);
+        if (faltantes.Count > 0)
+        {
+            // No se adivina ninguna columna: en un informe operativo, elegir mal
+            // produciría cifras incorrectas en silencio (mismo criterio que ADR-030).
+            resp.ColumnasFaltantes = faltantes;
+            resp.ErroresAgrupados  = [new ErrorAgrupadoDto
+            {
+                Mensaje  = $"Faltan columnas obligatorias: {string.Join(", ", faltantes)}.",
+                Cantidad = 1,
+            }];
+            return resp;
+        }
+
+        var filas = ParsearFilasIvr(filasCrudas, headers.Count, idx);
+        resp.TotalFilas = filas.Count;
+        if (filas.Count == 0) return resp;
+
+        var indices = await CargarIndicesResolucionAsync();
+        foreach (var f in filas.Where(f => f.EsValida))
+        {
+            var r = indices.Resolver(f.NombreCartera, f.NombreLider);
+            if (r.Error is not null) { f.EsValida = false; f.ErrorMensaje = r.Error; continue; }
+            f.CarteraID = r.CarteraID; f.NombreCartera = r.NombreCartera;
+            f.LiderID   = r.LiderID;   f.NombreLider   = r.NombreLider;
+        }
+
+        var validas = filas.Where(f => f.EsValida).ToList();
+        var invalidas = filas.Where(f => !f.EsValida).ToList();
+
+        resp.TotalValidas = validas.Count;
+        resp.TotalErrores = invalidas.Count;
+        resp.Preview      = filas.Take(10).ToList();
+        resp.ErroresAgrupados = AgruparErrores(invalidas.Select(f => f.ErrorMensaje));
+
+        // Códigos "Last App" no catalogados: la fila se rechaza (decisión del negocio),
+        // pero el código se expone aparte para que un código nuevo del marcador salte a
+        // la vista en vez de perderse entre el resto de los errores.
+        var desconocidos = invalidas
+            .Where(f => !string.IsNullOrEmpty(f.CodigoCrudo)
+                     && !CatalogoVirtualidad.IvrEstadoPorCodigo.ContainsKey(
+                            CatalogoVirtualidad.NormalizarCodigo(f.CodigoCrudo)))
+            .ToList();
+        resp.TotalCodigoDesconocido = desconocidos.Count;
+        resp.CodigosDesconocidos = desconocidos
+            .Select(f => f.CodigoCrudo)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c)
+            .ToList();
+
+        if (validas.Count == 0) return resp;
+
+        resp.FechaMin = validas.Min(f => f.FechaEnvio);
+        resp.FechaMax = validas.Max(f => f.FechaEnvio);
+
+        // Se agrupa por Estado, no por el código crudo: el archivo puede traer "Playback"
+        // y "playback" y son el mismo resultado. Se muestra el código CANÓNICO del catálogo
+        // (relación 1:1 con el estado) para poder auditar el mapeo de un vistazo.
+        var codigoCanonico = CatalogoVirtualidad.IvrLastApp
+            .ToDictionary(x => x.Estado, x => x.Codigo, StringComparer.Ordinal);
+
+        resp.DesglosePorEstado = validas
+            .GroupBy(f => f.Estado)
+            .Select(g => new ConteoEstadoDto
+            {
+                Estado      = g.Key ?? "(sin estado)",
+                CodigoCrudo = g.Key is not null && codigoCanonico.TryGetValue(g.Key, out var cod)
+                                  ? cod
+                                  : g.First().CodigoCrudo,
+                Cantidad    = g.Count(),
+                Porcentaje  = Math.Round(100m * g.Count() / validas.Count, 2),
+            })
+            .OrderByDescending(x => x.Cantidad)
+            .ToList();
+
+        resp.DesglosePorCartera = validas
+            .GroupBy(f => new { f.NombreCartera, f.NombreLider })
+            .Select(g => new ConteoCarteraDto
+            {
+                NombreCartera = g.Key.NombreCartera,
+                NombreLider   = g.Key.NombreLider,
+                Cantidad      = g.Count(),
+            })
+            .OrderByDescending(x => x.Cantidad)
+            .ToList();
+
+        // Filas idénticas repetidas dentro del propio archivo: señal de un archivo
+        // concatenado dos veces. No se descartan (en IVR un reintento real produce
+        // filas casi idénticas), solo se cuentan.
+        resp.FilasRepetidasEnArchivo = validas.Count - validas
+            .Select(f => (f.NumeroDocumento, f.Destino, f.FechaEnvio, f.CarteraID, f.LiderID, f.Estado))
+            .Distinct()
+            .Count();
+
+        resp.Solapamientos = await CalcularSolapamientoAsync(validas);
+        resp.Alertas       = await CalcularAlertasIvrAsync(validas);
+
+        return resp;
+    }
+
+    public async Task<ConfirmarCargaIvrResponse> ConfirmarCargaIvrAsync(
+        Stream archivo, string nombreArchivo, string huellaEsperada)
+    {
+        // Se re-parsea en el servidor en vez de recibir las filas del cliente: evita el
+        // round-trip de ~100 MB con archivos grandes y garantiza que lo insertado sea
+        // exactamente lo validado (el cliente no dicta CarteraID/LiderID).
+        var (huella, filasCrudas) = await LeerArchivoAsync(archivo, nombreArchivo);
+        if (!string.Equals(huella, huellaEsperada, StringComparison.OrdinalIgnoreCase))
+            throw new CargaIvrConflictoException(
+                "El archivo cambió desde la validación. Vuelve a validarlo antes de confirmar.");
+
+        if (filasCrudas.Count < 2)
+            return new ConfirmarCargaIvrResponse { Mensaje = "El archivo no tiene filas de datos." };
+
+        var headers = ArchivoTabular.LeerHeaders(filasCrudas[0]);
+        var idx = ResolverColumnasIvr(headers, out var faltantes);
+        if (faltantes.Count > 0)
+            throw new CargaIvrConflictoException($"Faltan columnas obligatorias: {string.Join(", ", faltantes)}.");
+
+        var filas = ParsearFilasIvr(filasCrudas, headers.Count, idx);
+        var indices = await CargarIndicesResolucionAsync();
+        foreach (var f in filas.Where(f => f.EsValida))
+        {
+            var r = indices.Resolver(f.NombreCartera, f.NombreLider);
+            if (r.Error is not null) { f.EsValida = false; f.ErrorMensaje = r.Error; continue; }
+            f.CarteraID = r.CarteraID; f.LiderID = r.LiderID;
+        }
+
+        var validas = filas.Where(f => f.EsValida).ToList();
+        if (validas.Count == 0)
+            return new ConfirmarCargaIvrResponse
+            {
+                Descartados = filas.Count,
+                Mensaje     = "Ninguna fila del archivo resultó válida; no se cargó nada.",
+            };
+
+        // Sello uniforme del lote (no el DEFAULT GETDATE() por fila): hace el cargue
+        // reversible con un DELETE ... WHERE Canal='IVR' AND FechaCargue='<sello>'.
+        var sello = DateTime.Now;
+        await InsertarIvrEnBloqueAsync(validas, sello);
+
+        return new ConfirmarCargaIvrResponse
+        {
+            Insertados  = validas.Count,
+            Descartados = filas.Count - validas.Count,
+            FechaCargue = sello,
+            Mensaje     = $"Se cargaron {validas.Count:N0} registros de IVR.",
+        };
+    }
+
+    // ── Parseo IVR ──────────────────────────────────────────────────────────
+
+    private sealed record ColumnasIvr(int Cartera, int Lider, int Fecha, int Numero, int LastApp, int Documento);
+
+    private static ColumnasIvr ResolverColumnasIvr(Dictionary<string, int> headers, out List<string> faltantes)
+    {
+        var idx = new ColumnasIvr(
+            Cartera:   ArchivoTabular.ResolverColumna(headers, CatalogoVirtualidad.AliasIvr.Cartera),
+            Lider:     ArchivoTabular.ResolverColumna(headers, CatalogoVirtualidad.AliasIvr.Lider),
+            Fecha:     ArchivoTabular.ResolverColumna(headers, CatalogoVirtualidad.AliasIvr.Fecha),
+            Numero:    ArchivoTabular.ResolverColumna(headers, CatalogoVirtualidad.AliasIvr.Numero),
+            LastApp:   ArchivoTabular.ResolverColumna(headers, CatalogoVirtualidad.AliasIvr.LastApp),
+            Documento: ArchivoTabular.ResolverColumna(headers, CatalogoVirtualidad.AliasIvr.Documento));
+
+        faltantes = [];
+        if (idx.Cartera   < 0) faltantes.Add("Cartera");
+        if (idx.Lider     < 0) faltantes.Add("Lider");
+        if (idx.Fecha     < 0) faltantes.Add("Fecha Marcado");
+        if (idx.Numero    < 0) faltantes.Add("Número");
+        if (idx.LastApp   < 0) faltantes.Add("Last App");
+        if (idx.Documento < 0) faltantes.Add("Cedula");
+        return idx;
+    }
+
+    private static List<FilaIvrDto> ParsearFilasIvr(
+        List<string[]> filasCrudas, int totalColumnas, ColumnasIvr idx)
+    {
+        var resultado = new List<FilaIvrDto>(filasCrudas.Count - 1);
+
+        for (var i = 1; i < filasCrudas.Count; i++)
+        {
+            var partes = filasCrudas[i];
+            if (partes.All(string.IsNullOrWhiteSpace)) continue;
+
+            var numeroLinea = i + 1;
+            var dto = new FilaIvrDto { EsValida = true };
+            resultado.Add(dto);
+
+            // El CSV se parte con Split plano: una fila con menos columnas que el
+            // encabezado viene corrida (comillas con separador adentro) y leerla
+            // mapearía valores equivocados en silencio.
+            if (partes.Length < totalColumnas)
+            {
+                Invalidar(dto, $"Línea {numeroLinea}: la fila tiene {partes.Length} columnas y se esperaban {totalColumnas} (¿separador o comillas?).");
+                continue;
+            }
+
+            string Cel(int c) => c >= 0 && c < partes.Length ? partes[c].Trim() : string.Empty;
+
+            var doc = SoloDigitos(Cel(idx.Documento));
+            if (doc.Length == 0 || !long.TryParse(doc, out var numeroDocumento))
+                Invalidar(dto, $"Línea {numeroLinea}: Cedula inválida o vacía.");
+            else
+                dto.NumeroDocumento = numeroDocumento;
+
+            // Solo trim + quitar el sufijo ".0" de Excel: NO se normaliza el teléfono,
+            // porque el histórico ya guardado está en formato nacional de 10 dígitos y
+            // normalizar solo lo nuevo partiría la misma línea en dos poblaciones.
+            dto.Destino = QuitarSufijoDecimal(Cel(idx.Numero));
+            if (dto.Destino.Length == 0)
+                Invalidar(dto, $"Línea {numeroLinea}: Número vacío.");
+
+            dto.NombreCartera = Cel(idx.Cartera);
+            if (dto.NombreCartera.Length == 0)
+                Invalidar(dto, $"Línea {numeroLinea}: Cartera vacía.");
+
+            dto.NombreLider = Cel(idx.Lider);
+            if (dto.NombreLider.Length == 0)
+                Invalidar(dto, $"Línea {numeroLinea}: Lider vacío.");
+
+            if (!ArchivoTabular.TryParseFecha(Cel(idx.Fecha), out var fecha))
+                Invalidar(dto, $"Línea {numeroLinea}: Fecha Marcado inválida ('{Cel(idx.Fecha)}').");
+            else
+                dto.FechaEnvio = fecha;
+
+            dto.CodigoCrudo = Cel(idx.LastApp);
+            if (dto.CodigoCrudo.Length == 0)
+                Invalidar(dto, $"Línea {numeroLinea}: Last App vacío.");
+            else if (CatalogoVirtualidad.IvrEstadoPorCodigo.TryGetValue(
+                         CatalogoVirtualidad.NormalizarCodigo(dto.CodigoCrudo), out var estado))
+                dto.Estado = estado;
+            else
+                // El mensaje incluye el código para que AgruparErrores lo colapse en una
+                // línea por código, con su conteo.
+                Invalidar(dto, $"Last App '{dto.CodigoCrudo}' no está en el catálogo de estados de IVR.");
+        }
+
+        return resultado;
+    }
+
+    /// <summary>Registros IVR ya cargados para las mismas carteras y rango de fechas del archivo.</summary>
+    private async Task<List<SolapamientoDto>> CalcularSolapamientoAsync(List<FilaIvrDto> validas)
+    {
+        var carteraIDs = validas.Select(f => f.CarteraID).Distinct().ToList();
+        var min = validas.Min(f => f.FechaEnvio);
+        var max = validas.Max(f => f.FechaEnvio);
+
+        var existentes = await _db.HistoricoVirtualidad
+            .Where(h => h.Canal == CatalogoVirtualidad.CanalIvr
+                     && carteraIDs.Contains(h.CarteraID)
+                     && h.FechaEnvio >= min && h.FechaEnvio <= max)
+            .GroupBy(h => h.CarteraID)
+            .Select(g => new { CarteraID = g.Key, Total = g.Count() })
+            .ToListAsync();
+
+        if (existentes.Count == 0) return [];
+
+        var nombrePorCartera = validas
+            .GroupBy(f => f.CarteraID)
+            .ToDictionary(g => g.Key, g => (Nombre: g.First().NombreCartera, EnArchivo: g.Count()));
+
+        return existentes
+            .Select(e => new SolapamientoDto
+            {
+                CarteraID     = e.CarteraID,
+                NombreCartera = nombrePorCartera.TryGetValue(e.CarteraID, out var n) ? n.Nombre : $"Cartera {e.CarteraID}",
+                EnArchivo     = nombrePorCartera.TryGetValue(e.CarteraID, out var v) ? v.EnArchivo : 0,
+                YaEnBaseDatos = e.Total,
+            })
+            .OrderByDescending(x => x.YaEnBaseDatos)
+            .ToList();
+    }
+
+    private async Task<List<AlertaSolicitudDto>> CalcularAlertasIvrAsync(List<FilaIvrDto> validas)
+    {
+        var umbral = UmbralAlerta.GetValueOrDefault(CatalogoVirtualidad.CanalIvr, 0);
+        if (umbral <= 0 || validas.Count == 0) return [];
+
+        return validas
+            .GroupBy(f => new { f.Destino, f.NombreCartera })
+            .Select(g => new AlertaSolicitudDto
+            {
+                Destino       = g.Key.Destino,
+                NombreCartera = g.Key.NombreCartera,
+                TotalEnvios   = g.Count(),
+            })
+            .Where(a => a.TotalEnvios > umbral)
+            .OrderByDescending(a => a.TotalEnvios)
+            .Take(200)
+            .ToList();
+    }
+
+    // ── Inserción masiva ────────────────────────────────────────────────────
+
+    private async Task InsertarIvrEnBloqueAsync(List<FilaIvrDto> validas, DateTime sello)
+    {
+        var tabla = new DataTable();
+        tabla.Columns.Add("Canal",           typeof(string));
+        tabla.Columns.Add("NumeroDocumento", typeof(long));
+        tabla.Columns.Add("Destino",         typeof(string));
+        tabla.Columns.Add("CarteraID",       typeof(int));
+        tabla.Columns.Add("LiderID",         typeof(int));
+        // DateOnly no lo soporta DataTable/SqlBulkCopy: va como DateTime a una columna date.
+        tabla.Columns.Add("FechaEnvio",      typeof(DateTime));
+        tabla.Columns.Add("Estado",          typeof(string));
+        tabla.Columns.Add("FechaCargue",     typeof(DateTime));
+
+        foreach (var f in validas)
+            tabla.Rows.Add(
+                CatalogoVirtualidad.CanalIvr, f.NumeroDocumento, f.Destino,
+                f.CarteraID, f.LiderID, f.FechaEnvio.ToDateTime(TimeOnly.MinValue),
+                (object?)f.Estado ?? DBNull.Value, sello);
+
+        var laAbriYo = _db.Database.GetDbConnection().State != ConnectionState.Open;
+        if (laAbriYo) await _db.Database.OpenConnectionAsync();
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            var conn = (SqlConnection)_db.Database.GetDbConnection();
+            var sqlTx = (SqlTransaction)tx.GetDbTransaction();
+
+            // CheckConstraints: sin esta opción SqlBulkCopy DESACTIVA la verificación y
+            // dejaría FK_HistoricoVirtualidad_LiderCartera marcada como untrusted.
+            using var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.CheckConstraints, sqlTx)
+            {
+                DestinationTableName = "dbo.HistoricoVirtualidad",
+                BatchSize            = 10_000,
+                BulkCopyTimeout      = 600,
+            };
+            // Mapeo por NOMBRE obligatorio: ID es IDENTITY y no va en el DataTable, así
+            // que el mapeo posicional desalinearía todas las columnas.
+            foreach (DataColumn col in tabla.Columns)
+                bulk.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+
+            await bulk.WriteToServerAsync(tabla);
+            await tx.CommitAsync();
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            if (laAbriYo) await _db.Database.CloseConnectionAsync();
+        }
+    }
+
+    // ── Lectura de archivo (CSV o XLSX) + huella ────────────────────────────
+
+    /// <summary>
+    /// Copia el stream a memoria para poder calcular la huella SHA-256 y parsear el mismo
+    /// contenido. La huella ata la confirmación al archivo exacto que se validó.
+    /// </summary>
+    private static async Task<(string Huella, List<string[]> Filas)> LeerArchivoAsync(
+        Stream archivo, string nombreArchivo)
+    {
+        using var ms = new MemoryStream();
+        await archivo.CopyToAsync(ms);
+        ms.Position = 0;
+
+        var huella = Convert.ToHexString(await SHA256.HashDataAsync(ms));
+        ms.Position = 0;
+
+        var ext = Path.GetExtension(nombreArchivo).ToLowerInvariant();
+        var filas = ext == ".csv"
+            ? (await ArchivoTabular.ExtraerFilasCsvAsync(ms)).Filas
+            : ArchivoTabular.ExtraerFilasXlsx(ms);
+
+        return (huella, filas);
+    }
+
+    private static string SoloDigitos(string s) =>
+        new(s.Where(char.IsDigit).ToArray());
+
+    /// <summary>Quita el ".0" con el que Excel suele exportar números enteros.</summary>
+    private static string QuitarSufijoDecimal(string s)
+    {
+        var t = s.Trim();
+        return t.EndsWith(".0", StringComparison.Ordinal) ? t[..^2] : t;
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    private static void Invalidar(FilaIvrDto dto, string msg)
+    { dto.EsValida = false; dto.ErrorMensaje ??= msg; }
 
     private static void Invalidar(FilaSolicitudDto dto, string msg)
     { dto.EsValida = false; dto.ErrorMensaje ??= msg; }
@@ -450,6 +835,62 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         Preview = [new FilaSolicitudDto { EsValida = false, ErrorMensaje = mensaje }],
         ErroresAgrupados = [new ErrorAgrupadoDto { Mensaje = mensaje, Cantidad = 1 }],
     };
+
+    // ── Resolución Cartera/Líder por nombre (compartida por ambos flujos) ───
+
+    /// <summary>
+    /// Índices para resolver cartera y líder por su NOMBRE tal como viene en el archivo,
+    /// más el conjunto de pares líder-cartera activos. Se cargan una vez por validación.
+    /// </summary>
+    private sealed class IndicesResolucion
+    {
+        public required Dictionary<string, (int ID, string Nombre)> CarteraPorNombre { get; init; }
+        public required Dictionary<string, (int ID, string Nombre)> LiderPorNombre   { get; init; }
+        public required HashSet<(int LiderID, int CarteraID)>       ParesActivos     { get; init; }
+
+        /// <summary>Devuelve los IDs y nombres canónicos, o el motivo del fallo.</summary>
+        public (int CarteraID, string NombreCartera, int LiderID, string NombreLider, string? Error)
+            Resolver(string nombreCartera, string nombreLider)
+        {
+            if (!CarteraPorNombre.TryGetValue(Normalizar(nombreCartera), out var cartera))
+                return (0, nombreCartera, 0, nombreLider,
+                        $"Cartera '{nombreCartera}' no encontrada (o inactiva).");
+
+            if (!LiderPorNombre.TryGetValue(Normalizar(nombreLider), out var lider))
+                return (0, nombreCartera, 0, nombreLider,
+                        $"Líder '{nombreLider}' no encontrado.");
+
+            if (!ParesActivos.Contains((lider.ID, cartera.ID)))
+                return (0, cartera.Nombre, 0, lider.Nombre,
+                        $"'{lider.Nombre}' no está asignado a la cartera '{cartera.Nombre}'.");
+
+            return (cartera.ID, cartera.Nombre, lider.ID, lider.Nombre, null);
+        }
+    }
+
+    private async Task<IndicesResolucion> CargarIndicesResolucionAsync()
+    {
+        var carteras = await _db.Carteras
+            .Where(c => c.Activa)
+            .Select(c => new { c.ID, c.NombreCartera })
+            .AsNoTracking().ToListAsync();
+
+        var lideres = await _db.Lideres
+            .Select(l => new { l.ID, l.Nombre })
+            .AsNoTracking().ToListAsync();
+
+        var pares = await _db.LiderCarteras
+            .Where(lc => lc.Activo)
+            .Select(lc => new { lc.LiderID, lc.CarteraID })
+            .AsNoTracking().ToListAsync();
+
+        return new IndicesResolucion
+        {
+            CarteraPorNombre = ConstruirIndicePorNombre(carteras.Select(c => (c.ID, c.NombreCartera))),
+            LiderPorNombre   = ConstruirIndicePorNombre(lideres.Select(l => (l.ID, l.Nombre))),
+            ParesActivos     = pares.Select(p => (p.LiderID, p.CarteraID)).ToHashSet(),
+        };
+    }
 
     /// <summary>Índice Normalizar(nombre) -> (ID, Nombre). Ante nombres duplicados
     /// normalizados, conserva el primero (no lanza).</summary>

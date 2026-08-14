@@ -20,8 +20,7 @@ public class HistoricoVirtualidadMapping : IEntityTypeConfiguration<HistoricoVir
         builder.Property(s => s.CarteraID).IsRequired();
         builder.Property(s => s.LiderID).IsRequired();
         builder.Property(s => s.FechaEnvio).HasColumnType("date").IsRequired();
-        builder.Property(s => s.Estado).HasMaxLength(50); // nullable = sin resultado
-        builder.Property(s => s.FechaResultado).HasColumnType("datetime2");
+        builder.Property(s => s.Estado).HasMaxLength(50); // nullable = sin resultado conocido
         builder.Property(s => s.FechaCargue)
             .HasColumnType("datetime2")
             .HasDefaultValueSql("GETDATE()")

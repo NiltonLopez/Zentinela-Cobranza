@@ -7,11 +7,17 @@ import { PanelNombresValidos } from '../../components/PanelNombresValidos';
 import {
   generarPlantillaSolicitud, validarSolicitud, confirmarSolicitud,
   descargarPendientes, validarResultado, confirmarResultado,
+  obtenerCatalogoCanal,
 } from '../../api/historicoVirtualidadApi';
 import type {
   CanalVirtualidad, FilaSolicitud, ValidarSolicitudResponse,
-  ValidarResultadoResponse, ErrorAgrupado,
+  ValidarResultadoResponse,
 } from '../../types/historicoVirtualidad';
+import {
+  TH, TD, ChipConteo, DropZone, ListaErroresAgrupados,
+  btnPrimario, btnSecundario, cajaError, type Etapa,
+} from './historico-virtualidad/compartidos';
+import { SeccionCargaIvr } from './historico-virtualidad/SeccionCargaIvr';
 
 // ── Metadatos de canal ──────────────────────────────────────────────────────
 
@@ -21,119 +27,7 @@ const CANALES: { canal: CanalVirtualidad; label: string }[] = [
   { canal: 'SMS',    label: 'SMS' },
 ];
 
-const ESTADOS_POR_CANAL: Record<CanalVirtualidad, string[]> = {
-  IVR:    ['Contestada', 'No contestada', 'Buzón', 'Número errado'],
-  SMS:    ['Entregado', 'No entregado'],
-  Correo: ['Entregado', 'Rebotado', 'Abierto'],
-};
-
 const etiquetaDestino = (canal: CanalVirtualidad) => (canal === 'Correo' ? 'Email' : 'Teléfono');
-
-type Etapa = 'inicial' | 'preview' | 'resultado';
-
-// ── Estilos compartidos de tabla ──────────────────────────────────────────────
-
-const TH: React.CSSProperties = {
-  padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600,
-  color: 'var(--z-text-muted)', borderBottom: '0.5px solid var(--z-border)',
-  letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap',
-};
-const TD: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 13, borderBottom: '0.5px solid var(--z-border)',
-  whiteSpace: 'nowrap', color: 'var(--z-text-primary)',
-};
-
-function ChipConteo({ numero, label, bg, border, colorNum, colorLabel, onClick, abierto }: {
-  numero: number; label: string; bg: string; border: string;
-  colorNum: string; colorLabel: string; onClick?: () => void; abierto?: boolean;
-}) {
-  const clickeable = !!onClick;
-  return (
-    <div
-      onClick={onClick}
-      role={clickeable ? 'button' : undefined}
-      tabIndex={clickeable ? 0 : undefined}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8, background: bg,
-        border: `0.5px solid ${border}`, borderRadius: 8, padding: '12px 18px',
-        cursor: clickeable ? 'pointer' : 'default', userSelect: 'none',
-        boxShadow: clickeable && abierto ? `inset 0 0 0 1px ${border}` : 'none',
-      }}
-    >
-      <span style={{ fontSize: 22, fontWeight: 700, color: colorNum }}>{numero}</span>
-      <span style={{ fontSize: 13, color: colorLabel }}>{label}</span>
-      {clickeable && (
-        <span style={{ fontSize: 11, color: colorLabel, marginLeft: 4, transform: abierto ? 'rotate(180deg)' : 'none' }}>▾</span>
-      )}
-    </div>
-  );
-}
-
-function DropZone({ archivoNombre, archivoKB, onClick, onQuitar, inputRef, onChange, disabled }: {
-  archivoNombre: string; archivoKB: number; onClick: () => void; onQuitar: () => void;
-  inputRef: React.RefObject<HTMLInputElement | null>; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div
-        onClick={() => !disabled && onClick()}
-        style={{
-          border: `1.5px dashed ${archivoNombre ? 'var(--z-brand)' : 'var(--z-border)'}`,
-          borderRadius: 8, padding: 24, textAlign: 'center',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          background: archivoNombre ? '#eff6ff' : 'transparent', opacity: disabled ? 0.5 : 1,
-        }}
-      >
-        <p style={{ fontSize: 13, color: archivoNombre ? 'var(--z-brand)' : 'var(--z-text-muted)', margin: '0 0 4px' }}>
-          {archivoNombre || 'Haz clic para seleccionar un archivo .xlsx'}
-        </p>
-        {archivoNombre && <p style={{ fontSize: 11, color: 'var(--z-text-muted)', margin: 0 }}>{archivoKB.toFixed(1)} KB</p>}
-      </div>
-      <input ref={inputRef} type="file" accept=".xlsx" disabled={disabled} onChange={onChange} style={{ display: 'none' }} />
-      {archivoNombre && (
-        <button onClick={onQuitar} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--z-text-muted)', cursor: 'pointer', padding: 0, width: 'fit-content' }}>
-          × Quitar archivo
-        </button>
-      )}
-    </div>
-  );
-}
-
-const btnPrimario = (habilitado: boolean): React.CSSProperties => ({
-  padding: '9px 20px', borderRadius: 6, border: 'none',
-  background: habilitado ? 'var(--z-brand)' : 'var(--z-border)',
-  color: habilitado ? '#fff' : 'var(--z-text-muted)',
-  fontSize: 13, fontWeight: 600, cursor: habilitado ? 'pointer' : 'not-allowed',
-});
-const btnSecundario: React.CSSProperties = {
-  padding: '9px 16px', borderRadius: 6, border: '0.5px solid var(--z-border)',
-  background: 'var(--z-bg-page)', color: 'var(--z-text-muted)', fontSize: 13, cursor: 'pointer',
-};
-const cajaError: React.CSSProperties = {
-  background: '#fef2f2', border: '0.5px solid #fca5a5', borderRadius: 6,
-  padding: '10px 14px', fontSize: 13, color: '#dc2626',
-};
-
-// Errores agrupados por mensaje (no una fila por cada titular con el mismo error).
-// Cubre TODAS las filas del archivo, no solo la muestra de preview.
-function ListaErroresAgrupados({ errores }: { errores: ErrorAgrupado[] }) {
-  if (errores.length === 0) return null;
-  return (
-    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px' }}>
-      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
-        Errores encontrados — agrupados por tipo
-      </p>
-      <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {errores.map((e, i) => (
-          <li key={i} style={{ fontSize: 13, color: '#b91c1c' }}>
-            {e.mensaje} <strong>({e.cantidad} fila{e.cantidad !== 1 ? 's' : ''})</strong>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 // ── Sección Solicitud ─────────────────────────────────────────────────────────
 
@@ -295,7 +189,8 @@ function TablaPreviewSolicitud({ filas, canal }: { filas: FilaSolicitud[]; canal
 
 // ── Sección Resultado ─────────────────────────────────────────────────────────
 
-function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
+// `estados` llega del catálogo del backend — no se duplica la lista en el front.
+function SeccionResultado({ canal, estados }: { canal: CanalVirtualidad; estados: string[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [carteraID, setCarteraID] = useState<number>(0);
   const [desde, setDesde]         = useState('');
@@ -417,7 +312,7 @@ function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
         </div>
         <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>
           El archivo trae la columna <strong>ID</strong> (no la modifiques) y una columna <strong>Estado</strong> vacía.
-          Diligéncia el Estado con uno de: {ESTADOS_POR_CANAL[canal].map((e, i) => <em key={e}>{i > 0 ? ', ' : ''}{e}</em>)}.
+          Diligéncia el Estado con uno de: {estados.map((e, i) => <em key={e}>{i > 0 ? ', ' : ''}{e}</em>)}.
         </p>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -436,6 +331,14 @@ function SeccionResultado({ canal }: { canal: CanalVirtualidad }) {
 export function GestionHistoricoVirtualidadPage() {
   const [canal, setCanal] = useState<CanalVirtualidad>('IVR');
   const [fase, setFase]   = useState<'solicitud' | 'resultado'>('solicitud');
+
+  // El modo de carga y el catálogo de estados los define el backend: así no hay una
+  // segunda fuente de verdad en el front (ADR-031).
+  const { data: catalogo, isPending: cargandoCatalogo } = useQuery({
+    queryKey: ['catalogo-virtualidad', canal],
+    queryFn:  () => obtenerCatalogoCanal(canal),
+  });
+  const esArchivoUnico = catalogo?.modo === 'ArchivoUnico';
 
   const tabBase: React.CSSProperties = {
     padding: '8px 16px', borderRadius: 6, border: '0.5px solid var(--z-border)',
@@ -466,7 +369,8 @@ export function GestionHistoricoVirtualidadPage() {
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>Gestión de Histórico de Virtualidad</h1>
         <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
-          Registra el histórico de solicitudes IVR, SMS y Correos, y actualiza sus resultados. El mapeo a cartera y líder se resuelve por el nombre indicado en el archivo.
+          Registra el histórico de virtualidad de IVR, SMS y Correos. El mapeo a cartera y líder se
+          resuelve por el nombre indicado en el archivo.
         </p>
       </div>
 
@@ -479,20 +383,30 @@ export function GestionHistoricoVirtualidadPage() {
         ))}
       </div>
 
-      {/* Sub-tabs de fase */}
-      <div style={{ display: 'flex', gap: 20, borderBottom: '0.5px solid var(--z-border)' }}>
-        <button onClick={() => setFase('solicitud')}
-          className={`z-tab-fase${fase === 'solicitud' ? ' z-tab-fase-activa' : ''}`}
-          style={fase === 'solicitud' ? faseActiva : faseBase}>Solicitud</button>
-        <button onClick={() => setFase('resultado')}
-          className={`z-tab-fase${fase === 'resultado' ? ' z-tab-fase-activa' : ''}`}
-          style={fase === 'resultado' ? faseActiva : faseBase}>Resultado</button>
-      </div>
+      {cargandoCatalogo && <CargandoSpiral mensaje="Cargando configuración del canal…" />}
 
-      {/* key={canal+fase} reinicia el estado interno al cambiar de canal o fase */}
-      {fase === 'solicitud'
-        ? <SeccionSolicitud key={`sol-${canal}`} canal={canal} />
-        : <SeccionResultado key={`res-${canal}`} canal={canal} />}
+      {/* Los canales de archivo único no tienen fases: se ocultan los sub-tabs en vez
+          de dejarlos como UI muerta. */}
+      {catalogo && !esArchivoUnico && (
+        <div style={{ display: 'flex', gap: 20, borderBottom: '0.5px solid var(--z-border)' }}>
+          <button onClick={() => setFase('solicitud')}
+            className={`z-tab-fase${fase === 'solicitud' ? ' z-tab-fase-activa' : ''}`}
+            style={fase === 'solicitud' ? faseActiva : faseBase}>Solicitud</button>
+          <button onClick={() => setFase('resultado')}
+            className={`z-tab-fase${fase === 'resultado' ? ' z-tab-fase-activa' : ''}`}
+            style={fase === 'resultado' ? faseActiva : faseBase}>Resultado</button>
+        </div>
+      )}
+
+      {/* key por canal/fase: reinicia el estado interno al cambiar de uno a otro */}
+      {catalogo && esArchivoUnico && (
+        <SeccionCargaIvr key={`ivr-${canal}`} catalogo={catalogo} />
+      )}
+      {catalogo && !esArchivoUnico && (
+        fase === 'solicitud'
+          ? <SeccionSolicitud key={`sol-${canal}`} canal={canal} />
+          : <SeccionResultado key={`res-${canal}`} canal={canal} estados={catalogo.estados} />
+      )}
     </div>
   );
 }

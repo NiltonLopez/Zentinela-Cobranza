@@ -3,9 +3,54 @@ import type {
   CanalVirtualidad,
   FilaSolicitud, ValidarSolicitudResponse,
   FilaResultado, ValidarResultadoResponse,
+  CatalogoCanal, ValidarCargaIvrResponse, ConfirmarCargaIvrResponse,
 } from '../types/historicoVirtualidad';
 
 const BASE = '/api/virtualidad/historico';
+
+// ── Catálogo ────────────────────────────────────────────────────────────────
+
+export const obtenerCatalogoCanal = async (canal: CanalVirtualidad): Promise<CatalogoCanal> => {
+  const { data } = await api.get<CatalogoCanal>(`${BASE}/catalogo`, { params: { canal } });
+  return data;
+};
+
+// ── Carga única (canal IVR) ─────────────────────────────────────────────────
+
+export const validarCargaIvr = async (
+  archivo: File,
+  onProgreso?: (pct: number) => void,
+): Promise<ValidarCargaIvrResponse> => {
+  const fd = new FormData();
+  fd.append('archivo', archivo);
+  const { data } = await api.post<ValidarCargaIvrResponse>(`${BASE}/ivr/validar`, fd, {
+    onUploadProgress: (e) => {
+      if (onProgreso && e.total) onProgreso(Math.round((100 * e.loaded) / e.total));
+    },
+  });
+  return data;
+};
+
+/**
+ * Reenvía el MISMO archivo que se validó, junto con su huella. El backend re-parsea
+ * en vez de recibir las filas: evita un round-trip enorme con archivos grandes y
+ * garantiza que lo insertado sea exactamente lo validado.
+ */
+export const confirmarCargaIvr = async (
+  archivo: File,
+  huella: string,
+  onProgreso?: (pct: number) => void,
+): Promise<ConfirmarCargaIvrResponse> => {
+  const fd = new FormData();
+  fd.append('archivo', archivo);
+  fd.append('huella', huella);
+  const { data } = await api.post<ConfirmarCargaIvrResponse>(`${BASE}/ivr/confirmar`, fd, {
+    onUploadProgress: (e) => {
+      if (onProgreso && e.total) onProgreso(Math.round((100 * e.loaded) / e.total));
+    },
+  });
+  return data;
+};
 
 function descargarBlob(data: Blob, nombre: string): void {
   const url  = URL.createObjectURL(data);

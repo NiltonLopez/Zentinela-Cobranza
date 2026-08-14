@@ -1670,7 +1670,9 @@ Errores comunes: `"ID {id} no existe."`, `"ID {id} pertenece al canal '{canalRea
 
 ## POST /api/virtualidad/historico/resultado/confirmar
 
-Aplica `Estado` + `FechaResultado = DateTime.Now` por `ID` sobre las filas válidas. Si un `ID` se repite en el archivo, gana la última fila.
+Aplica `Estado` por `ID` sobre las filas válidas. Si un `ID` se repite en el archivo, gana la última fila.
+
+Solo aplica a **SMS y Correo**: el canal IVR usa carga única (`POST /api/virtualidad/historico/ivr/confirmar`) y este endpoint lo rechaza con 400.
 
 **Roles:** Admin, AuxiliarSistemas
 
