@@ -6,6 +6,7 @@
 // "Atendidos"/"% Atención", que salen del CDR y aún no se cargan en Zentinela.
 import { useState } from 'react';
 import type { AnalisisIvr, AnalisisIvrLider, DesenlaceIvr, EmbudoPasoIvr } from '../../../types/virtualidad';
+import { exportarAnalisisIvrPdf } from './exportarAnalisisIvr';
 
 const n = (v: number) => v.toLocaleString('es-CO');
 const pct = (v: number) => `${v.toFixed(2)}%`;
@@ -219,6 +220,13 @@ const tdNum: React.CSSProperties = {
 
 export function AnalisisIvrPanel({ analisis }: { analisis: AnalisisIvr }) {
   const [expandido, setExpandido] = useState<number | null>(null);
+  const [descargando, setDescargando] = useState(false);
+
+  const descargar = async () => {
+    setDescargando(true);
+    try { await exportarAnalisisIvrPdf(analisis); }
+    finally { setDescargando(false); }
+  };
 
   if (analisis.clientesMarcados === 0 || analisis.clientesConResultado === 0) {
     return (
@@ -238,6 +246,26 @@ export function AnalisisIvrPanel({ analisis }: { analisis: AnalisisIvr }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={descargar}
+          disabled={descargando}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '9px 18px', borderRadius: 7, border: 'none',
+            background: descargando ? 'var(--z-border)' : COLORES.ivr,
+            color: descargando ? 'var(--z-text-muted)' : '#fff',
+            fontSize: 13, fontWeight: 600,
+            cursor: descargando ? 'not-allowed' : 'pointer',
+            transition: 'opacity 0.15s ease',
+          }}
+          onMouseOver={e => { if (!descargando) e.currentTarget.style.opacity = '0.85'; }}
+          onMouseOut={e => { e.currentTarget.style.opacity = '1'; }}
+        >
+          {descargando ? 'Generando…' : '↓ Descargar Informe'}
+        </button>
+      </div>
 
       {/* Los clientes sin resultado NO son "no contactados": es información que falta.
           Se avisa arriba para que nadie lea el porcentaje como si fuera desempeño. */}
