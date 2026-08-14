@@ -34,6 +34,7 @@ import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPag
 import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
 import { AgenciasExternasPage } from './pages/informes/AgenciasExternasPage';
 import { AuditoriaGestionesPage } from './pages/informes/AuditoriaGestionesPage';
+import { InformesGeneralesPage } from './pages/informes/InformesGeneralesPage';
 
 // Administración
 import { GestionAsignacionesPage } from './pages/administracion/GestionAsignacionesPage';
@@ -179,6 +180,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Director']}>
                     <AuditoriaGestionesPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/informes/generales"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Director']}>
+                    <InformesGeneralesPage />
                   </RutaProtegida>
                 }
               />

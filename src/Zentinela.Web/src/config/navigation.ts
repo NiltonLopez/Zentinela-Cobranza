@@ -54,6 +54,7 @@ export const MODULOS: Modulo[] = [
       { key: 'recaudo',             label: 'Informes de Recaudo',     path: '/informes/recaudo',     rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'agencias-externas',   label: 'Agencias Externas',       path: '/informes/agencias-externas', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'auditoria-gestiones', label: 'Auditoría de Gestiones',  path: '/informes/auditoria-gestiones', rolesPermitidos: ['Admin', 'Director'] },
+      { key: 'generales',           label: 'Informes Generales',      path: '/informes/generales',           rolesPermitidos: ['Admin', 'Director'] },
     ],
   },
   {
