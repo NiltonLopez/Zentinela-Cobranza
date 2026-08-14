@@ -82,6 +82,75 @@ export interface InformeIVR {
   alertas:         AlertaIVR[];
 }
 
+// ── Análisis IVR (embudo y desenlaces, ADR-031) ───────────────────────────────
+// Todos los conteos son de CLIENTES ÚNICOS por cartera: un cliente marcado varias
+// veces cuenta una sola vez, con su mejor desenlace.
+
+export interface EmbudoPasoIvr {
+  etiqueta:   string;
+  clientes:   number;
+  porcentaje: number;
+  base:       string;
+}
+
+export interface DesenlaceIvr {
+  rango:      number;
+  desenlace:  string;
+  clientes:   number;
+  porcentaje: number;
+}
+
+export interface AnalisisIvrCartera {
+  carteraID:            number;
+  nombreCartera:        string;
+  clientesMarcados:     number;
+  sinResultado:         number;
+  clientesConResultado: number;
+  contactados:          number;
+  marcaronOpcion1:      number;
+  contactabilidad:      number;
+}
+
+export interface AnalisisIvrLider {
+  liderID:           number;
+  nombreLider:       string;
+  totalCarteras:     number;
+  clientesMarcados:  number;
+  /** Clientes sin resultado cargado (flujo viejo). Excluidos de la base de los %. */
+  sinResultado:         number;
+  clientesConResultado: number;
+  contactados:       number;
+  escucharonMenu:    number;
+  marcaronOpcion1:   number;
+  contactabilidad:   number;
+  conversionOpcion1: number;
+  embudo:            EmbudoPasoIvr[];
+  desenlaces:        DesenlaceIvr[];
+  porCartera:        AnalisisIvrCartera[];
+  apreciacion:       string;
+}
+
+export interface AnalisisIvr {
+  desde:             string;
+  hasta:             string;
+  totalMarcaciones:  number;
+  clientesMarcados:  number;
+  /** Clientes sin resultado cargado (flujo viejo). Excluidos de la base de los %. */
+  sinResultado:         number;
+  clientesConResultado: number;
+  contactados:       number;
+  escucharonMenu:    number;
+  marcaronOpcion1:   number;
+  contactabilidad:   number;
+  conversionOpcion1: number;
+  embudo:            EmbudoPasoIvr[];
+  desenlaces:        DesenlaceIvr[];
+  porLider:          AnalisisIvrLider[];
+  totalLideres:      number;
+  totalCarteras:     number;
+  apreciacion:       string;
+}
+
 // ── Llamadas perdidas ─────────────────────────────────────────────────────────
 
 export interface FilaLlamada {

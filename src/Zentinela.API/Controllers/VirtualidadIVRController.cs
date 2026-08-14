@@ -29,4 +29,18 @@ public class VirtualidadIVRController : ControllerBase
         var resultado = await _service.GetInformeAsync(desde, hasta, liderID, carteraID);
         return Ok(resultado);
     }
+
+    /// <summary>Análisis de embudo y desenlaces del IVR sobre clientes únicos (ADR-031).</summary>
+    [HttpGet("analisis")]
+    public async Task<IActionResult> GetAnalisis(
+        [FromQuery] DateOnly desde,
+        [FromQuery] DateOnly hasta,
+        [FromQuery] int? liderID,
+        [FromQuery] int? carteraID)
+    {
+        if (hasta < desde)
+            return BadRequest(new { mensaje = "La fecha final no puede ser anterior a la inicial." });
+
+        return Ok(await _service.GetAnalisisAsync(desde, hasta, liderID, carteraID));
+    }
 }

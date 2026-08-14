@@ -8,11 +8,12 @@ import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
 import { ZDropdown } from '../../components/ZDropdown';
 import {
   getInformeMensajeria,
-  getInformeIVR,
+  getInformeIVR, getAnalisisIvr,
   validarLlamadasPerdidas, confirmarLlamadasPerdidas, getInformeLlamadasPerdidas,
   validarLlamadasEntrantes, confirmarLlamadasEntrantes, getInformeEntrantes,
   getInformePagosImpacto,
 } from '../../api/virtualidadApi';
+import { AnalisisIvrPanel } from './virtualidad/AnalisisIvrPanel';
 import type {
   ValidarLlamadasResponse, FilaLlamada,
   ValidarEntrantesResponse,
@@ -477,6 +478,17 @@ function TabIVR() {
     enabled:  false,
   });
 
+  // Análisis de embudo y desenlaces (ADR-031). Se dispara con el mismo botón.
+  const { data: analisis, refetch: refetchAnalisis, isFetching: cargandoAnalisis } = useQuery({
+    queryKey: ['analisis-ivr', desde, hasta, filtroLider, filtroCartera],
+    queryFn:  () => getAnalisisIvr(
+      desde, hasta,
+      filtroLider   > 0 ? filtroLider   : undefined,
+      filtroCartera > 0 ? filtroCartera : undefined,
+    ),
+    enabled:  false,
+  });
+
   // Idem al primer bloque: descartamos entradas "Cartera Completo" (liderID null)
   // — el filtro de Virtualidad opera por combinación líder-cartera concreta.
   const opcionesPorLider = opciones.filter((o): o is typeof o & { liderID: number } => o.liderID !== null);
@@ -505,11 +517,11 @@ function TabIVR() {
       </div>
 
       <p style={{ margin: 0, fontSize: 12, color: C.gray, background: 'var(--z-bg-page)', border: '1px solid var(--z-border)', borderRadius: 8, padding: '10px 14px' }}>
-        El registro de solicitudes IVR ahora se hace en <strong>Administración → Gestión de Solicitudes de Virtualidad</strong>. Aquí solo se consulta el informe.
+        Los resultados de IVR se cargan en <strong>Administración → Gestión de Histórico de Virtualidad</strong>. Aquí solo se consulta el análisis.
       </p>
 
       {/* Sección informe */}
-      <SectionDivider title="Informe de IVR enviado" color={C.ivr} />
+      <SectionDivider title="Análisis de IVR" color={C.ivr} />
       <SelectorPeriodo color={C.ivr} onChange={(d, h) => { setDesde(d); setHasta(h); }} />
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -536,51 +548,24 @@ function TabIVR() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <BtnPrimary color={C.ivr} disabled={cargandoInforme} onClick={() => refetch()}>
-          {cargandoInforme ? 'Generando…' : 'Generar informe'}
+        <BtnPrimary
+          color={C.ivr}
+          disabled={cargandoInforme || cargandoAnalisis}
+          onClick={() => { refetchAnalisis(); refetch(); }}
+        >
+          {cargandoInforme || cargandoAnalisis ? 'Generando…' : 'Generar informe'}
         </BtnPrimary>
         <span style={{ fontSize: 12, color: C.gray }}>
           Período: <strong>{formatoDDMMYYYY(desde)}</strong> → <strong>{formatoDDMMYYYY(hasta)}</strong>
         </span>
       </div>
 
-      {cargandoInforme && <LoadingRow label="Calculando informe del período…" />}
+      {(cargandoInforme || cargandoAnalisis) && <LoadingRow label="Calculando informe del período…" />}
+
+      {analisis && !cargandoAnalisis && <AnalisisIvrPanel analisis={analisis} />}
 
       {informe && (
         <>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <KpiCard label="Total IVR"     value={informe.totalIVR}                color={C.ivr}  />
-            <KpiCard label="Combinaciones" value={informe.porLiderCartera.length}  color={C.gray} />
-          </div>
-          <div style={{ height: Math.max(230, informe.porLiderCartera.length * 30 + 60), marginTop: 4 }}>
-            <p style={{ fontSize: 12, color: C.gray, margin: '0 0 8px', fontWeight: 600 }}>IVR por líder y cartera</p>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={informe.porLiderCartera.map(p => ({ ...p, etiqueta: `${p.nombreLider} — ${p.nombreCartera}` }))}
-                layout="vertical"
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--z-border)" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="etiqueta" type="category" width={220} tick={{ fontSize: 11 }} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="total" fill={C.ivr} radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <table style={{ fontSize: 12, borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>{['Líder', 'Cartera', 'Total IVR'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr>
-            </thead>
-            <tbody>{informe.porLiderCartera.map((p, i) => (
-              <tr key={`${p.liderID}_${p.carteraID}`} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--z-bg-page)' }}>
-                <td style={tdStyle}>{p.nombreLider}</td>
-                <td style={tdStyle}>{p.nombreCartera}</td>
-                <td style={{ ...tdStyle, fontWeight: 600, color: C.ivr }}>{p.total}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-
           {informe.alertas.length > 0 && (
             <AlertPanel title="Alertas en el período — líneas con >5 IVR">
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>

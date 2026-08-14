@@ -1,7 +1,7 @@
 import api from './authApi';
 import type {
   InformeMensajeria,
-  InformeIVR,
+  InformeIVR, AnalisisIvr,
   ValidarLlamadasResponse, InformeLlamadas, FilaLlamada,
   ValidarEntrantesResponse, InformeEntrantes, FilaEntrante,
   PagosImpacto,
@@ -30,6 +30,19 @@ export const getInformeIVR = async (
   carteraID?: number,
 ): Promise<InformeIVR> => {
   const { data } = await api.get<InformeIVR>('/api/virtualidad/ivr/informe', {
+    params: { desde, hasta, liderID, carteraID },
+  });
+  return data;
+};
+
+/** Análisis de embudo y desenlaces del IVR sobre clientes únicos (ADR-031). */
+export const getAnalisisIvr = async (
+  desde: string,
+  hasta: string,
+  liderID?: number,
+  carteraID?: number,
+): Promise<AnalisisIvr> => {
+  const { data } = await api.get<AnalisisIvr>('/api/virtualidad/ivr/analisis', {
     params: { desde, hasta, liderID, carteraID },
   });
   return data;

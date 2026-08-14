@@ -10,4 +10,11 @@ namespace Zentinela.Application.Interfaces;
 public interface IVirtualidadIVRService
 {
     Task<InformeIVRDto> GetInformeAsync(DateOnly desde, DateOnly hasta, int? liderID, int? carteraID);
+
+    /// <summary>
+    /// Análisis del canal: embudo y desenlaces sobre clientes únicos (ADR-031).
+    /// Requiere resultados cargados (Estado no nulo); las filas del flujo viejo de dos
+    /// fases quedan en el bucket "sin contacto" porque no tienen estado.
+    /// </summary>
+    Task<AnalisisIvrDto> GetAnalisisAsync(DateOnly desde, DateOnly hasta, int? liderID, int? carteraID);
 }
