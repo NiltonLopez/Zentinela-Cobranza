@@ -343,6 +343,89 @@ const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: st
   'RGM':              { etiqueta: 'Funcional',    color: '#16A34A' },
 };
 
+// Celda numérica de la tabla de localización. Vive en el nivel superior del módulo,
+// NO dentro de TablaLocalizacion: si se declara en el cuerpo del render, su identidad
+// cambia en cada render y React la trata como un componente distinto, desmontando y
+// remontando las 60 celdas ante cada hover o cada check (con clicks perdidos como
+// posible efecto). Todo el estado entra por props.
+function CeldaCifra({
+  valor, porcentaje, colorTexto, porcentajeMuted = true,
+  habilitado, hover, descargando, marcada,
+  etiquetaFuente, categoria,
+  onHoverEnter, onHoverLeave, onAlternar, onDescargar,
+}: {
+  valor: number;
+  porcentaje: number;
+  colorTexto: string;
+  porcentajeMuted?: boolean;
+  habilitado: boolean;
+  hover: boolean;
+  descargando: boolean;
+  marcada: boolean;
+  etiquetaFuente: string;
+  categoria: CategoriaLocalizacion;
+  onHoverEnter: () => void;
+  onHoverLeave: () => void;
+  onAlternar: () => void;
+  onDescargar: () => void;
+}) {
+  return (
+    <td
+      style={{
+        padding: '8px 10px',
+        textAlign: 'center',
+        color: colorTexto,
+        cursor: habilitado ? 'pointer' : 'default',
+        position: 'relative',
+        background: marcada ? 'var(--z-brand-light)' : undefined,
+        transition: 'background 0.15s',
+      }}
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
+      onClick={() => habilitado && !descargando && onDescargar()}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        {/* La casilla aparece en hover y se queda visible mientras esté marcada.
+            stopPropagation: marcar no debe disparar la descarga individual. */}
+        {habilitado && (
+          <input
+            type="checkbox"
+            checked={marcada}
+            onChange={onAlternar}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Seleccionar ${categoria} de ${etiquetaFuente} para descarga múltiple`}
+            style={{
+              width: 13, height: 13, margin: 0, cursor: 'pointer',
+              accentColor: 'var(--z-brand)',
+              opacity: hover || marcada ? 1 : 0,
+              transition: 'opacity 0.15s',
+            }}
+          />
+        )}
+        {fmt(valor)}
+        <span style={{ color: porcentajeMuted ? 'var(--z-text-muted)' : 'inherit' }}>
+          ({porcentaje.toFixed(1)}%)
+        </span>
+        {habilitado && (
+          <span
+            aria-label={`Descargar ${categoria} de ${etiquetaFuente}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: colorTexto,
+              opacity: hover || descargando ? 1 : 0,
+              transition: 'opacity 0.15s',
+              marginLeft: 2,
+            }}
+          >
+            {descargando ? '…' : <IconoDescarga />}
+          </span>
+        )}
+      </span>
+    </td>
+  );
+}
+
 function TablaLocalizacion({
   filas,
   total,
@@ -406,6 +489,15 @@ function TablaLocalizacion({
 
   const botonZip = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* El motivo del estado deshabilitado va VISIBLE, no solo en el title: un
+          botón apagado sin explicación se lee como que la pantalla está rota. */}
+      {seleccion.size < MINIMO_ZIP && (
+        <span style={{ fontSize: 11, color: 'var(--z-text-muted)', textTransform: 'none', letterSpacing: 0 }}>
+          {seleccion.size === 0
+            ? 'Marca 2 o más casillas para bajarlas juntas'
+            : 'Marca al menos una casilla más'}
+        </span>
+      )}
       {seleccion.size > 0 && (
         <button
           onClick={() => setSeleccion(new Set())}
@@ -476,84 +568,37 @@ function TablaLocalizacion({
     }
   };
 
-  // Celda numérica reutilizable: muestra la cifra + porcentaje y revela el
-  // ícono de descarga al hacer hover. Click sobre el ícono (o sobre toda
-  // la celda) dispara el CSV de esa intersección (fuente, categoría).
-  const CeldaCifra = ({
-    fuente,
-    categoria,
-    valor,
-    porcentaje,
-    colorTexto,
+  // Adaptador delgado sobre el CeldaCifra de nivel superior: resuelve el estado
+  // de la celda (hover / descarga / marcada) y arma los callbacks. Es una FUNCIÓN
+  // que devuelve JSX, no un componente en JSX — así no introduce un tipo nuevo.
+  const celda = (
+    fuente: string,
+    categoria: CategoriaLocalizacion,
+    valor: number,
+    porcentaje: number,
+    colorTexto: string,
     porcentajeMuted = true,
-  }: {
-    fuente: string;
-    categoria: CategoriaLocalizacion;
-    valor: number;
-    porcentaje: number;
-    colorTexto: string;
-    porcentajeMuted?: boolean;
-  }) => {
+  ) => {
     const cellKey = `${fuente}|${categoria}`;
-    const hover = celdaHover === cellKey;
-    const descargando = celdaDescargando === cellKey;
     const habilitado = FUENTE_SLUG[fuente] !== undefined && valor > 0;
-    const marcada = seleccion.has(cellKey);
 
     return (
-      <td
-        style={{
-          padding: '8px 10px',
-          textAlign: 'center',
-          color: colorTexto,
-          cursor: habilitado ? 'pointer' : 'default',
-          position: 'relative',
-          background: marcada ? 'var(--z-brand-light)' : undefined,
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={() => habilitado && setCeldaHover(cellKey)}
-        onMouseLeave={() => setCeldaHover(prev => (prev === cellKey ? null : prev))}
-        onClick={() => habilitado && !descargando && descargar(fuente, categoria)}
-      >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          {/* La casilla aparece en hover y se queda visible mientras esté marcada.
-              stopPropagation: marcar no debe disparar la descarga individual. */}
-          {habilitado && (
-            <input
-              type="checkbox"
-              checked={marcada}
-              onChange={() => alternarSeleccion(cellKey)}
-              onClick={(e) => e.stopPropagation()}
-              aria-label={`Seleccionar ${categoria} de ${fuente} para descarga múltiple`}
-              style={{
-                width: 13, height: 13, margin: 0, cursor: 'pointer',
-                accentColor: 'var(--z-brand)',
-                opacity: hover || marcada ? 1 : 0,
-                transition: 'opacity 0.15s',
-              }}
-            />
-          )}
-          {fmt(valor)}
-          <span style={{ color: porcentajeMuted ? 'var(--z-text-muted)' : 'inherit' }}>
-            ({porcentaje.toFixed(1)}%)
-          </span>
-          {habilitado && (
-            <span
-              aria-label={`Descargar ${categoria} de ${fuente}`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                color: colorTexto,
-                opacity: hover || descargando ? 1 : 0,
-                transition: 'opacity 0.15s',
-                marginLeft: 2,
-              }}
-            >
-              {descargando ? '…' : <IconoDescarga />}
-            </span>
-          )}
-        </span>
-      </td>
+      <CeldaCifra
+        valor={valor}
+        porcentaje={porcentaje}
+        colorTexto={colorTexto}
+        porcentajeMuted={porcentajeMuted}
+        habilitado={habilitado}
+        hover={celdaHover === cellKey}
+        descargando={celdaDescargando === cellKey}
+        marcada={seleccion.has(cellKey)}
+        etiquetaFuente={fuente}
+        categoria={categoria}
+        onHoverEnter={() => habilitado && setCeldaHover(cellKey)}
+        onHoverLeave={() => setCeldaHover(prev => (prev === cellKey ? null : prev))}
+        onAlternar={() => alternarSeleccion(cellKey)}
+        onDescargar={() => descargar(fuente, categoria)}
+      />
     );
   };
 
@@ -607,24 +652,9 @@ function TablaLocalizacion({
                   )}
                 </td>
 
-                <CeldaCifra
-                  fuente={f.fuente} categoria="encontrado"
-                  valor={f.encontrados} porcentaje={pctEnc}
-                  colorTexto="#15803D"
-                />
-
-                <CeldaCifra
-                  fuente={f.fuente} categoria="no-encontrado"
-                  valor={f.noEncontrados} porcentaje={pctNoEnc}
-                  colorTexto="#B45309"
-                />
-
-                <CeldaCifra
-                  fuente={f.fuente} categoria="falta"
-                  valor={f.faltanPorBuscar} porcentaje={pctFalta}
-                  colorTexto="var(--z-text-muted)"
-                  porcentajeMuted={false}
-                />
+                {celda(f.fuente, 'encontrado',    f.encontrados,     pctEnc,   '#15803D')}
+                {celda(f.fuente, 'no-encontrado', f.noEncontrados,   pctNoEnc, '#B45309')}
+                {celda(f.fuente, 'falta',         f.faltanPorBuscar, pctFalta, 'var(--z-text-muted)', false)}
 
                 {/* Barra apilada */}
                 <td style={{ padding: '8px 10px', minWidth: 120 }}>
