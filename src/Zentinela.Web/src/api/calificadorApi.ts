@@ -37,3 +37,24 @@ export const descargarLocalizacionCsv = async (
   );
   return res.data as Blob;
 };
+
+export interface CeldaLocalizacion {
+  fuente: string;              // slug
+  categoria: CategoriaLocalizacion;
+}
+
+// Descarga múltiple: ZIP con un CSV por celda seleccionada. POST porque la
+// selección puede llegar a 60 celdas (20 fuentes × 3 categorías).
+export const descargarLocalizacionZip = async (
+  carteraID: number,
+  liderID: number | null,
+  celdas: CeldaLocalizacion[],
+): Promise<Blob> => {
+  const params = liderID == null ? '' : `?liderID=${liderID}`;
+  const res = await api.post(
+    `/api/calificador/${carteraID}/localizacion/zip${params}`,
+    { celdas },
+    { responseType: 'blob' },
+  );
+  return res.data as Blob;
+};

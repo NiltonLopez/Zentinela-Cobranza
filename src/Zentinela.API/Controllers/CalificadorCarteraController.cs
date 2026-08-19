@@ -95,6 +95,43 @@ public class CalificadorCarteraController : ControllerBase
             carteraID, liderID, fuente, categoria, Response.Body, HttpContext.RequestAborted);
     }
 
+    /// <summary>
+    /// Descarga múltiple: ZIP con un CSV por celda seleccionada en "Porcentajes de
+    /// Localización". Es POST y no GET porque la selección puede llegar a 60 celdas
+    /// (20 fuentes × 3 categorías) y no cabe cómoda en un query string.
+    /// </summary>
+    [HttpPost("{carteraID:int}/localizacion/zip")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Lider},{Roles.Director},{Roles.LiderExterno}")]
+    public async Task DescargarLocalizacionZip(
+        int carteraID,
+        [FromBody] DescargaLocalizacionZipRequest request,
+        [FromQuery] int? liderID = null)
+    {
+        var celdas = (request?.Celdas ?? [])
+            .Select(c => new CeldaLocalizacion(c.Fuente, c.Categoria))
+            .ToList();
+
+        if (celdas.Count == 0)
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(new { mensaje = "Debe seleccionar al menos una celda." });
+            return;
+        }
+
+        var nombreArchivo = await _service.ResolverNombreArchivoLocalizacionZipAsync(carteraID, liderID);
+
+        Response.ContentType = "application/zip";
+        var contentDisposition = new ContentDispositionHeaderValue("attachment");
+        contentDisposition.SetHttpFileName(nombreArchivo);
+        Response.Headers.Append("Content-Disposition", contentDisposition.ToString());
+
+        await _service.EscribirLocalizacionZipAsync(
+            carteraID, liderID, celdas, Response.Body, HttpContext.RequestAborted);
+    }
+
+    public record CeldaLocalizacionRequest(string Fuente, string Categoria);
+    public record DescargaLocalizacionZipRequest(List<CeldaLocalizacionRequest> Celdas);
+
     private ContextoUsuario ObtenerContexto() => new(
         Rol:     User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
         LiderID: int.TryParse(User.FindFirstValue("liderID"), out var id) ? id : null);

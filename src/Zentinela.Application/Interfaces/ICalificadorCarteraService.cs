@@ -36,4 +36,23 @@ public interface ICalificadorCarteraService
     /// </summary>
     Task<string> ResolverNombreArchivoLocalizacionAsync(
         int carteraID, int? liderID, string fuenteSlug, string categoria);
+
+    /// <summary>
+    /// Stream ZIP con un CSV por cada celda (fuente, categoría) seleccionada en la
+    /// tabla "Porcentajes de Localización". Se usa ZIP y no gzip porque gzip comprime
+    /// un único stream y no admite varias entradas; además Windows abre el ZIP nativo.
+    /// Las celdas se consultan en serie sobre una sola conexión y se comprimen al vuelo.
+    /// </summary>
+    Task EscribirLocalizacionZipAsync(
+        int carteraID, int? liderID,
+        IReadOnlyList<CeldaLocalizacion> celdas,
+        Stream output, CancellationToken ct = default);
+
+    /// <summary>Nombre sugerido para el ZIP de descarga múltiple (cartera, líder y fecha).</summary>
+    Task<string> ResolverNombreArchivoLocalizacionZipAsync(int carteraID, int? liderID);
 }
+
+/// <summary>Una celda de la tabla de localización: intersección de fuente y categoría.</summary>
+/// <param name="Fuente">Slug de la fuente (cajacopi, camara, salud-total, …).</param>
+/// <param name="Categoria">encontrado | no-encontrado | falta.</param>
+public record CeldaLocalizacion(string Fuente, string Categoria);

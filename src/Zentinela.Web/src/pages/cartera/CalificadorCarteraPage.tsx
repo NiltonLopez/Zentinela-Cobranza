@@ -4,6 +4,7 @@ import {
   calificarCartera,
   obtenerOpcionesCalificador,
   descargarLocalizacionCsv,
+  descargarLocalizacionZip,
   type CategoriaLocalizacion,
 } from '../../api/calificadorApi';
 import type { CalificadorCarteraDto, DesglosePar, LocalizacionFuente } from '../../types/calificador';
@@ -76,10 +77,13 @@ function Tarjeta({
   titulo,
   children,
   style,
+  accion,
 }: {
   titulo: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
+  /** Control opcional alineado a la derecha del título (p. ej. botón de descarga). */
+  accion?: React.ReactNode;
 }) {
   return (
     <div style={{
@@ -89,16 +93,26 @@ function Tarjeta({
       padding: '20px 24px',
       ...style,
     }}>
-      <p style={{
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: 'uppercase',
-        letterSpacing: '0.08em',
-        color: 'var(--z-text-muted)',
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
         marginBottom: 16,
+        minHeight: accion ? 28 : undefined,
       }}>
-        {titulo}
-      </p>
+        <p style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          color: 'var(--z-text-muted)',
+          margin: 0,
+        }}>
+          {titulo}
+        </p>
+        {accion}
+      </div>
       {children}
     </div>
   );
@@ -309,7 +323,7 @@ export function CalificadorCarteraPage() {
 const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: string }> = {
   'Cajacopi':         { etiqueta: 'Funcional',    color: '#16A34A' },
   'Cámara':           { etiqueta: 'Intermitente', color: '#CA8A04' },
-  'Salud Total':      { etiqueta: 'Funcional',    color: '#16A34A' },
+  'Salud Total':      { etiqueta: 'Inactivo',     color: '#DC2626' },
   'Fosyga':           { etiqueta: 'Intermitente', color: '#CA8A04' },
   'Compensados':      { etiqueta: 'Intermitente', color: '#CA8A04' },
   'Positiva':         { etiqueta: 'Funcional',    color: '#16A34A' },
@@ -350,8 +364,90 @@ function TablaLocalizacion({
   // un spinner y desactivar el click mientras corre la consulta.
   const [celdaDescargando, setCeldaDescargando] = useState<string | null>(null);
 
+  // Celdas marcadas con el checkbox, para la descarga múltiple en ZIP.
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [zipDescargando, setZipDescargando] = useState(false);
+
+  const alternarSeleccion = (cellKey: string) => {
+    setSeleccion((prev) => {
+      const siguiente = new Set(prev);
+      if (!siguiente.delete(cellKey)) siguiente.add(cellKey);
+      return siguiente;
+    });
+  };
+
+  // El botón exige 2+ celdas: con una sola, el click directo sobre la cifra ya
+  // descarga ese CSV y un ZIP de un archivo no aporta nada.
+  const MINIMO_ZIP = 2;
+  const puedeDescargarZip = seleccion.size >= MINIMO_ZIP && !zipDescargando && !celdaDescargando;
+
+  const descargarZip = async () => {
+    if (!puedeDescargarZip) return;
+    setZipDescargando(true);
+    try {
+      const celdas = [...seleccion].map((key) => {
+        const [fuente, categoria] = key.split('|');
+        return { fuente: FUENTE_SLUG[fuente], categoria: categoria as CategoriaLocalizacion };
+      });
+
+      const blob = await descargarLocalizacionZip(carteraID, liderID, celdas);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Localizacion_${etiquetaCartera.replace(/\s+/g, '_')}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setZipDescargando(false);
+    }
+  };
+
+  const botonZip = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {seleccion.size > 0 && (
+        <button
+          onClick={() => setSeleccion(new Set())}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            fontSize: 11, color: 'var(--z-text-muted)', textTransform: 'none', letterSpacing: 0,
+          }}
+        >
+          Limpiar ({seleccion.size})
+        </button>
+      )}
+      <button
+        onClick={descargarZip}
+        disabled={!puedeDescargarZip}
+        title={
+          seleccion.size < MINIMO_ZIP
+            ? 'Marca 2 o más casillas para descargarlas juntas en un ZIP'
+            : `Descargar ${seleccion.size} listas en un ZIP`
+        }
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6,
+          border: '0.5px solid ' + (puedeDescargarZip ? 'var(--z-brand)' : 'var(--z-border)'),
+          background: puedeDescargarZip ? 'var(--z-brand)' : 'var(--z-bg-page)',
+          color: puedeDescargarZip ? '#FFF' : 'var(--z-text-muted)',
+          cursor: puedeDescargarZip ? 'pointer' : 'not-allowed',
+          opacity: puedeDescargarZip ? 1 : 0.6,
+          transition: 'background 0.15s, border-color 0.15s, opacity 0.15s',
+          textTransform: 'none', letterSpacing: 0,
+        }}
+      >
+        {zipDescargando ? 'Comprimiendo…' : <><IconoDescarga /> Descargar selección</>}
+      </button>
+    </div>
+  );
+
   if (filas.length === 0)
-    return <p style={{ color: 'var(--z-text-muted)', fontSize: 13 }}>Sin datos</p>;
+    return (
+      <Tarjeta titulo="Porcentajes de Localización" style={{ gridColumn: '1 / -1' }}>
+        <p style={{ color: 'var(--z-text-muted)', fontSize: 13 }}>Sin datos</p>
+      </Tarjeta>
+    );
 
   // Lanza la descarga del CSV de una celda. Usa el nombre que envía el
   // backend en Content-Disposition; como fallback construye uno con la
@@ -402,6 +498,7 @@ function TablaLocalizacion({
     const hover = celdaHover === cellKey;
     const descargando = celdaDescargando === cellKey;
     const habilitado = FUENTE_SLUG[fuente] !== undefined && valor > 0;
+    const marcada = seleccion.has(cellKey);
 
     return (
       <td
@@ -411,12 +508,31 @@ function TablaLocalizacion({
           color: colorTexto,
           cursor: habilitado ? 'pointer' : 'default',
           position: 'relative',
+          background: marcada ? 'var(--z-brand-light)' : undefined,
+          transition: 'background 0.15s',
         }}
         onMouseEnter={() => habilitado && setCeldaHover(cellKey)}
         onMouseLeave={() => setCeldaHover(prev => (prev === cellKey ? null : prev))}
         onClick={() => habilitado && !descargando && descargar(fuente, categoria)}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          {/* La casilla aparece en hover y se queda visible mientras esté marcada.
+              stopPropagation: marcar no debe disparar la descarga individual. */}
+          {habilitado && (
+            <input
+              type="checkbox"
+              checked={marcada}
+              onChange={() => alternarSeleccion(cellKey)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Seleccionar ${categoria} de ${fuente} para descarga múltiple`}
+              style={{
+                width: 13, height: 13, margin: 0, cursor: 'pointer',
+                accentColor: 'var(--z-brand)',
+                opacity: hover || marcada ? 1 : 0,
+                transition: 'opacity 0.15s',
+              }}
+            />
+          )}
           {fmt(valor)}
           <span style={{ color: porcentajeMuted ? 'var(--z-text-muted)' : 'inherit' }}>
             ({porcentaje.toFixed(1)}%)
@@ -442,6 +558,7 @@ function TablaLocalizacion({
   };
 
   return (
+    <Tarjeta titulo="Porcentajes de Localización" style={{ gridColumn: '1 / -1' }} accion={botonZip}>
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
@@ -545,8 +662,10 @@ function TablaLocalizacion({
 
       <p style={{ marginTop: 10, fontSize: 11, color: 'var(--z-text-muted)' }}>
         Pasa el cursor sobre cualquier cifra y haz click para descargar la lista (Cédula, Nombre, Última Consulta).
+        Marca la casilla de 2 o más celdas para bajarlas juntas en un ZIP.
       </p>
     </div>
+    </Tarjeta>
   );
 }
 
@@ -699,16 +818,16 @@ function Metricas({
         </div>
       </Tarjeta>
 
-      {/* Localización — ancho completo */}
-      <Tarjeta titulo="Porcentajes de Localización" style={{ gridColumn: '1 / -1' }}>
-        <TablaLocalizacion
-          filas={d.localizacion}
-          total={d.totalTitulares}
-          carteraID={carteraID}
-          liderID={liderID}
-          etiquetaCartera={etiquetaCartera}
-        />
-      </Tarjeta>
+      {/* Localización — ancho completo. La Tarjeta la renderiza el propio componente
+          porque el botón de descarga múltiple vive en su cabecera y depende del
+          estado de selección de las celdas. */}
+      <TablaLocalizacion
+        filas={d.localizacion}
+        total={d.totalTitulares}
+        carteraID={carteraID}
+        liderID={liderID}
+        etiquetaCartera={etiquetaCartera}
+      />
 
     </div>
   );

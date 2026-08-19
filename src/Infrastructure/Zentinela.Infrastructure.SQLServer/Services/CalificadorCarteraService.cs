@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -209,7 +210,13 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         -- sí (incidente: retry storm en carteras chicas, ver
         -- project_calificador_retry_storm.md). Con el tope, cada corrida es algo
         -- más lenta sola pero el servidor resiste concurrencia real.
-        OPTION (RECOMPILE, MAXDOP 4);
+        -- HASH JOIN (2026-08-14): incluso con RECOMPILE, el optimizador elegía
+        -- Nested Loops O(n²) en franjas enteras de tamaño (SG+ 36k y TODO ≥133k
+        -- daban timeout >150s tras sumarse TigoUne/Coosalud/SaviaSalud al TVF).
+        -- Forzar hash a nivel de sentencia domina en TODO el rango medido:
+        -- 36k: 2.9s · 41k: 2.8s · 53k: 3.1s · 133k: 14.8s · 251k: 8.1s · 527k: 13.3s.
+        -- Reemplaza al mecanismo de dos funciones con umbral (ver CalificarAsync).
+        OPTION (RECOMPILE, MAXDOP 4, HASH JOIN);
 
         DECLARE @Total int  = (SELECT COUNT(*) FROM #t);
         DECLARE @Hoy   date = CAST(GETDATE() AS date);
@@ -566,20 +573,24 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     // Forzar HASH JOIN de forma universal ROMPE las carteras grandes (116.997
     // titulares: 3.3s -> 64.3s), así que el branching es indispensable, no cosmético.
     //
-    // Umbral CALIBRADO empíricamente el 2026-07-14 (sondeo serial de combos con líder,
-    // midiendo cada función por separado con SET STATISTICS + sys.dm_exec_requests):
-    //   filas    NORMAL          CHICA (HASH)
-    //   ≤35.592  falla (>60s)    rápida (11-19s)   -> usar CHICA
-    //   36.612   17.7s           19.3s             (empatan; frontera)
-    //   56.723   rápida          58.9s (degrada)   -> usar NORMAL
-    //   116.997  3.3s            64.3s             -> usar NORMAL
-    // Las dos funciones se cruzan ~36k: por debajo NORMAL arma mal plan (Nested Loops
-    // O(n²), CXSYNC_PORT) y CHICA gana; por encima CHICA se degrada y NORMAL gana. Por
-    // eso el umbral va JUSTO en el cruce (36.000, en el hueco limpio 35.592-36.612), no
-    // con "margen" hacia arriba: subirlo mandaría los combos de 40-56k a CHICA, que ahí
-    // es MÁS lenta que NORMAL. Combos que hoy pasan a CHICA por este valor: 28.247,
-    // 29.877, 32.028, 33.695, 34.005, 35.592 (antes fallaban en NORMAL).
-    private const int UmbralCarteraChica = 36_000;
+    // HISTORIA DEL MECANISMO DE DOS FUNCIONES (eliminado el 2026-08-14).
+    // Hasta hoy existía un umbral (UmbralCarteraChica = 36.000, calibrado 2026-07-14)
+    // que enrutaba carteras chicas a dbo.fn_BaseMadreParaTitulares_CarteraChica (HASH
+    // forzado en 6 CTEs) y grandes a la función normal. Las migraciones de agosto
+    // (TigoUne, Coosalud, SaviaSalud) movieron el cruce de planes del optimizador y
+    // el mecanismo quedó roto por AMBOS lados — re-medido el 2026-08-14:
+    //   filas    NORMAL          CHICA            HASH a nivel de sentencia
+    //   36.197   TIMEOUT >150s   5.4s             2.9s   (SG+, el incidente reportado)
+    //   40.903   6.9s            TIMEOUT 133s     2.8s
+    //   53.474   6.9s            TIMEOUT 123s     3.1s
+    //   133.178  TIMEOUT >150s   (sin medir)      14.8s
+    //   251.241  TIMEOUT >150s   (sin medir)      8.1s
+    //   526.934  ~222s (histórico, ver timeout)   13.3s
+    // OPTION (HASH JOIN) en la sentencia que materializa #t (ver SqlAgregados) domina
+    // en TODO el rango, así que el umbral y el branching se eliminaron: una sola
+    // función, un solo plan, sin acantilados que re-calibrar cuando se agregue una
+    // fuente. dbo.fn_BaseMadreParaTitulares_CarteraChica queda en la BD sin uso
+    // (candidata a DROP en una migración futura).
 
     public async Task<CalificadorCarteraDto> CalificarAsync(int carteraID, int? liderID, CancellationToken ct = default)
     {
@@ -626,17 +637,12 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             if (titulares.Rows.Count == 0)
                 return new CalificadorCarteraDto { TotalTitulares = 0 };
 
-            // Cartera chica -> función hermana con HASH JOIN forzado (ver
-            // UmbralCarteraChica arriba). Reemplazo de texto simple: ambas funciones
-            // tienen exactamente las mismas columnas de salida, solo cambia el plan.
-            var nombreFuncion = titulares.Rows.Count <= UmbralCarteraChica
-                ? "dbo.fn_BaseMadreParaTitulares_CarteraChica"
-                : "dbo.fn_BaseMadreParaTitulares";
-
+            // Una sola función para todos los tamaños: el plan lo garantiza el
+            // OPTION (RECOMPILE, MAXDOP 4, HASH JOIN) de SqlAgregados, no un umbral.
+            // (Historia y mediciones del mecanismo anterior: comentario sobre
+            // CommandTimeoutSegundos, arriba.)
             await using var cmd = (SqlCommand)conn.CreateCommand();
-            cmd.CommandText    = SqlAgregados.Replace(
-                "FROM dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares)",
-                $"FROM {nombreFuncion}(@CarteraID, @Titulares)");
+            cmd.CommandText    = SqlAgregados;
             cmd.CommandTimeout = CommandTimeoutSegundos;
             AddParam(cmd, "@CarteraID", carteraID);
             cmd.Parameters.Add(new SqlParameter("@Titulares", SqlDbType.Structured)
@@ -935,6 +941,88 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         string fuenteSlug, string categoria,
         Stream output, CancellationToken ct = default)
     {
+        var (meta, predicado) = ResolverCelda(fuenteSlug, categoria);
+
+        _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
+
+        var conn = _db.Database.GetDbConnection();
+        var wasOpen = conn.State == ConnectionState.Open;
+        if (!wasOpen) await conn.OpenAsync(ct);
+
+        try
+        {
+            await EscribirCsvCeldaAsync(conn, meta, predicado, carteraID, liderID, output, ct);
+        }
+        finally
+        {
+            if (!wasOpen) await conn.CloseAsync();
+        }
+    }
+
+    /// <summary>
+    /// Descarga múltiple: empaqueta en un ZIP un CSV por cada celda (fuente, categoría)
+    /// seleccionada en la tabla "Porcentajes de Localización".
+    ///
+    /// Se usa ZIP y no gzip porque gzip comprime UN solo stream y no tiene concepto de
+    /// entradas: para N archivos hace falta un contenedor. ZIP además lo abre Windows
+    /// con doble clic, sin herramientas extra.
+    ///
+    /// Streaming real: ZipArchive en modo Create escribe secuencialmente sobre un stream
+    /// no-buscable (usa data descriptors), y cada CSV se vuelca fila por fila desde el
+    /// DataReader a su entrada. En ningún momento se materializa un archivo completo en
+    /// memoria — una descarga de 10 celdas × 600k filas nunca supera el buffer de 64 KB.
+    /// Las celdas se procesan EN SERIE a propósito: comparten la conexión y cada consulta
+    /// ya usa MAXDOP 4; lanzarlas en paralelo ahogaría el servidor sin ganar tiempo.
+    /// </summary>
+    public async Task EscribirLocalizacionZipAsync(
+        int carteraID, int? liderID,
+        IReadOnlyList<CeldaLocalizacion> celdas,
+        Stream output, CancellationToken ct = default)
+    {
+        if (celdas is null || celdas.Count == 0)
+            throw new ArgumentException("Debe seleccionar al menos una celda.", nameof(celdas));
+
+        // Se valida TODO antes de abrir el ZIP: si una celda es inválida queremos un 400
+        // limpio, no un archivo a medio escribir con el header ya enviado.
+        var resueltas = celdas
+            .Select(c => (Celda: c, Resuelta: ResolverCelda(c.Fuente, c.Categoria)))
+            .ToList();
+
+        _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
+
+        var conn = _db.Database.GetDbConnection();
+        var wasOpen = conn.State == ConnectionState.Open;
+        if (!wasOpen) await conn.OpenAsync(ct);
+
+        try
+        {
+            using var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
+
+            foreach (var (celda, resuelta) in resueltas)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var (meta, predicado) = resuelta;
+                var nombre = $"{meta.Etiqueta}_{celda.Categoria}.csv";
+
+                // CompressionLevel.Optimal: estos CSV son cédulas, nombres y fechas —
+                // texto muy repetitivo que comprime ~80-85%. El costo de CPU es
+                // despreciable frente al tiempo de la consulta.
+                var entrada = zip.CreateEntry(nombre, CompressionLevel.Optimal);
+                await using var streamEntrada = entrada.Open();
+
+                await EscribirCsvCeldaAsync(conn, meta, predicado, carteraID, liderID, streamEntrada, ct);
+            }
+        }
+        finally
+        {
+            if (!wasOpen) await conn.CloseAsync();
+        }
+    }
+
+    /// <summary>Valida (fuente, categoría) y devuelve la metadata + el predicado SQL.</summary>
+    private static (FuenteMeta Meta, string Predicado) ResolverCelda(string? fuenteSlug, string? categoria)
+    {
         if (!Fuentes.TryGetValue(fuenteSlug ?? string.Empty, out var meta))
             throw new ArgumentException($"Fuente desconocida: {fuenteSlug}", nameof(fuenteSlug));
 
@@ -961,6 +1049,19 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             _ => throw new ArgumentException(categoria, nameof(categoria)),
         };
 
+        return (meta, predicado);
+    }
+
+    /// <summary>
+    /// Vuelca a <paramref name="output"/> el CSV de UNA celda, fila por fila desde el
+    /// DataReader. No abre ni cierra la conexión (la maneja el llamador) para que la
+    /// descarga múltiple reutilice una sola conexión en todas las celdas.
+    /// </summary>
+    private async Task EscribirCsvCeldaAsync(
+        DbConnection conn, FuenteMeta meta, string predicado,
+        int carteraID, int? liderID,
+        Stream output, CancellationToken ct)
+    {
         var sql = $"""
             SET NOCOUNT ON;
             WITH t AS (
@@ -982,22 +1083,27 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             LEFT JOIN dbo.Titular ti ON ti.NumeroDocumento = t.TitularID
             WHERE {predicado}
             ORDER BY t.TitularID
-            OPTION (MAXDOP 4);
+            -- RECOMPILE (2026-08-14): hay 45 textos de query distintos (15 fuentes ×
+            -- 3 categorías) y sin RECOMPILE cada uno cachea el plan de la PRIMERA
+            -- cartera que lo ejecuta; una cartera de 251k heredando el plan de una de
+            -- 31k medía 6.8s contra 3.8s con plan propio. Compilar fresco (~0.5s)
+            -- garantiza el mejor plan por cartera y no ensucia el plan cache.
+            -- ⚠ NO agregar HASH JOIN aquí: se midió y EMPEORA esta query (BERTAL
+            -- 251k × Claro: 3.8s natural → 10.8s con hint → 13.1s con src filtrado).
+            -- A diferencia del batch principal, esta forma con src agregado le da al
+            -- optimizador un plan natural mejor que el hash forzado.
+            OPTION (RECOMPILE, MAXDOP 4);
             """;
-
-        _db.Database.SetCommandTimeout(CommandTimeoutSegundos);
-
-        var conn = _db.Database.GetDbConnection();
-        var wasOpen = conn.State == ConnectionState.Open;
-        if (!wasOpen) await conn.OpenAsync(ct);
 
         // BOM UTF-8 para que Excel ES-CO detecte el encoding con tildes (mismo patrón que Creador).
         await output.WriteAsync(BomUtf8, ct);
 
-        await using var writer = new StreamWriter(output, new UTF8Encoding(false), leaveOpen: true);
+        // Buffer de 64 KB: con el default (1 KB), un CSV de ~10 MB (cartera de 250k
+        // titulares) hace ~10.000 escrituras al pipe HTTP; con 64 KB son ~160 y los
+        // WriteAsync por celda se completan sincrónicos contra el buffer.
+        await using var writer = new StreamWriter(output, new UTF8Encoding(false), bufferSize: 64 * 1024, leaveOpen: true);
         await writer.WriteLineAsync("Cédula;Nombre;Última Consulta");
 
-        try
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText    = sql;
@@ -1008,9 +1114,12 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
+                // IsDBNull sincrónico a propósito: sin SequentialAccess la fila ya está
+                // en memoria y la versión Async solo agrega overhead de state machine
+                // (×2 por fila × 250k filas).
                 var titularID = reader.GetInt64(0);
-                var nombre    = await reader.IsDBNullAsync(1, ct) ? string.Empty : reader.GetString(1);
-                var fecha     = await reader.IsDBNullAsync(2, ct) ? (DateTime?)null : reader.GetDateTime(2);
+                var nombre    = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+                var fecha     = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
 
                 await writer.WriteAsync(titularID.ToString(CultureInfo.InvariantCulture));
                 await writer.WriteAsync(';');
@@ -1023,10 +1132,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 
             await writer.FlushAsync(ct);
         }
-        finally
-        {
-            if (!wasOpen) await conn.CloseAsync();
-        }
     }
 
     public async Task<string> ResolverNombreArchivoLocalizacionAsync(
@@ -1035,6 +1140,21 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         if (!Fuentes.TryGetValue(fuenteSlug ?? string.Empty, out var meta))
             throw new ArgumentException($"Fuente desconocida: {fuenteSlug}", nameof(fuenteSlug));
 
+        var (nombreCartera, nombreLider) = await ResolverNombresAsync(carteraID, liderID);
+
+        return $"Localizacion_{nombreCartera}_{nombreLider}_{meta.Etiqueta}_{categoria}_{DateTime.Today:yyyyMMdd}.csv";
+    }
+
+    /// <summary>Nombre sugerido para el ZIP de descarga múltiple.</summary>
+    public async Task<string> ResolverNombreArchivoLocalizacionZipAsync(int carteraID, int? liderID)
+    {
+        var (nombreCartera, nombreLider) = await ResolverNombresAsync(carteraID, liderID);
+        return $"Localizacion_{nombreCartera}_{nombreLider}_{DateTime.Today:yyyyMMdd}.zip";
+    }
+
+    /// <summary>Nombres ya sanitizados de cartera y líder ("Completo" si no hay líder).</summary>
+    private async Task<(string Cartera, string Lider)> ResolverNombresAsync(int carteraID, int? liderID)
+    {
         var nombreCartera = await _db.Carteras
             .Where(c => c.ID == carteraID)
             .Select(c => c.NombreCartera)
@@ -1045,7 +1165,7 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                ?? $"Lider{liderID.Value}")
             : "Completo";
 
-        return $"Localizacion_{Sanitizar(nombreCartera)}_{Sanitizar(nombreLider)}_{meta.Etiqueta}_{categoria}_{DateTime.Today:yyyyMMdd}.csv";
+        return (Sanitizar(nombreCartera), Sanitizar(nombreLider));
     }
 
     private static readonly byte[] BomUtf8 = [0xEF, 0xBB, 0xBF];
