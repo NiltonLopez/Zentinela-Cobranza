@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Zentinela.Application;
 using Zentinela.Application.DTOs.Carteras;
 using Zentinela.Application.Interfaces;
@@ -30,11 +31,16 @@ public class CalificadorCarteraService : ICalificadorCarteraService
 {
     private readonly CallCenterDbContext _db;
     private readonly ICalificadorCarteraCache _cache;
+    private readonly ILogger<CalificadorCarteraService> _logger;
 
-    public CalificadorCarteraService(CallCenterDbContext db, ICalificadorCarteraCache cache)
+    public CalificadorCarteraService(
+        CallCenterDbContext db,
+        ICalificadorCarteraCache cache,
+        ILogger<CalificadorCarteraService> logger)
     {
-        _db    = db;
-        _cache = cache;
+        _db     = db;
+        _cache  = cache;
+        _logger = logger;
     }
 
     // ── Dropdown ──────────────────────────────────────────────────────────────
@@ -998,6 +1004,13 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         {
             using var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
 
+            // Un fallo de UNA celda no puede llevarse el ZIP entero. Antes, si una
+            // consulta reventaba (timeout), la excepción abortaba el bucle: el usuario
+            // recibía 200 OK con un ZIP truncado —una sola entrada con el encabezado y
+            // sin filas— y CERO explicación. Ahora cada celda se aísla y lo que falle
+            // se reporta dentro del propio ZIP en _ERRORES.txt.
+            var fallos = new List<string>();
+
             foreach (var (celda, resuelta) in resueltas)
             {
                 ct.ThrowIfCancellationRequested();
@@ -1005,13 +1018,38 @@ public class CalificadorCarteraService : ICalificadorCarteraService
                 var (meta, predicado) = resuelta;
                 var nombre = $"{meta.Etiqueta}_{celda.Categoria}.csv";
 
-                // CompressionLevel.Optimal: estos CSV son cédulas, nombres y fechas —
-                // texto muy repetitivo que comprime ~80-85%. El costo de CPU es
-                // despreciable frente al tiempo de la consulta.
-                var entrada = zip.CreateEntry(nombre, CompressionLevel.Optimal);
-                await using var streamEntrada = entrada.Open();
+                try
+                {
+                    // CompressionLevel.Optimal: estos CSV son cédulas, nombres y fechas —
+                    // texto muy repetitivo que comprime ~80-85%. El costo de CPU es
+                    // despreciable frente al tiempo de la consulta.
+                    var entrada = zip.CreateEntry(nombre, CompressionLevel.Optimal);
+                    await using var streamEntrada = entrada.Open();
 
-                await EscribirCsvCeldaAsync(conn, meta, predicado, carteraID, liderID, streamEntrada, ct);
+                    await EscribirCsvCeldaAsync(conn, meta, predicado, carteraID, liderID, streamEntrada, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // EscribirCsvCeldaAsync ejecuta la consulta ANTES de escribir nada,
+                    // así que un fallo de consulta deja la entrada vacía, no corrupta.
+                    _logger.LogError(ex,
+                        "Localización ZIP: falló la celda {Fuente}/{Categoria} (cartera {CarteraID}, líder {LiderID})",
+                        celda.Fuente, celda.Categoria, carteraID, liderID);
+                    fallos.Add($"{meta.Etiqueta} / {celda.Categoria}: {ex.Message}");
+                }
+            }
+
+            if (fallos.Count > 0)
+            {
+                var aviso = zip.CreateEntry("_ERRORES.txt", CompressionLevel.Optimal);
+                await using var s = aviso.Open();
+                await using var w = new StreamWriter(s, new UTF8Encoding(false), leaveOpen: true);
+                await w.WriteLineAsync($"{fallos.Count} de {resueltas.Count} listas no se pudieron generar:");
+                await w.WriteLineAsync();
+                foreach (var f in fallos) await w.WriteLineAsync($"  - {f}");
+                await w.WriteLineAsync();
+                await w.WriteLineAsync("Las demás listas del ZIP sí están completas.");
+                await w.FlushAsync(ct);
             }
         }
         finally
@@ -1083,17 +1121,40 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             LEFT JOIN dbo.Titular ti ON ti.NumeroDocumento = t.TitularID
             WHERE {predicado}
             ORDER BY t.TitularID
-            -- RECOMPILE (2026-08-14): hay 45 textos de query distintos (15 fuentes ×
-            -- 3 categorías) y sin RECOMPILE cada uno cachea el plan de la PRIMERA
-            -- cartera que lo ejecuta; una cartera de 251k heredando el plan de una de
-            -- 31k medía 6.8s contra 3.8s con plan propio. Compilar fresco (~0.5s)
-            -- garantiza el mejor plan por cartera y no ensucia el plan cache.
-            -- ⚠ NO agregar HASH JOIN aquí: se midió y EMPEORA esta query (BERTAL
-            -- 251k × Claro: 3.8s natural → 10.8s con hint → 13.1s con src filtrado).
-            -- A diferencia del batch principal, esta forma con src agregado le da al
-            -- optimizador un plan natural mejor que el hash forzado.
-            OPTION (RECOMPILE, MAXDOP 4);
+            -- RECOMPILE: hay 45 textos de query distintos (15 fuentes × 3 categorías)
+            -- y sin él cada uno cachea el plan de la PRIMERA cartera que lo ejecuta;
+            -- una cartera de 251k heredando el plan de una de 31k medía 6.8s contra
+            -- 3.8s con plan propio.
+            --
+            -- HASH JOIN (2026-08-19): CORRIGE la nota anterior, que decía "no agregar
+            -- HASH JOIN aquí porque empeora". Esa conclusión salió de UNA sola
+            -- combinación (Claro × BERTAL) y se generalizó mal a las 45. Medido en
+            -- producción sobre "falta por buscar":
+            --   caso                    sin hint        con HASH JOIN
+            --   SG+ 36k × Cajacopi      TIMEOUT >90s    4,3s   <-- el incidente
+            --   SG+ 36k × Camara        3,9s            2,0s
+            --   SG+ 36k × SaludTotal    2,8s            4,0s
+            --   BERTAL 251k × Claro     10,7s           20,0s
+            -- Sin el hint, Cajacopi cae en Nested Loops O(n²): el perfil en vivo mostró
+            -- un Index Seek con 277.917.619 filas reales contra 75.968 estimadas (3.658×).
+            -- El hint cuesta hasta 2× en los casos buenos (10,7→20,0s) pero elimina el
+            -- único caso que NO termina. Se prioriza que ninguna celda cuelgue por
+            -- encima de optimizar las que ya andaban en segundos — misma lección que
+            -- ADR-032: un umbral/caso especial por combinación crea acantilados.
+            OPTION (RECOMPILE, MAXDOP 4, HASH JOIN);
             """;
+
+        // El comando se ejecuta ANTES de tocar `output`: si la consulta falla (timeout,
+        // plan malo), la excepción sale sin haber escrito un solo byte. En la descarga
+        // ZIP eso es lo que permite saltar la celda sin dejar una entrada corrupta —
+        // ver EscribirLocalizacionZipAsync.
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText    = sql;
+        cmd.CommandTimeout = CommandTimeoutSegundos;
+        AddParam(cmd, "@CarteraID", carteraID);
+        AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         // BOM UTF-8 para que Excel ES-CO detecte el encoding con tildes (mismo patrón que Creador).
         await output.WriteAsync(BomUtf8, ct);
@@ -1105,13 +1166,6 @@ public class CalificadorCarteraService : ICalificadorCarteraService
         await writer.WriteLineAsync("Cédula;Nombre;Última Consulta");
 
         {
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText    = sql;
-            cmd.CommandTimeout = CommandTimeoutSegundos;
-            AddParam(cmd, "@CarteraID", carteraID);
-            AddParam(cmd, "@LiderID",   (object?)liderID ?? DBNull.Value);
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 // IsDBNull sincrónico a propósito: sin SequentialAccess la fila ya está

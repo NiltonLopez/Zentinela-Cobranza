@@ -84,13 +84,47 @@ Ruta distinta (`EscribirLocalizacionCsvAsync`), optimizada aparte:
 2. **Buffer de escritura 1 KB → 64 KB** y `IsDBNull` sincrónico (la fila ya está en memoria; la
    versión async solo agregaba overhead ×2 por fila × 250k filas).
 
-> ⚠ **`HASH JOIN` NO se aplica aquí.** Se midió y **empeora**: BERTAL 251k × Claro pasó de
-> **3,8 s natural → 10,8 s con hint → 13,1 s** con el `src` filtrado. Esta query tiene otra forma
-> (agregado `MAX` + doble `LEFT JOIN`) y el optimizador la resuelve mejor sola. La regla del batch
-> principal **no** se generaliza.
+3. **`OPTION (HASH JOIN)`** — ver la corrección de abajo. La versión original de este ADR decía lo
+   contrario y estaba equivocada.
 
-Techo medido con la query final: MERCADEOS PERSONAL PROPIA "Completo" (551k) × Claro (3,5 M filas)
-× "falta por buscar" (639k filas de salida) → **8,9 s**.
+Techo medido: MERCADEOS PERSONAL PROPIA "Completo" (551k) × Claro (3,5 M filas) × "falta por
+buscar" (639k filas de salida) → **8,9 s**.
+
+### ⚠ CORRECCIÓN 2026-08-19 — el `HASH JOIN` sí va (incidente en producción)
+
+La versión original de este ADR afirmaba: *"`HASH JOIN` NO se aplica aquí. Se midió y empeora"*.
+**Esa conclusión era incorrecta**: salió de **una sola** combinación (Claro × BERTAL) y se
+generalizó a las 45 (15 fuentes × 3 categorías) sin medirlas.
+
+Una usuaria seleccionó Cajacopi + Cámara + SaludTotal (todas "falta") y recibió un ZIP con un solo
+CSV vacío. El diagnóstico en vivo (`sys.dm_exec_query_profiles`) capturó la causa:
+
+| Operador | Filas reales | Filas estimadas | Desvío |
+|---|---|---|---|
+| Index Seek | **277.917.619** | 75.968 | **3.658×** |
+| Nested Loops | 74.743.816 | 82.416 | 907× |
+
+Nested Loops O(n²) — la misma patología que motivó este ADR. La consulta corrió 420 s hasta agotar
+el `CommandTimeout`, consumiendo ~5 núcleos y 1,4 GB de grant.
+
+Medición real de las cuatro combinaciones (categoría "falta"):
+
+| Caso | Sin hint | Con `HASH JOIN` |
+|---|---|---|
+| SG+ 36k × **Cajacopi** | ❌ **timeout >90 s** | ✅ **4,3 s** |
+| SG+ 36k × Cámara | 3,9 s | ✅ 2,0 s |
+| SG+ 36k × SaludTotal | ✅ 2,8 s | 4,0 s |
+| BERTAL 251k × Claro | ✅ 10,7 s | 20,0 s |
+
+**Decisión: `HASH JOIN` universal.** Ninguna de las dos opciones gana siempre, pero solo una
+combinación es *catastrófica* y el hint la elimina. El precio es hasta 2× en los casos buenos
+(10,7 → 20,0 s), que igual terminan. Se prioriza que ninguna celda cuelgue por encima de optimizar
+las que ya corrían en segundos — **exactamente la lección del cuerpo de este ADR**: afinar por caso
+crea acantilados.
+
+**Lección de método:** medir una combinación y extrapolar a 45 no es medir. Cuando una superficie
+tiene N variantes con planes independientes, o se mide una muestra representativa (varias fuentes ×
+varios tamaños de cartera) o se elige la opción que acota el peor caso, no la que gana el promedio.
 
 ---
 
@@ -110,6 +144,7 @@ doble clic.
 - Celdas **en serie**, no en paralelo: comparten conexión y cada consulta ya usa `MAXDOP 4`.
 - Validación de todas las celdas **antes** de abrir el ZIP, para devolver 400 limpio en vez de un
   archivo a medio escribir con el header ya enviado.
+- **Aislamiento por celda** (agregado 2026-08-19, ver abajo): un fallo no aborta el ZIP entero.
 - El botón exige **2 o más** celdas: con una sola, el click directo sobre la cifra ya descarga ese
   CSV y un ZIP de un archivo no aporta nada.
 
@@ -152,6 +187,29 @@ necesita.
 modela `Response.Body`. Si se agrega otra descarga que use `ZipArchive`, `GZipStream` u otro
 componente sin `DisposeAsync`, hay que repetir este flag y probar contra un stream que prohíba
 escrituras síncronas.
+
+### ⚠ Aislamiento por celda (incidente 2026-08-19)
+
+En el mismo incidente del `HASH JOIN`, el ZIP **ocultó el fallo**. Las celdas se procesan en serie;
+al reventar la primera (Cajacopi, por timeout), la excepción abortaba el bucle — pero los headers
+HTTP ya habían salido, así que el navegador recibía **200 OK** con un ZIP conteniendo una sola
+entrada con el encabezado y sin filas, y las otras dos celdas ni se intentaban. Sin ningún error
+visible: para la usuaria fue "descargué y estaba vacío".
+
+Dos cambios:
+
+1. **La consulta se ejecuta ANTES de escribir en el stream.** `EscribirCsvCeldaAsync` abre el
+   `DataReader` primero y recién entonces escribe BOM + encabezado. Así un fallo de consulta no
+   deja una entrada del ZIP a medio escribir.
+2. **`try/catch` por celda + `_ERRORES.txt`.** Lo que falle se registra en el log del servidor y se
+   reporta *dentro del propio ZIP*, en una entrada que lista qué listas no se pudieron generar y
+   aclara que las demás sí están completas. Las celdas restantes se procesan igual.
+
+`OperationCanceledException` se re-lanza (cliente que cancela la descarga no es un fallo de celda).
+
+**Principio:** una vez enviados los headers ya no se puede cambiar el status code. Si la respuesta
+es un contenedor (ZIP), el canal para reportar errores tiene que ser el contenedor mismo — nunca
+dejar que el usuario reciba 200 OK con contenido incompleto y sin explicación.
 
 ---
 
