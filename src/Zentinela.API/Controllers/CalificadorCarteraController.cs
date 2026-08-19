@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Net.Http.Headers;
@@ -119,6 +120,18 @@ public class CalificadorCarteraController : ControllerBase
         }
 
         var nombreArchivo = await _service.ResolverNombreArchivoLocalizacionZipAsync(carteraID, liderID);
+
+        // OBLIGATORIO para el ZIP, no es un ajuste opcional: ASP.NET Core prohíbe I/O
+        // síncrono sobre Response.Body desde 3.0 (AllowSynchronousIO = false), y
+        // ZipArchive NO implementa IAsyncDisposable — al cerrarse escribe el directorio
+        // central con Stream.Write() síncrono. Sin esto, Dispose lanza
+        // "Synchronous operations are disallowed" DESPUÉS de enviar los headers, y el
+        // navegador recibe un archivo de 0 bytes con status 200 (reproducido 2026-08-19:
+        // sin el flag 0 bytes + excepción; con el flag, ZIP íntegro).
+        // El flag es por request, no global. Aceptable acá: es un endpoint de descarga
+        // administrativa, puntual y de baja concurrencia.
+        var controlCuerpo = HttpContext.Features.Get<IHttpBodyControlFeature>();
+        if (controlCuerpo is not null) controlCuerpo.AllowSynchronousIO = true;
 
         Response.ContentType = "application/zip";
         var contentDisposition = new ContentDispositionHeaderValue("attachment");

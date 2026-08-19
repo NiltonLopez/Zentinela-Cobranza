@@ -126,6 +126,33 @@ Verificado en aislamiento reproduciendo el patrón exacto sobre un stream sin `C
 El BOM se verificó byte a byte a propósito: `StreamReader` lo consume automáticamente, así que
 leerlo con un reader da un falso negativo. Sin BOM, Excel en español muestra `CÃ©dula`.
 
+### ⚠ `AllowSynchronousIO` es obligatorio (incidente 2026-08-19)
+
+La primera versión desplegada **descargaba 0 bytes en producción** pese a que el test aislado
+pasaba. Causa: el stream de prueba permitía escrituras síncronas; `Response.Body` **no**.
+
+ASP.NET Core prohíbe I/O síncrono sobre el cuerpo de la respuesta desde 3.0
+(`AllowSynchronousIO = false`), y **`ZipArchive` no implementa `IAsyncDisposable`** — al cerrarse
+escribe el directorio central con `Stream.Write()` síncrono. La excepción se lanzaba *después* de
+enviar los headers, así que el navegador recibía **200 OK con un archivo vacío**.
+
+Reproducido con un stream que replica la restricción real:
+
+| Caso | Writes síncronos | Resultado |
+|---|---|---|
+| CSV individual | **0** (15 async) | ✅ nunca estuvo en riesgo |
+| ZIP sin el flag | **3** → lanza en la primera | ❌ **0 bytes** |
+| ZIP con el flag | 76 sync + 24 async | ✅ 177 KB íntegro |
+
+Fix: activar `IHttpBodyControlFeature.AllowSynchronousIO = true` **por request** en el endpoint del
+ZIP, antes de escribir nada. No es global. La ruta del CSV individual es 100 % asíncrona y no lo
+necesita.
+
+**Lección para futuros streams binarios:** un stream de prueba que acepta `Write()` síncrono no
+modela `Response.Body`. Si se agrega otra descarga que use `ZipArchive`, `GZipStream` u otro
+componente sin `DisposeAsync`, hay que repetir este flag y probar contra un stream que prohíba
+escrituras síncronas.
+
 ---
 
 ## Alternativas descartadas
