@@ -117,7 +117,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         }
 
         var coincidencias = await ObtenerCoincidenciasAsync(
-            carteraID, baseComparativo, hoy, soloOtraCarteraID: null);
+            carteraID, liderID, baseComparativo, hoy, soloOtraCarteraID: null);
 
         var secciones = coincidencias
             .GroupBy(c => new { c.CarteraID, c.NombreCartera })
@@ -153,7 +153,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         if (baseComparativo.Count == 0) return [];
 
         var coincidencias = await ObtenerCoincidenciasAsync(
-            carteraID, baseComparativo, hoy, otraCarteraID);
+            carteraID, liderID, baseComparativo, hoy, otraCarteraID);
 
         return coincidencias
             .OrderBy(c => c.Dto.Nombre)
@@ -171,7 +171,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         if (baseComparativo.Count == 0) return [];
 
         var coincidencias = await ObtenerCoincidenciasAsync(
-            carteraID, baseComparativo, hoy, soloOtraCarteraID: null);
+            carteraID, liderID, baseComparativo, hoy, soloOtraCarteraID: null);
 
         return coincidencias
             .OrderBy(c => c.NombreCartera)
@@ -199,17 +199,41 @@ public class ComparadorCarterasService : IComparadorCarterasService
     /// se devuelve <see cref="SinTelefono"/>.
     /// </summary>
     private async Task<Dictionary<(long TitularID, int CarteraID), string>> ObtenerMejoresTelefonosAsync(
-        IEnumerable<long> titularIDs, DateOnly hoy, int? soloCarteraID = null, int? excluirCarteraID = null)
+        int carteraBaseID, int? liderID, DateOnly hoy,
+        int? soloCarteraID = null, int? excluirCarteraID = null)
     {
-        var ids = titularIDs.ToList();
-        var query = _db.HistoricoEstadosTitular.Where(h => ids.Contains(h.TitularID));
+        // SEMI-JOIN en vez de `ids.Contains(...)`. Antes se pasaba la lista completa de
+        // titulares de la cartera (534.406 en MERCADEOS PERSONAL PROPIA), que EF Core 9
+        // serializa como un parámetro JSON de ~5 MB y traduce a OPENJSON. Expresarlo
+        // como subconsulta deja el filtro dentro de SQL Server, que resuelve con índice.
+        var query = _db.HistoricoEstadosTitular.Where(h =>
+            _db.TitularCarteras.Any(tc =>
+                tc.CarteraID == carteraBaseID
+                && tc.TitularID == h.TitularID
+                && (liderID == null || tc.LiderID == liderID)));
 
         if (soloCarteraID.HasValue)
             query = query.Where(h => h.CarteraID == soloCarteraID.Value);
         if (excluirCarteraID.HasValue)
             query = query.Where(h => h.CarteraID != excluirCarteraID.Value);
 
-        var filas = await query.AsNoTracking().ToListAsync();
+        // PROYECCIÓN antes de materializar: la entidad tiene 14 columnas y aquí se usan
+        // 8. Sin esto, EF traía las 14 de ~981.000 filas y el cuello pasaba a ser el
+        // cliente consumiendo el stream (SQL esperaba en ASYNC_NETWORK_IO).
+        var filas = await query
+            .Select(h => new
+            {
+                h.TitularID,
+                h.CarteraID,
+                h.NumeroMarcado,
+                h.MejorPerfil,
+                h.UltimoPerfil,
+                h.FechaPromesa,
+                h.Rotacion,
+                h.FechaUltimaGestion,
+            })
+            .AsNoTracking()
+            .ToListAsync();
 
         return filas
             .Select(h => new
@@ -265,7 +289,7 @@ public class ComparadorCarterasService : IComparadorCarterasService
         var nombreCartera = filas.FirstOrDefault()?.NombreCartera ?? "";
 
         var telefonos = await ObtenerMejoresTelefonosAsync(
-            filas.Select(f => f.TitularID).Distinct(), hoy, soloCarteraID: carteraID);
+            carteraID, liderID, hoy, soloCarteraID: carteraID);
 
         var porTitular = filas
             .Select(x => new
@@ -300,18 +324,25 @@ public class ComparadorCarterasService : IComparadorCarterasService
     /// </summary>
     private async Task<List<Coincidencia>> ObtenerCoincidenciasAsync(
         int carteraID,
+        int? liderIDBase,
         Dictionary<long, EstadoSeleccionada> baseComparativo,
         DateOnly hoy,
         int? soloOtraCarteraID)
     {
-        var titularIDs = baseComparativo.Keys.ToList();
-
+        // Mismo criterio que ObtenerMejoresTelefonosAsync: semi-join en SQL en lugar de
+        // mandar las ~534k claves de baseComparativo como parámetro. Trae un superconjunto
+        // (incluye titulares que la clasificación descartó por "Ya pago"); el filtro exacto
+        // contra baseComparativo se aplica abajo con ContainsKey.
         var query =
             from tc in _db.TitularCarteras
             join ue in _db.UltimosEstadosTitular
                 on new { tc.TitularID, tc.CarteraID } equals new { ue.TitularID, ue.CarteraID }
             join c in _db.Carteras on tc.CarteraID equals c.ID
-            where tc.CarteraID != carteraID && titularIDs.Contains(tc.TitularID)
+            where tc.CarteraID != carteraID
+                  && _db.TitularCarteras.Any(b =>
+                         b.CarteraID == carteraID
+                         && b.TitularID == tc.TitularID
+                         && (liderIDBase == null || b.LiderID == liderIDBase))
             select new
             {
                 tc.TitularID,
@@ -333,8 +364,8 @@ public class ComparadorCarterasService : IComparadorCarterasService
         var filas = await query.AsNoTracking().ToListAsync();
 
         var telefonos = soloOtraCarteraID.HasValue
-            ? await ObtenerMejoresTelefonosAsync(titularIDs, hoy, soloCarteraID: soloOtraCarteraID.Value)
-            : await ObtenerMejoresTelefonosAsync(titularIDs, hoy, excluirCarteraID: carteraID);
+            ? await ObtenerMejoresTelefonosAsync(carteraID, liderIDBase, hoy, soloCarteraID: soloOtraCarteraID.Value)
+            : await ObtenerMejoresTelefonosAsync(carteraID, liderIDBase, hoy, excluirCarteraID: carteraID);
 
         return filas
             .Select(x => new
@@ -345,6 +376,11 @@ public class ComparadorCarterasService : IComparadorCarterasService
             })
             .GroupBy(y => new { y.Fila.TitularID, y.Fila.CarteraID })
             .Select(g => g.MaxBy(y => (int)y.Categoria)!)
+            // ContainsKey ANTES del indexador: el semi-join de arriba devuelve un
+            // superconjunto de baseComparativo (incluye los "Ya pago" que FiltrarBase
+            // descartó), y `baseComparativo[...]` sobre una clave ausente lanzaría
+            // KeyNotFoundException. Este filtro restituye la semántica exacta.
+            .Where(y => baseComparativo.ContainsKey(y.Fila.TitularID))
             .Where(y => y.Categoria > baseComparativo[y.Fila.TitularID].Categoria)
             .Select(y =>
             {

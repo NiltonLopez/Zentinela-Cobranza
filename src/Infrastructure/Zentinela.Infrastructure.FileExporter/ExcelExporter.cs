@@ -522,16 +522,10 @@ public class ExcelExporter : IExcelExporter
             }
 
             if (t.FechaUltimaGestion.HasValue)
-            {
-                ws.Cell(r, 10).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(r, 10).Style.NumberFormat.Format = "DD/MM/YYYY";
-            }
+                EscribirFecha(ws.Cell(r, 10), t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue));
 
             if (t.FechaPromesa.HasValue)
-            {
-                ws.Cell(r, 11).Value = t.FechaPromesa.Value.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(r, 11).Style.NumberFormat.Format = "DD/MM/YYYY";
-            }
+                EscribirFecha(ws.Cell(r, 11), t.FechaPromesa.Value.ToDateTime(TimeOnly.MinValue));
 
             if (t.ValorPromesa.HasValue)
             {
@@ -613,16 +607,10 @@ public class ExcelExporter : IExcelExporter
             }
 
             if (t.FechaUltimaGestion.HasValue)
-            {
-                ws.Cell(r, 11).Value = t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(r, 11).Style.NumberFormat.Format = "DD/MM/YYYY";
-            }
+                EscribirFecha(ws.Cell(r, 11), t.FechaUltimaGestion.Value.ToDateTime(TimeOnly.MinValue));
 
             if (t.FechaPromesa.HasValue)
-            {
-                ws.Cell(r, 12).Value = t.FechaPromesa.Value.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(r, 12).Style.NumberFormat.Format = "DD/MM/YYYY";
-            }
+                EscribirFecha(ws.Cell(r, 12), t.FechaPromesa.Value.ToDateTime(TimeOnly.MinValue));
 
             if (t.ValorPromesa.HasValue)
             {
@@ -646,6 +634,37 @@ public class ExcelExporter : IExcelExporter
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// Primer año que Excel puede representar. El formato de fecha de Excel (OLE
+    /// Automation date) arranca en 1899-12-30; cualquier valor anterior hace que
+    /// ClosedXML lance <c>OverflowException: Not a legal OleAut date</c>.
+    /// </summary>
+    private static readonly DateTime MinimoExcel = new(1900, 1, 1);
+
+    /// <summary>
+    /// Escribe una fecha blindando el rango que Excel admite. La BD de cobranza tiene
+    /// fechas con el año mal digitado (medido 2026-08-19: 6 filas de UltimoEstadoTitular
+    /// con FechaPromesa como 0005-02-15, 0025-12-10, 0433-09-10, 1541-08-13). Una sola
+    /// de esas filas hacía reventar TODO el comparativo con un 500 — el Excel completo se
+    /// perdía por un dato sucio.
+    ///
+    /// Fuera de rango se escribe como TEXTO en vez de omitirse: el dato es basura pero es
+    /// información real, y ocultarlo dejaría al usuario sin saber que hay algo que
+    /// corregir en el origen.
+    /// </summary>
+    private static void EscribirFecha(IXLCell celda, DateTime fecha)
+    {
+        if (fecha < MinimoExcel)
+        {
+            celda.Value = fecha.ToString("yyyy-MM-dd") + " (fecha inválida)";
+            celda.Style.Font.FontColor = XLColor.FromHtml("#B45309");
+            return;
+        }
+
+        celda.Value = fecha;
+        celda.Style.NumberFormat.Format = "DD/MM/YYYY";
+    }
+
     private static void EstablecerValor(IXLCell celda, object? valor, TipoColumna tipo)
     {
         if (valor is null)
@@ -665,10 +684,11 @@ public class ExcelExporter : IExcelExporter
                 break;
 
             case TipoColumna.Fecha:
-                if (valor is DateOnly do_)   celda.Value = do_.ToDateTime(TimeOnly.MinValue);
-                else if (valor is DateTime dt) celda.Value = dt;
-                else                         celda.Value = valor.ToString();
-                celda.Style.NumberFormat.Format = "DD/MM/YYYY";
+                // Mismo blindaje que EscribirFecha: esta ruta la usa el Creador de Bases,
+                // que lee las mismas tablas con fechas mal digitadas.
+                if (valor is DateOnly do_)     EscribirFecha(celda, do_.ToDateTime(TimeOnly.MinValue));
+                else if (valor is DateTime dt) EscribirFecha(celda, dt);
+                else                           celda.Value = valor.ToString();
                 break;
 
             default:
