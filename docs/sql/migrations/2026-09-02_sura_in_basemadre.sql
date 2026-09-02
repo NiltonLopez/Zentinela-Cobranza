@@ -26,6 +26,24 @@
 --   Recordatorio critico: la vista se usa solo para el shape de EF; el codigo
 --   productivo consume los iTVF. Los CUATRO objetos se actualizan aqui juntos.
 --   Idempotente. Fecha: 2026-09-02 (ejecutada en produccion ese dia, exit=0).
+--
+--   ⚠ HOTFIX el mismo dia — [NIT Sura] salia como VARCHAR:
+--   La primera version generaba ISNULL(CAST(SU.NIT AS VARCHAR(20)), 0), pero la
+--   propiedad C# es long? NITSura. El preview del Creador hace SELECT * y
+--   materializa BaseMadreRow por EF, asi que reventaba con
+--   "InvalidCastException: Unable to cast object of type 'System.String' to
+--   type 'System.Int64'" en TODAS las carteras — el modulo quedo caido desde la
+--   primera ejecucion, con el codigo viejo tanto como con el nuevo (el alias
+--   [NIT Sura] existe en ambos, solo cambio de tipo).
+--   Corregido a ISNULL(SU.NIT, 0), que devuelve bigint igual que
+--   [NIT ARL Sura] y [NIT Positiva]. Se arregla en SQL y no en C# porque asi
+--   no hay que desplegar nada: al ser CREATE OR ALTER, re-ejecutar este archivo
+--   repara produccion de inmediato.
+--
+--   Por que no lo detectaron las verificaciones previas: se probo el export
+--   (StreamFilasAsync), que proyecta columnas explicitamente y se leyo con
+--   IsDBNull sin convertir al tipo C#. El preview es el unico camino que
+--   materializa la entidad completa. Verificar SIEMPRE los dos.
 -- ============================================================================
 
 -- 1) Indice de soporte (dbo.Sura es un heap sin indices)
@@ -136,7 +154,7 @@ SELECT
     ISNULL(SV.FechaConsulta, '1900-01-01') AS [Ultima Consulta SaviaSalud],
     ISNULL(SU.NumeroCelular, 0)                 AS [Celular Sura],
     ISNULL(SU.Email, 0)                         AS [Email Sura],
-    ISNULL(CAST(SU.NIT AS VARCHAR(20)), 0)      AS [NIT Sura],
+    ISNULL(SU.NIT, 0)                           AS [NIT Sura],
     ISNULL(SU.Empresa, 0)                       AS [Empresa Sura],
     ISNULL(SU.TipoAfiliado, 0)                  AS [Tipo Afiliado Sura],
     ISNULL(SU.EstadoAfiliacion, 0)              AS [Estado Afiliacion Sura],
@@ -292,7 +310,7 @@ RETURN
         ISNULL(SV.FechaConsulta, '1900-01-01') AS [Ultima Consulta SaviaSalud],
         ISNULL(SU.NumeroCelular, 0)                 AS [Celular Sura],
         ISNULL(SU.Email, 0)                         AS [Email Sura],
-        ISNULL(CAST(SU.NIT AS VARCHAR(20)), 0)      AS [NIT Sura],
+        ISNULL(SU.NIT, 0)                           AS [NIT Sura],
         ISNULL(SU.Empresa, 0)                       AS [Empresa Sura],
         ISNULL(SU.TipoAfiliado, 0)                  AS [Tipo Afiliado Sura],
         ISNULL(SU.EstadoAfiliacion, 0)              AS [Estado Afiliacion Sura],
@@ -446,7 +464,7 @@ RETURN
         ISNULL(SV.FechaConsulta, '1900-01-01') AS [Ultima Consulta SaviaSalud],
         ISNULL(SU.NumeroCelular, 0)                 AS [Celular Sura],
         ISNULL(SU.Email, 0)                         AS [Email Sura],
-        ISNULL(CAST(SU.NIT AS VARCHAR(20)), 0)      AS [NIT Sura],
+        ISNULL(SU.NIT, 0)                           AS [NIT Sura],
         ISNULL(SU.Empresa, 0)                       AS [Empresa Sura],
         ISNULL(SU.TipoAfiliado, 0)                  AS [Tipo Afiliado Sura],
         ISNULL(SU.EstadoAfiliacion, 0)              AS [Estado Afiliacion Sura],
@@ -598,7 +616,7 @@ RETURN
         ISNULL(SV.FechaConsulta, '1900-01-01') AS [Ultima Consulta SaviaSalud],
         ISNULL(SU.NumeroCelular, 0)                 AS [Celular Sura],
         ISNULL(SU.Email, 0)                         AS [Email Sura],
-        ISNULL(CAST(SU.NIT AS VARCHAR(20)), 0)      AS [NIT Sura],
+        ISNULL(SU.NIT, 0)                           AS [NIT Sura],
         ISNULL(SU.Empresa, 0)                       AS [Empresa Sura],
         ISNULL(SU.TipoAfiliado, 0)                  AS [Tipo Afiliado Sura],
         ISNULL(SU.EstadoAfiliacion, 0)              AS [Estado Afiliacion Sura],

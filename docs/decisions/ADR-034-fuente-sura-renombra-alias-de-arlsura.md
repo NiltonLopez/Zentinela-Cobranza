@@ -88,6 +88,27 @@ ejecutar. Registrado como anti-patrón en `.claude/commands/agregar-fuente-datos
   número real (`Cajacopi (celular)`, `Claro`), con 14 fuentes idénticas en ambos servicios.
 - La entidad `Sura` de ConsultaIntegrada emite su `SELECT` contra la tabla real sin excepción.
 
+## Hotfix del mismo día — `[NIT Sura]` tumbó el Creador
+
+La primera ejecución de la migración generó la columna como
+`ISNULL(CAST(SU.NIT AS VARCHAR(20)), 0)`, es decir **VARCHAR**, contra una propiedad `long? NITSura`.
+El preview del Creador hace `SELECT *` y materializa `BaseMadreRow` por EF, así que reventaba con
+`InvalidCastException: Unable to cast object of type 'System.String' to type 'System.Int64'`
+**en todas las carteras**. El módulo quedó caído desde la primera ejecución de la migración, con el
+código viejo tanto como con el nuevo: el alias `[NIT Sura]` existe en ambos, solo cambió de tipo.
+
+Corregido a `ISNULL(SU.NIT, 0)` (bigint, igual que `[NIT ARL Sura]` y `[NIT Positiva]`) en los cuatro
+objetos. **Se arregló en SQL y no en C# a propósito**: al ser `CREATE OR ALTER`, re-ejecutar el
+archivo repara producción de inmediato, sin desplegar nada y sin depender de qué versión de la API
+esté corriendo. Re-aplicado el mismo día, exit=0, 4,3 s; preview verificado OK en las carteras
+27, 22, 8, 20 y 4.
+
+**Por qué no lo atraparon las verificaciones previas, que fueron extensas:** todas ejercitaron el
+**export** (`StreamFilasAsync`), que proyecta columnas explícitamente y cuyo lector recorría los
+campos con `IsDBNull` sin convertirlos al tipo C#. El **preview** (`ObtenerAsync`) es el único camino
+que materializa la entidad completa y por tanto el único que compara tipos. Un export verde no dice
+nada sobre el preview. Registrado como anti-patrón en `.claude/commands/agregar-fuente-datos.md`.
+
 ## Nota sobre el estado de los datos
 
 La tabla `dbo.Sura` estaba **vacía (0 filas)** al integrarse; la carga la hace el equipo aparte.
