@@ -38,6 +38,7 @@ backlog: los items se cierran o se descartan con razón explícita.
   Líneas y Uso de Base de Datos cruzan solo esa columna.
 - **Migración:** `docs/sql/migrations/2026-09-02_sura_in_basemadre.sql`. Aplicada a
   producción (exit=0, 8.192 ms) y verificada contra los CUATRO objetos SQL.
+- **Decisión completa en `docs/decisions/ADR-034-fuente-sura-renombra-alias-de-arlsura.md`.**
 
 ## Fuente Savia Salud — EPS con datos; NumeroTelefono vacío, TitularID nullable (2026-08-05)
 
