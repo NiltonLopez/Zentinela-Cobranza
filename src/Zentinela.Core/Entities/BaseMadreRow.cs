@@ -89,8 +89,17 @@ public class BaseMadreRow
     public string?   MunicipioNuevaEps        { get; set; }
     public string?   EstadoNuevaEps           { get; set; }
     public DateOnly? UltimaConsultaNuevaEps   { get; set; }
+    // ARLSura. Renombradas de NITSura/EmpresaSura al integrar la fuente Sura, que
+    // reclama ese nombre (los alias [NIT Sura]/[Empresa Sura] eran de ARLSura).
+    public long?   NITArlSura               { get; set; }
+    public string? EmpresaArlSura           { get; set; }
+    // Fuente Sura (1:1). Único teléfono: NumeroCelular.
+    public string? CelularSura              { get; set; }
+    public string? EmailSura                { get; set; }
     public long?   NITSura                  { get; set; }
     public string? EmpresaSura              { get; set; }
+    public string? TipoAfiliadoSura         { get; set; }
+    public string? EstadoAfiliacionSura     { get; set; }
     public long?   NITPositiva              { get; set; }
     public string? EmpresaPositiva          { get; set; }
     public long?   NITSaludTotal            { get; set; }

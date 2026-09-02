@@ -93,8 +93,14 @@ public class BaseMadreRowMapping : IEntityTypeConfiguration<BaseMadreRow>
         builder.Property(b => b.MunicipioNuevaEps)        .HasColumnName("Municipio NuevaEps");
         builder.Property(b => b.EstadoNuevaEps)           .HasColumnName("Estado NuevaEps");
         builder.Property(b => b.UltimaConsultaNuevaEps)   .HasColumnName("Ultima Consulta NuevaEps");
+        builder.Property(b => b.NITArlSura)              .HasColumnName("NIT ARL Sura");
+        builder.Property(b => b.EmpresaArlSura)          .HasColumnName("Empresa ARL Sura");
+        builder.Property(b => b.CelularSura)             .HasColumnName("Celular Sura");
+        builder.Property(b => b.EmailSura)               .HasColumnName("Email Sura");
         builder.Property(b => b.NITSura)                 .HasColumnName("NIT Sura");
         builder.Property(b => b.EmpresaSura)             .HasColumnName("Empresa Sura");
+        builder.Property(b => b.TipoAfiliadoSura)        .HasColumnName("Tipo Afiliado Sura");
+        builder.Property(b => b.EstadoAfiliacionSura)    .HasColumnName("Estado Afiliacion Sura");
         builder.Property(b => b.NITPositiva)             .HasColumnName("NIT Positiva");
         builder.Property(b => b.EmpresaPositiva)         .HasColumnName("Empresa Positiva");
         builder.Property(b => b.NITSaludTotal)           .HasColumnName("NIT Salud Total");

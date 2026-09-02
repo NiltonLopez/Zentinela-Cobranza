@@ -3,9 +3,41 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-08-04**.
+Última actualización: **2026-09-02**.
 
 ---
+
+## Fuente Sura — colisión de alias que obligó a renombrar ARLSura (2026-09-02)
+
+- **`dbo.Sura` es una fuente 1:1** (EPS/aseguradora) que expone **6 columnas**: celular
+  (`NumeroCelular`), email, NIT, empresa, tipo afiliado y estado afiliación.
+- **⚠ Excepción a la convención: se renombraron los alias de OTRA fuente.** `ARLSura`
+  ya ocupaba `[NIT Sura]` y `[Empresa Sura]` — nombres que le corresponden a esta
+  fuente, no a ella. Sin el renombre la vista falla con *"the column ... was specified
+  multiple times"*. Se decidió (usuario, 2026-09-02) **liberar el nombre "Sura"** y
+  pasar los de ARLSura a `[NIT ARL Sura]` / `[Empresa ARL Sura]`, propiedades C#
+  `NITArlSura` / `EmpresaArlSura`. Es la primera vez que integrar una fuente **renombra
+  columnas existentes**; el criterio fue que el nombre correcto pese más que la
+  estabilidad del alias viejo, porque `[NIT Sura]` era engañoso desde el principio.
+- **Impacto de ese renombre, asumido conscientemente:** (a) la etiqueta que ve el líder
+  en el Creador pasa de `NIT Sura` a `NIT ARL Sura`; (b) **una selección de columnas
+  guardada con el nombre viejo deja de resolver**; (c) en el panel de localización la
+  fuente pasó de `Sura (ARL)` a `ARL Sura`, y su slug de `sura` a `arlsura`.
+- **Tres colisiones internas más**, todas por el mismo motivo, corregidas al integrar:
+  la clave `["sura"]` del diccionario `Fuentes` (era de ARLSura → `["arlsura"]`), los
+  alias SQL `SuraEnc`/`SuraNoEnc` del result set 9 (→ `ArlSuraEnc`/`ArlSuraNoEnc`) y un
+  `[Empresa Sura] AS EmpresaSura` duplicado en el `SELECT INTO #t`. **Al agregar una
+  fuente cuyo nombre sea prefijo o sufijo de otra, grepear el nombre completo antes de
+  escribir nada** — el compilador no atrapa una clave de diccionario repetida.
+- **La tabla estaba VACÍA (0 filas)** al integrar; los datos los carga el equipo aparte.
+  Marcada `Funcional` en `ESTADO_FUENTE` por decisión del usuario.
+- **Localización**: predicado celular OR email OR NIT OR empresa, con
+  `LEFT JOIN (SELECT DISTINCT TitularID FROM Sura)` para distinguir *no encontrado* de
+  *falta por buscar* (`vw_BaseMadre` aplana NULL a `'0'` y no sirve para eso).
+- **Único teléfono es `NumeroCelular`** — la tabla no tiene columna de fijo. Rastreo de
+  Líneas y Uso de Base de Datos cruzan solo esa columna.
+- **Migración:** `docs/sql/migrations/2026-09-02_sura_in_basemadre.sql`. Aplicada a
+  producción (exit=0, 8.192 ms) y verificada contra los CUATRO objetos SQL.
 
 ## Fuente Savia Salud — EPS con datos; NumeroTelefono vacío, TitularID nullable (2026-08-05)
 

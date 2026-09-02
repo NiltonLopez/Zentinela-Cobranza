@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-08-05  
+> Generado: 2026-04-02 — Actualizado: 2026-09-02  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -267,6 +267,12 @@ Datos de afiliacion a ARL Sura por titular.
 | EstadoEnSura | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Alias renombrados el 2026-09-02** (migración `2026-09-02_sura_in_basemadre.sql`): esta fuente
+> exponía `[NIT Sura]` / `[Empresa Sura]`, nombres que en realidad le corresponden a la fuente `Sura`
+> (ver más abajo). Pasaron a `[NIT ARL Sura]` / `[Empresa ARL Sura]`, con las propiedades C#
+> `NITArlSura` / `EmpresaArlSura`. En el panel de localización del Calificador la etiqueta pasó de
+> `Sura (ARL)` a `ARL Sura` y su slug de `sura` a `arlsura`.
+
 ### Cajacopi
 Datos de afiliacion a Cajacopi (caja de compensacion).
 
@@ -519,6 +525,32 @@ Datos del Sistema de Ocupacion y Seguridad laboral por titular.
 | Direccion | varchar(70) | SI | — | — |
 | EstadoEnSOS | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
+
+### Sura
+Contactabilidad + datos laborales de Sura (EPS/aseguradora). Fuente 1:1. Único teléfono en
+`NumeroCelular` (no hay columna de fijo). Integrada el 2026-09-02 con la tabla **vacía (0 filas)** —
+la carga de datos la hace el equipo aparte; hasta entonces la fuente devuelve vacío en todos los
+módulos sin romper nada. No confundir con **ARLSura**, que es otra tabla y otra fuente.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | NO | — | Titular |
+| NumeroCelular | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| NIT | bigint | SI | — | — |
+| Empresa | varchar(100) | SI | — | — |
+| TipoAfiliado | varchar(50) | SI | — | — |
+| UltimaFechaConsulta | date | SI | — | — |
+| EstadoAfiliacion | varchar(50) | SI | — | — |
+| EstadoEnSura | bit | NO | — | — |
+| FechaConsulta | date | NO | — | — |
+
+> **Expuesta en `vw_BaseMadre` + los TRES iTVF** (migración `2026-09-02_sura_in_basemadre.sql`) con
+> alias `[Celular Sura]`, `[Email Sura]`, `[NIT Sura]`, `[Empresa Sura]`, `[Tipo Afiliado Sura]`,
+> `[Estado Afiliacion Sura]`. Entra al switch `ColumnaCelular` (clave `Sura`) y a `ColumnaEmail`.
+> Aporta **localización** en el panel del Calificador y entra al `UNION ALL` de Rastreo de Líneas y de
+> Uso de Base de Datos. Tomar los alias `[NIT Sura]`/`[Empresa Sura]` obligó a renombrar los de
+> ARLSura — ver la nota en esa sección y `docs/para-tener-en-cuenta.md`.
 
 ### Tigo
 Datos de contacto obtenidos de Tigo.
@@ -1427,6 +1459,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | TigoUne | `IX_TigoUne_TitularID_FechaConsulta` |
 | Coosalud | `IX_Coosalud_TitularID_FechaConsulta` |
 | SaviaSalud | `IX_SaviaSalud_TitularID_FechaConsulta` |
+| Sura | `IX_Sura_TitularID_FechaConsulta` (la tabla era HEAP sin índices; creado en `2026-09-02_sura_in_basemadre.sql`) |
 
 #### Columnas expuestas por `vw_BaseMadre` (alias en SQL)
 
@@ -1445,6 +1478,8 @@ Las propiedades C# correspondientes están en `BaseMadreRow.cs` y el mapping en 
 | `[Celular Coosalud]`, `[Email Coosalud]`, `[Regimen Coosalud]`, `[Tipo Afiliado Coosalud]`, `[Estado Afiliacion Coosalud]`, `[Nivel Sisben Coosalud]`, `[Departamento Coosalud]`, `[Municipio Coosalud]`, `[Fecha Nacimiento Coosalud]`, `[Estado Coosalud]`, `[Ultima Consulta Coosalud]` | `CelularCoosalud`, `EmailCoosalud`, `RegimenCoosalud`, `TipoAfiliadoCoosalud`, `EstadoAfiliacionCoosalud`, `NivelSisbenCoosalud`, `DepartamentoCoosalud`, `MunicipioCoosalud`, `FechaNacimientoCoosalud`, `EstadoCoosalud`, `UltimaConsultaCoosalud` | Coosalud |
 | `[Celular SaviaSalud]`, `[Regimen SaviaSalud]`, `[Tipo Afiliado SaviaSalud]`, `[Estado Afiliacion SaviaSalud]`, `[Fecha Nacimiento SaviaSalud]`, `[Estado SaviaSalud]`, `[Ultima Consulta SaviaSalud]` | `CelularSaviaSalud`, `RegimenSaviaSalud`, `TipoAfiliadoSaviaSalud`, `EstadoAfiliacionSaviaSalud`, `FechaNacimientoSaviaSalud`, `EstadoSaviaSalud`, `UltimaConsultaSaviaSalud` | SaviaSalud |
 | `[Celular SOS]` | `CelularSOS` | SOS |
+| `[Celular Sura]`, `[Email Sura]`, `[NIT Sura]`, `[Empresa Sura]`, `[Tipo Afiliado Sura]`, `[Estado Afiliacion Sura]` | `CelularSura`, `EmailSura`, `NITSura`, `EmpresaSura`, `TipoAfiliadoSura`, `EstadoAfiliacionSura` | Sura |
+| `[NIT ARL Sura]`, `[Empresa ARL Sura]` | `NITArlSura`, `EmpresaArlSura` | ARLSura (renombrados el 2026-09-02, antes `[NIT Sura]` / `[Empresa Sura]`) |
 
 #### Estado operativo de las fuentes (visual en Calificador)
 
@@ -1465,7 +1500,8 @@ Indicador junto al nombre de cada fuente en la tabla de localización (`Califica
 | SOS | Funcional | — |
 | Claro | Inactivo | — |
 | MutualSer | Funcional | 1:1 — aporta 2 celulares + email + régimen + dept/municipio + estado |
-| Sura (ARL) | Funcional | Solo aporta nombre de empresa, no contactabilidad |
+| ARL Sura | Funcional | Solo aporta nombre de empresa, no contactabilidad. Etiqueta anterior: `Sura (ARL)` |
+| Sura | Funcional | 1:1 — celular + email + NIT/empresa + tipo y estado de afiliación. Tabla vacía al integrarse (2026-09-02) |
 | Positiva Emp. | Funcional | — |
 | RUES | Funcional | — |
 | SIMIT | Funcional | — |

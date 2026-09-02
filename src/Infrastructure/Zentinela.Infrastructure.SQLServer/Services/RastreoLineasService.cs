@@ -13,7 +13,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services;
 /// agrupado por tabla, los titulares asociados.
 ///
 /// Tablas: Cajacopi, Camara, SaludTotal, Positiva, Tigo, TigoUne, SOS, DatosClaro,
-/// MutualSer, MiVacuna, NuevaEps, Coosalud, SaviaSalud.
+/// MutualSer, MiVacuna, NuevaEps, Coosalud, SaviaSalud, Sura.
 ///
 /// IMPORTANTE — mantener sincronizado con <c>UsoBaseDatosService.SqlCruce</c>: ambos
 /// deben cubrir EXACTAMENTE el mismo conjunto de fuentes, o el mismo número da
@@ -186,6 +186,14 @@ public class RastreoLineasService : IRastreoLineasService
               FROM dbo.Coosalud x
               LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
              WHERE x.NumeroTelefono = @numero
+             GROUP BY x.TitularID, t.Nombre
+            UNION ALL
+            -- Sura — único teléfono es NumeroCelular (no tiene columna de fijo).
+            SELECT 'Sura', 'Sura',
+                   x.TitularID, ISNULL(t.Nombre, '(sin titular)'), COUNT(*)
+              FROM dbo.Sura x
+              LEFT JOIN dbo.Titular t ON t.NumeroDocumento = x.TitularID
+             WHERE x.NumeroCelular = @numero
              GROUP BY x.TitularID, t.Nombre
             UNION ALL
             -- Savia Salud tiene DOS columnas de teléfono y hay que consultar las dos.

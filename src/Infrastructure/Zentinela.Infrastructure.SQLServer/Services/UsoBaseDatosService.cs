@@ -467,6 +467,11 @@ public class UsoBaseDatosService : IUsoBaseDatosService
               FROM #Telefonos t JOIN dbo.Coosalud x ON x.NumeroTelefono = t.Numero
              GROUP BY t.Numero, x.TitularID
             UNION ALL
+            -- Sura — único teléfono es NumeroCelular (no tiene columna de fijo).
+            SELECT t.Numero, 'Sura', 'Sura', x.TitularID, COUNT(*)
+              FROM #Telefonos t JOIN dbo.Sura x ON x.NumeroCelular = t.Numero
+             GROUP BY t.Numero, x.TitularID
+            UNION ALL
             -- SaviaSalud es la única fuente con DOS columnas de teléfono. Ambas ramas
             -- llevan Fuente = 'SaviaSalud' (no una por columna): si se separaran, un
             -- titular con dato en las dos contaría como dos fuentes distintas y

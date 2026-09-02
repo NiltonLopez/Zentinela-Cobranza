@@ -190,6 +190,24 @@ public class ConsultaRepository : IConsultaRepository
             };
         }
 
+        // Sura es 1:1 por TitularID — contactabilidad + afiliación. No confundir con
+        // ARLSura (riesgos laborales), que se carga aparte en Datos Laborales.
+        var sura = await _context.Suras.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
+        if (sura != null)
+        {
+            contactabilidad["Sura"] = new Dictionary<string, string>
+            {
+                ["Número Celular"]     = sura.NumeroCelular    ?? "N/A",
+                ["Email"]              = sura.Email            ?? "N/A",
+                ["NIT"]                = sura.NIT?.ToString()  ?? "N/A",
+                ["Empresa"]            = sura.Empresa          ?? "N/A",
+                ["Tipo Afiliado"]      = sura.TipoAfiliado     ?? "N/A",
+                ["Estado Afiliación"]  = sura.EstadoAfiliacion ?? "N/A",
+                ["Estado"]             = sura.EstadoEnSura ? "Activo" : "Inactivo",
+                ["Última Consulta"]    = FormatDateOnly(sura.FechaConsulta),
+            };
+        }
+
         var sos = await _context.Sos.FirstOrDefaultAsync(s => s.TitularId == titular.NumeroDocumento);
         if (sos != null)
         {

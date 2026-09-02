@@ -69,7 +69,20 @@ src/
 
 > ⚠️ **CRÍTICO** — actualizado 2026-05-06: el código C# productivo NO consulta `vw_BaseMadre` directamente. Consulta el iTVF **`dbo.fn_BaseMadrePorCartera(@CarteraID, @LiderID)`**, definido en `docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql`. El iTVF replica las columnas de la vista pero pre-restringe cada CTE `Ultimo*` al dominio de la cartera, ganando P90 ~3× / P99 ~17×.
 >
-> La `vw_BaseMadre` sigue existiendo y se usa exclusivamente para el **shape de fila de EF** (`BaseMadreRowMapping.ToView("vw_BaseMadre")`) — EF mapea por nombre de columna, así que mientras el TVF y la vista expongan los mismos alias, todo funciona. **Si modificas la vista pero olvidas el TVF, el sistema queda inconsistente y EF lanzará excepciones de columna faltante en runtime.** Siempre actualizar **ambos** objetos en la misma migración.
+> La `vw_BaseMadre` sigue existiendo y se usa exclusivamente para el **shape de fila de EF** (`BaseMadreRowMapping.ToView("vw_BaseMadre")`) — EF mapea por nombre de columna, así que mientras el TVF y la vista expongan los mismos alias, todo funciona. **Si modificas la vista pero olvidas el TVF, el sistema queda inconsistente y EF lanzará excepciones de columna faltante en runtime.**
+>
+> ⚠️ **Son CUATRO objetos, no dos** — corregido 2026-09-02 (integración Sura). Además de la vista y `fn_BaseMadrePorCartera` existen **`dbo.fn_BaseMadreParaTitulares(@CarteraID, @Titulares)`** y **`dbo.fn_BaseMadreParaTitulares_CarteraChica(@CarteraID, @Titulares)`** (`docs/sql/migrations/2026-07-11_fn_BaseMadreParaTitulares_CarteraChica.sql`), ambos con parámetro `dbo.TitularIDList READONLY`. Las cuatro definiciones deben quedar con los mismos alias, **en la misma migración**. Antes de escribir la migración, listar los objetos reales:
+> ```sql
+> SELECT name, type_desc FROM sys.objects WHERE name LIKE 'fn_BaseMadre%' OR name = 'vw_BaseMadre';
+> ```
+> Verificación después de ejecutar — pedirle los alias nuevos literalmente a los cuatro (si un alias difiere en una tilde, SQL responde *"Invalid column name"* aquí; en producción se vería recién a media descarga):
+> ```sql
+> DECLARE @t dbo.TitularIDList;
+> SELECT TOP 0 <alias nuevos> FROM dbo.vw_BaseMadre;
+> SELECT TOP 0 <alias nuevos> FROM dbo.fn_BaseMadrePorCartera(<cartera>, NULL);
+> SELECT TOP 0 <alias nuevos> FROM dbo.fn_BaseMadreParaTitulares(<cartera>, @t);
+> SELECT TOP 0 <alias nuevos> FROM dbo.fn_BaseMadreParaTitulares_CarteraChica(<cartera>, @t);
+> ```
 
 ### Sub-módulos que consumen `fn_BaseMadrePorCartera` (revisar/actualizar)
 
@@ -80,6 +93,7 @@ src/
 | Comparador de Carteras      | `ComparadorCarterasService`         | `ComparadorCarterasController` | `ComparadorCarterasPage`     | NO — usa `UltimosEstadosTitular` |
 | Consulta Integrada          | `Modules/ConsultaIntegrada/**`      | (módulo autónomo)              | `ConsultaIntegradaPage`      | NO — consulta tablas fuente directamente |
 | Rastreo de Líneas           | `RastreoLineasService`              | `RastreoLineasController`      | `RastreoLineasPage`          | NO consume el TVF, pero **sí debe extenderse** si la nueva fuente expone columna(s) de teléfono — UNION ALL en `RastreoLineasService.SqlConsulta` |
+| Uso de Base de Datos        | `UsoBaseDatosService`               | `InformesGeneralesController`  | `InformesGeneralesPage`      | NO consume el TVF, pero es el **espejo masivo de Rastreo** — mismo UNION ALL, contra `#Telefonos` en vez de `@numero`. Se actualiza **siempre junto con Rastreo** |
 | Gestión de Carteras (admin) | `GestionCarterasService`            | `GestionCarterasController`    | `GestionCarterasPage`        | NO |
 | Cargue de Reportes          | `CargueReporteService`              | `CargueReportesController`     | `CargueReportesPage`         | NO |
 | Localización (6 stubs)      | (sin servicio actualmente)          | —                              | `Arl/Caja/Camara/...` stubs  | NO |
@@ -102,6 +116,7 @@ src/
 | MiVacuna | 1:1 | sí / sí | sí (agregado 2026-07-08 — se omitió por error en la integración original, ver `project_fuente_mivacuna.md`) | entidad 1:1 simple |
 | MutualSer | 1:1 | sí (×2 cels) / sí | sí (Rastreo + Localización) | entidad 1:1 simple |
 | ARLSura | 1:1 | no | sí (solo empresa) | entidad simple |
+| Sura | 1:1 | sí / sí | sí | entidad 1:1 simple. **Al integrarla (2026-09-02) hubo que renombrar los alias de ARLSura** a `[NIT ARL Sura]`/`[Empresa ARL Sura]` — ver anti-patrón de colisión de nombres |
 | PositivaEmpresas | 1:1 | no | sí | entidad simple |
 | RUES | 1:1 | no | sí (solo empresa) | entidad simple |
 | Fosyga | 1:1 | no | sí (regimen/depto/municipio) | entidad 1:1 |
@@ -124,7 +139,7 @@ src/
    - `SELECT COUNT(*) AS Filas, COUNT(DISTINCT TitularID) AS TitularesUnicos FROM dbo.<TablaOrigen>` (determina cardinalidad real 1:1 vs N:1).
    - `SELECT i.name, i.is_primary_key, i.is_unique FROM sys.indexes i WHERE i.object_id = OBJECT_ID('dbo.<TablaOrigen>')` (confirma si la tabla es heap o tiene índice sobre `TitularID`).
    - `SELECT name FROM sys.tables WHERE name LIKE '<TablaOrigen>%'` (busca tabla `<X>Auxiliar` de staging).
-   - `EXEC sp_helptext 'dbo.vw_BaseMadre'` y leer `docs/sql/migrations/2026-05-06_fn_BaseMadrePorCartera.sql` (TVF actual). **Ambos son el destino del paso 1**.
+   - `SELECT OBJECT_DEFINITION(OBJECT_ID(n)) FROM (VALUES('dbo.vw_BaseMadre'),('dbo.fn_BaseMadrePorCartera'),('dbo.fn_BaseMadreParaTitulares'),('dbo.fn_BaseMadreParaTitulares_CarteraChica')) v(n)` — **los CUATRO son el destino del paso 1**. Leer la definición **viva** de cada uno, no el archivo de migración más reciente: las migraciones son incrementales y ninguna contiene el estado actual completo. (Ojo: `OBJECT_DEFINITION` devuelve el texto tal cual se ejecutó, con sus comentarios de cabecera viejos — no fiarse de la fecha que digan.)
 3. Mapear cada columna nueva a un nombre **PascalCase** consistente con `BaseMadreRow.cs` (ej. `CelularMutualSer`, `RegimenMutualSer`, `Celular2MutualSer` cuando hay múltiples). Sufijar con el nombre de la fuente para evitar colisión con columnas Fosyga (`Regimen`, `TipoAfiliado`, `Departamento`, `Municipio` ya existen).
 4. Decidir, junto al usuario si hay ambigüedad, qué columnas:
    - se exponen en `vw_BaseMadre` + `fn_BaseMadrePorCartera` (información generalista, alta cardinalidad de uso).
@@ -142,7 +157,9 @@ Crear migración nueva en `docs/sql/migrations/<YYYY-MM-DD>_<nombre>_in_basemadr
    ```
    Sin INCLUDE por defecto: el INCLUDE de muchas columnas duplica storage sin ROI claro. Solo agregar INCLUDE si después se mide impacto P90 alto.
 2. **`ALTER VIEW dbo.vw_BaseMadre`** — añadir CTE `Ultimo<Fuente>` y las columnas nuevas con `ISNULL(...)` y alias entre corchetes (`[Celular MutualSer]`, etc.). Mantener convención `ROW_NUMBER() PARTITION BY TitularID ORDER BY FechaConsulta DESC` aunque sea 1:1 (simetría con las otras CTEs).
-3. **`DROP/CREATE FUNCTION dbo.fn_BaseMadrePorCartera`** — replicar exactamente las mismas columnas, CTE y JOIN dentro del iTVF, **con la pre-restricción a `TitularesCartera`** (ver patrón en `2026-05-06_fn_BaseMadrePorCartera.sql:47-61`). El orden de columnas debe coincidir 1:1 con `BaseMadreRowMapping`.
+3. **`CREATE OR ALTER FUNCTION`** para los **tres** iTVF — `fn_BaseMadrePorCartera`, `fn_BaseMadreParaTitulares` y `fn_BaseMadreParaTitulares_CarteraChica` — replicando en cada uno exactamente las mismas columnas, CTE y JOIN, **con la pre-restricción a `TitularesCartera`** (ver patrón en `2026-05-06_fn_BaseMadrePorCartera.sql:47-61`). El orden de columnas debe coincidir 1:1 con `BaseMadreRowMapping`.
+
+   > **Cómo generar los cuatro bloques sin transcribirlos a mano** (lo que se hizo para Sura): bajar las definiciones vivas a archivos, y con un script corto insertar la línea nueva clonando la forma de la última fuente integrada (p. ej. SaviaSalud) más el CTE correspondiente. El script debe **abortar si detecta un alias duplicado** — es la única red que atrapa una colisión de nombres antes de tocar producción. Detalles que rompen un regex ingenuo: los TVF usan `LEFT  JOIN` con dos espacios donde la vista usa uno (usar `/LEFT\s+JOIN\s+/`), y el texto de `OBJECT_DEFINITION` empieza con comentarios, no con `CREATE` (localizar el `CREATE` y recortar lo anterior).
 
 Mostrar el SQL al usuario y **pedir confirmación antes de ejecutarlo**. Tras ejecutar:
 - `SELECT TOP 5 <ColsNuevas> FROM dbo.fn_BaseMadrePorCartera(<cartera_chica>, NULL)` para validar.
@@ -223,6 +240,20 @@ Si la fuente debe consultarse fuera de la vista (3 estados o consulta dedicada),
    GROUP BY x.TitularID, t.Nombre
   ```
 - Nota: ADR-015 originalmente excluyó algunas tablas con teléfono (DatosClaro, MutualSer) bajo la idea de que "no son fuentes de localización". La práctica desde 2026-04 ha sido **incluir cualquier fuente con teléfono usable** — el ADR-015 quedó parcialmente desactualizado y se anota en el header del archivo.
+
+**5e. `Services/UsoBaseDatosService.cs`** — **espejo obligatorio de 5d**, agregado 2026-08 y detectado como paso faltante en la integración Sura (2026-09-02). Es el cruce masivo del sub-módulo *Informes Generales → Uso de Base de Datos*: la misma lista de fuentes que Rastreo, pero por **hash join contra `#Telefonos`** en vez de un `@numero` escalar. Si se extiende Rastreo y no este, el informe de uso subestima en silencio (la fuente simplemente no aparece; no hay error).
+- Patrón por bloque — nótese que **no lleva `LEFT JOIN Titular`** (el servicio resuelve el líder después) y que agrupa también por `t.Numero`:
+  ```sql
+  UNION ALL
+  -- <Fuente> — <nota sobre qué columnas de teléfono tiene>
+  SELECT t.Numero, '<Fuente>', '<Etiqueta UI>', x.TitularID, COUNT(*)
+    FROM #Telefonos t JOIN dbo.<Tabla> x ON x.<ColumnaTelefono> = t.Numero
+   GROUP BY t.Numero, x.TitularID
+  ```
+- **Verificación de paridad** (hacerla siempre, es una línea): contar las fuentes y columnas de ambos servicios y exigir el mismo número.
+  ```bash
+  grep -c "UNION ALL" src/Infrastructure/*/Services/RastreoLineasService.cs src/Infrastructure/*/Services/UsoBaseDatosService.cs
+  ```
 
 **Servicios que NO se tocan** (verificado: no consultan `vw_BaseMadre` ni `fn_BaseMadrePorCartera`): `ComparadorCarterasService`, `GestionCarterasService`, `CargueReporteService`.
 
@@ -306,7 +337,7 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - **`SqlAlias` (en `BaseMadreRepository`) incluye una entrada por cada columna nueva** — las cuatro listas espejo (`BaseMadreRow`, `BaseMadreRowMapping`, `ColumnasMadre`, `SqlAlias`) quedan con exactamente las mismas columnas. El export CSV/Excel con **todas las columnas encendidas** baja completo, no se corta.
 - Si la fuente expone celular/email: switches `ColumnaCelular`/`ColumnaEmail` y arrays `FUENTES_CELULAR`/`FUENTES_EMAIL` actualizados, en sincronía exacta de claves.
 - **Salvo justificación explícita registrada**, la fuente está en el panel de localización: `SUM(CASE...)` Enc/NoEnc + `LEFT JOIN` en result set 9 + entrada en `LeerLocalizacionAsync` + entrada en el diccionario `Fuentes` + `FUENTE_SLUG`/`ESTADO_FUENTE` en el frontend.
-- Si la fuente expone columnas de teléfono: `RastreoLineasService.SqlConsulta` extendido con `UNION ALL` por cada columna.
+- Si la fuente expone columnas de teléfono: `RastreoLineasService.SqlConsulta` **y `UsoBaseDatosService`** extendidos con `UNION ALL` por cada columna, con el mismo conteo de fuentes en ambos.
 - ConsultaIntegrada renderiza la nueva fuente como sub-bloque dentro del grupo "Contactabilidad" (sin tocar el frontend).
 - `ESTADO_FUENTE` en CalificadorCarteraPage incluye la nueva fuente con etiqueta + color.
 - Sidebar sigue alfabético; no se duplican rutas.
@@ -317,7 +348,9 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 
 ## Anti-patrones (no hacer)
 
-- ❌ **Modificar solo `vw_BaseMadre` y olvidar `fn_BaseMadrePorCartera`** — el código productivo consume el TVF; la vista solo se usa para EF mapping. Una migración que toca solo la vista deja el sistema inconsistente.
+- ❌ **Modificar solo `vw_BaseMadre` y olvidar los TRES iTVF** — el código productivo consume los TVF; la vista solo se usa para EF mapping. Una migración que toca solo la vista, o que toca `fn_BaseMadrePorCartera` pero olvida `fn_BaseMadreParaTitulares` / `..._CarteraChica`, deja el sistema inconsistente. Son **cuatro** objetos; enumerarlos con `sys.objects` antes de escribir la migración, no fiarse de la memoria.
+- ❌ **Extender `RastreoLineasService` y olvidar `UsoBaseDatosService`** — son espejos. El olvido no produce error: el informe de Uso de Base de Datos simplemente no cuenta esa fuente, y el faltante solo se nota comparando totales contra Rastreo.
+- ❌ **Elegir un nombre de fuente que sea prefijo o sufijo de otra sin grepearlo antes** — al integrar `Sura` (2026-09-02) colisionó cuatro veces con `ARLSura`: los alias `[NIT Sura]`/`[Empresa Sura]`, la clave `["sura"]` del diccionario `Fuentes`, los alias SQL `SuraEnc`/`SuraNoEnc` del result set 9, y un `AS EmpresaSura` duplicado en el `SELECT INTO #t`. **Ninguna de las cuatro la atrapa el compilador**: la clave repetida revienta en runtime al inicializar el diccionario y las columnas duplicadas al ejecutar el SQL. Antes de escribir nada, `grep -rn "<NombreFuente>" src/` y revisar cada hit.
 - ❌ **Agregar la columna a `ColumnasMadre`/`BaseMadreRow`/mapping pero olvidar `SqlAlias`** — el preview engaña (funciona porque usa reflexión), pero el export CSV/Excel se rompe a media transmisión (`ERR_INCOMPLETE_CHUNKED_ENCODING` / archivo con 1 fila) por desfase entre el conteo de encabezados y los campos del reader. Las cuatro listas espejo se actualizan **juntas, siempre**. (Regresión histórica: integración MiVacuna, corregida en `1cbd33f`.)
 - ❌ **Componer LINQ encima de `FromSql(TVF)`** — EF Core envuelve la TVF en subquery sin pushdown del TOP/filtros, causando timeouts (lección de `project_optimizacion_cartera_estado.md`). Mover TOP y filtros al SQL del TVF directamente.
 - ❌ **Asumir que la fuente "no aplica" a localización solo porque no trae Departamento/Municipio** — el panel no es geográfico, es de trazabilidad (encontrado/no-encontrado/falta-por-buscar) por cualquier campo identificable. Esta suposición incorrecta fue exactamente lo que dejó a **MiVacuna sin localización** en su integración original (2026-05-29) — corregido el 2026-07-08. Por defecto la respuesta a la pregunta 6 del preflight es SÍ; si de verdad no aplica, decirlo explícitamente y registrar el motivo (memoria + `para-tener-en-cuenta.md`), no dejarlo pasar en silencio.
