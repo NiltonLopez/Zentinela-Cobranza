@@ -51,14 +51,16 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
     pdf.text(`Página ${pagina}`, PW - M, PH - 5, { align: 'right' });
   };
 
-  /** Salta de página si lo que viene no entra en lo que queda. */
-  const asegurar = (alto: number, y: number): number => {
-    if (y + alto <= LIMITE_Y) return y;
+  const nuevaPagina = (): number => {
     pdf.addPage();
     pagina++;
     encabezado();
     return TOP;
   };
+
+  /** Salta de página si lo que viene no entra en lo que queda. */
+  const asegurar = (alto: number, y: number): number =>
+    y + alto <= LIMITE_Y ? y : nuevaPagina();
 
   const titulo = (texto: string, y: number): number => {
     const yy = asegurar(12, y);
@@ -96,13 +98,52 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
     return (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
   };
 
-  const filasEmbudo = (pasos: EmbudoPasoIvr[]) =>
-    pasos.map(p => [
-      p.etiqueta,
-      barra(p.porcentaje),
-      n(p.clientes),
-      `${pct(p.porcentaje)}${p.base === 'de contactó' ? ' de contactó' : ''}`,
-    ]);
+  /**
+   * Tabla del embudo con la barra DIBUJADA (rectángulos), no escrita como texto.
+   * Las fuentes estándar de jsPDF (Helvetica) no tienen los glifos █░ que usa el
+   * panel, y el sustituto anterior — '#' y '.' — se leía como basura. Se deja la celda
+   * vacía y se pinta encima en didDrawCell: una pista gris de ancho completo y un
+   * relleno azul proporcional al porcentaje. Igual que en el panel, el primer paso
+   * (la base del embudo) va siempre al 100 %.
+   */
+  const tablaEmbudo = (pasos: EmbudoPasoIvr[], y: number): number => {
+    const porcentajes = pasos.map((p, i) => (i === 0 ? 100 : p.porcentaje));
+
+    autoTable(pdf, {
+      startY: y,
+      head: [['Etapa', '', 'Clientes', '%']],
+      body: pasos.map(p => [
+        p.etiqueta,
+        '',
+        n(p.clientes),
+        `${pct(p.porcentaje)}${p.base === 'de contactó' ? ' de contactó' : ''}`,
+      ]),
+      styles:      { fontSize: 8, cellPadding: 1.8, valign: 'middle', overflow: 'linebreak' },
+      headStyles:  { fillColor: AZUL, textColor: 255, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: { 1: { cellWidth: 46 } },
+      margin: { left: M, right: M, top: TOP, bottom: FOOTER_H + 4 },
+      didDrawCell: (data) => {
+        if (data.section !== 'body' || data.column.index !== 1) return;
+        const p = Math.min(100, Math.max(0, porcentajes[data.row.index] ?? 0));
+
+        const pad = 1.6;
+        const x = data.cell.x + pad;
+        const w = data.cell.width - pad * 2;
+        const h = 3.4;
+        const yb = data.cell.y + (data.cell.height - h) / 2;
+
+        pdf.setFillColor(226, 232, 240);                       // pista
+        pdf.rect(x, yb, w, h, 'F');
+        pdf.setFillColor(...AZUL);                             // relleno
+        pdf.rect(x, yb, Math.max(0.8, (w * p) / 100), h, 'F');
+      },
+      didDrawPage: () => {
+        if (pdf.getNumberOfPages() > pagina) { pagina = pdf.getNumberOfPages(); encabezado(); }
+      },
+    });
+    return (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+  };
 
   const filasDesenlaces = (ds: DesenlaceIvr[]) =>
     ds.map(d => [d.desenlace, n(d.clientes), pct(d.porcentaje)]);
@@ -139,7 +180,7 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
 
   // Embudo global
   y = titulo('PORCENTAJE GENERAL', y);
-  y = tabla([['Etapa', '', 'Clientes', '%']], filasEmbudo(a.embudo), y, { 1: 46 });
+  y = tablaEmbudo(a.embudo, y);
 
   // Desenlaces globales
   y = titulo('DESENLACE DE LOS CONTACTADOS', y);
@@ -162,12 +203,14 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
     y,
   );
 
-  // Detalle por líder
+  // Detalle por líder: cada uno en su(s) propia(s) página(s), cerrando con el bloque
+  // de aceptación de resultados para firma.
   for (const l of a.porLider) {
-    y = detalleLider(l, y);
+    detalleLider(l);
   }
 
-  // Nota metodológica
+  // Nota metodológica — en página aparte para no compartir hoja con la última firma.
+  y = nuevaPagina();
   y = titulo('NOTA METODOLÓGICA', y);
   y = parrafo(
     'Todos los porcentajes se calculan sobre clientes únicos por cartera. Un cliente marcado ' +
@@ -192,9 +235,14 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
   pdf.save(`analisis_ivr_${a.desde}_${a.hasta}.pdf`);
 
   // ── Sección por líder ─────────────────────────────────────────────────────
-  function detalleLider(l: AnalisisIvrLider, yIn: number): number {
-    // Se reserva espacio para que el nombre no quede huérfano al pie de página.
-    let yy = asegurar(30, yIn);
+  //
+  // Cada líder arranca en página nueva y cierra con un bloque de aceptación para
+  // firma. La idea es que la hoja del líder sea un entregable en sí mismo: se imprime,
+  // el líder revisa SUS cifras, firma abajo y queda constancia de que acepta los
+  // resultados que está midiendo la herramienta.
+  function detalleLider(l: AnalisisIvrLider): void {
+    let yy = nuevaPagina();
+
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12);
     pdf.setTextColor(...AZUL);
     pdf.text(l.nombreLider.toUpperCase(), M, yy);
@@ -205,7 +253,7 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
     pdf.text(`${l.totalCarteras} cartera(s) en el período`, M, yy);
     yy += 5;
 
-    yy = tabla([['Etapa', '', 'Clientes', '%']], filasEmbudo(l.embudo), yy, { 1: 46 });
+    yy = tablaEmbudo(l.embudo, yy);
     yy = tabla([['Desenlace', 'Clientes', '% contact.']], filasDesenlaces(l.desenlaces), yy);
     yy = tabla(
       [['Cartera', 'Con result.', 'Contact.', '% Cont.', 'Marc. 1']],
@@ -217,15 +265,53 @@ export async function exportarAnalisisIvrPdf(a: AnalisisIvr): Promise<void> {
     );
 
     if (l.apreciacion) yy = parrafo(l.apreciacion, yy);
-    return yy + 2;
-  }
-}
 
-/** Barra de bloques equivalente a la del panel, para que el PDF se lea igual. */
-function barra(porcentaje: number): string {
-  const BLOQUES = 20;
-  const llenos = Math.max(1, Math.min(BLOQUES, Math.round((porcentaje / 100) * BLOQUES)));
-  return '#'.repeat(llenos) + '.'.repeat(BLOQUES - llenos);
+    bloqueFirma(l, yy);
+  }
+
+  /**
+   * Bloque de aceptación de resultados, anclado al pie de la última página del
+   * líder. Si el contenido dejó menos espacio del que necesita, pasa a una página
+   * nueva — la firma nunca se parte ni se aprieta contra las tablas.
+   */
+  function bloqueFirma(l: AnalisisIvrLider, yContenido: number): void {
+    const ALTO = 46;
+    if (yContenido + 4 > LIMITE_Y - ALTO) nuevaPagina();
+
+    const y0 = LIMITE_Y - ALTO;
+
+    pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.3);
+    pdf.line(M, y0, PW - M, y0);
+
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9);
+    pdf.setTextColor(30, 41, 59);
+    pdf.text('ACEPTACIÓN DE RESULTADOS', M, y0 + 6);
+
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8);
+    pdf.setTextColor(51, 65, 85);
+    const texto =
+      `He revisado los resultados de la herramienta IVR correspondientes a mis carteras en el ` +
+      `período ${periodo} y acepto la información aquí presentada como reflejo de la gestión realizada.`;
+    pdf.text(pdf.splitTextToSize(texto, PW - M * 2) as string[], M, y0 + 11);
+
+    // Líneas de firma y fecha
+    const yLinea     = y0 + 33;
+    const anchoFirma = 95;
+    const xFecha     = PW - M - 48;
+
+    pdf.setDrawColor(51, 65, 85); pdf.setLineWidth(0.4);
+    pdf.line(M, yLinea, M + anchoFirma, yLinea);
+    pdf.line(xFecha, yLinea, PW - M, yLinea);
+
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5);
+    pdf.setTextColor(...GRIS);
+    pdf.text('Firma del líder', M, yLinea + 3.5);
+    pdf.text('Fecha', xFecha, yLinea + 3.5);
+
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5);
+    pdf.setTextColor(30, 41, 59);
+    pdf.text(l.nombreLider.toUpperCase(), M, yLinea + 8.5);
+  }
 }
 
 function fecha(iso: string): string {
