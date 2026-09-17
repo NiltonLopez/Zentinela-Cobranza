@@ -1515,6 +1515,89 @@ Sirve tanto para "mes pasado vs este mes" (Tab Carteras) como para el comparativ
 
 ---
 
+## Informes de Virtualidad — alcance por rol (ADR-036)
+
+Los tres endpoints de informe (`ivr/informe`, `ivr/analisis`, `mensajeria/informe`,
+`pagos-impacto/informe`) admiten **Admin, Auxiliar de Sistemas y Líder**, y aceptan un
+`liderID` opcional por query string. La regla que aplica el servidor, por rol:
+
+| Rol | `liderID` recibido | `liderID` usado |
+|-----|--------------------|-----------------|
+| Admin / Auxiliar | cualquiera o ninguno | el recibido, tal cual (sin él, todos los líderes) |
+| Líder | **se ignora** | el del claim `liderID` del token, siempre |
+| Líder sin claim `liderID` | — | **403 Forbidden** |
+
+> La UI oculta el selector para el Líder, pero eso es presentación. La garantía es esta tabla:
+> editar `?liderID=` en la URL no cambia nada para ese rol.
+
+Las cargas de Llamadas Perdidas/Entrantes (`virtualidad/llamadas/*`) siguen siendo solo
+Admin/Auxiliar y no se filtran por líder: sus registros no traen `LiderID`.
+
+---
+
+## GET /api/virtualidad/ivr/informe
+
+Marcaciones IVR por combinación líder-cartera en un rango de fechas.
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `desde` | date | Sí | Fecha inicial (`yyyy-MM-dd`) |
+| `hasta` | date | Sí | Fecha final |
+| `liderID` | int | No | Ver tabla de alcance por rol |
+| `carteraID` | int | No | Acota a una cartera |
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Informe generado |
+| `403 Forbidden` | Rol Líder sin claim `liderID` |
+
+---
+
+## GET /api/virtualidad/ivr/analisis
+
+Embudo y desenlaces del IVR sobre clientes únicos (ADR-031), con página por líder (ADR-035).
+Mismos query params y mismo alcance por rol que `ivr/informe`; además responde
+`400 Bad Request` si `hasta < desde`.
+
+---
+
+## GET /api/virtualidad/mensajeria/informe
+
+Mensajes SMS por combinación líder-cartera. Mismos query params, alcance y códigos que
+`ivr/informe`.
+
+---
+
+## GET /api/virtualidad/pagos-impacto/informe
+
+De los titulares que pagaron en el rango, por qué canal de virtualidad fueron impactados antes.
+
+### Query params
+
+| Param | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `desde` | date | Sí | Fecha inicial |
+| `hasta` | date | Sí | Fecha final |
+| `liderID` | int | No | Acota el universo de **pagos** a los de ese líder (`Pago.LiderID`). Los cruces contra canales siguen por cédula, sin líder. Ver tabla de alcance por rol |
+| `carteraID` | int | No | Acota los pagos a esa cartera |
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | Informe generado |
+| `403 Forbidden` | Rol Líder sin claim `liderID` |
+
+> ⚠ Estado real a 2026-09-17: este endpoint **falla en producción** para todos los roles con
+> `El nombre de objeto 'LlamadaPerdida' no es válido` — la tabla no existe en ninguna BD del
+> servidor. Ver `docs/para-tener-en-cuenta.md`.
+
+---
+
 ## GET /api/virtualidad/historico/plantilla
 
 Descarga la plantilla XLSX para cargar solicitudes (fase Solicitud) de un canal.
