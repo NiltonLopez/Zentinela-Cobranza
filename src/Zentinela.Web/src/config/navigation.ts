@@ -50,7 +50,7 @@ export const MODULOS: Modulo[] = [
     rolesPermitidos: ['Admin', 'Líder', 'Director'],
     defaultPath: '/informes/recaudo',
     subModulos: [
-      { key: 'virtualidad',         label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Director'] },
+      { key: 'virtualidad',         label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'recaudo',             label: 'Informes de Recaudo',     path: '/informes/recaudo',     rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'agencias-externas',   label: 'Agencias Externas',       path: '/informes/agencias-externas', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'auditoria-gestiones', label: 'Auditoría de Gestiones',  path: '/informes/auditoria-gestiones', rolesPermitidos: ['Admin', 'Director'] },

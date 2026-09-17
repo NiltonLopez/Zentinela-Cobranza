@@ -3,9 +3,29 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-09-02**.
+Última actualización: **2026-09-17**.
 
 ---
+
+## Tablas LlamadaPerdida / LlamadaEntrante no existen — 3 tabs de Virtualidad rotas (2026-09-17)
+
+- **`LlamadaPerdida` y `LlamadaEntrante` no existen en ninguna BD del servidor** (verificado con
+  `sp_MSforeachdb`; tampoco hay DDL en `docs/sql/`). Sus mappings apuntan a esos nombres.
+- Consecuencia: **Llamadas Perdidas, Llamadas Entrantes y Pagos vs Impacto fallan para todos
+  los roles** con `El nombre de objeto 'LlamadaPerdida' no es válido`, desde el commit `6a063a7`
+  que creó el módulo. Nadie lo había reportado — probablemente nadie las usa.
+- **Decisión pendiente del negocio:** crear las tablas (habría que escribir el DDL desde las
+  entidades) o desacoplar Pagos vs Impacto de las llamadas para que al menos esa tab funcione.
+- Detectado al integrar el rol Líder en Informes de Virtualidad (ADR-036).
+
+## Corte de alcance por líder: hacerlo en el servidor, no en el dropdown (2026-09-17)
+
+- `AlcanceLiderExtensions.TryResolverLiderID` (Zentinela.API) es el patrón: para rol `Líder`
+  el `liderID` de la petición se ignora y se usa el del claim; sin claim → 403.
+- **El Calificador todavía tiene el agujero**: `GET /calificador/{cartera}/{lider}` acepta
+  cualquier par; solo el dropdown de opciones está acotado. Aplicar el mismo patrón.
+- `navigation.ts` muestra Informes de Virtualidad a `Director` pero los controllers no lo
+  admiten → 403. Decidir cuál lado está bien.
 
 ## Fuente Sura — colisión de alias que obligó a renombrar ARLSura (2026-09-02)
 

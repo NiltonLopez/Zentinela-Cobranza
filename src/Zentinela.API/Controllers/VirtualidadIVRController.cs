@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Zentinela.API.Extensions;
 using Zentinela.Application;
 using Zentinela.Application.Interfaces;
 
@@ -8,10 +9,13 @@ namespace Zentinela.API.Controllers;
 /// <summary>
 /// Informe de IVR (solo lectura). El alta de solicitudes/resultados IVR se hace en
 /// el módulo "Gestión de Solicitudes de Virtualidad" (api/virtualidad/solicitudes).
+///
+/// Un Líder también accede, pero solo a sus propios datos: el <c>liderID</c> se
+/// fuerza desde el claim del token (ver <see cref="AlcanceLiderExtensions"/>).
 /// </summary>
 [ApiController]
 [Route("api/virtualidad/ivr")]
-[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas}")]
+[Authorize(Roles = $"{Roles.Admin},{Roles.AuxiliarSistemas},{Roles.Lider}")]
 public class VirtualidadIVRController : ControllerBase
 {
     private readonly IVirtualidadIVRService _service;
@@ -26,7 +30,10 @@ public class VirtualidadIVRController : ControllerBase
         [FromQuery] int? liderID,
         [FromQuery] int? carteraID)
     {
-        var resultado = await _service.GetInformeAsync(desde, hasta, liderID, carteraID);
+        if (!User.TryResolverLiderID(liderID, out var liderEfectivo))
+            return Forbid();
+
+        var resultado = await _service.GetInformeAsync(desde, hasta, liderEfectivo, carteraID);
         return Ok(resultado);
     }
 
@@ -41,6 +48,9 @@ public class VirtualidadIVRController : ControllerBase
         if (hasta < desde)
             return BadRequest(new { mensaje = "La fecha final no puede ser anterior a la inicial." });
 
-        return Ok(await _service.GetAnalisisAsync(desde, hasta, liderID, carteraID));
+        if (!User.TryResolverLiderID(liderID, out var liderEfectivo))
+            return Forbid();
+
+        return Ok(await _service.GetAnalisisAsync(desde, hasta, liderEfectivo, carteraID));
     }
 }

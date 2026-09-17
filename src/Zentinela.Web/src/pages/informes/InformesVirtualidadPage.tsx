@@ -5,6 +5,7 @@ import {
   Cell, Legend, CartesianGrid,
 } from 'recharts';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
+import { useAuth } from '../../context/AuthContext';
 import { ZDropdown } from '../../components/ZDropdown';
 import {
   getInformeMensajeria,
@@ -37,6 +38,19 @@ const C = {
 type Tab = 'mensajeria' | 'ivr' | 'llamadas-perdidas' | 'llamadas-entrantes' | 'pagos-impacto';
 
 const AÑO_HOY = new Date().getFullYear();
+
+// ── Alcance por rol ───────────────────────────────────────────────────────────
+/**
+ * Un Líder ve el informe tal cual el administrador, pero solo con sus datos: el
+ * selector de líder no se muestra y el filtro queda fijado a su propio liderID.
+ * Esto es presentación — la restricción real la impone el servidor, que para el rol
+ * Líder ignora el liderID de la URL y usa el del token (AlcanceLiderExtensions).
+ */
+function useAlcanceLider() {
+  const { usuario } = useAuth();
+  const esLider = usuario?.rol === 'Líder';
+  return { esLider, liderPropio: esLider ? (usuario?.liderID ?? 0) : 0 };
+}
 
 // ── Utilidades de fecha ───────────────────────────────────────────────────────
 type Preset = 'hoy' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';
@@ -307,10 +321,11 @@ function BtnSecondary({ children, onClick }: { children: React.ReactNode; onClic
 // ── Tab Mensajería ────────────────────────────────────────────────────────────
 
 function TabMensajeria() {
+  const { esLider, liderPropio }          = useAlcanceLider();
   const [desde,         setDesde]         = useState(HACE30);
   const [hasta,         setHasta]         = useState(HOY);
-  const [filtroLider,   setFiltroLider]   = useState(0);   // 0 = todos
-  const [filtroCartera, setFiltroCartera] = useState(0);   // 0 = todas
+  const [filtroLider,   setFiltroLider]   = useState(liderPropio);   // 0 = todos (solo Admin/Director)
+  const [filtroCartera, setFiltroCartera] = useState(0);             // 0 = todas
 
   const { data: opciones = [] } = useQuery({
     queryKey: ['calificador-opciones'],
@@ -366,16 +381,18 @@ function TabMensajeria() {
 
       {/* Filtros líder + cartera */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
-          <ZDropdown
-            options={[{ value: 0, label: 'Todos' }, ...lideresUnicos.map(l => ({ value: l.id, label: l.nombre }))]}
-            value={filtroLider}
-            onChange={v => { setFiltroLider(v); setFiltroCartera(0); }}
-            background="var(--z-bg-page)"
-            style={{ minWidth: 220 }}
-          />
-        </div>
+        {!esLider && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
+            <ZDropdown
+              options={[{ value: 0, label: 'Todos' }, ...lideresUnicos.map(l => ({ value: l.id, label: l.nombre }))]}
+              value={filtroLider}
+              onChange={v => { setFiltroLider(v); setFiltroCartera(0); }}
+              background="var(--z-bg-page)"
+              style={{ minWidth: 220 }}
+            />
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
           <ZDropdown
@@ -457,9 +474,10 @@ function TabMensajeria() {
 // ── Tab IVR ───────────────────────────────────────────────────────────────────
 
 function TabIVR() {
+  const { esLider, liderPropio }          = useAlcanceLider();
   const [desde,         setDesde]         = useState(HACE30);
   const [hasta,         setHasta]         = useState(HOY);
-  const [filtroLider,   setFiltroLider]   = useState(0);
+  const [filtroLider,   setFiltroLider]   = useState(liderPropio);   // 0 = todos (solo Admin/Director)
   const [filtroCartera, setFiltroCartera] = useState(0);
 
   const { data: opciones = [] } = useQuery({
@@ -525,16 +543,18 @@ function TabIVR() {
       <SelectorPeriodo color={C.ivr} onChange={(d, h) => { setDesde(d); setHasta(h); }} />
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
-          <ZDropdown
-            options={[{ value: 0, label: 'Todos' }, ...lideresUnicos.map(l => ({ value: l.id, label: l.nombre }))]}
-            value={filtroLider}
-            onChange={v => { setFiltroLider(v); setFiltroCartera(0); }}
-            background="var(--z-bg-page)"
-            style={{ minWidth: 220 }}
-          />
-        </div>
+        {!esLider && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Líder</label>
+            <ZDropdown
+              options={[{ value: 0, label: 'Todos' }, ...lideresUnicos.map(l => ({ value: l.id, label: l.nombre }))]}
+              value={filtroLider}
+              onChange={v => { setFiltroLider(v); setFiltroCartera(0); }}
+              background="var(--z-bg-page)"
+              style={{ minWidth: 220 }}
+            />
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.gray, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cartera</label>
           <ZDropdown
@@ -877,16 +897,23 @@ function TabPagosImpacto() {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 
-const TABS: { key: Tab; label: string; color: string }[] = [
+// `soloAdmin`: tabs que un Líder no ve. Llamadas Perdidas y Entrantes son cargas de
+// archivo (operación administrativa) y sus registros no traen LiderID — solo titular
+// y cartera — así que no hay forma exacta de acotarlos a un líder sin inferir por
+// asignación, y eso cambia con cada reasignación. Se dejan fuera antes que mostrar
+// cifras "aproximadamente suyas".
+const TABS: { key: Tab; label: string; color: string; soloAdmin?: boolean }[] = [
   { key: 'mensajeria',         label: 'Mensajería',        color: C.mensajes  },
   { key: 'ivr',                label: 'IVR',               color: C.ivr       },
-  { key: 'llamadas-perdidas',  label: 'Llamadas Perdidas', color: C.llamadas  },
-  { key: 'llamadas-entrantes', label: 'Llamadas Entrantes',color: C.entrantes },
+  { key: 'llamadas-perdidas',  label: 'Llamadas Perdidas', color: C.llamadas,  soloAdmin: true },
+  { key: 'llamadas-entrantes', label: 'Llamadas Entrantes',color: C.entrantes, soloAdmin: true },
   { key: 'pagos-impacto',      label: 'Pagos vs Impacto',  color: C.brand     },
 ];
 
 export function InformesVirtualidadPage() {
+  const { esLider } = useAlcanceLider();
   const [tab, setTab] = useState<Tab>('mensajeria');
+  const tabsVisibles = TABS.filter(t => !esLider || !t.soloAdmin);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -896,7 +923,9 @@ export function InformesVirtualidadPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--z-text-primary)' }}>Informes de Virtualidad</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--z-text-muted)' }}>
-            Gestión de canales digitales — Mensajería, IVR, Llamadas y análisis de impacto en pagos
+            {esLider
+              ? 'Tus canales digitales — Mensajería, IVR y análisis de impacto en pagos de tus carteras'
+              : 'Gestión de canales digitales — Mensajería, IVR, Llamadas y análisis de impacto en pagos'}
           </p>
         </div>
       </div>
@@ -917,7 +946,7 @@ export function InformesVirtualidadPage() {
         .z-tab-activa:hover::after { left: 0; right: 0; }
       `}</style>
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--z-border)' }}>
-        {TABS.map(t => (
+        {tabsVisibles.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`z-tab${tab === t.key ? ' z-tab-activa' : ''}`}
             style={{

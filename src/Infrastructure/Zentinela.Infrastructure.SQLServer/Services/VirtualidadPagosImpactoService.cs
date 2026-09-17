@@ -11,10 +11,17 @@ public class VirtualidadPagosImpactoService : IVirtualidadPagosImpactoService
 
     public VirtualidadPagosImpactoService(CallCenterDbContext db) => _db = db;
 
-    public async Task<PagosImpactoDto> GetInformeAsync(DateOnly desde, DateOnly hasta, int? carteraID)
+    public async Task<PagosImpactoDto> GetInformeAsync(DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
     {
         var pagosQuery = _db.Pagos
             .Where(p => p.FechaPago >= desde && p.FechaPago <= hasta);
+
+        // El filtro por líder acota solo el universo de PAGOS. Los cruces contra
+        // mensajería/IVR/llamadas siguen siendo por cédula, sin líder: lo que se mide
+        // es si el titular que le pagó a este líder fue impactado por algún canal,
+        // haya sido este líder u otro quien lo impactó.
+        if (liderID.HasValue)
+            pagosQuery = pagosQuery.Where(p => p.LiderID == liderID.Value);
 
         if (carteraID.HasValue)
             pagosQuery = pagosQuery.Where(p => p.CarteraID == carteraID.Value);
