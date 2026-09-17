@@ -219,7 +219,20 @@ public class AdminService : IAdminService
         {
             var lider = await _callCenter.Lideres
                 .FirstOrDefaultAsync(l => l.NumeroDocumento == usuario.NumeroDocumento && l.Activo);
-            usuario.LiderID = lider?.ID;
+
+            // Antes esto era `usuario.LiderID = lider?.ID` y, si el líder aún no existía,
+            // dejaba NULL EN SILENCIO. Resultado (incidente 2026-09-17, ascenso de asesora
+            // a líder): rol Líder con LiderID null → el Selector de carteras devuelve vacío
+            // y el Calificador/Comparador/Creador caen al `else` de Admin y muestran TODO.
+            // La cuenta "no funciona" y nadie sabe por qué. Fallar acá, con instrucción
+            // concreta, es lo único que evita el estado inconsistente.
+            if (lider is null)
+                throw new InvalidOperationException(
+                    $"No existe un líder activo con la cédula {usuario.NumeroDocumento} en el sistema de " +
+                    $"cobranza. Primero dalo de alta en Gestión de Carteras → Líderes (o reactívalo si " +
+                    $"estaba inactivo) y después cambia el rol.");
+
+            usuario.LiderID = lider.ID;
         }
         else
         {

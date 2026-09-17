@@ -156,6 +156,7 @@ public class GestionCarterasService : IGestionCarterasService
             liderExistente.Email           = empleado.Email;
             await _context.SaveChangesAsync();
 
+            await VincularUsuarioLiderAsync(dto.NumeroDocumento, liderExistente.ID);
             return new LiderDropdownDto { ID = liderExistente.ID, Nombre = liderExistente.Nombre };
         }
 
@@ -172,7 +173,32 @@ public class GestionCarterasService : IGestionCarterasService
         _context.Lideres.Add(nuevoLider);
         await _context.SaveChangesAsync();
 
+        await VincularUsuarioLiderAsync(dto.NumeroDocumento, nuevoLider.ID);
         return new LiderDropdownDto { ID = nuevoLider.ID, Nombre = nuevoLider.Nombre };
+    }
+
+    /// <summary>
+    /// Si ya existe una cuenta con esa cédula cuyo rol es Líder/Líder Externo y que todavía
+    /// no apunta a ningún líder, la enlaza al líder recién creado o reactivado.
+    ///
+    /// Cierra la trampa de orden del ascenso asesora → líder (incidente 2026-09-17): si el
+    /// admin cambiaba el rol ANTES de dar de alta al líder, la cuenta quedaba con rol Líder y
+    /// LiderID null, y nada la re-enlazaba después. Con esto, el alta hace el enlace que el
+    /// cambio de rol no pudo hacer — el flujo funciona en cualquier orden.
+    ///
+    /// Solo toca cuentas con LiderID null: una cuenta ya enlazada a otro líder no se pisa.
+    /// </summary>
+    private async Task VincularUsuarioLiderAsync(long numeroDocumento, int liderID)
+    {
+        var usuario = await _userManager.Users
+            .FirstOrDefaultAsync(u => u.NumeroDocumento == numeroDocumento && u.LiderID == null);
+        if (usuario is null) return;
+
+        var roles = await _userManager.GetRolesAsync(usuario);
+        if (!roles.Contains(Roles.Lider) && !roles.Contains(Roles.LiderExterno)) return;
+
+        usuario.LiderID = liderID;
+        await _userManager.UpdateAsync(usuario);
     }
 
     public async Task<CrearLiderExternoResponse> CrearLiderExternoAsync(CrearLiderExternoDto dto)

@@ -36,6 +36,11 @@ public class ComparadorCarterasService : IComparadorCarterasService
     public async Task<IEnumerable<OpcionCarteraDto>> ObtenerOpcionesAsync(
         ContextoUsuario contexto)
     {
+        // Líder sin LiderID: estado inconsistente, nunca debe ver el ramal de Admin (ver
+        // el mismo guardarraíl en CalificadorCarteraService.ObtenerOpcionesAsync).
+        if ((contexto.Rol is Roles.Lider or Roles.LiderExterno) && !contexto.LiderID.HasValue)
+            return [];
+
         if (contexto.LiderID.HasValue
             && contexto.Rol is Roles.Lider or Roles.LiderExterno)
         {

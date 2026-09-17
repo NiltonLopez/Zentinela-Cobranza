@@ -48,6 +48,12 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     public async Task<IEnumerable<CarteraLiderDropdownDto>> ObtenerOpcionesAsync(
         ContextoUsuario contexto)
     {
+        // Un Líder sin LiderID es un estado inconsistente (cuenta creada o ascendida antes
+        // de dar de alta al líder — ver AdminService.CambiarRolAsync). Antes caía al ramal de
+        // Admin/Director de abajo y veía TODAS las carteras: fuga de privilegios. Vacío.
+        if ((contexto.Rol is Roles.Lider or Roles.LiderExterno) && !contexto.LiderID.HasValue)
+            return [];
+
         if (contexto.LiderID.HasValue
             && contexto.Rol is Roles.Lider or Roles.LiderExterno)
         {
