@@ -26,6 +26,8 @@ import { PagosConfirmadosDirectorPage } from './pages/home/PagosConfirmadosDirec
 
 // Cartera
 import { CreadorZentinelaPage } from './pages/cartera/CreadorZentinelaPage';
+import { CreadorVirtualidadPage } from './pages/cartera/CreadorVirtualidadPage';
+import { MensajesAutorizadosPage } from './pages/administracion/MensajesAutorizadosPage';
 import { CalificadorCarteraPage } from './pages/cartera/CalificadorCarteraPage';
 import { ComparadorCarterasPage } from './pages/cartera/ComparadorCarterasPage';
 
@@ -129,6 +131,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director', 'Líder Externo']}>
                     <CreadorZentinelaPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/cartera/creador-virtualidad"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                    <CreadorVirtualidadPage />
                   </RutaProtegida>
                 }
               />
@@ -267,6 +277,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Auxiliar de Sistemas']}>
                     <GestionHistoricoVirtualidadPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/administracion/mensajes-autorizados"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Director']}>
+                    <MensajesAutorizadosPage />
                   </RutaProtegida>
                 }
               />

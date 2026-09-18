@@ -45,20 +45,8 @@ public class UsoBaseDatosService : IUsoBaseDatosService
         _logger = logger;
     }
 
-    /// <summary>
-    /// Encabezados aceptados para la columna de teléfono (ya normalizados por
-    /// <see cref="ArchivoTabular.Normalizar"/>). Se resuelve por nombre, no por posición (ADR-004).
-    /// Si ninguno matchea, el archivo se rechaza indicando los encabezados que sí traía —
-    /// deliberadamente NO se adivina la columna: en un informe de acreditación, elegir mal
-    /// produciría cifras incorrectas en silencio.
-    /// </summary>
-    private static readonly HashSet<string> AliasColumnaTelefono = new(StringComparer.Ordinal)
-    {
-        "numerotelefono", "numerodetelefono", "telefono", "numero", "numerolinea", "linea",
-        "celular", "numerocelular", "numerodecelular", "movil", "numeromovil",
-        "numerotelefonocelular", "telefonocelular", "numeromarcado", "marcado",
-        "msisdn", "destino", "numerodestino", "telefonodestino", "numerocontacto", "contacto",
-    };
+    // Los encabezados aceptados para la columna de teléfono viven en
+    // Shared/AliasColumnaTelefono (compartidos con el Creador de Virtualidad).
 
     public async Task<UsoBaseDatosDto> AnalizarAsync(
         IReadOnlyList<ArchivoTelefonos> archivos, CancellationToken ct = default)
@@ -199,7 +187,7 @@ public class UsoBaseDatosService : IUsoBaseDatosService
         var indice      = -1;
         for (var i = 0; i < encabezados.Length; i++)
         {
-            if (!AliasColumnaTelefono.Contains(ArchivoTabular.Normalizar(encabezados[i]))) continue;
+            if (!AliasColumnaTelefono.Todos.Contains(ArchivoTabular.Normalizar(encabezados[i]))) continue;
             indice = i;
             resumen.ColumnaDetectada = encabezados[i].Trim();
             break;

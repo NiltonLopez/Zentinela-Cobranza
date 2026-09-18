@@ -116,7 +116,9 @@ Flujo sin autenticación previa (auto-registro):
 | Cartera | Creador Zentinela (Generador de Bases Excel) | ✅ Completo | Admin, Líder, Director |
 | Cartera | Calificador de Cartera | ✅ Completo | Admin, Líder, Director |
 | Cartera | Comparador de Carteras | ✅ Completo | Admin, Líder, Director |
+| Cartera | Creador de Virtualidad (SMS; Correo e IVR próximamente) | ✅ Completo | Admin, Líder (solo para sí), Director (ADR-037) |
 | Informes | Informes de Virtualidad | ✅ Completo | Admin, Líder (solo sus datos, ADR-036), Director (⚠ el front lo lista pero los controllers le responden 403) |
+| Administración | Mensajes Autorizados | ✅ Completo | Admin, Director (ADR-037) |
 | Informes | Informes de Recaudo | ✅ Completo | Admin, Líder, Director |
 | Administración | Gestión de Asignaciones | ✅ Completo | Admin |
 | Administración | Gestión de Líderes y Carteras | ✅ Completo | Admin |

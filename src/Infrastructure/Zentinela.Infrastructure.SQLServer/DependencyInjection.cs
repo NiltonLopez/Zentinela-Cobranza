@@ -105,6 +105,8 @@ public static class DependencyInjection
         services.AddScoped<IVirtualidadEntrantesService, VirtualidadEntrantesService>();
         services.AddScoped<IVirtualidadPagosImpactoService, VirtualidadPagosImpactoService>();
         services.AddScoped<IHistoricoVirtualidadService, HistoricoVirtualidadService>();
+        services.AddScoped<ICreadorVirtualidadSmsService, CreadorVirtualidadSmsService>();
+        services.AddScoped<IMensajesAutorizadosService, MensajesAutorizadosService>();
         services.AddScoped<IRastreoLineasService, RastreoLineasService>();
         services.AddScoped<IUsoBaseDatosService, UsoBaseDatosService>();
 

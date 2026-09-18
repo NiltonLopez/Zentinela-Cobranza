@@ -42,6 +42,8 @@ export const MODULOS: Modulo[] = [
       { key: 'creador', label: 'Creador Zentinela', path: '/cartera/creador' },
       { key: 'calificador', label: 'Calificador de Cartera',  path: '/cartera/calificador' },
       { key: 'comparador',  label: 'Comparador de Carteras', path: '/cartera/comparador'  },
+      // Líder Externo no: sus asesores no están en Cartera_Agente ni en RRHH (ADR-037).
+      { key: 'creador-virtualidad', label: 'Creador de Virtualidad', path: '/cartera/creador-virtualidad', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
     ],
   },
   {
@@ -60,18 +62,22 @@ export const MODULOS: Modulo[] = [
   {
     key: 'administracion',
     label: 'Administración',
-    rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'],
+    // Director entra SOLO por Mensajes Autorizados (ADR-037). Un sub-módulo sin
+    // rolesPermitidos se muestra a cualquier rol que pase el módulo (Sidebar.tsx), así que
+    // los demás llevan el rol explícito para que Director no los vea.
+    rolesPermitidos: ['Admin', 'Auxiliar de Sistemas', 'Director'],
     defaultPath: '/administracion/gestion',
     subModulos: [
-      { key: 'gestion',  label: 'Gestión de Asignaciones',       path: '/administracion/gestion' },
-      { key: 'agentes',  label: 'Gestión de Agentes',            path: '/administracion/agentes' },
-      { key: 'carteras', label: 'Gestión de Líderes y Carteras', path: '/administracion/carteras' },
-      { key: 'personal', label: 'Gestión de Personal',           path: '/administracion/personal' },
-      { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes' },
-      { key: 'pagos',    label: 'Cargue de Pagos',               path: '/administracion/pagos' },
-      { key: 'fuentes-datos', label: 'Cargue de Fuentes de Datos', path: '/administracion/fuentes-datos' },
-      { key: 'historico-virtualidad', label: 'Gestión de Histórico de Virtualidad', path: '/administracion/historico-virtualidad' },
+      { key: 'gestion',  label: 'Gestión de Asignaciones',       path: '/administracion/gestion',  rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'agentes',  label: 'Gestión de Agentes',            path: '/administracion/agentes',  rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'carteras', label: 'Gestión de Líderes y Carteras', path: '/administracion/carteras', rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'personal', label: 'Gestión de Personal',           path: '/administracion/personal', rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'reportes', label: 'Cargue de Reportes',            path: '/administracion/reportes', rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'pagos',    label: 'Cargue de Pagos',               path: '/administracion/pagos',    rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'fuentes-datos', label: 'Cargue de Fuentes de Datos', path: '/administracion/fuentes-datos', rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
+      { key: 'historico-virtualidad', label: 'Gestión de Histórico de Virtualidad', path: '/administracion/historico-virtualidad', rolesPermitidos: ['Admin', 'Auxiliar de Sistemas'] },
       { key: 'metas',    label: 'Asignación de Metas',            path: '/administracion/metas',  rolesPermitidos: ['Admin'] },
+      { key: 'mensajes-autorizados', label: 'Mensajes Autorizados', path: '/administracion/mensajes-autorizados', rolesPermitidos: ['Admin', 'Director'] },
     ],
   },
   {

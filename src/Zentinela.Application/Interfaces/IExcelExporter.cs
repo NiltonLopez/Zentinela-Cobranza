@@ -47,4 +47,10 @@ public interface IExcelExporter
     byte[] GenerarComparativoCompleto(
         IEnumerable<TitularComparativoDto> titulares,
         string nombreCarteraSeleccionada);
+
+    /// <summary>
+    /// Archivo que se entrega a virtualidad para el envío de SMS (ADR-037). Teléfonos como
+    /// texto para que Excel no los muestre en notación científica.
+    /// </summary>
+    byte[] GenerarEstrategiaSms(IReadOnlyList<DTOs.CreadorVirtualidad.FilaSmsGeneradaDto> filas);
 }

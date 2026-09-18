@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-09-02  
+> Generado: 2026-04-02 — Actualizado: 2026-09-18  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 77 | Vistas: 32 | Stored Procedures: 21
@@ -173,6 +173,54 @@ Histórico consolidado de virtualidad (IVR / SMS / Correo). Una sola tabla con d
 | FechaCargue | datetime2 | NO | — | DEFAULT GETDATE(); el cargue IVR escribe un sello uniforme por lote |
 
 Índices: `IX_HistoricoVirtualidad_Canal_Cartera_Fecha` (Canal, CarteraID, FechaEnvio), `IX_HistoricoVirtualidad_Canal_Destino` (Canal, Destino).
+
+### MensajeAutorizado
+Catálogo cerrado de textos SMS (ADR-037). Los escriben abogados/encargados (Admin, Director) en *Administración → Mensajes Autorizados*; el líder solo elige uno en *Cartera → Creador de Virtualidad*. Texto con placeholders `{NOMBRE}`, `{CELULAR_ASESOR}`, `{LINK_ASESOR}` — los dos del asesor son obligatorios (CHECK). Solo alfabeto GSM-7 (validado en la API). **Sin borrado físico**: `EstrategiaSms` lo referencia; se desactiva. Creada el 2026-09-18 (`docs/sql/migrations/2026-09-18_creador_virtualidad_sms.sql`).
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| ID | int (identity) | NO | SI | — |
+| Titulo | varchar(100) | NO | — | — |
+| Texto | varchar(320) | NO | — | CHECK: contiene `{CELULAR_ASESOR}` y `{LINK_ASESOR}` |
+| Activo | bit | NO | — | DEFAULT 1 |
+| FechaCreacion | datetime2 | NO | — | DEFAULT GETDATE() |
+| UsuarioCreacion | varchar(100) | NO | — | — |
+| FechaActualizacion | datetime2 | NO | — | DEFAULT GETDATE() |
+| UsuarioActualizacion | varchar(100) | NO | — | — |
+
+Índice: `IX_MensajeAutorizado_Activo` (Activo) INCLUDE (Titulo).
+
+### AgenteContactoVirtualidad
+Número corporativo y link de WhatsApp de un asesor, para los SMS del Creador de Virtualidad (ADR-037). Existe porque `Agente` no tiene teléfono y `Empleado.NumeroTelefono` (RRHH) es el personal. 1:1 con `Agente`. El link puede ser el `wa.me/57<número>` que propone el sistema o un acortado pegado a mano. Creada el 2026-09-18.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| AgenteID | bigint | NO | SI | Agente (ON DELETE CASCADE) |
+| NumeroCorporativo | varchar(10) | SI | — | CHECK: 10 dígitos, empieza en 3 |
+| LinkWhatsapp | varchar(100) | SI | — | — |
+| FechaActualizacion | datetime2 | NO | — | DEFAULT GETDATE() |
+| UsuarioActualizacion | varchar(100) | NO | — | — |
+
+### EstrategiaSms
+Auditoría de cada archivo SMS generado por el Creador de Virtualidad (ADR-037): quién, cuándo, con qué mensaje, y cuántos titulares entraron o se excluyeron por cada motivo. **No registra envíos** — eso lo hace virtualidad en `HistoricoVirtualidad`. Creada el 2026-09-18.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| ID | bigint (identity) | NO | SI | — |
+| LiderID | int | NO | — | Lider |
+| UsuarioGenero | varchar(100) | NO | — | — |
+| FechaGeneracion | datetime2 | NO | — | DEFAULT GETDATE() |
+| MensajeAutorizadoID | int | NO | — | MensajeAutorizado |
+| TotalLeidos | int | NO | — | — |
+| TotalGenerados | int | NO | — | — |
+| ExcluidosPerfil | int | NO | — | archivo + histórico BD |
+| ExcluidosListaNegra | int | NO | — | tabla + archivo |
+| ExcluidosLongitud | int | NO | — | superaban 160 con el peor link |
+| ExcluidosOtros | int | NO | — | cédula/teléfono inválido, fijo, nombre vacío, duplicado |
+| HuellaArchivo | char(64) | NO | — | SHA-256 hex del archivo de entrada |
+| NombreArchivo | varchar(255) | NO | — | — |
+
+Índices: `IX_EstrategiaSms_Lider_Fecha` (LiderID, FechaGeneracion DESC), `IX_EstrategiaSms_Huella` (HuellaArchivo).
 
 ### PORTAFOLIO
 Tabla de portafolio completo con datos de cliente, financiacion y contacto (importada desde fuente externa).
@@ -1071,7 +1119,7 @@ Correos marcados como erroneos / invalidos.
 | CorreoErroneo | varchar(60) | NO | SI | — |
 
 ### ListaNegraTelefonos
-Telefonos marcados como invalidos o en lista negra.
+Telefonos marcados como invalidos o en lista negra. 660.602 filas / 103.250 números distintos (2026-09-18). `Cartera` es texto con guiones bajos (`Pelicano_Propia`), no `CarteraID`; `Codigo` ∈ {EQUIVOCADO, FALLECIDO, NUMERO EQUIVOCADO, NO GESTIONAR, LINEA ERRADA, FRAUDE O SUPLANTACION DE IDENTIDAD}. Sin PK ni índices. **Consumida desde 2026-09-18 por el Creador de Virtualidad** (ADR-037) por SQL crudo con `#Telefonos` + `#CarterasLN` + hash join — no tiene entidad EF. El usuario elige qué carteras cruzar. Sigue excluida del Rastreo de Líneas.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|

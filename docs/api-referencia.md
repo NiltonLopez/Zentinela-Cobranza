@@ -1598,6 +1598,72 @@ De los titulares que pagaron en el rango, por qué canal de virtualidad fueron i
 
 ---
 
+## Creador de Virtualidad — SMS (ADR-037)
+
+Base: `/api/creador-virtualidad/sms`. Roles: **Admin, Director, Líder**. Alcance por rol como en
+ADR-036: un Líder genera solo para sí (el `liderID` de la petición se ignora; sin claim → 403);
+Director y Admin **deben** enviar `liderID` (sin él → 400; líder inactivo → 404).
+
+Los tres endpoints con archivo son `multipart/form-data`, 50 MB, y reciben los mismos campos base:
+`archivo` (.xlsx/.csv), `liderID?`, `carterasListaNegra` (clave repetida, valores crudos con `_`),
+`archivoListaNegra?` (.xlsx/.csv con una columna de teléfono). El archivo se re-sube en cada paso y
+la `huella` SHA-256 devuelta por `validar` ata los pasos siguientes: si difiere → **409**.
+
+| Verbo | Ruta | Descripción |
+|-------|------|-------------|
+| GET | `/plantilla` | XLSX `plantilla_sms.xlsx` (Cédula, Nombre, Fecha Gestión, Ultimo Perfil, Numero Marcado) |
+| GET | `/lista-negra/carteras` | `[{ valor, etiqueta, totalNumeros }]` de `ListaNegraTelefonos` |
+| GET | `/asesores?liderID=` | Asesores del líder (Cartera_Agente) con número/link persistidos |
+| GET | `/agentes-activos` | Todos los agentes activos (para agregar "prestados") |
+| PUT | `/asesores/contactos` | Body `[{ agenteID, numeroCorporativo, linkWhatsapp }]` → `{ actualizados }` |
+| POST | `/validar` | campos base → `ValidarArchivoSmsResponse` |
+| POST | `/mensajes-disponibles` | campos base + `huella` + `links` (JSON `string[]`) → `CatalogoMensajesResponse` |
+| POST | `/generar` | campos base + `huella` + `mensajeAutorizadoID` + `asesores` (JSON) → XLSX; headers `X-Estrategia-ID`, `X-Total-Generados`, `X-Excluidos-Longitud` |
+
+### `ValidarArchivoSmsResponse`
+`huellaArchivo`, `totalLeidas`, `totalValidas`, un contador por motivo de exclusión
+(`excluidosCedulaInvalida`, `excluidosTelefonoInvalido`, `excluidosFijo`, `excluidosNombreVacio`,
+`excluidosPerfilArchivo`, `excluidosPerfilBD`, `excluidosListaNegraTabla`, `excluidosListaNegraArchivo`,
+`excluidosDuplicado`), `columnasEncontradas`, `columnasFaltantes`, `muestra` (10 filas limpias),
+`erroresAgrupados`. Invariante: `totalLeidas − totalValidas == Σ excluidos*`.
+
+### `CatalogoMensajesResponse`
+`linkMasLargo`, `totalTitulares`, `mensajes[]` con `estado` (0 Disponible · 1 Advertencia ·
+2 Deshabilitado), `motivo`, `longitudBase`, `longitudMaxima`, `totalExcedidos`, `excedidos[]`
+(cédula, nombre, longitud; hasta 200). Cálculo: `len(texto sin placeholders) + len(nombre) + 10 +
+linkMasLargo`; 1..10 excedidos → Advertencia; >10 → Deshabilitado.
+
+### Códigos HTTP (validar / mensajes-disponibles / generar)
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | — |
+| `400 Bad Request` | Archivo/extensión inválidos, líder no indicado (Director/Admin), mensaje deshabilitado o inactivo, JSON malformado |
+| `403 Forbidden` | Rol Líder sin claim `liderID` |
+| `404 Not Found` | Líder inexistente o inactivo; mensaje inexistente |
+| `409 Conflict` | Falta la huella o el archivo cambió desde `validar` |
+
+---
+
+## Mensajes Autorizados (ADR-037)
+
+Base: `/api/mensajes-autorizados`. Roles: **Admin, Director**. Sin `DELETE`: se desactiva.
+
+| Verbo | Ruta | Descripción |
+|-------|------|-------------|
+| GET | `/?soloActivos=` | Lista con `longitud` y `longitudBase` |
+| GET | `/{id}` | Uno |
+| POST | `/validar` | Body `{ titulo, texto, activo }` → `{ valido, mensaje?, caracteresRechazados? }` (no guarda) |
+| POST | `/` | Crea → 201 |
+| PUT | `/{id}` | Actualiza |
+| PATCH | `/{id}/activo` | Body `{ activo }` |
+
+Validación (400 con `mensaje` y `caracteresRechazados[{ caracter, posicion }]`): título ≤100, texto
+≤320, `{CELULAR_ASESOR}` y `{LINK_ASESOR}` presentes, sin placeholders desconocidos, **solo GSM-7**
+(tildes, ñ, `€ [ ] ~ \ ^ |` y llaves fuera de placeholder se rechazan).
+
+---
+
 ## GET /api/virtualidad/historico/plantilla
 
 Descarga la plantilla XLSX para cargar solicitudes (fase Solicitud) de un canal.

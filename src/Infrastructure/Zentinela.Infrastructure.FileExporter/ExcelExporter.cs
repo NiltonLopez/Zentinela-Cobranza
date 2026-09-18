@@ -78,6 +78,63 @@ public class ExcelExporter : IExcelExporter
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// Archivo SMS para virtualidad (ADR-037). Los teléfonos van como texto ("@"): si fueran
+    /// número, Excel mostraría 3,00E+09 y el operador recibiría basura. Fecha Gestión también
+    /// va como texto (ya normalizada a yyyy-MM-dd por el servicio): una fecha anterior a 1900
+    /// tumba ClosedXML (ADR-033). Formato completo solo en hojas chicas, como GenerarBaseMadre.
+    /// </summary>
+    public byte[] GenerarEstrategiaSms(IReadOnlyList<Application.DTOs.CreadorVirtualidad.FilaSmsGeneradaDto> filas)
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("SMS");
+
+        var columnas = Application.CatalogoCreadorVirtualidad.ColumnasSalida;
+        for (var col = 0; col < columnas.Length; col++)
+        {
+            var celda = ws.Cell(1, col + 1);
+            celda.Value = columnas[col];
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#7c3aed");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        for (var i = 0; i < filas.Count; i++)
+        {
+            var f = filas[i];
+            var r = i + 2;
+            ws.Cell(r, 1).Value = f.Cedula;
+            ws.Cell(r, 2).Value = f.Nombre;
+            ws.Cell(r, 3).Value = f.FechaGestion;
+            ws.Cell(r, 4).Value = f.UltimoPerfil;
+            ws.Cell(r, 5).Value = f.NumeroMarcado;
+            ws.Cell(r, 6).Value = f.CelularAsesor;
+            ws.Cell(r, 7).Value = f.LinkAsesor;
+            ws.Cell(r, 8).Value = f.Mensaje;
+        }
+
+        // Texto explícito en las columnas de teléfono, cubra o no la hoja filas.
+        ws.Column(5).Style.NumberFormat.Format = "@";
+        ws.Column(6).Style.NumberFormat.Format = "@";
+
+        const int umbralFormatoCompleto = 5_000;
+        if (filas.Count > umbralFormatoCompleto)
+        {
+            ws.Columns(1, 7).Width = 22;
+            ws.Column(8).Width     = 90;
+        }
+        else
+        {
+            ws.Columns(1, 7).AdjustToContents();
+            ws.Column(8).Width = 90;
+        }
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
     public byte[] GenerarPlantillaAsignaciones()
     {
         using var workbook = new XLWorkbook();

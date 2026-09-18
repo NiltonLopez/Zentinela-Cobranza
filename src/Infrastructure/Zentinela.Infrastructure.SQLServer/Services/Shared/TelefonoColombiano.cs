@@ -41,3 +41,21 @@ internal static class TelefonoColombiano
         return (digitos, digitos[0] == '3');
     }
 }
+
+/// <summary>
+/// Encabezados aceptados para una columna de teléfono, ya normalizados por
+/// <see cref="ArchivoTabular.Normalizar"/>. Compartida por Uso de Base de Datos y por el
+/// Creador de Virtualidad (lista negra por archivo). Se resuelve por nombre, no por
+/// posición (ADR-004): si ninguno matchea, el archivo se rechaza indicando los
+/// encabezados que sí traía — deliberadamente NO se adivina la columna.
+/// </summary>
+internal static class AliasColumnaTelefono
+{
+    public static readonly HashSet<string> Todos = new(StringComparer.Ordinal)
+    {
+        "numerotelefono", "numerodetelefono", "telefono", "numero", "numerolinea", "linea",
+        "celular", "numerocelular", "numerodecelular", "movil", "numeromovil",
+        "numerotelefonocelular", "telefonocelular", "numeromarcado", "marcado",
+        "msisdn", "destino", "numerodestino", "telefonodestino", "numerocontacto", "contacto",
+    };
+}
