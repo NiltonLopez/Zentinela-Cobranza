@@ -109,25 +109,27 @@ public class ExcelExporter : IExcelExporter
             ws.Cell(r, 3).Value = f.FechaGestion;
             ws.Cell(r, 4).Value = f.UltimoPerfil;
             ws.Cell(r, 5).Value = f.NumeroMarcado;
-            ws.Cell(r, 6).Value = f.CelularAsesor;
-            ws.Cell(r, 7).Value = f.LinkAsesor;
-            ws.Cell(r, 8).Value = f.Mensaje;
+            ws.Cell(r, 6).Value = f.Cartera;
+            ws.Cell(r, 7).Value = f.Empresa;
+            ws.Cell(r, 8).Value = f.CelularAsesor;
+            ws.Cell(r, 9).Value = f.LinkAsesor;
+            ws.Cell(r, 10).Value = f.Mensaje;
         }
 
         // Texto explícito en las columnas de teléfono, cubra o no la hoja filas.
         ws.Column(5).Style.NumberFormat.Format = "@";
-        ws.Column(6).Style.NumberFormat.Format = "@";
+        ws.Column(8).Style.NumberFormat.Format = "@";
 
         const int umbralFormatoCompleto = 5_000;
         if (filas.Count > umbralFormatoCompleto)
         {
-            ws.Columns(1, 7).Width = 22;
-            ws.Column(8).Width     = 90;
+            ws.Columns(1, 9).Width = 22;
+            ws.Column(10).Width    = 90;
         }
         else
         {
-            ws.Columns(1, 7).AdjustToContents();
-            ws.Column(8).Width = 90;
+            ws.Columns(1, 9).AdjustToContents();
+            ws.Column(10).Width = 90;
         }
 
         using var stream = new MemoryStream();

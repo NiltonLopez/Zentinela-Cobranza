@@ -34,9 +34,18 @@ public static class CatalogoCreadorVirtualidad
     public const string PhNombre        = "{NOMBRE}";
     public const string PhCelularAsesor = "{CELULAR_ASESOR}";
     public const string PhLinkAsesor    = "{LINK_ASESOR}";
+    public const string PhCartera       = "{CARTERA}";
+    public const string PhEmpresa       = "{EMPRESA}";
 
     public static readonly IReadOnlyList<string> PlaceholdersPermitidos =
-        [PhNombre, PhCelularAsesor, PhLinkAsesor];
+        [PhNombre, PhCartera, PhEmpresa, PhCelularAsesor, PhLinkAsesor];
+
+    /// <summary>Placeholders que dependen de una columna OPCIONAL del archivo (Cartera, Empresa).</summary>
+    public static readonly IReadOnlyDictionary<string, string> PlaceholderPorColumnaOpcional =
+        new Dictionary<string, string> { [PhCartera] = "Cartera", [PhEmpresa] = "Empresa" };
+
+    public static bool UsaPlaceholder(string texto, string placeholder) =>
+        texto.Contains(placeholder, StringComparison.Ordinal);
 
     /// <summary>Los que todo mensaje DEBE traer: sin ellos el titular no tiene a quién responder.</summary>
     public static readonly IReadOnlyList<string> PlaceholdersObligatorios =
@@ -117,13 +126,19 @@ public static class CatalogoCreadorVirtualidad
 
     // ── Columnas del archivo de entrada ─────────────────────────────────────
 
-    /// <summary>Encabezados de la plantilla, en orden. También son las 5 primeras del XLSX de salida.</summary>
+    /// <summary>
+    /// Encabezados de la plantilla, en orden. Las 5 primeras son obligatorias; Cartera y
+    /// Empresa son OPCIONALES: si faltan, los mensajes que usen {CARTERA} o {EMPRESA} quedan
+    /// deshabilitados con ese motivo (no se adivina ni se deja vacío).
+    /// </summary>
     public static readonly string[] ColumnasPlantilla =
-        ["Cédula", "Nombre", "Fecha Gestión", "Ultimo Perfil", "Numero Marcado"];
+        ["Cédula", "Nombre", "Fecha Gestión", "Ultimo Perfil", "Numero Marcado", "Cartera", "Empresa"];
+
+    public static readonly string[] ColumnasOpcionales = ["Cartera", "Empresa"];
 
     /// <summary>Columnas del archivo que se entrega a virtualidad.</summary>
     public static readonly string[] ColumnasSalida =
-        ["Cédula", "Nombre", "Fecha Gestión", "Ultimo Perfil", "Numero Marcado",
+        ["Cédula", "Nombre", "Fecha Gestión", "Ultimo Perfil", "Numero Marcado", "Cartera", "Empresa",
          "Celular Asesor", "Link Asesor", "Mensaje"];
 
     /// <summary>
@@ -137,14 +152,18 @@ public static class CatalogoCreadorVirtualidad
         public static readonly string[] FechaGestion  = ["fechagestion", "fechadegestion", "fechaultimagestion", "ultimagestion", "fecha"];
         public static readonly string[] UltimoPerfil  = ["ultimoperfil", "perfil", "ultimoestado", "estado", "tipificacion"];
         public static readonly string[] NumeroMarcado = ["numeromarcado", "numero", "celular", "telefono", "numerotelefono", "numerocelular", "movil", "destino"];
+        public static readonly string[] Cartera       = ["cartera", "nombrecartera", "portafolio"];
+        public static readonly string[] Empresa       = ["empresa", "nombreempresa", "entidad", "cliente", "acreedor"];
     }
 
     // ── Cálculo de longitud ─────────────────────────────────────────────────
 
-    /// <summary>Reemplaza los tres placeholders. Es el ÚNICO lugar donde se arma un SMS.</summary>
-    public static string ArmarMensaje(string plantilla, string nombre, string celularAsesor, string linkAsesor) =>
+    /// <summary>Reemplaza los cinco placeholders. Es el ÚNICO lugar donde se arma un SMS.</summary>
+    public static string ArmarMensaje(string plantilla, string nombre, string cartera, string empresa, string celularAsesor, string linkAsesor) =>
         plantilla
             .Replace(PhNombre, nombre, StringComparison.Ordinal)
+            .Replace(PhCartera, cartera, StringComparison.Ordinal)
+            .Replace(PhEmpresa, empresa, StringComparison.Ordinal)
             .Replace(PhCelularAsesor, celularAsesor, StringComparison.Ordinal)
             .Replace(PhLinkAsesor, linkAsesor, StringComparison.Ordinal);
 
@@ -154,12 +173,12 @@ public static class CatalogoCreadorVirtualidad
     /// link garantiza que ningún mensaje final supere el límite y que "se pasa en N
     /// titulares" del paso 3 sea exactamente el N que se borra en el paso 4.
     /// </summary>
-    public static int LongitudPeorCaso(string plantilla, string nombre, string linkMasLargo) =>
-        ArmarMensaje(plantilla, nombre, new string('9', LongitudCelular), linkMasLargo).Length;
+    public static int LongitudPeorCaso(string plantilla, string nombre, string cartera, string empresa, string linkMasLargo) =>
+        ArmarMensaje(plantilla, nombre, cartera, empresa, new string('9', LongitudCelular), linkMasLargo).Length;
 
     /// <summary>Longitud del texto sin ningún placeholder (lo que ocupa el mensaje "fijo").</summary>
     public static int LongitudBase(string plantilla) =>
-        ArmarMensaje(plantilla, string.Empty, string.Empty, string.Empty).Length;
+        ArmarMensaje(plantilla, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty).Length;
 
     // ── Normalización para comparar ─────────────────────────────────────────
 

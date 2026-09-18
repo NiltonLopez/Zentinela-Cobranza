@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { btnPrimario, btnSecundario, TH, TD } from '../../administracion/historico-virtualidad/compartidos';
 import type { EstadoAsistente, Accion } from './estadoAsistente';
-import type { MensajeDisponible } from '../../../types/creadorVirtualidad';
+import type { MensajeDisponible, EstadoMensajeDisponible } from '../../../types/creadorVirtualidad';
 import { LIMITE_SMS } from '../../../types/mensajesAutorizados';
 import { C, etiquetaPaso, Aviso, BarraAcciones } from './compartidosSms';
 
@@ -10,10 +10,12 @@ interface Props {
   dispatch: React.Dispatch<Accion>;
 }
 
-const ESTILO_ESTADO: Record<number, { color: string; bg: string; label: string }> = {
-  0: { color: C.success, bg: '#f0fdf4', label: 'Disponible' },
-  1: { color: C.warning, bg: '#fffbeb', label: 'Con advertencia' },
-  2: { color: C.danger,  bg: '#fef2f2', label: 'No disponible' },
+// Clave = valor del enum tal como lo serializa la API (texto). Un estado desconocido cae a
+// "No disponible" en vez de reventar el render.
+const ESTILO_ESTADO: Record<EstadoMensajeDisponible, { color: string; bg: string; label: string }> = {
+  Disponible:    { color: C.success, bg: '#f0fdf4', label: 'Disponible' },
+  Advertencia:   { color: C.warning, bg: '#fffbeb', label: 'Con advertencia' },
+  Deshabilitado: { color: C.danger,  bg: '#fef2f2', label: 'No disponible' },
 };
 
 export function PasoMensaje({ estado, dispatch }: Props) {
@@ -22,11 +24,11 @@ export function PasoMensaje({ estado, dispatch }: Props) {
   if (!cat) return null;
 
   const seleccionado = cat.mensajes.find(m => m.id === estado.mensajeID) ?? null;
-  const puede = !!seleccionado && seleccionado.estado !== 2;
+  const puede = !!seleccionado && seleccionado.estado !== 'Deshabilitado';
 
   const Tarjeta = ({ m }: { m: MensajeDisponible }) => {
-    const e = ESTILO_ESTADO[m.estado];
-    const deshabilitado = m.estado === 2;
+    const e = ESTILO_ESTADO[m.estado] ?? ESTILO_ESTADO.Deshabilitado;
+    const deshabilitado = m.estado === 'Deshabilitado';
     const activo = estado.mensajeID === m.id;
     return (
       <div

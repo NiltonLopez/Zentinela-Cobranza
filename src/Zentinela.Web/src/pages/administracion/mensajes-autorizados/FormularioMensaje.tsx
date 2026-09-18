@@ -18,7 +18,9 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 6, background: 'var(--z-bg-card)', color: 'var(--z-text-primary)', outline: 'none', fontFamily: 'inherit',
 };
 
-const NOMBRE_REFERENCIA = 22; // nombre completo típico, para el contador orientativo
+const NOMBRE_REFERENCIA  = 22; // nombre completo típico, para el contador orientativo
+const CARTERA_REFERENCIA = 16; // "Pelicano Propia"
+const EMPRESA_REFERENCIA = 16; // "Banco Bellavida"
 
 /**
  * Regla local, espejo de CatalogoCreadorVirtualidad.CaracteresNoGsm7 (la definitiva es la
@@ -53,8 +55,11 @@ export function FormularioMensaje({ inicial, guardando, error, onGuardar, onCanc
     () => PLACEHOLDERS.reduce((t, p) => t.split(p).join(''), texto).length,
     [texto],
   );
-  const usaNombre = texto.includes('{NOMBRE}');
-  const estimado  = longitudBase + LONGITUD_CELULAR + LONGITUD_LINK_WAME + (usaNombre ? NOMBRE_REFERENCIA : 0);
+  const usaNombre  = texto.includes('{NOMBRE}');
+  const usaCartera = texto.includes('{CARTERA}');
+  const usaEmpresa = texto.includes('{EMPRESA}');
+  const estimado   = longitudBase + LONGITUD_CELULAR + LONGITUD_LINK_WAME
+    + (usaNombre ? NOMBRE_REFERENCIA : 0) + (usaCartera ? CARTERA_REFERENCIA : 0) + (usaEmpresa ? EMPRESA_REFERENCIA : 0);
 
   const validarRemoto = useMutation({
     mutationFn: () => validarMensajeAutorizado({ titulo, texto, activo }),
@@ -94,9 +99,11 @@ export function FormularioMensaje({ inicial, guardando, error, onGuardar, onCanc
         <span>Texto fijo: <strong>{longitudBase}</strong></span>
         <span>+ celular: <strong>{LONGITUD_CELULAR}</strong></span>
         <span>+ link wa.me: <strong>{LONGITUD_LINK_WAME}</strong></span>
-        {usaNombre && <span>+ nombre (ref. {NOMBRE_REFERENCIA}): </span>}
+        {usaNombre  && <span>+ nombre (ref.): <strong>{NOMBRE_REFERENCIA}</strong></span>}
+        {usaCartera && <span>+ cartera (ref.): <strong>{CARTERA_REFERENCIA}</strong></span>}
+        {usaEmpresa && <span>+ empresa (ref.): <strong>{EMPRESA_REFERENCIA}</strong></span>}
         <span>≈ <strong style={{ color: estimado > LIMITE_SMS ? '#dc2626' : '#16a34a' }}>{estimado}</strong> / {LIMITE_SMS}</span>
-        <span style={{ fontSize: 11 }}>(el cálculo real se hace con los nombres y enlaces de cada estrategia)</span>
+        <span style={{ fontSize: 11 }}>(el cálculo real se hace con los nombres, carteras, empresas y enlaces de cada estrategia; {'{CARTERA}'} y {'{EMPRESA}'} requieren esas columnas en el archivo)</span>
       </div>
 
       {faltantes.length > 0 && (

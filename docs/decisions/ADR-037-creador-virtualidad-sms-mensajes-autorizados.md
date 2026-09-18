@@ -30,7 +30,10 @@ Tabla `MensajeAutorizado` con textos que escriben abogados o encargados (rol Adm
 *Administración → Mensajes Autorizados*. El Creador solo deja **elegir uno**. Los mensajes no se
 borran (los referencia la auditoría); se desactivan.
 
-El texto lleva placeholders `{NOMBRE}`, `{CELULAR_ASESOR}` y `{LINK_ASESOR}`. Los dos del asesor son
+El texto lleva placeholders `{NOMBRE}`, `{CARTERA}`, `{EMPRESA}`, `{CELULAR_ASESOR}` y `{LINK_ASESOR}`.
+`{CARTERA}` y `{EMPRESA}` (pedidos 2026-09-18) dependen de dos columnas **opcionales** del archivo: si
+faltan, los mensajes que las usan aparecen deshabilitados con ese motivo — no se adivina ni se deja el
+hueco vacío. Sus valores se limpian a GSM-7 conservando mayúsculas/minúsculas y `.,&()/-`. Los dos del asesor son
 **obligatorios** (validación en API + `CHECK` en BD): sin ellos el titular no tiene a quién responder.
 Se eligió placeholders y no un sufijo fijo del sistema para que los abogados controlen también la
 coletilla ("CONCILIE …").
@@ -60,7 +63,7 @@ es lo que sale en el archivo.
 - **Fijos**: fuera. SMS solo a celulares.
 
 ### 4. Los 160 se calculan con el peor caso, en el backend
-Para cada mensaje: `len(texto sin placeholders) + len(nombre) + 10 + len(link más largo)`. El asesor
+Para cada mensaje: `len(texto sin placeholders) + len(nombre) + len(cartera) + len(empresa) + 10 + len(link más largo)`. El asesor
 se sortea después, así que usar el link más largo garantiza que **ningún** mensaje final supere 160 y
 que el "se pasa en N titulares" del paso 3 sea exactamente el N borrado en el paso 4 —
 independiente del sorteo. Vive en el backend porque el front solo tiene 10 filas de muestra.
@@ -117,6 +120,13 @@ nuestra (ADR-030), así que queda documentado y no creado.
   409 con huella distinta; 400 con mensaje deshabilitado; XLSX con 8 columnas, teléfonos como texto,
   `max(len(Mensaje)) ≤ 160`, sin `{`, reparto 8/7 entre dos asesores; fila de auditoría coherente.
 - 23 asesores del líder 3 resueltos con nombre desde RRHH.
+
+## Corrección del mismo día
+El front esperaba `estado` como `0/1/2`, pero la API serializa enums como texto
+(`JsonStringEnumConverter`, `Program.cs`). Con el catálogo vacío no había tarjetas y no se notaba; con un
+mensaje, `ESTILO_ESTADO["Disponible"]` era `undefined` y React tumbaba la pantalla al pasar al paso 3.
+Corregido: el tipo TS es la unión de textos y un estado desconocido cae a "No disponible" en vez de
+reventar. Lección: en este proyecto **todo enum llega como string**.
 
 ## Deuda visible
 - `AgenteContactoVirtualidad` se llena a medida que los líderes la usan; el primer uso exige escribir

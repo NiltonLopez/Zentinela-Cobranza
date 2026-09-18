@@ -1611,7 +1611,7 @@ la `huella` SHA-256 devuelta por `validar` ata los pasos siguientes: si difiere 
 
 | Verbo | Ruta | Descripción |
 |-------|------|-------------|
-| GET | `/plantilla` | XLSX `plantilla_sms.xlsx` (Cédula, Nombre, Fecha Gestión, Ultimo Perfil, Numero Marcado) |
+| GET | `/plantilla` | XLSX `plantilla_sms.xlsx` (Cédula, Nombre, Fecha Gestión, Ultimo Perfil, Numero Marcado + opcionales Cartera, Empresa) |
 | GET | `/lista-negra/carteras` | `[{ valor, etiqueta, totalNumeros }]` de `ListaNegraTelefonos` |
 | GET | `/asesores?liderID=` | Asesores del líder (Cartera_Agente) con número/link persistidos |
 | GET | `/agentes-activos` | Todos los agentes activos (para agregar "prestados") |
@@ -1624,14 +1624,17 @@ la `huella` SHA-256 devuelta por `validar` ata los pasos siguientes: si difiere 
 `huellaArchivo`, `totalLeidas`, `totalValidas`, un contador por motivo de exclusión
 (`excluidosCedulaInvalida`, `excluidosTelefonoInvalido`, `excluidosFijo`, `excluidosNombreVacio`,
 `excluidosPerfilArchivo`, `excluidosPerfilBD`, `excluidosListaNegraTabla`, `excluidosListaNegraArchivo`,
-`excluidosDuplicado`), `columnasEncontradas`, `columnasFaltantes`, `muestra` (10 filas limpias),
+`excluidosDuplicado`), `columnasEncontradas`, `columnasFaltantes`, `columnasOpcionalesFaltantes` (Cartera/Empresa
+ausentes), `muestra` (10 filas limpias con `cartera`/`empresa`),
 `erroresAgrupados`. Invariante: `totalLeidas − totalValidas == Σ excluidos*`.
 
 ### `CatalogoMensajesResponse`
 `linkMasLargo`, `totalTitulares`, `mensajes[]` con `estado` (0 Disponible · 1 Advertencia ·
-2 Deshabilitado), `motivo`, `longitudBase`, `longitudMaxima`, `totalExcedidos`, `excedidos[]`
+2 Deshabilitado — **serializado como texto**: `"Disponible"`), `motivo`, `variablesSinColumna[]` (el mensaje usa
+`{CARTERA}`/`{EMPRESA}` y el archivo no trae esa columna → Deshabilitado), `longitudBase`, `longitudMaxima`,
+`totalExcedidos`, `excedidos[]`
 (cédula, nombre, longitud; hasta 200). Cálculo: `len(texto sin placeholders) + len(nombre) + 10 +
-linkMasLargo`; 1..10 excedidos → Advertencia; >10 → Deshabilitado.
+linkMasLargo` (+ `len(cartera)` + `len(empresa)` si el mensaje las usa); 1..10 excedidos → Advertencia; >10 → Deshabilitado.
 
 ### Códigos HTTP (validar / mensajes-disponibles / generar)
 
@@ -1659,7 +1662,8 @@ Base: `/api/mensajes-autorizados`. Roles: **Admin, Director**. Sin `DELETE`: se 
 | PATCH | `/{id}/activo` | Body `{ activo }` |
 
 Validación (400 con `mensaje` y `caracteresRechazados[{ caracter, posicion }]`): título ≤100, texto
-≤320, `{CELULAR_ASESOR}` y `{LINK_ASESOR}` presentes, sin placeholders desconocidos, **solo GSM-7**
+≤320, `{CELULAR_ASESOR}` y `{LINK_ASESOR}` presentes, placeholders permitidos `{NOMBRE}` `{CARTERA}` `{EMPRESA}`
+`{CELULAR_ASESOR}` `{LINK_ASESOR}`, **solo GSM-7**
 (tildes, ñ, `€ [ ] ~ \ ^ |` y llaves fuera de placeholder se rechazan).
 
 ---

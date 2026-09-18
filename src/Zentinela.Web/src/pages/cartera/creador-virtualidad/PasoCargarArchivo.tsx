@@ -71,7 +71,8 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
             {generando ? 'Generando…' : '↓ Descargar plantilla'}
           </button>
           <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>
-            Columnas: <strong>Cédula · Nombre · Fecha Gestión · Ultimo Perfil · Numero Marcado</strong>. Recomendado XLSX
+            Columnas: <strong>Cédula · Nombre · Fecha Gestión · Ultimo Perfil · Numero Marcado</strong> y, opcionales,
+            <strong> Cartera · Empresa</strong> (solo si el mensaje usa {'{CARTERA}'} o {'{EMPRESA}'}). Recomendado XLSX
             (en CSV una coma dentro del nombre corre la fila).
           </span>
         </div>
@@ -159,6 +160,11 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p style={etiquetaPaso}>Resultado de la depuración</p>
 
+          {v.columnasFaltantes.length === 0 && v.columnasOpcionalesFaltantes.length > 0 && (
+            <Aviso tipo="info">
+              El archivo no trae <strong>{v.columnasOpcionalesFaltantes.join(' ni ')}</strong>: los mensajes que usen esas variables aparecerán deshabilitados.
+            </Aviso>
+          )}
           {v.columnasFaltantes.length > 0 && (
             <Aviso tipo="danger">
               Faltan columnas obligatorias: <strong>{v.columnasFaltantes.join(', ')}</strong>.
@@ -198,7 +204,7 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
           {v.muestra.length > 0 && (
             <div style={{ overflowX: 'auto', border: '0.5px solid var(--z-border)', borderRadius: 8 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr>{['Cédula', 'Nombre (limpio)', 'Fecha Gestión', 'Ultimo Perfil', 'Numero Marcado'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Cédula', 'Nombre (limpio)', 'Fecha Gestión', 'Ultimo Perfil', 'Numero Marcado', 'Cartera', 'Empresa'].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
                 <tbody>
                   {v.muestra.map(f => (
                     <tr key={`${f.cedula}-${f.numeroMarcado}`}>
@@ -207,6 +213,8 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
                       <td style={TD}>{f.fechaGestion}</td>
                       <td style={TD}>{f.ultimoPerfil}</td>
                       <td style={TD}>{f.numeroMarcado}</td>
+                      <td style={{ ...TD, color: f.cartera ? undefined : 'var(--z-text-muted)' }}>{f.cartera || '—'}</td>
+                      <td style={{ ...TD, color: f.empresa ? undefined : 'var(--z-text-muted)' }}>{f.empresa || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

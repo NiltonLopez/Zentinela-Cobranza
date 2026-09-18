@@ -30,6 +30,9 @@ public class FilaSmsDto
     public string FechaGestion  { get; set; } = string.Empty;
     public string UltimoPerfil  { get; set; } = string.Empty;
     public string NumeroMarcado { get; set; } = string.Empty;
+    /// <summary>Vacío si el archivo no trae la columna (opcional).</summary>
+    public string Cartera       { get; set; } = string.Empty;
+    public string Empresa       { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -59,6 +62,8 @@ public class ValidarArchivoSmsResponse
 
     public List<string>          ColumnasEncontradas { get; set; } = [];
     public List<string>          ColumnasFaltantes   { get; set; } = [];
+    /// <summary>Cartera / Empresa ausentes: los mensajes que las usen quedan deshabilitados.</summary>
+    public List<string>          ColumnasOpcionalesFaltantes { get; set; } = [];
     public List<FilaSmsDto>      Muestra             { get; set; } = [];
     public List<ErrorAgrupadoDto> ErroresAgrupados   { get; set; } = [];
 }
@@ -119,6 +124,8 @@ public class MensajeDisponibleDto
 
     public EstadoMensajeDisponible Estado { get; set; }
     public string? Motivo { get; set; }
+    /// <summary>Placeholders del mensaje cuya columna no vino en el archivo ({CARTERA}, {EMPRESA}).</summary>
+    public List<string> VariablesSinColumna { get; set; } = [];
 
     /// <summary>Longitud del texto sin placeholders.</summary>
     public int LongitudBase   { get; set; }
@@ -156,6 +163,8 @@ public class FilaSmsGeneradaDto
     public string FechaGestion  { get; set; } = string.Empty;
     public string UltimoPerfil  { get; set; } = string.Empty;
     public string NumeroMarcado { get; set; } = string.Empty;
+    public string Cartera       { get; set; } = string.Empty;
+    public string Empresa       { get; set; } = string.Empty;
     public string CelularAsesor { get; set; } = string.Empty;
     public string LinkAsesor    { get; set; } = string.Empty;
     public string Mensaje       { get; set; } = string.Empty;

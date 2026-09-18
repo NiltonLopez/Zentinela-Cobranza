@@ -15,8 +15,9 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Shared;
 /// </summary>
 internal static class NormalizadorNombre
 {
-    private static readonly Regex NoPermitidos = new(@"[^A-Z0-9 ]", RegexOptions.Compiled);
-    private static readonly Regex Espacios     = new(@"\s{2,}", RegexOptions.Compiled);
+    private static readonly Regex NoPermitidos      = new(@"[^A-Z0-9 ]", RegexOptions.Compiled);
+    private static readonly Regex NoPermitidosTexto = new(@"[^A-Za-z0-9 .,&()/-]", RegexOptions.Compiled);
+    private static readonly Regex Espacios          = new(@"\s{2,}", RegexOptions.Compiled);
 
     public static string Limpiar(string? bruto)
     {
@@ -31,6 +32,22 @@ internal static class NormalizadorNombre
 
         var mayusculas = sinMarcas.ToUpperInvariant();
         var soloPermitidos = NoPermitidos.Replace(mayusculas, " ");
+        return Espacios.Replace(soloPermitidos, " ").Trim();
+    }
+
+    /// <summary>
+    /// Para Cartera y Empresa: mismo criterio GSM-7 (sin tildes ni Ñ) pero conserva mayúsculas
+    /// y minúsculas y la puntuación básica de un nombre comercial ("Banco S.A.", "Pelicano &amp; Cia").
+    /// Un valor que entra al SMS con una tilde lo convertiría a UCS-2 igual que un nombre.
+    /// </summary>
+    public static string LimpiarTexto(string? bruto)
+    {
+        if (string.IsNullOrWhiteSpace(bruto)) return string.Empty;
+        var texto = RepararMojibake(bruto);
+        var sinMarcas = new string(texto.Normalize(NormalizationForm.FormD)
+            .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            .ToArray());
+        var soloPermitidos = NoPermitidosTexto.Replace(sinMarcas, " ");
         return Espacios.Replace(soloPermitidos, " ").Trim();
     }
 

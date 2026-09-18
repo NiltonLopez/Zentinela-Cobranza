@@ -28,7 +28,7 @@ export interface ValidacionMensaje {
   caracteresRechazados?: CaracterRechazado[];
 }
 
-export const PLACEHOLDERS = ['{NOMBRE}', '{CELULAR_ASESOR}', '{LINK_ASESOR}'] as const;
+export const PLACEHOLDERS = ['{NOMBRE}', '{CARTERA}', '{EMPRESA}', '{CELULAR_ASESOR}', '{LINK_ASESOR}'] as const;
 export const LIMITE_SMS = 160;
 export const LONGITUD_CELULAR = 10;
 /** Referencia para el contador: wa.me/57 + 10 dígitos. */

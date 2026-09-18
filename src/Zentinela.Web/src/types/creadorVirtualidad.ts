@@ -8,6 +8,9 @@ export interface FilaSms {
   fechaGestion: string;
   ultimoPerfil: string;
   numeroMarcado: string;
+  /** Vacíos si el archivo no trae la columna (opcional). */
+  cartera: string;
+  empresa: string;
 }
 
 export interface ValidarArchivoSmsResponse {
@@ -27,6 +30,7 @@ export interface ValidarArchivoSmsResponse {
   totalNumerosListaNegraArchivo: number;
   columnasEncontradas: string[];
   columnasFaltantes: string[];
+  columnasOpcionalesFaltantes: string[];
   muestra: FilaSms[];
   erroresAgrupados: ErrorAgrupado[];
 }
@@ -55,7 +59,8 @@ export interface ContactoAsesor {
 
 // ── Paso 3 ──────────────────────────────────────────────────────────────────
 
-export type EstadoMensajeDisponible = 0 | 1 | 2; // Disponible | Advertencia | Deshabilitado
+// La API serializa enums como texto (JsonStringEnumConverter en Program.cs).
+export type EstadoMensajeDisponible = 'Disponible' | 'Advertencia' | 'Deshabilitado';
 
 export interface TitularExcedido {
   cedula: number;
@@ -69,6 +74,7 @@ export interface MensajeDisponible {
   texto: string;
   estado: EstadoMensajeDisponible;
   motivo: string | null;
+  variablesSinColumna: string[];
   longitudBase: number;
   linkMasLargo: number;
   longitudMaxima: number;

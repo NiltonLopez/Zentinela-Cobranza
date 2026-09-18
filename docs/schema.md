@@ -175,7 +175,7 @@ Histórico consolidado de virtualidad (IVR / SMS / Correo). Una sola tabla con d
 Índices: `IX_HistoricoVirtualidad_Canal_Cartera_Fecha` (Canal, CarteraID, FechaEnvio), `IX_HistoricoVirtualidad_Canal_Destino` (Canal, Destino).
 
 ### MensajeAutorizado
-Catálogo cerrado de textos SMS (ADR-037). Los escriben abogados/encargados (Admin, Director) en *Administración → Mensajes Autorizados*; el líder solo elige uno en *Cartera → Creador de Virtualidad*. Texto con placeholders `{NOMBRE}`, `{CELULAR_ASESOR}`, `{LINK_ASESOR}` — los dos del asesor son obligatorios (CHECK). Solo alfabeto GSM-7 (validado en la API). **Sin borrado físico**: `EstrategiaSms` lo referencia; se desactiva. Creada el 2026-09-18 (`docs/sql/migrations/2026-09-18_creador_virtualidad_sms.sql`).
+Catálogo cerrado de textos SMS (ADR-037). Los escriben abogados/encargados (Admin, Director) en *Administración → Mensajes Autorizados*; el líder solo elige uno en *Cartera → Creador de Virtualidad*. Texto con placeholders `{NOMBRE}`, `{CARTERA}`, `{EMPRESA}`, `{CELULAR_ASESOR}`, `{LINK_ASESOR}` — los dos del asesor son obligatorios (CHECK); Cartera y Empresa dependen de columnas opcionales del archivo de entrada. Solo alfabeto GSM-7 (validado en la API). **Sin borrado físico**: `EstrategiaSms` lo referencia; se desactiva. Creada el 2026-09-18 (`docs/sql/migrations/2026-09-18_creador_virtualidad_sms.sql`).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|

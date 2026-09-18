@@ -56,7 +56,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             c.Style.Fill.BackgroundColor = XLColor.FromHtml("#0891b2");
             c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         }
-        object[] ejemplo = ["1020304050", "MARIA JOSE PEREZ GOMEZ", "2026-09-01", "No contacto", "3001234567"];
+        object[] ejemplo = ["1020304050", "MARIA JOSE PEREZ GOMEZ", "2026-09-01", "No contacto", "3001234567", "Pelicano Propia", "Banco Bellavida"];
         for (var i = 0; i < ejemplo.Length; i++)
         {
             var c = ws.Cell(2, i + 1);
@@ -66,6 +66,9 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         // Cédula y número como texto: evita que Excel los convierta a 1,02E+09.
         ws.Column(1).Style.NumberFormat.Format = "@";
         ws.Column(5).Style.NumberFormat.Format = "@";
+        // Cartera y Empresa son opcionales: se marcan en la cabecera.
+        ws.Cell(1, 6).Value = "Cartera (opcional)";
+        ws.Cell(1, 7).Value = "Empresa (opcional)";
         ws.Columns().AdjustToContents();
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
@@ -252,6 +255,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         foreach (var m in mensajes)
         {
             var (excedidos, longitudMax) = CalcularExcedidos(d.Validas, m.Texto, linkMax);
+            var sinColumna = VariablesSinColumna(m.Texto, d.ColumnasOpcionalesFaltantes);
             var dto = new MensajeDisponibleDto
             {
                 ID             = m.ID,
@@ -264,10 +268,24 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
                 Excedidos      = excedidos.Take(CatalogoCreadorVirtualidad.MaxExcedidosEnRespuesta).ToList(),
             };
             (dto.Estado, dto.Motivo) = ClasificarMensaje(excedidos.Count);
+            if (sinColumna.Count > 0)
+            {
+                // Usa una variable cuya columna no vino en el archivo: no se puede armar el SMS.
+                dto.VariablesSinColumna = sinColumna;
+                dto.Estado = EstadoMensajeDisponible.Deshabilitado;
+                dto.Motivo = $"El archivo no trae la columna {string.Join(" ni ", sinColumna.Select(p => CatalogoCreadorVirtualidad.PlaceholderPorColumnaOpcional[p]))} que este mensaje necesita ({string.Join(", ", sinColumna)}).";
+            }
             respuesta.Mensajes.Add(dto);
         }
         return respuesta;
     }
+
+    /// <summary>Placeholders del mensaje cuya columna opcional no vino en el archivo.</summary>
+    private static List<string> VariablesSinColumna(string texto, List<string> columnasFaltantes) =>
+        CatalogoCreadorVirtualidad.PlaceholderPorColumnaOpcional
+            .Where(kv => columnasFaltantes.Contains(kv.Value) && CatalogoCreadorVirtualidad.UsaPlaceholder(texto, kv.Key))
+            .Select(kv => kv.Key)
+            .ToList();
 
     private static (EstadoMensajeDisponible Estado, string? Motivo) ClasificarMensaje(int excedidos)
     {
@@ -293,7 +311,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         var maxima = 0;
         foreach (var f in filas)
         {
-            var len = CatalogoCreadorVirtualidad.LongitudPeorCaso(plantilla, f.Nombre, linkPeor);
+            var len = CatalogoCreadorVirtualidad.LongitudPeorCaso(plantilla, f.Nombre, f.Cartera, f.Empresa, linkPeor);
             if (len > maxima) maxima = len;
             if (len > CatalogoCreadorVirtualidad.LimiteSms)
                 excedidos.Add(new TitularExcedidoDto { Cedula = f.Cedula, Nombre = f.Nombre, Longitud = len });
@@ -328,6 +346,11 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
 
         // Mismo cálculo que el paso 3: peor link. Así el N que vio el líder es el N borrado.
         var linkMax = asesores.Max(a => a.Link.Length);
+        var faltan = VariablesSinColumna(mensaje.Texto, d.ColumnasOpcionalesFaltantes);
+        if (faltan.Count > 0)
+            throw new InvalidOperationException(
+                $"El archivo no trae la columna que necesita {string.Join(" y ", faltan)}. Agrega la columna o elige otro mensaje.");
+
         var (excedidos, _) = CalcularExcedidos(d.Validas, mensaje.Texto, linkMax);
         if (excedidos.Count > CatalogoCreadorVirtualidad.UmbralAdvertencia)
             throw new InvalidOperationException(
@@ -352,9 +375,11 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
                 FechaGestion  = t.FechaGestion,
                 UltimoPerfil  = t.UltimoPerfil,
                 NumeroMarcado = t.NumeroMarcado,
+                Cartera       = t.Cartera,
+                Empresa       = t.Empresa,
                 CelularAsesor = celular,
                 LinkAsesor    = link,
-                Mensaje       = CatalogoCreadorVirtualidad.ArmarMensaje(mensaje.Texto, t.Nombre, celular, link),
+                Mensaje       = CatalogoCreadorVirtualidad.ArmarMensaje(mensaje.Texto, t.Nombre, t.Cartera, t.Empresa, celular, link),
             });
         }
         // El archivo se ordena por cédula para que sea legible; el sorteo ya quedó en la asignación.
@@ -398,6 +423,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         public int TotalNumerosListaNegraArchivo;
         public List<string>  ColumnasEncontradas = [];
         public List<string>  ColumnasFaltantes   = [];
+        public List<string>  ColumnasOpcionalesFaltantes = [];
         public List<string>  Errores             = [];
         public List<FilaSmsDto> Validas          = [];
 
@@ -419,6 +445,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             TotalNumerosListaNegraArchivo = TotalNumerosListaNegraArchivo,
             ColumnasEncontradas         = ColumnasEncontradas,
             ColumnasFaltantes           = ColumnasFaltantes,
+            ColumnasOpcionalesFaltantes = ColumnasOpcionalesFaltantes,
             Muestra                     = Validas.Take(CatalogoCreadorVirtualidad.FilasMuestra).ToList(),
             ErroresAgrupados            = AgruparErrores(Errores),
         };
@@ -446,6 +473,10 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         var iFecha    = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.FechaGestion);
         var iPerfil   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.UltimoPerfil);
         var iNumero   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.NumeroMarcado);
+        var iCartera  = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Cartera);
+        var iEmpresa  = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Empresa);
+        if (iCartera == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasOpcionalesFaltantes.Add("Cartera");
+        if (iEmpresa == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasOpcionalesFaltantes.Add("Empresa");
 
         d.ColumnasEncontradas = filas[0].Select(h => h.Trim()).Where(h => h.Length > 0).ToList();
         var esperadas = CatalogoCreadorVirtualidad.ColumnasPlantilla;
@@ -535,6 +566,8 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
                 FechaGestion  = fechaTxt,
                 UltimoPerfil  = perfilBruto,
                 NumeroMarcado = numero,
+                Cartera       = iCartera >= 0 ? NormalizadorNombre.LimpiarTexto(Cel(partes, iCartera)) : string.Empty,
+                Empresa       = iEmpresa >= 0 ? NormalizadorNombre.LimpiarTexto(Cel(partes, iEmpresa)) : string.Empty,
             }));
         }
 

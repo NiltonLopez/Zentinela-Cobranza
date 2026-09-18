@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ZDropdown } from '../../../components/ZDropdown';
 import { CargandoSpiral } from '../../../components/CargandoSpiral';
 import { TH, TD, btnPrimario, btnSecundario, cajaError } from '../../administracion/historico-virtualidad/compartidos';
 import { obtenerAsesoresDelLider, obtenerAgentesActivos, guardarContactosAsesores, obtenerMensajesDisponibles, mensajeDeErrorBlob } from '../../../api/creadorVirtualidadApi';
 import type { EstadoAsistente, Accion, FilaAsesor } from './estadoAsistente';
+import type { AsesorEstrategia } from '../../../types/creadorVirtualidad';
 import { asesorValido, linkWaMe, linkMasLargo, CELULAR_REGEX } from './estadoAsistente';
 import { C, inputStyle, etiquetaPaso, Aviso, BarraAcciones } from './compartidosSms';
 
@@ -17,6 +17,8 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
   const [progreso, setProgreso] = useState(0);
   const [error, setError]       = useState<string | null>(null);
   const [agregarID, setAgregarID] = useState<number>(0);
+  // Al añadir, se remonta el buscador para que vuelva vacío (sin setState en efectos).
+  const [buscadorKey, setBuscadorKey] = useState(0);
 
   const { data: precargados, isLoading } = useQuery({
     queryKey: ['sms-asesores', estado.liderID],
@@ -79,6 +81,7 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
       }],
     });
     setAgregarID(0);
+    setBuscadorKey(k => k + 1);
   };
 
   // Continuar = persistir contactos y pedir el catálogo anotado con el link más largo.
@@ -173,14 +176,8 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>Agregar asesor:</span>
-        <ZDropdown
-          options={[{ value: 0, label: 'Selecciona un agente activo…' }, ...candidatos.map(a => ({ value: a.agenteID, label: a.nombre }))]}
-          value={agregarID}
-          onChange={setAgregarID}
-          background="var(--z-bg-page)"
-          style={{ minWidth: 280 }}
-        />
-        <button onClick={agregar} disabled={agregarID === 0} style={btnSecundario}>+ Añadir fila</button>
+        <BuscadorAsesor key={buscadorKey} candidatos={candidatos} seleccionadoID={agregarID} onSeleccionar={setAgregarID} />
+        <BotonAnadir habilitado={agregarID !== 0} onClick={agregar} />
       </div>
 
       {invalidos > 0 && (
@@ -201,5 +198,115 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
         <button onClick={() => continuar.mutate()} disabled={!puede} style={btnPrimario(puede)}>Continuar →</button>
       </BarraAcciones>
     </div>
+  );
+}
+
+// ── Buscador de asesor (combobox con filtro por nombre) ─────────────────────
+
+function normalizarBusqueda(s: string) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/**
+ * Input de texto que filtra la lista de agentes activos por nombre mientras se escribe
+ * (sin tildes ni mayúsculas). ZDropdown no busca y con 237 agentes hace falta.
+ */
+function BuscadorAsesor({ candidatos, seleccionadoID, onSeleccionar }: {
+  candidatos: AsesorEstrategia[];
+  seleccionadoID: number;
+  onSeleccionar: (id: number) => void;
+}) {
+  const [texto, setTexto]     = useState('');
+  const [abierto, setAbierto] = useState(false);
+  const [resaltado, setResaltado] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const cerrar = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false); };
+    document.addEventListener('mousedown', cerrar);
+    return () => document.removeEventListener('mousedown', cerrar);
+  }, []);
+
+  const seleccionado = candidatos.find(c => c.agenteID === seleccionadoID) ?? null;
+  const q = normalizarBusqueda(texto);
+  const coincidencias = (q.length === 0 ? candidatos : candidatos.filter(c => normalizarBusqueda(c.nombre).includes(q))).slice(0, 12);
+
+  const elegir = (a: AsesorEstrategia) => { onSeleccionar(a.agenteID); setTexto(a.nombre); setAbierto(false); };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!abierto && (e.key === 'ArrowDown' || e.key === 'Enter')) { setAbierto(true); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setResaltado(r => Math.min(r + 1, coincidencias.length - 1)); }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); setResaltado(r => Math.max(r - 1, 0)); }
+    if (e.key === 'Enter' && coincidencias[resaltado]) { e.preventDefault(); elegir(coincidencias[resaltado]); }
+    if (e.key === 'Escape') setAbierto(false);
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', minWidth: 300 }}>
+      <input
+        value={texto}
+        placeholder="Escribe el nombre del asesor…"
+        onChange={e => { setTexto(e.target.value); setAbierto(true); setResaltado(0); if (seleccionado) onSeleccionar(0); }}
+        onFocus={() => setAbierto(true)}
+        onKeyDown={onKeyDown}
+        style={{ ...inputStyle, background: 'var(--z-bg-page)', borderColor: seleccionado ? C.sms : 'var(--z-border)', paddingRight: 28 }}
+      />
+      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: seleccionado ? C.sms : 'var(--z-text-muted)', pointerEvents: 'none' }}>
+        {seleccionado ? '✓' : '⌕'}
+      </span>
+      {abierto && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20, maxHeight: 260, overflowY: 'auto',
+          background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.10)',
+        }}>
+          {coincidencias.length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--z-text-muted)' }}>Sin coincidencias para "{texto}".</div>
+          ) : coincidencias.map((a, i) => (
+            <div key={a.agenteID}
+              onMouseDown={e => { e.preventDefault(); elegir(a); }}
+              onMouseEnter={() => setResaltado(i)}
+              style={{
+                padding: '8px 12px', fontSize: 13, cursor: 'pointer',
+                background: i === resaltado ? '#f5f3ff' : 'transparent',
+                color: i === resaltado ? C.sms : 'var(--z-text-primary)',
+                display: 'flex', justifyContent: 'space-between', gap: 10,
+              }}>
+              <span>{a.nombre}</span>
+              {a.numeroCorporativo && <span style={{ fontSize: 11, color: 'var(--z-text-muted)' }}>{a.numeroCorporativo}</span>}
+            </div>
+          ))}
+          {q.length > 0 && candidatos.filter(c => normalizarBusqueda(c.nombre).includes(q)).length > 12 && (
+            <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--z-text-muted)', borderTop: '0.5px solid var(--z-border)' }}>Sigue escribiendo para acotar…</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Botón "Añadir fila": bloqueado hasta que hay asesor elegido; con hover cuando se puede. */
+function BotonAnadir({ habilitado, onClick }: { habilitado: boolean; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  const activo = habilitado && hover;
+  return (
+    <button
+      onClick={onClick}
+      disabled={!habilitado}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={habilitado ? 'Agregar este asesor a la estrategia' : 'Primero elige un asesor'}
+      style={{
+        padding: '9px 18px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+        border: `1px solid ${habilitado ? C.sms : 'var(--z-border)'}`,
+        background: activo ? C.sms : habilitado ? '#f5f3ff' : 'var(--z-bg-page)',
+        color: activo ? '#fff' : habilitado ? C.sms : 'var(--z-text-muted)',
+        cursor: habilitado ? 'pointer' : 'not-allowed',
+        opacity: habilitado ? 1 : 0.6,
+        transform: activo ? 'translateY(-1px)' : 'none',
+        boxShadow: activo ? '0 4px 12px rgba(124, 58, 237, 0.25)' : 'none',
+        transition: 'background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease',
+      }}>
+      + Añadir fila
+    </button>
   );
 }
