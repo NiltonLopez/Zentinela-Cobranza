@@ -78,6 +78,10 @@ Agentes de cobranza vinculados al sistema ControlNext.
 | AgenteID | bigint | NO | SI | — |
 | UsuarioControlNext | varchar(100) | SI | — | — |
 | Activo | bit | NO | — | — |
+| NumeroCorporativo | varchar(10) | SI | — | CHECK: 10 dígitos, empieza en 3 (2026-09-18, ADR-037) |
+| LinkWhatsapp | varchar(100) | SI | — | wa.me generado o acortado pegado a mano |
+| ContactoActualizadoEn | datetime2 | SI | — | — |
+| ContactoActualizadoPor | varchar(100) | SI | — | — |
 
 ### Cartera_Agente
 Asignación de agentes a carteras y líderes.
@@ -189,17 +193,6 @@ Catálogo cerrado de textos SMS (ADR-037). Los escriben abogados/encargados (Adm
 | UsuarioActualizacion | varchar(100) | NO | — | — |
 
 Índice: `IX_MensajeAutorizado_Activo` (Activo) INCLUDE (Titulo).
-
-### AgenteContactoVirtualidad
-Número corporativo y link de WhatsApp de un asesor, para los SMS del Creador de Virtualidad (ADR-037). Existe porque `Agente` no tiene teléfono y `Empleado.NumeroTelefono` (RRHH) es el personal. 1:1 con `Agente`. El link puede ser el `wa.me/57<número>` que propone el sistema o un acortado pegado a mano. Creada el 2026-09-18.
-
-| Columna | Tipo | Nullable | PK | FK → Tabla |
-|---------|------|----------|----|------------|
-| AgenteID | bigint | NO | SI | Agente (ON DELETE CASCADE) |
-| NumeroCorporativo | varchar(10) | SI | — | CHECK: 10 dígitos, empieza en 3 |
-| LinkWhatsapp | varchar(100) | SI | — | — |
-| FechaActualizacion | datetime2 | NO | — | DEFAULT GETDATE() |
-| UsuarioActualizacion | varchar(100) | NO | — | — |
 
 ### EstrategiaSms
 Auditoría de cada archivo SMS generado por el Creador de Virtualidad (ADR-037): quién, cuándo, con qué mensaje, y cuántos titulares entraron o se excluyeron por cada motivo. **No registra envíos** — eso lo hace virtualidad en `HistoricoVirtualidad`. Creada el 2026-09-18.

@@ -138,8 +138,9 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
     }
 
     /// <summary>
-    /// Agente no tiene nombre ni teléfono: el nombre sale de RRHH (otro DbContext → join en
-    /// memoria por NumeroDocumento) y el contacto de AgenteContactoVirtualidad.
+    /// Agente no tiene nombre: sale de RRHH (otro DbContext → join en memoria por
+    /// NumeroDocumento). El contacto (número corporativo + link) vive en las columnas de
+    /// Agente desde 2026-09-18.
     /// </summary>
     private async Task<List<AsesorEstrategiaDto>> ComponerAsesoresAsync(
         List<long> agenteIDs, bool precargados, CancellationToken ct)
@@ -155,10 +156,11 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             .GroupBy(e => e.NumeroDocumento)
             .ToDictionary(g => g.Key, g => (g.First().Nombre + " " + g.First().Apellidos).Trim());
 
-        var contactos = await _db.AgenteContactosVirtualidad
+        var contactos = await _db.Agentes
             .AsNoTracking()
-            .Where(c => agenteIDs.Contains(c.AgenteID))
-            .ToDictionaryAsync(c => c.AgenteID, ct);
+            .Where(a => agenteIDs.Contains(a.AgenteID))
+            .Select(a => new { a.AgenteID, a.NumeroCorporativo, a.LinkWhatsapp })
+            .ToDictionaryAsync(a => a.AgenteID, ct);
 
         return agenteIDs
             .Select(id =>
@@ -177,6 +179,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             .ToList();
     }
 
+    /// <summary>Escribe número corporativo + link en Agente. Ignora IDs que no existan.</summary>
     public async Task<int> GuardarContactosAsync(
         IReadOnlyList<ContactoAsesorRequest> contactos, string usuario, CancellationToken ct = default)
     {
@@ -184,37 +187,22 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         if (validos.Count == 0) return 0;
 
         var ids = validos.Select(c => c.AgenteID).Distinct().ToList();
-        var existentes = await _db.AgenteContactosVirtualidad
-            .Where(c => ids.Contains(c.AgenteID))
-            .ToDictionaryAsync(c => c.AgenteID, ct);
-        var agentesReales = await _db.Agentes.Where(a => ids.Contains(a.AgenteID)).Select(a => a.AgenteID).ToHashSetAsync(ct);
+        var agentes = await _db.Agentes
+            .Where(a => ids.Contains(a.AgenteID))
+            .ToDictionaryAsync(a => a.AgenteID, ct);
 
         var ahora = DateTime.Now;
         var escritos = 0;
         foreach (var c in validos)
         {
-            if (!agentesReales.Contains(c.AgenteID)) continue; // la FK lo rechazaría igual
+            if (!agentes.TryGetValue(c.AgenteID, out var a)) continue;
             var link = c.LinkWhatsapp.Trim();
             if (link.Length > 100) link = link[..100];
 
-            if (existentes.TryGetValue(c.AgenteID, out var e))
-            {
-                e.NumeroCorporativo    = c.NumeroCorporativo.Trim();
-                e.LinkWhatsapp         = link;
-                e.FechaActualizacion   = ahora;
-                e.UsuarioActualizacion = usuario;
-            }
-            else
-            {
-                _db.AgenteContactosVirtualidad.Add(new AgenteContactoVirtualidad
-                {
-                    AgenteID             = c.AgenteID,
-                    NumeroCorporativo    = c.NumeroCorporativo.Trim(),
-                    LinkWhatsapp         = link,
-                    FechaActualizacion   = ahora,
-                    UsuarioActualizacion = usuario,
-                });
-            }
+            a.NumeroCorporativo      = c.NumeroCorporativo.Trim();
+            a.LinkWhatsapp           = link;
+            a.ContactoActualizadoEn  = ahora;
+            a.ContactoActualizadoPor = usuario;
             escritos++;
         }
         await _db.SaveChangesAsync(ct);

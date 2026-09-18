@@ -85,7 +85,12 @@ puro desbalancea con pocas filas.
 ### 7. Link de WhatsApp: `wa.me` generado, sobrescribible
 Zentinela es on-premise sin dominio público: no puede servir redirecciones cortas. El sistema propone
 `wa.me/57<número>` (18 caracteres, enlace oficial) desde el número corporativo; el líder puede pegar
-encima un `wa.link` más corto. Ambos se persisten en `AgenteContactoVirtualidad` por `AgenteID`.
+encima un `wa.link` más corto. Ambos se persisten **en columnas de `Agente`** (`NumeroCorporativo`,
+`LinkWhatsapp`, `ContactoActualizadoEn/Por`). Primero se creó una tabla 1:1 aparte por prudencia; el
+mismo día se verificó en el servidor que nadie más escribe en `Agente` (sin sp/fn/vistas/triggers/jobs
+que la inserten, sin referencias desde otras BDs; el único escritor es `RegistroService` por EF) y se
+movieron a `Agente`, como ya se hizo con `Lider_Cartera.EsExterna/Activo`
+(`2026-09-18_contacto_virtualidad_en_agente.sql`).
 
 ### 8. Alcance por rol
 Líder genera solo para sí (`TryResolverLiderID`, ADR-036: el `liderID` de la petición se ignora).
@@ -129,7 +134,7 @@ Corregido: el tipo TS es la unión de textos y un estado desconocido cae a "No d
 reventar. Lección: en este proyecto **todo enum llega como string**.
 
 ## Deuda visible
-- `AgenteContactoVirtualidad` se llena a medida que los líderes la usan; el primer uso exige escribir
+- El contacto de los asesores se llena a medida que los líderes lo usan; el primer uso exige escribir
   todos los números. Una carga inicial por SQL aceleraría la adopción.
 - Los tests del harness no están en `tests/` porque `Zentinela.API.Tests` no compila (12 errores
   preexistentes en Auth/Carteras). Cuando se arregle, los 36 casos de lógica pura son

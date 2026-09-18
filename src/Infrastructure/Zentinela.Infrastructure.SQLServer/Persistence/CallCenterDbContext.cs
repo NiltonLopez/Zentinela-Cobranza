@@ -29,7 +29,6 @@ public class CallCenterDbContext : DbContext
     public DbSet<LlamadaEntrante>     LlamadasEntrantes   { get; set; }
     public DbSet<HistoricoVirtualidad> HistoricoVirtualidad { get; set; }
     public DbSet<MensajeAutorizado>          MensajesAutorizados        { get; set; }
-    public DbSet<AgenteContactoVirtualidad> AgenteContactosVirtualidad { get; set; }
     public DbSet<EstrategiaSms>              EstrategiasSms             { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -52,7 +51,6 @@ public class CallCenterDbContext : DbContext
         builder.ApplyConfiguration(new LlamadaEntranteMapping());
         builder.ApplyConfiguration(new HistoricoVirtualidadMapping());
         builder.ApplyConfiguration(new MensajeAutorizadoMapping());
-        builder.ApplyConfiguration(new AgenteContactoVirtualidadMapping());
         builder.ApplyConfiguration(new EstrategiaSmsMapping());
     }
 }
