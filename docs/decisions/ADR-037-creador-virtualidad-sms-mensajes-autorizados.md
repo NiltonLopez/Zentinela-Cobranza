@@ -117,14 +117,21 @@ el archivo. Si se vuelve molesto, el primer candidato es un índice
 nuestra (ADR-030), así que queda documentado y no creado.
 
 ## Verificación
-- 36 casos de lógica pura: normalización de nombres (incluido mojibake `MARÃA` → `MARIA`), alfabeto
+- 41 casos de lógica pura: normalización de nombres (incluido mojibake `MARÃA` → `MARIA`) y de
+  cartera/empresa (`LimpiarTexto`, que conserva mayúsculas y `.,&()/-`), alfabeto
   GSM-7 con llaves solo dentro de placeholders, 160 exacto vs 161, perfiles con tildes y doble
   espacio, validación del catálogo. Todos pasan.
 - Flujo completo contra la BD real con 25 filas que cubren cada motivo de exclusión: conteos suman
   exacto; el número de la cartera de lista negra **no** elegida pasa y el de la elegida se excluye;
-  409 con huella distinta; 400 con mensaje deshabilitado; XLSX con 8 columnas, teléfonos como texto,
+  409 con huella distinta; 400 con mensaje deshabilitado; un mensaje con `{CARTERA}`/`{EMPRESA}` queda
+  deshabilitado sin esas columnas y se habilita con ellas; XLSX con 10 columnas, teléfonos como texto,
   `max(len(Mensaje)) ≤ 160`, sin `{`, reparto 8/7 entre dos asesores; fila de auditoría coherente.
 - 23 asesores del líder 3 resueltos con nombre desde RRHH.
+
+## Uso real
+Primera estrategia en producción el 2026-09-18 18:02 (líder 21, mensaje "Acción Legal - Agresivo"):
+**9.451 filas leídas → 8.567 SMS generados**, es decir 884 titulares depurados (9,4 %) que antes se
+habrían enviado sin filtro.
 
 ## Corrección del mismo día
 El front esperaba `estado` como `0/1/2`, pero la API serializa enums como texto
@@ -137,5 +144,5 @@ reventar. Lección: en este proyecto **todo enum llega como string**.
 - El contacto de los asesores se llena a medida que los líderes lo usan; el primer uso exige escribir
   todos los números. Una carga inicial por SQL aceleraría la adopción.
 - Los tests del harness no están en `tests/` porque `Zentinela.API.Tests` no compila (12 errores
-  preexistentes en Auth/Carteras). Cuando se arregle, los 36 casos de lógica pura son
+  preexistentes en Auth/Carteras). Cuando se arregle, los 41 casos de lógica pura son
   `NormalizadorNombreTests`, `CalculadoraSmsTests`, `MensajesAutorizadosValidacionTests`.

@@ -3,7 +3,33 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-09-17**.
+Última actualización: **2026-09-22**.
+
+---
+
+## Los enums de la API viajan como TEXTO, no como número (2026-09-18)
+
+- `Program.cs` registra `JsonStringEnumConverter`: **todo enum llega al front como string**
+  (`"Disponible"`, no `0`). Un tipo TS `0 | 1 | 2` compila pero falla en runtime.
+- Costó una pantalla en gris en el paso 3 del Creador de Virtualidad: el lookup del estilo daba
+  `undefined` y React tumbaba el render. Con el catálogo vacío no había tarjetas y parecía funcionar.
+- **Regla:** al tipar en TS un enum del backend, usar la unión de literales de texto y dejar un
+  fallback para valores desconocidos.
+
+## Agregar columnas a tablas del sistema de cobranza: se puede, con verificación (2026-09-18)
+
+- `dbo.Agente` recibió `NumeroCorporativo`, `LinkWhatsapp`, `ContactoActualizadoEn/Por` en vez de
+  crear una tabla 1:1 aparte. Precedente: `Lider_Cartera.EsExterna/Activo`.
+- **Lo que hay que comprobar antes**: que ningún sp/fn/vista/trigger/job inserte en la tabla, que
+  ninguna otra BD la referencie, y que los `INSERT` propios nombren columnas. Para `Agente` el único
+  escritor resultó ser `RegistroService` por EF.
+- Si algo de eso no se puede confirmar, la tabla aparte sigue siendo la opción segura.
+
+## PENDIENTE: DROP de FechaResultado en HistoricoVirtualidad
+
+- El código no la usa desde 2026-08-14 (era write-only) pero la columna **sigue en la BD**.
+  Script listo: `docs/sql/migrations/2026-08-14_drop_fecharesultado_historicovirtualidad.sql`.
+- Sin riesgo a estas alturas: el código desplegado hace semanas ya no la referencia.
 
 ---
 
