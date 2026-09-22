@@ -50,7 +50,7 @@ IF EXISTS (
 BEGIN
     -- En producción la columna no tiene DEFAULT propio, pero si algún entorno lo
     -- tuviera, el ALTER fallaría sin soltarlo antes.
-    DECLARE @df sysname;
+    DECLARE @df sysname, @sql nvarchar(max);
 
     SELECT @df = dc.name
       FROM sys.default_constraints dc
@@ -60,8 +60,14 @@ BEGIN
      WHERE dc.parent_object_id = OBJECT_ID('dbo.HistoricoVirtualidad')
        AND c.name = 'FechaResultado';
 
+    -- EXEC() no acepta una expresión concatenada: hay que armar la cadena en una
+    -- variable. Con EXEC('...' + QUOTENAME(@df)) el batch ni siquiera compila,
+    -- así que el DROP de abajo tampoco se ejecutaba (corregido 2026-09-22).
     IF @df IS NOT NULL
-        EXEC('ALTER TABLE dbo.HistoricoVirtualidad DROP CONSTRAINT ' + QUOTENAME(@df));
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.HistoricoVirtualidad DROP CONSTRAINT ' + QUOTENAME(@df);
+        EXEC sp_executesql @sql;
+    END
 
     ALTER TABLE dbo.HistoricoVirtualidad DROP COLUMN FechaResultado;
 
