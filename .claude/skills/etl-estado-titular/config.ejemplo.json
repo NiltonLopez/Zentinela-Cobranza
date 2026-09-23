@@ -1,0 +1,8 @@
+{
+  "_comentario": "Copiar a config.local.json (ignorado por git) y completar. NUNCA versionar el apikey.",
+  "base_url": "http://10.0.0.XX:8080",
+  "instancia": "nombre-de-la-instancia",
+  "apikey": "PEGAR-AQUI-EL-APIKEY",
+  "numero_destino": "57XXXXXXXXXX",
+  "formato": "v2"
+}
