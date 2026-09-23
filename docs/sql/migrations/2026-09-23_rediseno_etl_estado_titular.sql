@@ -1,4 +1,4 @@
--- ============================================================================
+﻿-- ============================================================================
 -- Rediseño del ETL de estado de titulares — DBCallCenter (ADR-038)
 --
 --   Reemplaza los dos procedimientos que el paquete SSIS ETL_UltimoEstadoTitular

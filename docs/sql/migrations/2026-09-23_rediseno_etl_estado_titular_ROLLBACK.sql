@@ -1,4 +1,4 @@
--- ============================================================================
+﻿-- ============================================================================
 -- ROLLBACK del rediseño del ETL de estado de titulares (ADR-038)
 --
 --   Restaura los dos procedimientos EXACTAMENTE como estaban el 2026-09-23,

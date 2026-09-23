@@ -1,4 +1,4 @@
--- ============================================================================
+﻿-- ============================================================================
 -- Recuperación de UltimoEstadoTitular desde el histórico — DBCallCenter (ADR-038)
 --
 --   La corrida del 18-sep dejó UltimoEstadoTitular en CERO filas y el Comparador
