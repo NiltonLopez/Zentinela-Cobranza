@@ -78,8 +78,10 @@ GO
 --
 --    Sin transacción y sin mirar el staging. La corrida de las 11:36 del 18-sep
 --    no encontró ningún Excel (el contenedor Foreach duró 47 ms), llegó igual a
---    este procedimiento, truncó las 539.000 filas e insertó cero. El paquete
---    reportó ÉXITO.
+--    este procedimiento, truncó la tabla entera e insertó cero. El paquete
+--    reportó ÉXITO. Cuántas filas se perdieron no quedó registrado en ninguna
+--    parte: del orden de 2,3 millones, según el snapshot del 11-sep en el
+--    histórico. Esa ceguera es una de las razones de la tabla de auditoría.
 --
 --    Tres cambios, en orden de importancia:
 --

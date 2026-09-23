@@ -47,8 +47,13 @@ BEGIN
 END
 ```
 
-Sin transacción, sin mirar el staging. Truncó 539.000 filas, insertó cero, **y el paquete reportó
+Sin transacción, sin mirar el staging. Truncó la tabla entera, insertó cero, **y el paquete reportó
 éxito**. Ningún monitoreo podía detectarlo: en SSISDB esa corrida figura en verde.
+
+> El volumen exacto que se perdió no quedó registrado en ningún lado — esa es justamente una de las
+> razones de ser de `EtlEstadoTitular_Ejecucion`. El orden de magnitud es de **~2,3 millones de
+> filas**, tomando como referencia el snapshot del 11-sep en el histórico (2.341.627 filas,
+> 22 carteras).
 
 > **La lección no es "el ETL falla".** Es que el modo de falla peligroso era el **éxito falso**.
 > Un diseño que solo se defiende de los errores no habría evitado nada de esto.

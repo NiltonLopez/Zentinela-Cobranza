@@ -11,8 +11,28 @@
 --
 --   NO es magia: los datos quedan con la antigüedad del histórico, no al día. La
 --   próxima corrida buena del ETL los pone al corriente. Lo que esto compra es
---   que los módulos vuelvan a responder mientras tanto, con datos reales y de una
---   sola fecha, en vez de no responder nada.
+--   que los módulos vuelvan a responder mientras tanto, con datos reales, en vez
+--   de no responder nada.
+--
+--   MEDIDO EN SECO CONTRA LA BASE REAL el 2026-09-23 (solo lectura, 3,7 s):
+--
+--     2.708.747 filas | 24 carteras | 2.003.771 titulares
+--     antigüedades entre 2026-06-18 y 2026-09-11
+--
+--   Dos cosas que se siguen de esos números y conviene tener presentes:
+--
+--   a) NO es un corte único. Cada titular queda con la fecha de su última
+--      gestión conocida, que para algunos es de junio. Es la definición misma de
+--      "último estado conocido", pero no confundirlo con una foto del 11-sep.
+--
+--   b) Son más carteras (24) y más filas de las que traía el ETL en su última
+--      corrida buena (22 carteras). La diferencia son titulares que el origen ya
+--      había dejado de mandar y que acá reviven. Se corrige solo: como el
+--      reemplazo es acotado por cartera, la próxima corrida buena borra y
+--      reinserta esas carteras completas y los deja fuera.
+--
+--   Las compuertas ya se verificaron contra estos números: la referencia son 22
+--   carteras, el mínimo exigido 20, y la reconstrucción trae 24. Pasa sin forzar.
 --
 --   Límite conocido: en el histórico SaldoTotal y ValorPromesa son DECIMAL(18,0)
 --   y en UltimoEstadoTitular son MONEY. Los centavos ya se habían perdido al

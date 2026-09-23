@@ -51,7 +51,8 @@ Detalle por tarea de la ejecución 11218 (`SSISDB.catalog.executable_statistics`
 
 El Foreach iteró **cero veces**: no había ningún Excel. Y el paso siguiente corrió igual, llamando
 a un `sp_Insertar_UltimoEstadoTitular` que empezaba con `TRUNCATE TABLE` incondicional, sin
-transacción y sin mirar el staging. Truncó 539.000 filas, insertó cero, y el paquete terminó con
+transacción y sin mirar el staging. Truncó la tabla entera — del orden de **2,3 millones de filas**,
+a juzgar por el snapshot del 11-sep en el histórico —, insertó cero, y el paquete terminó con
 `execution_result = 0`: **éxito**.
 
 El modo de falla peligroso no era el error, era el **éxito falso**. Corregido en ADR-038
