@@ -84,11 +84,21 @@ public class NormalizadorTitularTests
     }
 
     [Fact]
-    public void RepararMojibake_con_caracter_fuera_de_cp1252_no_toca()
+    public void RepararMojibake_repara_el_tramo_y_conserva_lo_que_esta_fuera_de_cp1252()
     {
-        // 'Ω' no lo produce cp1252: no es mojibake de este tipo.
-        const string entrada = "Ã\u0091Ω";
-        Assert.Equal(entrada, NormalizadorTitular.RepararMojibake(entrada));
+        // Por tramos: un carácter que cp1252 no produce ('Ω') ya no bloquea la reparación del
+        // par vecino, que es una Ñ inequívoca. Antes se devolvía todo intacto — el mismo defecto
+        // que dejaba sin reparar "PERÉZ GARCÃƒÂA" por culpa de la É sana.
+        Assert.Equal("ÑΩ", NormalizadorTitular.RepararMojibake("Ã\u0091Ω"));
+    }
+
+    [Fact]
+    public void RepararMojibake_no_convierte_una_Ñ_correcta_en_otro_caracter()
+    {
+        // 0xD1 (Ñ) también es primer byte UTF-8 válido; si el reparador lo tratara como tal,
+        // "PEÑA" con un carácter de continuación al lado se volvería cirílico.
+        Assert.Equal("PEÑA", NormalizadorTitular.RepararMojibake("PEÑA"));
+        Assert.Equal("PEÑ\u0091A", NormalizadorTitular.RepararMojibake("PEÑ\u0091A"));
     }
 
     [Theory]
