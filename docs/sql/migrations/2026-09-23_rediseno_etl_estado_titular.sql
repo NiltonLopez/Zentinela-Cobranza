@@ -143,10 +143,14 @@ BEGIN
     SET @EjecucionID = SCOPE_IDENTITY();
 
     BEGIN TRY
-        -- ── Referencia: la última corrida que terminó bien ──────────────────
+        -- ── Referencia: la última corrida COMPLETA que terminó bien ─────────
+        -- Solo cuentan las del ETL (@Origen = 'SSIS'). Una recuperación o una
+        -- carga por lotes traen a propósito menos carteras que el universo
+        -- entero; si entraran acá, bajarían la vara y la compuerta dejaría
+        -- pasar después una carga incompleta de verdad.
         SELECT TOP (1) @CarterasRef = CarterasStaging, @FilasRef = FilasInsertadas
         FROM dbo.EtlEstadoTitular_Ejecucion
-        WHERE Paso = 'UltimoEstadoTitular' AND Resultado = 'OK'
+        WHERE Paso = 'UltimoEstadoTitular' AND Resultado = 'OK' AND Origen = 'SSIS'
         ORDER BY EjecucionID DESC;
 
         -- Primera corrida tras el despliegue: todavía no hay historial propio,
