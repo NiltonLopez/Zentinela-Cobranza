@@ -7,6 +7,33 @@ manifiesta *dentro* de Zentinela, donde nadie la relaciona con su causa.
 
 ---
 
+## Qué hace el paquete, exactamente
+
+Verificado el 2026-09-23 leyendo el `.dtsx`, que está en
+`\\10.0.0.89\bases\SISTEMAS\Apps\ETL Carga UltimoEstadoTitular\ETL_UltimoEstadoTitular\`
+(el proyecto fuente vive en el recurso compartido, no hace falta extraerlo del catálogo).
+
+| # | Tarea | Qué hace realmente |
+|---|---|---|
+| 1 | Tarea Ejecutar SQL | `TRUNCATE TABLE dbo.Staging_UltimoEstadoTitular` |
+| 2 | Tarea Ejecutar proceso | `py.exe Conversor_CargaUltimoP.py` |
+| 3 | Contenedor Foreach Por Cartera | Carga cada Excel al staging |
+| 4 | Tarea Ejecutar SQL → Insertar | `EXEC sp_Insertar_UltimoEstadoTitular` + `EXEC sp_Insertar_HistoricoEstadoTitular` |
+| 5 | Tarea Ejecutar proceso | `py.exe EliminarExcel.py` |
+
+**El verdadero origen no son los Excel.** Son 21 CSV en
+`\\10.0.0.89\bases\SISTEMAS\Apps\ReporteClientes\*.csv` (~800 MB), que el conversor de Python
+transforma a `.xlsx` partiendo en dos los que son muy grandes. Los Excel son intermedios y el paso 5
+los borra. Por eso una corrida "sin archivos" no significa que falte el insumo: significa que el
+conversor no produjo nada.
+
+Dos consecuencias prácticas:
+
+- **El paso 1 vacía el staging al arrancar.** O sea que dejar filas ahí entre corridas no contamina
+  la siguiente. (Conviene igual no dejarlas, pero no es peligroso.)
+- **El paso 4 es literalmente lo que reescribió ADR-038.** Los dos procedimientos nuevos son lo que
+  el paquete ejecuta, sin intermediarios.
+
 ## Qué depende de estas tablas
 
 | Tabla | Quién la consume en Zentinela |
@@ -98,9 +125,16 @@ minutos peleando con la paginación.
 > el ETL haya hecho su trabajo. Antes de concluir nada sobre una ejecución, mirar la duración del
 > Foreach.
 >
-> Que 64 bits sirve se verificó **por otro lado**: `Microsoft.ACE.OLEDB.12.0` **sí está registrado
-> en 64 bits** en ese servidor (lo enumera `sp_enum_oledb_providers` desde SQL Server, que es
-> 64 bits). Ese era el único prerequisito.
+> ⚠️ **Y ojo con el prerequisito de 64 bits: verifiqué el proveedor equivocado.** Comprobé que
+> `Microsoft.ACE.OLEDB.12.0` está registrado en 64 bits y di el tema por cerrado. Pero el paquete
+> **no usa el 12.0: usa `Microsoft.ACE.OLEDB.16.0`** (parámetro
+> `CM.Administrador de conexiones con Excel.ConnectionString`), y `sp_enum_oledb_providers` —que
+> corre dentro de SQL Server, que es de 64 bits— **solo reporta el 12.0**.
+>
+> O sea que **quitar `/X86` a secas rompería el paquete** con "proveedor no registrado", en vez de
+> arreglarlo. Antes hay que instalar en el servidor el *Access Database Engine 2016
+> redistributable de 64 bits* (o repuntar la conexión al 12.0 y probar que lee los Excel que
+> genera el conversor). Eso explica, además, por qué nadie lo había quitado.
 
 ### Dónde está configurado el 32 bits
 
