@@ -126,9 +126,31 @@ FROM dbo.EtlEstadoTitular_Ejecucion
 ORDER BY EjecucionID DESC;
 GO
 
--- NO se ejecuta sp_Insertar_HistoricoEstadoTitular a continuación: el histórico
--- es el origen de esta reconstrucción, y volver a pasarlo por ahí solo le
--- correría las fechas a filas que ya estaban bien. La próxima corrida real del
--- ETL retoma el ciclo normal.
+-- ── 5. Liberar el staging ───────────────────────────────────────────────────
+-- Imprescindible, y por poco se me pasa. En el ciclo normal el staging lo vacía
+-- sp_Insertar_HistoricoEstadoTitular al final, pero acá ese paso NO corre (ver
+-- la nota de abajo), así que la reconstrucción se quedaría adentro. Si el
+-- paquete SSIS no trunca al arrancar — y no está verificado que lo haga —, la
+-- próxima corrida mezclaría estos datos de junio-septiembre con los Excel del
+-- día, y el dedup no lo notaría porque son (TitularID, CarteraID) válidos.
+--
+-- Solo se vacía si la publicación terminó OK: si abortó, estos datos son lo
+-- único que hay y se conservan para reintentar.
+IF EXISTS (SELECT 1 FROM dbo.EtlEstadoTitular_Ejecucion
+           WHERE Paso = 'UltimoEstadoTitular' AND Origen = 'Recuperacion'
+             AND Resultado = 'OK'
+             AND EjecucionID = (SELECT MAX(EjecucionID) FROM dbo.EtlEstadoTitular_Ejecucion))
+BEGIN
+    TRUNCATE TABLE dbo.Staging_UltimoEstadoTitular;
+    PRINT 'Staging liberado: la recuperacion se publico correctamente.';
+END
+ELSE
+    PRINT 'Staging INTACTO a proposito: la recuperacion no termino en OK. Revisar EtlEstadoTitular_Ejecucion.';
+GO
+
+-- NO se ejecuta sp_Insertar_HistoricoEstadoTitular en ningún momento: el
+-- histórico es el origen de esta reconstrucción, y volver a pasarlo por ahí solo
+-- le correría las fechas a filas que ya estaban bien. La próxima corrida real
+-- del ETL retoma el ciclo normal.
 SET NOEXEC OFF;
 GO

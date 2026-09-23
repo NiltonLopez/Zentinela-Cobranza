@@ -20,7 +20,7 @@ SC="/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/sqlcmd"
 "$SC" -S "(localdb)\MSSQLLocalDB" -E -I -b -f 65001 -i 01_setup.sql
 
 # 2. Los procedimientos nuevos (el sed cambia la base de destino)
-sed 's/^USE DBCallCenter;/USE EtlHarness;/' ../../migrations/2026-09-23_rediseno_etl_estado_titular.sql > _tmp_migracion.sql
+sed 's/USE DBCallCenter;/USE EtlHarness;/' ../../migrations/2026-09-23_rediseno_etl_estado_titular.sql > _tmp_migracion.sql
 "$SC" -S "(localdb)\MSSQLLocalDB" -E -I -b -f 65001 -i _tmp_migracion.sql
 
 # 3. Las 20 afirmaciones
@@ -29,9 +29,15 @@ sed 's/^USE DBCallCenter;/USE EtlHarness;/' ../../migrations/2026-09-23_rediseno
 
 Esperado: **20 casos, 20 `PASA`**.
 
-`sqlcmd` es un ejecutable de Windows: no entiende rutas estilo `/tmp` de Git Bash, y con una
-ruta absoluta en `-i` falla con "Acceso denegado". Por eso los archivos intermedios se escriben
-en el directorio actual con nombre relativo (`_tmp_*.sql`, ignorados por git).
+Dos detalles que hacen fallar esto en silencio si se cambian:
+
+- `sqlcmd` es un ejecutable de Windows: no entiende rutas estilo `/tmp` de Git Bash, y con una
+  ruta absoluta en `-i` falla con "Acceso denegado". Por eso los archivos intermedios se escriben
+  en el directorio actual con nombre relativo (`_tmp_*.sql`, ignorados por git).
+- El `sed` va **sin ancla `^`**: las migraciones llevan BOM UTF-8 (para que SSMS no rompa los
+  acentos), así que `USE` no está al principio de la línea. Con `^USE` el reemplazo no ocurre, el
+  script apunta a `DBCallCenter` y —si se está viendo la salida— falla con *Database
+  'DBCallCenter' does not exist*. Si se redirige a `/dev/null`, falla sin que se note.
 
 ## Prueba de regresión
 
@@ -40,7 +46,7 @@ creada, instalando los viejos:
 
 ```bash
 "$SC" -S "(localdb)\MSSQLLocalDB" -E -I -b -f 65001 -i 01_setup.sql
-sed 's/^USE DBCallCenter;/USE EtlHarness;/' ../../migrations/2026-09-23_rediseno_etl_estado_titular_ROLLBACK.sql > _tmp_rollback.sql
+sed 's/USE DBCallCenter;/USE EtlHarness;/' ../../migrations/2026-09-23_rediseno_etl_estado_titular_ROLLBACK.sql > _tmp_rollback.sql
 "$SC" -S "(localdb)\MSSQLLocalDB" -E -I -b -f 65001 -i _tmp_rollback.sql
 "$SC" -S "(localdb)\MSSQLLocalDB" -E -I -f 65001 -W -s "|" -i 03_regresion_procedimientos_viejos.sql
 ```
