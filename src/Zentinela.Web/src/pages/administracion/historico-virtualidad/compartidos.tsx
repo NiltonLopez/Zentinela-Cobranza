@@ -118,22 +118,37 @@ export function DropZone({
 
 // ── Errores agrupados ───────────────────────────────────────────────────────
 
+// Paleta por tono. 'error' conserva EXACTAMENTE los colores que siempre tuvo
+// ListaErroresAgrupados (la usan otras páginas); 'aviso' e 'info' son sus variantes.
+const TONOS: Record<'error' | 'aviso' | 'info', { bg: string; borde: string; texto: string }> = {
+  error: { bg: '#fef2f2',           borde: '#fca5a5',        texto: '#b91c1c' },
+  aviso: { bg: '#fffbeb',           borde: '#fcd34d',        texto: '#d97706' },
+  info:  { bg: 'var(--z-bg-page)',  borde: 'var(--z-border)', texto: '#64748b' },
+};
+
 // Agrupados por mensaje (no una fila por cada registro con el mismo error) y sobre
 // TODAS las filas del archivo, no solo la muestra del preview.
-export function ListaErroresAgrupados({ errores }: { errores: ErrorAgrupado[] }) {
-  if (errores.length === 0) return null;
+export function ListaAgrupada({ titulo, items, tono }: {
+  titulo: string; items: ErrorAgrupado[]; tono: 'error' | 'aviso' | 'info';
+}) {
+  if (items.length === 0) return null;
+  const t = TONOS[tono];
   return (
-    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px' }}>
-      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
-        Errores encontrados — agrupados por tipo
+    <div style={{ background: t.bg, border: `1px solid ${t.borde}`, borderRadius: 8, padding: '12px 16px' }}>
+      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: t.texto }}>
+        {titulo}
       </p>
       <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {errores.map((e, i) => (
-          <li key={i} style={{ fontSize: 13, color: '#b91c1c' }}>
+        {items.map((e, i) => (
+          <li key={i} style={{ fontSize: 13, color: t.texto }}>
             {e.mensaje} <strong>({e.cantidad.toLocaleString('es-CO')} fila{e.cantidad !== 1 ? 's' : ''})</strong>
           </li>
         ))}
       </ul>
     </div>
   );
+}
+
+export function ListaErroresAgrupados({ errores }: { errores: ErrorAgrupado[] }) {
+  return <ListaAgrupada titulo="Errores encontrados — agrupados por tipo" items={errores} tono="error" />;
 }

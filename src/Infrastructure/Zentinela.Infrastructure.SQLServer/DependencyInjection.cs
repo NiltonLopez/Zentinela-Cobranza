@@ -12,6 +12,7 @@ using Zentinela.Infrastructure.SQLServer.Models;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 using Zentinela.Infrastructure.SQLServer.Repositories;
 using Zentinela.Infrastructure.SQLServer.Services;
+using Zentinela.Infrastructure.SQLServer.Services.CargueFuentes;
 
 namespace Zentinela.Infrastructure.SQLServer;
 
@@ -23,6 +24,7 @@ public static class DependencyInjection
         // ── Configuración tipada (IOptions<JwtSettings>) ──────────────────────
         services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
         services.Configure<ProyeccionPromesasSettings>(configuration.GetSection("ProyeccionPromesas"));
+        services.Configure<CargueFuentesSettings>(configuration.GetSection("CargueFuentes"));
 
         // ── DbContexts ────────────────────────────────────────────────────────
         services.AddDbContext<ZentinelaDbContext>(options =>
@@ -115,6 +117,14 @@ public static class DependencyInjection
         services.AddScoped<IAuditoriaGestionesService, AuditoriaGestionesService>();
         // Almacén en memoria de reportes generados (compartido, expira a 48 h).
         services.AddSingleton<AuditoriaReportesStore>();
+
+        // ── Cargue de Fuentes de Datos (ADR-039) ─────────────────────────────
+        // Store y orquestador Singleton: los trabajos corren en segundo plano y sobreviven a
+        // la petición que los inició. El motor es Scoped (usa CallCenterDbContext): el
+        // orquestador le crea un scope propio por trabajo con IServiceScopeFactory.
+        services.AddSingleton<CargueFuentesJobStore>();
+        services.AddSingleton<ICargueFuentesService, CargueFuentesOrquestador>();
+        services.AddScoped<CargueFuentesMotor>();
 
         return services;
     }

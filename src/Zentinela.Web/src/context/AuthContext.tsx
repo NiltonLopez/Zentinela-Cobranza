@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 import type { Usuario, LoginResponse } from '../types/auth';
 import { STORAGE_KEYS } from '../constants/storage';
 import { CLAVE_ACTIVA as CALIFICADOR_ACTIVA } from '../pages/cartera/CalificadorCarteraPage';
+import { CLAVE_JOB_CARGUE } from '../types/cargueFuentes';
 
 interface AuthContextType {
   usuario: Usuario | null;
@@ -48,8 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEYS.TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USUARIO);
     // Selecciones persistidas en sessionStorage no deben sobrevivir a un cambio
-    // de usuario en el mismo navegador (ej. Calificador de Cartera).
+    // de usuario en el mismo navegador (ej. Calificador de Cartera, o el cargue de
+    // fuentes que se estaba siguiendo).
     sessionStorage.removeItem(CALIFICADOR_ACTIVA);
+    sessionStorage.removeItem(CLAVE_JOB_CARGUE);
     setToken(null);
     setUsuario(null);
   }, []);

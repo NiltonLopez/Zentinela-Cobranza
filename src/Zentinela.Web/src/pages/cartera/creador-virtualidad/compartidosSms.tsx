@@ -2,6 +2,7 @@
 // Piezas visuales del asistente SMS. Mismo criterio que historico-virtualidad/compartidos.tsx:
 // exporta componentes + estilos juntos.
 import type { Paso } from './estadoAsistente';
+import { Aviso as AvisoBase } from '../../../components/Aviso';
 
 export const C = {
   brand:   '#F54927',
@@ -71,17 +72,10 @@ export function Stepper({ actual, maxAlcanzado, onIr }: { actual: Paso; maxAlcan
   );
 }
 
-export function Aviso({ tipo, children }: { tipo: 'info' | 'warning' | 'danger' | 'success'; children: React.ReactNode }) {
-  const color = { info: C.sms, warning: C.warning, danger: C.danger, success: C.success }[tipo];
-  const bg    = { info: '#f5f3ff', warning: '#fffbeb', danger: '#fef2f2', success: '#f0fdf4' }[tipo];
-  return (
-    <div style={{
-      background: bg, border: `1px solid ${color}30`, borderLeft: `4px solid ${color}`,
-      borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--z-text-primary)',
-    }}>
-      {children}
-    </div>
-  );
+// Aviso vive en components/Aviso.tsx; aquí se fija el morado del SMS para 'info' y así
+// el asistente se ve exactamente igual que antes de la promoción.
+export function Aviso(props: Omit<React.ComponentProps<typeof AvisoBase>, 'colorInfo' | 'fondoInfo'>) {
+  return <AvisoBase colorInfo={C.sms} fondoInfo="#f5f3ff" {...props} />;
 }
 
 export function BarraAcciones({ children }: { children: React.ReactNode }) {

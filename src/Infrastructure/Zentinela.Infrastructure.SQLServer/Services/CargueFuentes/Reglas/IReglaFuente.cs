@@ -1,0 +1,33 @@
+namespace Zentinela.Infrastructure.SQLServer.Services.CargueFuentes.Reglas;
+
+/// <summary>
+/// Lo propio de una fuente que la definición no puede expresar (traducción de su SP legacy).
+/// Todo tiene implementación por defecto: una fuente sin reglas propias usa
+/// <see cref="ReglaGenerica"/> y el motor hace el resto (vacíos, teléfonos, email, lista
+/// negra, flag, dedup, Titular, Titular_Cartera, refrescar/insertar, vacías).
+/// </summary>
+internal interface IReglaFuente
+{
+    string Fuente { get; }
+
+    /// <summary>Cargar <c>PrefijoMunicipio</c> antes de limpiar (fijos de 7 dígitos).</summary>
+    bool NecesitaPrefijos => false;
+
+    /// <summary>Cruzar teléfonos contra <c>ListaNegraTelefonos</c> en la fase de cruces.</summary>
+    bool NecesitaListaNegraTelefonos => false;
+
+    /// <summary>
+    /// Después del tipado genérico (trim, vacíos → NULL) y ANTES de validar celular/fijo/email:
+    /// aquí se mueven o prefijan teléfonos; lo que quede mal lo anula el motor.
+    /// </summary>
+    void Transformar(FilaCargue fila, ContextoCargue ctx) { }
+
+    /// <summary>Exclusiones propias, tras validar contacto (DatosClaro: sin teléfono ni email).</summary>
+    void Validar(FilaCargue fila, ContextoCargue ctx) { }
+
+    /// <summary>
+    /// Una fila del archivo → N filas destino (SIMIT: una por placa). Debe devolver al menos
+    /// una fila; por defecto, la misma.
+    /// </summary>
+    IEnumerable<FilaCargue> Expandir(FilaCargue fila, ContextoCargue ctx) => [fila];
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Harness del Cargue de Fuentes de Datos contra la BD REAL (ADR-039).
+    Uso:  set ZENTINELA_CARGUE_CS=Server=...;Database=DBCallCenter;...   (o pasarla como primer argumento)
+          dotnet run (proyecto tools/CargueHarness)
+    La cadena de conexion NUNCA se escribe en el repo (es publico).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CargueHarness</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Infrastructure\Zentinela.Infrastructure.SQLServer\Zentinela.Infrastructure.SQLServer.csproj" />
+  </ItemGroup>
+</Project>
