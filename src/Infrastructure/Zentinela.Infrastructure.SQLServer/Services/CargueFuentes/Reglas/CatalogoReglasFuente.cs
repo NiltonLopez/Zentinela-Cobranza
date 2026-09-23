@@ -10,7 +10,8 @@ internal static class CatalogoReglasFuente
 {
     private static readonly Dictionary<string, IReglaFuente> Reglas = new(StringComparer.OrdinalIgnoreCase)
     {
-        [CatalogoCargueFuentes.Sura.Fuente] = new ReglaGenerica(CatalogoCargueFuentes.Sura.Fuente),
+        [CatalogoCargueFuentes.Sura.Fuente]     = new ReglaGenerica(CatalogoCargueFuentes.Sura.Fuente),
+        [CatalogoCargueFuentes.Cajacopi.Fuente] = new ReglaCajacopi(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

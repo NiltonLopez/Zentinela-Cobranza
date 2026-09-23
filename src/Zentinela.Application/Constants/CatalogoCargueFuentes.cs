@@ -148,7 +148,40 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura];
+    /// <summary>
+    /// Cajacopi (EPS). Regla propia: prefijo a los fijos de 7 dígitos, fijos '11111' y correos
+    /// "NO TIENE". Tipos y largos verificados contra <c>sys.columns</c> de <c>dbo.Cajacopi</c> el
+    /// 2026-09-23 (FechaNacimiento y FechaConsulta son <c>date</c>; FK a Titular, sin triggers).
+    /// El flag incluye FechaNacimiento, como el SP legacy; Departamento y Municipio no (son
+    /// localización, no contacto).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Cajacopi = new()
+    {
+        Fuente       = "Cajacopi",
+        Etiqueta     = "Cajacopi (EPS)",
+        TablaDestino = "dbo.Cajacopi",
+        ColumnaFlag  = "EstadoEnCajacopi",
+        ColumnaFecha = "FechaConsulta",
+        TipoFecha    = TipoFechaSello.Date,
+        Notas        = "Afiliados Cajacopi: celular, fijo (se prefija si viene de 7 dígitos), email y localización.",
+        ColumnasDato =
+        [
+            new("NumeroTelefonoCelular", ["numerotelefonocelular", "celular", "numerocelular", "telefonocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("NumeroTelefonoFijo", ["numerotelefonofijo", "fijo", "telefonofijo", "numerofijo"],
+                TipoColumnaCargue.Fijo, 10, Descripcion: "Fijo (10 dígitos; si viene de 7 se le pone el indicativo)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 100, Descripcion: "Correo electrónico"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento (resuelve el indicativo del fijo)"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio (resuelve el indicativo del fijo)"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, Descripcion: "Fecha de nacimiento"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

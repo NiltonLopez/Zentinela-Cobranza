@@ -15,10 +15,13 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Shared;
 ///    ese departamento, buscarlo en otro sería tomar el prefijo de un homónimo.
 /// 3. Solo municipio (sin departamento, o con uno que no está en la tabla): su prefijo si es
 ///    único. Hay 68 municipios repetidos entre departamentos; si sus prefijos difieren → null.
+///    Si no vino municipio y el departamento no está en la tabla, se prueba el departamento
+///    como municipio: Bogotá es distrito y municipio a la vez; la tabla real lo guarda como
+///    ('BOGOTA', 'BOGOTA, D.C.') y las fuentes lo mandan como departamento 'BOGOTA D.C.'.
 ///
 /// Las claves se normalizan con <see cref="ArchivoTabular.Normalizar"/> (sin tildes, sin
-/// espacios, minúsculas) y además sin puntos, para que "BOGOTÁ D.C.", "BOGOTA D.C." y
-/// "Bogota DC" coincidan.
+/// espacios, minúsculas) y además sin puntos ni comas, para que "BOGOTÁ, D.C.",
+/// "BOGOTA D.C." y "Bogota DC" coincidan.
 /// </summary>
 internal sealed class PrefijosFijo
 {
@@ -62,11 +65,15 @@ internal sealed class PrefijosFijo
         if (m.Length > 0 && _porMunicipio.TryGetValue(m, out var delMunicipio))
             return Univoco(delMunicipio);
 
+        // Departamento desconocido y sin municipio: ¿un distrito que la tabla guarda como municipio?
+        if (m.Length == 0 && d.Length > 0 && _porMunicipio.TryGetValue(d, out var comoMunicipio))
+            return Univoco(comoMunicipio);
+
         return null;
     }
 
     private static string Clave(string? s) =>
-        string.IsNullOrWhiteSpace(s) ? string.Empty : ArchivoTabular.Normalizar(s).Replace(".", "");
+        string.IsNullOrWhiteSpace(s) ? string.Empty : ArchivoTabular.Normalizar(s).Replace(".", "").Replace(",", "");
 
     private static string? Univoco(HashSet<string> prefijos) =>
         prefijos.Count == 1 ? prefijos.First() : null;

@@ -75,4 +75,24 @@ public class CatalogoCoherenciaTests
             s.ColumnasDato.Select(c => $"{c.Nombre}:{c.Tipo}:{c.Largo}"));
         Assert.False(s.ColumnasDato.Single(c => c.Nombre == "UltimaFechaConsulta").EntraAlFlag);
     }
+
+    /// <summary>"Nombre:Tipo:Largo[:sinflag]" de cada columna de dato, para comparar con sys.columns.</summary>
+    private static string[] Firma(DefinicionFuenteCargue d) =>
+        d.ColumnasDato.Select(c => $"{c.Nombre}:{c.Tipo}:{c.Largo}{(c.EntraAlFlag ? "" : ":sinflag")}").ToArray();
+
+    [Fact]
+    public void Cajacopi_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.Cajacopi el 2026-09-23.
+        var d = CatalogoCargueFuentes.Cajacopi;
+        Assert.Equal(("dbo.Cajacopi", "EstadoEnCajacopi", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["NumeroTelefonoCelular:Celular:10", "NumeroTelefonoFijo:Fijo:10", "Email:Email:100",
+             "Departamento:Texto:50:sinflag", "Municipio:Texto:50:sinflag", "FechaNacimiento:Fecha:0"],
+            Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaPrefijos);
+    }
 }

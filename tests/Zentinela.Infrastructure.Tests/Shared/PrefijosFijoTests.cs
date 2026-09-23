@@ -56,4 +56,26 @@ public class PrefijosFijoTests
     {
         Assert.Equal("602", Tabla.Resolver("NO EXISTE", "CALI"));
     }
+
+    /// <summary>
+    /// Filas tal como están en dbo.PrefijoMunicipio (2026-09-23): Bogotá es departamento
+    /// 'BOGOTA' y municipio 'BOGOTA, D.C.' (con coma). Las fuentes lo mandan de otras formas.
+    /// </summary>
+    [Theory]
+    [InlineData("BOGOTA D.C.", "BOGOTA D.C.", "601")]      // Cajacopi, sin tilde ni coma
+    [InlineData("Bogotá D. C.", "BOGOTÁ, D.C.", "601")]     // Cajacopi, con tildes y coma
+    [InlineData("BOGOTA D.C.", null, "601")]               // distrito como departamento, sin municipio
+    [InlineData("CUNDINAMARCA", "BOGOTA D.C.", "601")]     // MutualSer
+    [InlineData("BOGOTA", null, "601")]
+    [InlineData("NO EXISTE", null, null)]
+    public void Bogota_con_la_tabla_real(string? departamento, string? municipio, string? esperado)
+    {
+        var real = PrefijosFijo.Cargar(
+        [
+            ("BOGOTA", "BOGOTA, D.C.", "601"),
+            ("CUNDINAMARCA", "SOACHA", "601"),
+            ("ANTIOQUIA", "MEDELLIN", "604"),
+        ]);
+        Assert.Equal(esperado, real.Resolver(departamento, municipio));
+    }
 }

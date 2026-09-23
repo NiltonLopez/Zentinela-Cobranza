@@ -1,16 +1,18 @@
-// Harness del Cargue de Fuentes de Datos (Sura) contra la BD REAL.
+// Harness del Cargue de Fuentes de Datos contra la BD REAL.
 //
 // Uso:  set ZENTINELA_CARGUE_CS=<cadena de conexión a DBCallCenter>
 //       dotnet run --project tools/CargueHarness            (o la cadena como primer argumento)
 //
-// Genera XLSX sintéticos con TitularIDs en el rango RESERVADO 999000000001..999000000099
-// y corre: validar → confirmar simulado (rollback) → confirmar real → segunda carga del mismo
-// archivo (0 insertadas) → carga que purga una vacía vieja → carga que descarta una vacía.
-// La limpieza del rango y de la auditoría del harness va en finally y se verifica al final.
+// Genera XLSX sintéticos con TitularIDs en el rango RESERVADO 999000000001..999000000999
+// (un sub-rango por fuente, ver Harness.cs) y corre por fuente: validar → confirmar simulado
+// (rollback) → confirmar real → segunda carga del mismo archivo (0 insertadas). Sura además
+// prueba la política de vacías y el orquestador. La limpieza del rango y de la auditoría del
+// harness va en finally y se verifica al final, junto con el COUNT(*) de cada tabla destino.
 // Exit code: 0 = todo OK; 1 = alguna FALLA; 2 = sin cadena de conexión; 3 = rango ocupado.
 
 using System.Data;
 using System.Text;
+using CargueHarness;
 using ClosedXML.Excel;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -30,8 +32,8 @@ using Zentinela.Infrastructure.SQLServer.Services.Shared;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-const long Desde = 999000000001, Hasta = 999000000099;
-const string UsuarioHarness = "harness-cargue";
+const long Desde = 999000000001, Hasta = 999000000099;   // sub-rango de Sura
+const string UsuarioHarness = Harness.Usuario;
 
 var cs = args.FirstOrDefault() ?? Environment.GetEnvironmentVariable("ZENTINELA_CARGUE_CS");
 if (string.IsNullOrWhiteSpace(cs))
@@ -40,14 +42,10 @@ if (string.IsNullOrWhiteSpace(cs))
     return 2;
 }
 
-var fallas = 0;
-void Check(string que, bool ok, string detalle = "")
-{
-    if (!ok) fallas++;
-    Console.WriteLine($"{(ok ? "OK   " : "FALLA")} | {que}{(detalle.Length > 0 ? " | " + detalle : "")}");
-}
-void Igual<T>(string que, T esperado, T real) =>
-    Check(que, EqualityComparer<T>.Default.Equals(esperado, real), $"esperado={esperado} real={real}");
+var carpeta = Path.Combine(Path.GetTempPath(), "cargue-harness-" + Guid.NewGuid().ToString("N"));
+var h = new Harness(cs, carpeta);
+void Check(string que, bool ok, string detalle = "") => h.Check(que, ok, detalle);
+void Igual<T>(string que, T esperado, T real) => h.Igual(que, esperado, real);
 
 long T(int n) => Desde - 1 + n;   // T(1) = 999000000001
 
@@ -59,42 +57,31 @@ var NombreMojibakeT6 = string.Concat("PI", (char)0x00C3, (char)0x0091, "A LOPEZ"
 
 var def = CatalogoCargueFuentes.Sura;
 var regla = CatalogoReglasFuente.Obtener(def.Fuente);
-var dbOpciones = new DbContextOptionsBuilder<CallCenterDbContext>().UseSqlServer(cs).Options;
-var carpeta = Path.Combine(Path.GetTempPath(), "cargue-harness-" + Guid.NewGuid().ToString("N"));
+var dbOpciones = h.DbOpciones;
 Directory.CreateDirectory(carpeta);
 
-CargueFuentesMotor NuevoMotor() => new(
-    new CallCenterDbContext(dbOpciones),
-    new CalificadorCarteraCache(new MemoryCache(new MemoryCacheOptions())),
-    NullLogger<CargueFuentesMotor>.Instance,
-    Options.Create(new CargueFuentesSettings()));
+CargueFuentesMotor NuevoMotor() => h.NuevoMotor();
+var sinProgreso = h.SinProgreso;
 
-var sinProgreso = new Progress<ProgresoCargue>(_ => { });
+Task<object?> Escalar(string sql, params (string, object)[] ps) => h.Escalar(sql, ps);
+Task<int> Contar(string sql, params (string, object)[] ps) => h.Contar(sql, ps);
+Task<int> EnRango(string tabla, string columna) => h.EnRango(tabla, Desde, Hasta);   // sub-rango de Sura
+Task<int> ContarSura() => h.ContarTabla("Sura");
 
-async Task<object?> Escalar(string sql, params (string, object)[] ps)
-{
-    await using var conn = new SqlConnection(cs);
-    await conn.OpenAsync();
-    await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 120 };
-    foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v);
-    return await cmd.ExecuteScalarAsync();
-}
-async Task<int> Contar(string sql, params (string, object)[] ps) => Convert.ToInt32(await Escalar(sql, ps));
-async Task<int> EnRango(string tabla, string columna) =>
-    await Contar($"SELECT COUNT(*) FROM dbo.{tabla} WHERE {columna} BETWEEN @d AND @h", ("@d", Desde), ("@h", Hasta));
-Task<int> ContarSura() => Contar("SELECT COUNT(*) FROM dbo.Sura");
-
-// ── Precondición: el rango reservado está libre ─────────────────────────────
-var ocupado = await EnRango("Titular", "NumeroDocumento") + await EnRango("Sura", "TitularID")
-            + await EnRango("Titular_Cartera", "TitularID");
+// ── Precondición: el rango reservado COMPLETO está libre en todas las tablas ──
+var ocupado = 0;
+foreach (var (tabla, _) in Harness.TablasDelRango) ocupado += await h.EnRango(tabla);
 if (ocupado > 0)
 {
-    Console.Error.WriteLine($"El rango reservado {Desde}..{Hasta} tiene {ocupado} filas: no se toca nada.");
+    Console.Error.WriteLine($"El rango reservado {Harness.Desde}..{Harness.Hasta} tiene {ocupado} filas: no se toca nada.");
     return 3;
 }
-Console.WriteLine($"Rango reservado {Desde}..{Hasta} libre. Sura tiene {await ContarSura()} filas.");
+var conteosIniciales = new Dictionary<string, int>();
+foreach (var tabla in Harness.TablasDestino) conteosIniciales[tabla] = await h.ContarTabla(tabla);
+Console.WriteLine($"Rango reservado {Harness.Desde}..{Harness.Hasta} libre. "
+                  + string.Join(", ", conteosIniciales.Select(kv => $"{kv.Key} tiene {kv.Value} filas")) + ".");
 
-var ejecuciones = new List<long>();
+var ejecuciones = h.Ejecuciones;
 try
 {
     // ── Datos de referencia reales ──────────────────────────────────────────
@@ -447,10 +434,13 @@ try
     if (j8.Estado == EstadoCargueJob.PreviewListo) j8 = orq.Cancelar(j8.JobId, UsuarioHarness)!;
     Igual("7: cancelar deja el job Cancelado", EstadoCargueJob.Cancelado, j8.Estado);
     Check("7: descartar borra el job", orq.Descartar(j8.JobId) && orq.Obtener(j8.JobId) is null);
+
+    // ── Fuentes de la etapa D (cada una en su sub-rango) ────────────────────
+    await CasoCajacopi.Correr(h);
 }
 catch (Exception ex)
 {
-    fallas++;
+    h.Fallas++;
     Console.WriteLine($"FALLA | excepción no esperada | {ex}");
 }
 finally
@@ -459,38 +449,25 @@ finally
     Console.WriteLine("\n== Limpieza ==");
     try
     {
-        await using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
-        await using var cmd = new SqlCommand("""
-            DELETE FROM dbo.Titular_Cartera WHERE TitularID BETWEEN @d AND @h;
-            DELETE FROM dbo.Sura WHERE TitularID BETWEEN @d AND @h;
-            DELETE FROM dbo.Titular WHERE NumeroDocumento BETWEEN @d AND @h;
-            DELETE FROM dbo.CargueFuenteReversion
-             WHERE EjecucionID IN (SELECT EjecucionID FROM dbo.CargueFuenteEjecucion WHERE Usuario = @u);
-            DELETE FROM dbo.CargueFuenteEjecucion WHERE Usuario = @u;
-            """, conn);
-        cmd.Parameters.Add("@d", SqlDbType.BigInt).Value = Desde;
-        cmd.Parameters.Add("@h", SqlDbType.BigInt).Value = Hasta;
-        cmd.Parameters.Add("@u", SqlDbType.VarChar, 100).Value = UsuarioHarness;
-        await cmd.ExecuteNonQueryAsync();
+        await h.Limpiar();
     }
     catch (Exception ex)
     {
-        fallas++;
+        h.Fallas++;
         Console.WriteLine($"FALLA | limpieza | {ex.Message}");
     }
 
-    Igual("limpieza: Titular del rango", 0, await EnRango("Titular", "NumeroDocumento"));
-    Igual("limpieza: Sura del rango", 0, await EnRango("Sura", "TitularID"));
-    Igual("limpieza: Titular_Cartera del rango", 0, await EnRango("Titular_Cartera", "TitularID"));
+    foreach (var (tabla, _) in Harness.TablasDelRango)
+        Igual($"limpieza: {tabla} del rango reservado", 0, await h.EnRango(tabla));
     Igual("limpieza: ejecuciones del harness", 0,
         await Contar("SELECT COUNT(*) FROM dbo.CargueFuenteEjecucion WHERE Usuario = @u", ("@u", UsuarioHarness)));
     Igual("limpieza: reversiones del harness", 0,
         ejecuciones.Count == 0 ? 0 : await Contar(
             $"SELECT COUNT(*) FROM dbo.CargueFuenteReversion WHERE EjecucionID IN ({string.Join(",", ejecuciones)})"));
-    Console.WriteLine($"Sura queda con {await ContarSura()} filas.");
+    foreach (var (tabla, inicial) in conteosIniciales)
+        Igual($"limpieza: COUNT(*) de {tabla} igual al inicial", inicial, await h.ContarTabla(tabla));
     try { Directory.Delete(carpeta, recursive: true); } catch { /* temp del harness */ }
 }
 
-Console.WriteLine(fallas == 0 ? "\nRESULTADO: TODO OK" : $"\nRESULTADO: {fallas} FALLA(S)");
-return fallas == 0 ? 0 : 1;
+Console.WriteLine(h.Fallas == 0 ? "\nRESULTADO: TODO OK" : $"\nRESULTADO: {h.Fallas} FALLA(S)");
+return h.Fallas == 0 ? 0 : 1;
