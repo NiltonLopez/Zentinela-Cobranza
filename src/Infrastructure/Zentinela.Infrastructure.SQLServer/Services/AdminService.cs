@@ -207,10 +207,16 @@ public class AdminService : IAdminService
         var usuario = await _userManager.FindByIdAsync(usuarioID.ToString())
             ?? throw new InvalidOperationException("Usuario no encontrado.");
 
-        // Remover todos los roles actuales (un usuario tiene exactamente un rol)
-        var rolesActuales = await _userManager.GetRolesAsync(usuario);
-        if (rolesActuales.Any())
-            await _userManager.RemoveFromRolesAsync(usuario, rolesActuales);
+        // ── 1. TODO lo que puede fallar, ANTES de escribir nada ───────────────────
+        //
+        // El orden acá es crítico y no es cosmético. Identity no expone transacción, así
+        // que remover el rol y agregar el nuevo son dos escrituras independientes: si algo
+        // lanza en el medio, el usuario queda SIN NINGÚN ROL y no puede usar el sistema.
+        //
+        // Esto pasó de verdad (incidente 2026-09-23): la validación de líder de ADR-036 se
+        // agregó DESPUÉS del RemoveFromRolesAsync, así que un ascenso rechazado borraba el
+        // rol de asesor del usuario y abortaba. Toda validación va acá arriba.
+        int? nuevoLiderID = null;
 
         // Líder normal y Líder Externo necesitan LiderID resuelto desde DBCallCenter
         // para que los módulos operativos (Calificador, Creador, Comparador) filtren
@@ -221,27 +227,39 @@ public class AdminService : IAdminService
                 .FirstOrDefaultAsync(l => l.NumeroDocumento == usuario.NumeroDocumento && l.Activo);
 
             // Antes esto era `usuario.LiderID = lider?.ID` y, si el líder aún no existía,
-            // dejaba NULL EN SILENCIO. Resultado (incidente 2026-09-17, ascenso de asesora
-            // a líder): rol Líder con LiderID null → el Selector de carteras devuelve vacío
-            // y el Calificador/Comparador/Creador caen al `else` de Admin y muestran TODO.
-            // La cuenta "no funciona" y nadie sabe por qué. Fallar acá, con instrucción
-            // concreta, es lo único que evita el estado inconsistente.
+            // dejaba NULL EN SILENCIO: rol Líder con LiderID null → el Selector de carteras
+            // devuelve vacío y el Calificador/Comparador/Creador caen al `else` de Admin y
+            // muestran TODO (fuga de privilegios). Ver ADR-036.
             if (lider is null)
                 throw new InvalidOperationException(
                     $"No existe un líder activo con la cédula {usuario.NumeroDocumento} en el sistema de " +
                     $"cobranza. Primero dalo de alta en Gestión de Carteras → Líderes (o reactívalo si " +
-                    $"estaba inactivo) y después cambia el rol.");
+                    $"estaba inactivo) y después cambia el rol. Si no aparece en la lista de empleados " +
+                    $"elegibles, su cargo en Recursos Humanos todavía no es de líder.");
 
-            usuario.LiderID = lider.ID;
-        }
-        else
-        {
-            // Cualquier otro rol no necesita LiderID
-            usuario.LiderID = null;
+            nuevoLiderID = lider.ID;
         }
 
+        // ── 2. Escrituras: a partir de acá ya nada debería lanzar ─────────────────
+        var rolesActuales = await _userManager.GetRolesAsync(usuario);
+        if (rolesActuales.Any())
+            await _userManager.RemoveFromRolesAsync(usuario, rolesActuales);
+
+        usuario.LiderID = nuevoLiderID;   // null para cualquier rol que no sea líder
         await _userManager.UpdateAsync(usuario);
-        await _userManager.AddToRoleAsync(usuario, nuevoRol);
+
+        // Si AddToRole llegara a fallar, el usuario quedaría sin rol: se restaura el
+        // anterior para no dejarlo fuera del sistema y se propaga el error original.
+        var resultado = await _userManager.AddToRoleAsync(usuario, nuevoRol);
+        if (!resultado.Succeeded)
+        {
+            if (rolesActuales.Any())
+                await _userManager.AddToRolesAsync(usuario, rolesActuales);
+
+            throw new InvalidOperationException(
+                "No se pudo asignar el rol: " +
+                string.Join(" ", resultado.Errors.Select(e => e.Description)));
+        }
     }
 
     public async Task InactivarUsuarioAsync(int usuarioID)
