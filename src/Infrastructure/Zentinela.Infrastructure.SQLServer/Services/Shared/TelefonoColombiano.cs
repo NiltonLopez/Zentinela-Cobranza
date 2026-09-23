@@ -40,6 +40,29 @@ internal static class TelefonoColombiano
 
         return (digitos, digitos[0] == '3');
     }
+
+    /// <summary>
+    /// Para columnas de celular: el número solo si es celular (empieza en 3); si no, <c>null</c>.
+    /// Un fijo que llegue en la columna de celular se descarta aquí en lugar de guardarse
+    /// donde el marcador lo trataría como móvil (SMS, WhatsApp).
+    /// </summary>
+    public static string? NormalizarCelular(string? bruto)
+    {
+        var (numero, esCelular) = Normalizar(bruto);
+        return esCelular ? numero : null;
+    }
+
+    /// <summary>
+    /// Para columnas de fijo: el número solo si NO es celular y empieza en 6 (fijos
+    /// nacionales con indicativo 601–608 desde la migración de 2021 a 10 dígitos).
+    /// Un celular en la columna de fijo devuelve <c>null</c>: el llamador decide si lo
+    /// reubica en la de celular, pero este helper no lo mezcla.
+    /// </summary>
+    public static string? NormalizarFijo(string? bruto)
+    {
+        var (numero, esCelular) = Normalizar(bruto);
+        return numero is not null && !esCelular && numero[0] == '6' ? numero : null;
+    }
 }
 
 /// <summary>

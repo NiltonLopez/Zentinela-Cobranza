@@ -93,7 +93,7 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         if (filas.Count == 0)
             return new ValidarSolicitudResponse();
 
-        var indices = await CargarIndicesResolucionAsync();
+        var indices = await ResolucionCarteraLider.CargarIndicesResolucionAsync(_db);
 
         foreach (var f in filas.Where(f => f.EsValida))
         {
@@ -438,7 +438,7 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         resp.TotalFilas = filas.Count;
         if (filas.Count == 0) return resp;
 
-        var indices = await CargarIndicesResolucionAsync();
+        var indices = await ResolucionCarteraLider.CargarIndicesResolucionAsync(_db);
         foreach (var f in filas.Where(f => f.EsValida))
         {
             var r = indices.Resolver(f.NombreCartera, f.NombreLider);
@@ -540,7 +540,7 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
             throw new CargaIvrConflictoException($"Faltan columnas obligatorias: {string.Join(", ", faltantes)}.");
 
         var filas = ParsearFilasIvr(filasCrudas, headers.Count, idx);
-        var indices = await CargarIndicesResolucionAsync();
+        var indices = await ResolucionCarteraLider.CargarIndicesResolucionAsync(_db);
         foreach (var f in filas.Where(f => f.EsValida))
         {
             var r = indices.Resolver(f.NombreCartera, f.NombreLider);
@@ -835,77 +835,6 @@ public class HistoricoVirtualidadService : IHistoricoVirtualidadService
         Preview = [new FilaSolicitudDto { EsValida = false, ErrorMensaje = mensaje }],
         ErroresAgrupados = [new ErrorAgrupadoDto { Mensaje = mensaje, Cantidad = 1 }],
     };
-
-    // ── Resolución Cartera/Líder por nombre (compartida por ambos flujos) ───
-
-    /// <summary>
-    /// Índices para resolver cartera y líder por su NOMBRE tal como viene en el archivo,
-    /// más el conjunto de pares líder-cartera activos. Se cargan una vez por validación.
-    /// </summary>
-    private sealed class IndicesResolucion
-    {
-        public required Dictionary<string, (int ID, string Nombre)> CarteraPorNombre { get; init; }
-        public required Dictionary<string, (int ID, string Nombre)> LiderPorNombre   { get; init; }
-        public required HashSet<(int LiderID, int CarteraID)>       ParesActivos     { get; init; }
-
-        /// <summary>Devuelve los IDs y nombres canónicos, o el motivo del fallo.</summary>
-        public (int CarteraID, string NombreCartera, int LiderID, string NombreLider, string? Error)
-            Resolver(string nombreCartera, string nombreLider)
-        {
-            if (!CarteraPorNombre.TryGetValue(Normalizar(nombreCartera), out var cartera))
-                return (0, nombreCartera, 0, nombreLider,
-                        $"Cartera '{nombreCartera}' no encontrada (o inactiva).");
-
-            if (!LiderPorNombre.TryGetValue(Normalizar(nombreLider), out var lider))
-                return (0, nombreCartera, 0, nombreLider,
-                        $"Líder '{nombreLider}' no encontrado.");
-
-            if (!ParesActivos.Contains((lider.ID, cartera.ID)))
-                return (0, cartera.Nombre, 0, lider.Nombre,
-                        $"'{lider.Nombre}' no está asignado a la cartera '{cartera.Nombre}'.");
-
-            return (cartera.ID, cartera.Nombre, lider.ID, lider.Nombre, null);
-        }
-    }
-
-    private async Task<IndicesResolucion> CargarIndicesResolucionAsync()
-    {
-        var carteras = await _db.Carteras
-            .Where(c => c.Activa)
-            .Select(c => new { c.ID, c.NombreCartera })
-            .AsNoTracking().ToListAsync();
-
-        var lideres = await _db.Lideres
-            .Select(l => new { l.ID, l.Nombre })
-            .AsNoTracking().ToListAsync();
-
-        var pares = await _db.LiderCarteras
-            .Where(lc => lc.Activo)
-            .Select(lc => new { lc.LiderID, lc.CarteraID })
-            .AsNoTracking().ToListAsync();
-
-        return new IndicesResolucion
-        {
-            CarteraPorNombre = ConstruirIndicePorNombre(carteras.Select(c => (c.ID, c.NombreCartera))),
-            LiderPorNombre   = ConstruirIndicePorNombre(lideres.Select(l => (l.ID, l.Nombre))),
-            ParesActivos     = pares.Select(p => (p.LiderID, p.CarteraID)).ToHashSet(),
-        };
-    }
-
-    /// <summary>Índice Normalizar(nombre) -> (ID, Nombre). Ante nombres duplicados
-    /// normalizados, conserva el primero (no lanza).</summary>
-    private static Dictionary<string, (int ID, string Nombre)> ConstruirIndicePorNombre(
-        IEnumerable<(int ID, string Nombre)> items)
-    {
-        var dict = new Dictionary<string, (int, string)>(StringComparer.Ordinal);
-        foreach (var (id, nombre) in items)
-        {
-            var clave = Normalizar(nombre);
-            if (!string.IsNullOrEmpty(clave) && !dict.ContainsKey(clave))
-                dict[clave] = (id, nombre);
-        }
-        return dict;
-    }
 
     private static Dictionary<string, int> LeerHeaders(IXLRow encabezado)
     {

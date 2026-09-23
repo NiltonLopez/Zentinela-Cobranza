@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using ClosedXML.Excel;
 
@@ -190,4 +191,240 @@ internal static class ArchivoTabular
 
         return c.GetString();
     }
+
+    // ── Lectura por filas (streaming) para archivos grandes ─────────────────
+    // Las versiones Extraer* materializan todo el archivo en List<string[]>. Para el cargue
+    // de fuentes (archivos de cientos de miles de filas) se enumera fila por fila.
+
+    /// <summary>Bytes que se inspeccionan para decidir si el CSV es UTF-8 o "ANSI".</summary>
+    private const int MuestraCodificacion = 64 * 1024;
+
+    private static readonly byte[] BomUtf8 = [0xEF, 0xBB, 0xBF];
+
+    /// <summary>
+    /// Lee un CSV fila por fila con un parser RFC 4180: campos entre comillas dobles con
+    /// <c>""</c> como comilla literal, separadores y saltos de línea dentro de comillas, y
+    /// finales de línea <c>\r\n</c> o <c>\n</c>. Las líneas físicas vacías no producen fila.
+    ///
+    /// Separador: ';' o ',', el que más aparezca FUERA de comillas en la primera línea (ante
+    /// empate gana ';', que es lo que exporta Excel en configuración regional colombiana).
+    ///
+    /// Codificación: BOM UTF-8 → UTF-8. Sin BOM se prueban los primeros 64 KB como UTF-8
+    /// estricto; si fallan, se lee como Latin-1 (el CSV "ANSI" que guarda Excel en Windows).
+    /// Sin esto "PIÑA" en ANSI llegaría como "PI�A" y el nombre se perdería.
+    /// Limitación conocida: un archivo ANSI cuyos primeros 64 KB son ASCII puro se lee como
+    /// UTF-8, y una Ñ posterior sale como U+FFFD.
+    ///
+    /// A diferencia de <see cref="ExtraerFilasCsvAsync"/>, NO cierra el stream recibido.
+    /// </summary>
+    public static async IAsyncEnumerable<string[]> LeerCsvPorFilasAsync(
+        Stream csv, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        // Detectar la codificación exige releer el inicio: si el stream no permite Seek
+        // (p. ej. el cuerpo de una petición HTTP) se copia a memoria.
+        MemoryStream? copia = null;
+        var fuente = csv;
+        if (!csv.CanSeek)
+        {
+            copia = new MemoryStream();
+            await csv.CopyToAsync(copia, ct);
+            copia.Position = 0;
+            fuente = copia;
+        }
+
+        try
+        {
+            var inicio = fuente.Position;
+            var (codificacion, separador) = await DetectarCodificacionYSeparadorAsync(fuente, ct);
+            fuente.Position = inicio;
+
+            // Con UTF-8 se deja detectar el BOM para que el StreamReader lo consuma; con
+            // Latin-1 no, porque bytes como FF FE son texto legítimo ("ÿþ"), no una marca.
+            var esUtf8 = codificacion is UTF8Encoding;
+            using var reader = new StreamReader(fuente, codificacion,
+                detectEncodingFromByteOrderMarks: esUtf8, bufferSize: 64 * 1024, leaveOpen: true);
+
+            var fila = new List<string>();
+            var campo = new StringBuilder();
+            var enComillas = false;
+            var comillaPendiente = false;   // dentro de comillas se vio '"': ¿cierre o "" escapado?
+            var inicioCampo = true;         // aún no se consumió nada del campo actual
+            var filaTieneContenido = false; // distingue una línea vacía de una fila con un campo vacío
+            var saltarLf = false;           // el carácter anterior fue '\r'
+
+            var buffer = new char[16 * 1024];
+            int leidos;
+            while ((leidos = await reader.ReadAsync(buffer.AsMemory(), ct)) > 0)
+            {
+                for (var i = 0; i < leidos; i++)
+                {
+                    var c = buffer[i];
+
+                    if (saltarLf)
+                    {
+                        saltarLf = false;
+                        if (c == '\n' && !enComillas) continue;
+                    }
+
+                    if (enComillas)
+                    {
+                        if (comillaPendiente)
+                        {
+                            comillaPendiente = false;
+                            if (c == '"') { campo.Append('"'); continue; }
+                            enComillas = false;   // era el cierre: c se procesa como texto normal abajo
+                        }
+                        else if (c == '"') { comillaPendiente = true; continue; }
+                        else { campo.Append(c); continue; }
+                    }
+
+                    if (c == '"' && inicioCampo)
+                    {
+                        enComillas = true;
+                        inicioCampo = false;
+                        filaTieneContenido = true;
+                        continue;
+                    }
+
+                    if (c == separador)
+                    {
+                        fila.Add(campo.ToString());
+                        campo.Clear();
+                        inicioCampo = true;
+                        filaTieneContenido = true;
+                        continue;
+                    }
+
+                    if (c is '\r' or '\n')
+                    {
+                        saltarLf = c == '\r';
+                        if (filaTieneContenido || campo.Length > 0)
+                        {
+                            fila.Add(campo.ToString());
+                            yield return fila.ToArray();
+                        }
+                        fila.Clear();
+                        campo.Clear();
+                        inicioCampo = true;
+                        filaTieneContenido = false;
+                        continue;
+                    }
+
+                    // Texto normal. Una comilla a mitad de un campo sin comillas se toma
+                    // literal (tolerancia: Excel a veces exporta 15" o O"NEIL así).
+                    campo.Append(c);
+                    inicioCampo = false;
+                    filaTieneContenido = true;
+                }
+            }
+
+            // Última fila sin salto de línea final (una comilla de cierre pendiente ya
+            // cerró el campo: no hay más caracteres que la conviertan en "").
+            if (filaTieneContenido || campo.Length > 0)
+            {
+                fila.Add(campo.ToString());
+                yield return fila.ToArray();
+            }
+        }
+        finally
+        {
+            copia?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Lee la muestra inicial (sin mover la posición lógica: el llamador la restaura) y decide
+    /// codificación y separador.
+    /// </summary>
+    private static async Task<(Encoding Codificacion, char Separador)> DetectarCodificacionYSeparadorAsync(
+        Stream fuente, CancellationToken ct)
+    {
+        var muestra = new byte[MuestraCodificacion];
+        var total = 0;
+        int n;
+        while (total < muestra.Length
+               && (n = await fuente.ReadAsync(muestra.AsMemory(total, muestra.Length - total), ct)) > 0)
+            total += n;
+
+        var finDeArchivo = total < muestra.Length;
+        var desde = total >= BomUtf8.Length && muestra.AsSpan(0, BomUtf8.Length).SequenceEqual(BomUtf8)
+            ? BomUtf8.Length
+            : 0;
+
+        string texto;
+        Encoding codificacion;
+        if (desde > 0)
+        {
+            codificacion = new UTF8Encoding(false);
+            texto = codificacion.GetString(muestra, desde, total - desde);
+        }
+        else
+        {
+            try
+            {
+                // flush=false salvo en fin de archivo: el corte en 64 KB puede partir un
+                // carácter multibyte, y eso no es un error de codificación.
+                var estricto = new UTF8Encoding(false, throwOnInvalidBytes: true);
+                var chars = new char[estricto.GetMaxCharCount(total)];
+                var cuenta = estricto.GetDecoder().GetChars(muestra, 0, total, chars, 0, flush: finDeArchivo);
+                texto = new string(chars, 0, cuenta);
+                codificacion = new UTF8Encoding(false);
+            }
+            catch (DecoderFallbackException)
+            {
+                codificacion = Encoding.Latin1;
+                texto = codificacion.GetString(muestra, 0, total);
+            }
+        }
+
+        return (codificacion, DetectarSeparador(texto));
+    }
+
+    /// <summary>Cuenta ';' y ',' fuera de comillas en la primera línea lógica.</summary>
+    private static char DetectarSeparador(string texto)
+    {
+        int puntoYComa = 0, coma = 0;
+        var enComillas = false;
+        foreach (var c in texto)
+        {
+            if (c == '"') { enComillas = !enComillas; continue; }   // "" escapado alterna dos veces: neutro
+            if (enComillas) continue;
+            if (c is '\r' or '\n') break;
+            if (c == ';') puntoYComa++;
+            else if (c == ',') coma++;
+        }
+        return puntoYComa > 0 && puntoYComa >= coma ? ';' : ',';
+    }
+
+    /// <summary>
+    /// Como <see cref="ExtraerFilasXlsx"/> (misma hoja: "BASE" o la primera) pero enumerando
+    /// fila por fila sin materializar la lista. Las filas vacías intermedias se omiten
+    /// (<c>RowsUsed</c>); cada fila abarca todas las columnas del rango usado, así que los
+    /// índices siguen alineados con el encabezado aunque haya celdas vacías.
+    /// El workbook se libera al terminar (o abandonar) la enumeración.
+    /// </summary>
+    public static IEnumerable<string[]> LeerXlsxPorFilas(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        var rango = HojaDeDatos(workbook).RangeUsed();
+        if (rango is null) yield break;
+
+        foreach (var fila in rango.RowsUsed())
+            yield return fila.Cells().Select(CeldaATexto).ToArray();
+    }
+
+    /// <summary>
+    /// Número de filas que produciría <see cref="LeerXlsxPorFilas"/> (encabezado incluido).
+    /// Sirve para reportar progreso sin convertir celdas a texto.
+    /// </summary>
+    public static int ContarFilasXlsx(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        return HojaDeDatos(workbook).RangeUsed()?.RowsUsed().Count() ?? 0;
+    }
+
+    private static IXLWorksheet HojaDeDatos(XLWorkbook workbook) =>
+        workbook.Worksheets
+            .FirstOrDefault(w => string.Equals(w.Name.Trim(), "BASE", StringComparison.OrdinalIgnoreCase))
+        ?? workbook.Worksheets.First();
 }
