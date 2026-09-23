@@ -32,7 +32,32 @@ Estado encontrado:
 
 El Comparador de Carteras estaba operativamente inservible y nadie lo había atribuido al ETL.
 
-### Causa: el paquete corre en 32 bits y se topa con el techo de 2 GB
+> ⚠️ **Corrección del 2026-09-23 (misma fecha, más tarde).** La primera versión de este documento
+> culpaba al `/X86` de la pérdida de datos. **Estaba mal.** El `/X86` explica por qué el ETL viene
+> fallando, pero una corrida que revienta por memoria ni siquiera llega a tocar la tabla final.
+> Los datos los destruyó una corrida **exitosa**. Ver la sección siguiente y ADR-038.
+
+### Causa de la pérdida de datos: una corrida exitosa sin archivos
+
+Detalle por tarea de la ejecución 11218 (`SSISDB.catalog.executable_statistics`):
+
+| Tarea | Duración |
+|---|---|
+| Tarea Ejecutar SQL | 1,4 s |
+| Tarea Ejecutar proceso | 2,2 s |
+| Contenedor Foreach Por Cartera | **0,047 s** |
+| Tarea Ejecutar SQL → Insertar en tablas principales | **19,5 s** |
+| Tarea Ejecutar proceso - Eliminar Excel | 0,1 s |
+
+El Foreach iteró **cero veces**: no había ningún Excel. Y el paso siguiente corrió igual, llamando
+a un `sp_Insertar_UltimoEstadoTitular` que empezaba con `TRUNCATE TABLE` incondicional, sin
+transacción y sin mirar el staging. Truncó 539.000 filas, insertó cero, y el paquete terminó con
+`execution_result = 0`: **éxito**.
+
+El modo de falla peligroso no era el error, era el **éxito falso**. Corregido en ADR-038
+(reemplazo acotado + compuertas + auditoría propia), sin tocar el `.dtsx`.
+
+### Por qué el ETL viene fallando: 32 bits y el techo de 2 GB
 
 Del propio error de SSIS:
 
@@ -65,8 +90,12 @@ minutos peleando con la paginación.
 
 > ⚠ **Trampa al leer esta tabla.** La ejecución 11218 aparece como OK en 64 bits y tienta a
 > concluir "64 bits funciona, y 56× más rápido". **Es un falso positivo**: su Foreach duró **47
-> milisegundos**, o sea iteró **cero veces** — no había archivos Excel. Los 31 s fueron solo el
-> `INSERT` de lo que ya estaba en staging. Esa corrida nunca tocó el origen Excel.
+> milisegundos**, o sea iteró **cero veces** — no había archivos Excel. Esa corrida nunca tocó el
+> origen Excel.
+>
+> Y no fue inofensiva: **es la corrida que vació la tabla.** Un "OK" en esta tabla no significa que
+> el ETL haya hecho su trabajo. Antes de concluir nada sobre una ejecución, mirar la duración del
+> Foreach.
 >
 > Que 64 bits sirve se verificó **por otro lado**: `Microsoft.ACE.OLEDB.12.0` **sí está registrado
 > en 64 bits** en ese servidor (lo enumera `sp_enum_oledb_providers` desde SQL Server, que es
@@ -96,22 +125,40 @@ Reversible: volver a insertar ` /X86`.
 
 ## Problemas de fondo que el flag NO resuelve
 
-**1. El paquete deja la tabla principal vacía cuando falla.** Es lo más grave del incidente: un
-error técnico se convirtió en pérdida total de datos operativos. El patrón *vaciar → cargar →
-insertar* no tiene red. Debería cargar a staging, validar, y **solo entonces** reemplazar la tabla
-final — el mismo patrón que ya usa el Cargue de Reportes de Zentinela (`#TempReporte` + `MERGE`,
-ADR-011). Requiere editar el `.dtsx` en SSDT.
+**1. El paquete dejaba la tabla principal vacía. ✅ RESUELTO (ADR-038, 2026-09-23.)** El patrón
+*vaciar → cargar → insertar* se reemplazó por *validar → reemplazar solo lo que vino → auditar*,
+dentro de los stored procedures. **No hizo falta tocar el `.dtsx`**: el daño estaba en el SQL, no
+en el paquete. Ver `docs/sql/migrations/2026-09-23_rediseno_etl_estado_titular.sql`.
 
 **2. Contraseña de `sa` en texto plano.** El comando del paso del Agente lleva la contraseña como
 parámetro literal, guardada en `msdb.dbo.sysjobsteps.command` y legible por cualquiera con acceso a
 `msdb`. Debería ser un **parámetro sensible del proyecto SSIS** o una credencial del Agente, y la
-contraseña rotarse al sacarla de ahí.
+contraseña rotarse al sacarla de ahí. **Pendiente.**
 
-**3. Falla en silencio para el negocio.** Zentinela no avisa cuando estas tablas están vacías o
-rancias. Mejora candidata: un chequeo de frescura visible en el Comparador y el Calificador
-("datos al {fecha}; última carga hace N días") en vez de mostrar cero resultados sin explicación.
+**3. Falla en silencio para el negocio. ⏳ PARCIAL.** Ya existe del lado de la base:
+`EtlEstadoTitular_Ejecucion` registra cada corrida y `vw_EtlEstadoTitularEstado` resume la frescura
+en una fila. **Falta consumirla en la UI** del Comparador y el Calificador ("datos al {fecha};
+última carga hace N días") en vez de mostrar cero resultados sin explicación.
 
 ## Cómo diagnosticar esto la próxima vez
+
+**Empezar por acá** (desde ADR-038 esta es la fuente de verdad, no SSISDB):
+
+```sql
+-- Una fila: cuándo se cargó bien por última vez y cómo terminó el último intento.
+SELECT * FROM DBCallCenter.dbo.vw_EtlEstadoTitularEstado;
+
+-- El detalle, con el motivo exacto de cada aborto.
+SELECT TOP 20 EjecucionID, Paso, Origen, Resultado, Motivo,
+       FilasStaging, CarterasStaging, FilasInsertadas, FechaInicio, FechaFin
+FROM DBCallCenter.dbo.EtlEstadoTitular_Ejecucion
+ORDER BY EjecucionID DESC;
+```
+
+Un `ABORTADA` no es una avería del rediseño: es el rediseño haciendo su trabajo. El `Motivo` dice
+qué faltó. Antes de forzar nada, revisar por qué el staging vino incompleto.
+
+Las consultas de abajo siguen sirviendo para el lado de SSIS:
 
 ```sql
 -- 1. Frescura de los datos

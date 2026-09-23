@@ -114,8 +114,19 @@ Codeudores vinculados a titulares.
 ### UltimoEstadoTitular
 Estado actual de cada titular por cartera (snapshot más reciente de gestión).  
 **PK real:** `(TitularID, CarteraID)` — AgenteID es campo actualizable, no parte de la clave.  
-Poblada por Zentinela vía `CargueReporteService` (SqlBulkCopy + MERGE). Ver ADR-011.  
+⚠️ **La escriben DOS procesos distintos**, y confundirlos ya costó un incidente:
+1. El **ETL externo** `ETL_UltimoEstadoTitular` (paquete SSIS, trabajo del Agente), que es la
+   vía principal: carga los Excel del día a `Staging_UltimoEstadoTitular` y de ahí publica con
+   `sp_Insertar_UltimoEstadoTitular`. **No es código de Zentinela.**
+   Ver `docs/dependencia-etl-ultimoestadotitular.md` y ADR-038.
+2. Zentinela vía `CargueReporteService` (SqlBulkCopy + MERGE), para cargues manuales. Ver ADR-011.
+
 ⚠️ `FechaMejorPerfil` eliminada el 2026-04-24 (campo sin valor operativo — ver ADR-011).
+
+**Índices:** `PK_UltimoEstadoTitular` clustered `(TitularID, CarteraID)`;
+`IX_UltimoEstado_CarteraID (CarteraID, FechaUltimaGestion)`;
+`IX_UltimoEstado_AgenteID (AgenteID, FechaUltimaGestion)`;
+`IX_UltimoEstado_FechaPromesa (FechaPromesa)`. Todos en `PRIMARY`.
 
 | Columna | Tipo | Nullable | PK | Notas |
 |---------|------|----------|----|-------|
@@ -131,29 +142,68 @@ Poblada por Zentinela vía `CargueReporteService` (SqlBulkCopy + MERGE). Ver ADR
 | FechaPromesa | date | SI | — | |
 | ValorPromesa | money | SI | — | |
 | MotivoNoPago | varchar(100) | SI | — | |
-| FechaActualizacion | datetime | NO | — | Timestamp del último cargue en Zentinela (DateTime.Now) |
+| Gestion | nvarchar(1000) | SI | — | Texto libre de la última gestión |
+| FechaActualizacion | datetime | NO | — | Timestamp del último cargue (ETL o Zentinela) |
+
+### Staging_UltimoEstadoTitular
+Zona de aterrizaje del ETL externo: el paquete SSIS vuelca acá los Excel de todas las carteras
+y recién después se publica a `UltimoEstadoTitular`. Mismas columnas y mismos tipos que ella.
+**Heap sin índices** — es de escritura masiva y lectura de una sola pasada.
+La vacía `sp_Insertar_HistoricoEstadoTitular` al terminar bien; si el ciclo falla, los datos
+quedan ahí para poder reintentar sin volver a leer los Excel.
 
 ### HistoricoEstadoTitular
-Historial de estados de gestión por titular, acumulado con cada cargue de reportes.  
+Historial de estados de gestión por titular, acumulado con cada cargue.  
 **Clave semántica:** `(TitularID, CarteraID, AgenteID, Rotacion)` — una fila por gestión única. Ver ADR-012.  
 ⚠️ `FechaMejorPerfil` eliminada el 2026-04-24.  
 ✅ `FechaActualizacion` añadida el 2026-04-24 (requiere `ALTER TABLE ... ADD FechaActualizacion DATETIME NOT NULL DEFAULT GETDATE()`).
+
+**Almacenamiento:** índice **clustered columnstore** `CCI_EstadoTitular` sobre el esquema de
+partición `PS_EstadoTitular_Mensual` (función `PF_EstadoTitular_Mensual`, RANGE RIGHT mensual,
+48 límites de abr-2023 a sep-2026).  
+⚠️ **La columna de particionamiento es `FechaUltimaGestion`, no `FechaActualizacion`.** La purga
+de retención filtra por `FechaActualizacion`, así que **no está alineada a la partición** y no
+puede hacerse con un switch: es un DELETE sobre el columnstore. Verificado 2026-09-23.
 
 | Columna | Tipo | Nullable | PK | Notas |
 |---------|------|----------|----|-------|
 | TitularID | bigint | NO | — | |
 | CarteraID | int | NO | — | |
-| AgenteID | int | NO | — | |
+| AgenteID | int | SI | — | |
 | UltimoPerfil | varchar(50) | SI | — | |
 | MejorPerfil | varchar(50) | SI | — | |
-| SaldoTotal | money | SI | — | |
+| SaldoTotal | decimal(18,0) | SI | — | ⚠️ **Sin decimales**: en `UltimoEstadoTitular` es `money`, al pasar acá se pierden los centavos |
 | NumeroMarcado | varchar(10) | SI | — | |
 | Rotacion | int | SI | — | Discriminador de unicidad histórica |
-| FechaUltimaGestion | date | SI | — | |
+| FechaUltimaGestion | date | SI | — | Columna de particionamiento |
 | FechaPromesa | date | SI | — | |
-| ValorPromesa | money | SI | — | |
+| ValorPromesa | decimal(18,0) | SI | — | ⚠️ Mismo truncamiento que SaldoTotal |
 | MotivoNoPago | varchar(100) | SI | — | |
-| FechaActualizacion | datetime | NO | — | Timestamp del cargue en Zentinela — UPDATE si misma Rotacion, INSERT si nueva |
+| Gestion | nvarchar(1000) | SI | — | Texto libre de la gestión |
+| FechaActualizacion | datetime | NO | — | UPDATE si misma Rotacion, INSERT si nueva |
+
+### EtlEstadoTitular_Ejecucion
+Auditoría de cada corrida del ETL de estado de titulares: qué trajo el staging, qué se reemplazó,
+y por qué abortó cuando abortó. Creada el 2026-09-23 (ADR-038) porque SSISDB reporta éxito aunque
+la corrida no haya hecho nada. Es además la referencia contra la que se comparan las compuertas
+de volumen del siguiente cargue.
+
+| Columna | Tipo | Notas |
+|---------|------|-------|
+| EjecucionID | bigint identity | PK |
+| Paso | varchar(30) | `UltimoEstadoTitular` \| `HistoricoEstadoTitular` |
+| Origen | varchar(30) | `SSIS` \| `Manual` \| `Recuperacion` |
+| Forzada | bit | 1 = se saltaron las compuertas a propósito |
+| FechaInicio / FechaFin | datetime2(3) | |
+| Resultado | varchar(12) | `EN CURSO` \| `OK` \| `ABORTADA` \| `ERROR` |
+| Motivo | nvarchar(600) | Por qué abortó, o el mensaje de error |
+| FilasStaging, CarterasStaging | int | Lo que trajo la corrida |
+| FilasAntes, FilasBorradas, FilasInsertadas, FilasDespues | int | Lo que hizo |
+| FilasActualizadas, FilasPurgadas | int | Solo el paso de histórico |
+
+**Vista `vw_EtlEstadoTitularEstado`** — una sola fila con la última carga buena, las horas
+transcurridas y el resultado del último intento. Pensada para el aviso de frescura en la UI.
+Devuelve **cero filas** mientras no haya ninguna corrida registrada: la app debe tolerarlo.
 
 ### HistoricoVirtualidad
 Histórico consolidado de virtualidad (IVR / SMS / Correo). Una sola tabla con discriminador `Canal`. Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.
