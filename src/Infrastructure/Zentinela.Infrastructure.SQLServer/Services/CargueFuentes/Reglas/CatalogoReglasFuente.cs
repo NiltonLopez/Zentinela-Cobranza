@@ -20,6 +20,7 @@ internal static class CatalogoReglasFuente
         [CatalogoCargueFuentes.DatosClaro.Fuente] = new ReglaDatosClaro(),
         // ── Fase 2 · grupo "otras" ──
         [CatalogoCargueFuentes.Fosyga.Fuente]    = new ReglaFosyga(),
+        [CatalogoCargueFuentes.Rgm.Fuente]       = new ReglaRgm(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

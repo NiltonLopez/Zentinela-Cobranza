@@ -14,11 +14,12 @@ solo se anota lo que cambia.
 | Fuente | SP | Casos | Iguales | Diferencias | Sin explicar | Conclusión |
 |---|---|---:|---:|---:|---:|---|
 | Fosyga (+ B, C) | `sp_ProcesarFosygaAuxiliar` (2026-09-22) | 21 | 5 | 16 | 0 | Paridad OK: E1, E9, E10, E11, P2–P5, R, F |
+| RGM (+ B, C) | `sp_ProcesarRGMAuxiliar` (2026-04-13) | 22 | 5 | 17 | 0 | Paridad OK: E1, E9, E10, E11, P2, P3, P5, R, F y el defecto `LiderID = CarteraID` |
 
 ## Método (diferencias con la Fase 1)
 
 Igual que en [`PARIDAD.md`](PARIDAD.md#método): **ningún SP se ejecutó** (ni con ROLLBACK) y **ninguna
-tabla `*Auxiliar` real se leyó para escribir ni se tocó**. El lado viejo es el cuerpo del SP como batch
+tabla `*Auxiliar` real se tocó**. El lado viejo es el cuerpo del SP como batch
 ad-hoc con toda tabla que escribe sustituida por `#temp` (`<Fuente>Auxiliar → #Aux` con la estructura
 exacta de `<Fuente>Auxiliar_CREATE.sql`, destino `→ #Dest`, `Titular → #Titular`,
 `Titular_Cartera → #Titular_Cartera`); `ListaNegraCorreos` y `Lider_Cartera` se leen directo. La
@@ -32,7 +33,7 @@ Lo que cambia respecto de la Fase 1:
 - **Rango**: el del grupo `otras` (999000003000..3999). Los casos de paridad usan 3601–3699 (Fosyga),
   3701–3799 (RGM) y 3801–3899 (TigoUne), fuera de los bloques del harness (3000–3499).
 - **Auditoría**: solo la del usuario `harness-cargue-otras` (otros grupos corren sus harness a la vez;
-  contar toda `CargueFuenteEjecucion` daba falsos positivos).
+  contar toda `CargueFuenteEjecucion` daría falsos positivos).
 - **Lista de tablas prohibidas** ampliada con `Fosyga`, `RGM`, `TigoUne`, `Tigo`, `Runt` y sus Auxiliar;
   destinos de escritura permitidos ampliados con el alias `ta` y la CTE `Duplicados` (los usa el SP de
   TigoUne).
@@ -46,7 +47,7 @@ Lo que cambia respecto de la Fase 1:
 
 **Limpieza verificada** al final de cada escenario: el rango 999000003000..3999 queda con 0 filas en
 todas las tablas de `Harness.TablasDelRango`, la auditoría del usuario del grupo en 0 y el `COUNT(*)` de
-cada destino igual al inicial (Fosyga 2.140.272; RGM y TigoUne en sus secciones).
+cada destino igual al inicial (Fosyga 2.140.272; RGM 1.663.543).
 
 ## Fosyga
 
@@ -219,6 +220,170 @@ ERROR 2628 (línea 68): Los datos binarios o de la cadena se truncan en la colum
 PRINT: Se terminó la instrucción.
 PRINT: 0 INSERTADOS EN LA TABLA FOSYGA
 PRINT: 0 DUPLICADOS FUERON ELIMINADOS DE FOSYGA
+```
+
+</details>
+
+## RGM
+
+**Definición** (`CatalogoCargueFuentes.Rgm`, `sys.columns` de `dbo.RGM` el 2026-09-24): Marca
+varchar(50), **Modelo int**, Placa varchar(50), EstadoEnRGM bit, FechaConsulta `date` NOT NULL. FK a
+`Titular` (`FK_RGM`), sin triggers ni CHECK, heap con `IX_RGM_TitularID_Fecha`. 1.663.543 filas,
+1.662.514 titulares: una fila vigente por titular (`UnaPorTitular`, como el dedup del SP; solo 15
+titulares tienen dos vehículos distintos, en cargas de fechas distintas). 8.774 filas con datos; el
+resto (1.654.769) son vacías. Clave = las 3 columnas; flag = cualquiera de las 3 (paso 4 del SP).
+`RGMAuxiliar` tenía `Modelo varchar(50)` y `Placa varchar(6)`.
+
+**Placa: sí aplica la validación de SIMIT** (`PlacaVehiculo.EsValida`, genérica para columnas tipo
+`Placa`). Sobre las 8.765 placas no nulas de `dbo.RGM`: 8.740 (99,7 %) la cumplen (AAA999 4.821, AAA99A
+3.871, AAA99 26, 999AAA 21, con espacio inicial ' HGK96'…); las 25 que no son `[objec` ×21
+(`'[object Object]'` truncado por el varchar(6) del staging), `AVAL` ×3 y `0` ×1. Ninguna placa real se
+pierde.
+
+**Regla** (`ReglaRgm`): el SP no tenía reglas propias. La regla agrega una validación del **Modelo**:
+año entre 1900 y el actual + 2, lo demás se anula con aviso. Motivo: la columna destino es `int` y
+`#Carga` lo lleva como `bigint` (el motor no conoce el rango de la columna); un número enorme haría
+fallar el `INSERT` de todo el cargue por desbordamiento. Rango real en `dbo.RGM`: 1991..2026 y un 2323.
+
+**Conclusión: paridad OK.** 18 casos + 4 de fragilidad y del defecto de relaciones (22): 5 idénticos y
+17 diferencias, todas explicadas; 0 predicciones fallidas.
+
+Detalles:
+
+- **RGM-B: `LiderID = CarteraID`.** El paso 2 inserta `SELECT DISTINCT fa.TitularID, fa.CarteraID,
+  fa.CarteraID`: con el par (1, 29) el SP crea (29, 29), que viola `FK_TitularCartera_LiderCartera`
+  (en la BD real el `INSERT` de relaciones falla entero). Con las carteras 4 y 22, que tienen varios
+  líderes y entre ellos uno con el mismo número (pares activos (4, 4) y (22, 22)), el SP asignaba el
+  titular a ese líder aunque el archivo dijera otro. El motor usa el par del archivo validado contra
+  `Lider_Cartera` activo. El escenario principal usa el par (4, 4) para que este defecto no tape el resto.
+- **R03, R04, R05, R06 (R).** Placas: `[objec` y `AVAL` anuladas (R03 queda sin datos: flag 0);
+  `' HGK96'` → `HGK96`, `kya-12` → `KYA12`.
+- **R08 (R).** Modelo 2323 anulado, el resto de la fila entra.
+- **RGM-C (F).** Un Modelo no numérico (`'ABC'`, o `'2021.0'` de Excel) cabe en `RGMAuxiliar.Modelo`
+  varchar(50) y hace fallar la conversión a `int` del `INSERT` a `RGM` con **error 245, que aborta el
+  batch**: no entra ninguna fila del archivo y el dedup del paso 7 tampoco corre. El motor anula ese
+  modelo con aviso ("valor no numérico") y lee `'2021.0'` como 2021 (caso T6 del harness).
+- **R11, R12 (P5), R13 (E9), R14 (E11), R17 (P2).** Como en Fosyga: vacías, dedup global, repetido, vacíos
+  convencionales.
+
+#### Escenario RGM
+
+Columnas del destino: `Marca · Modelo · Placa · EstadoEnRGM · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| R01 | Titular nuevo; nombre con tilde; marca, modelo y placa | CHEVROLET · 2022 · KNR827 · 1 · HOY | CHEVROLET · 2022 · KNR827 · 1 · HOY | Óscar Peña / OSCAR PEÑA | L4/C4 / L4/C4 | difiere: titular | ≠ E1 nombre limpio |
+| R02 | Documento inválido (4 dígitos) | KIA · ∅ · ∅ · 1 · HOY | — | DOC CORTO / — | L4/C4 / — | difiere: destino, titular, relación | ≠ P3 documento inválido |
+| R03 | Placa '[objec' (21 filas así en dbo.RGM: '[object Object]' truncado a 6) | ∅ · ∅ · [objec · 1 · HOY | ∅ · ∅ · ∅ · 0 · HOY | PLACA BASURA / PLACA BASURA | L4/C4 / L4/C4 | difiere: destino | ≠ R placa validada (PlacaVehiculo.EsValida): anulada, flag 0 |
+| R04 | Placa 'AVAL' con marca | RENAULT · ∅ · AVAL · 1 · HOY | RENAULT · ∅ · ∅ · 1 · HOY | PLACA AVAL / PLACA AVAL | L4/C4 / L4/C4 | difiere: destino | ≠ R placa validada: anulada, el resto entra |
+| R05 | Placa ' HGK96' (espacio inicial, como en dbo.RGM) | AKT · 2019 · ' HGK96' · 1 · HOY | AKT · 2019 · HGK96 · 1 · HOY | PLACA ESPACIO / PLACA ESPACIO | L4/C4 / L4/C4 | difiere: destino | ≠ R placa normalizada ('HGK96') |
+| R06 | Placa en minúsculas con guion 'kya-12' | ∅ · ∅ · kya-12 · 1 · HOY | ∅ · ∅ · KYA12 · 1 · HOY | PLACA MINUSCULA / PLACA MINUSCULA | L4/C4 / L4/C4 | difiere: destino | ≠ R placa normalizada ('KYA12') |
+| R08 | Modelo 2323 (1 fila así en dbo.RGM) | MAZDA · 2323 · ABC123 · 1 · HOY | MAZDA · ∅ · ABC123 · 1 · HOY | MODELO RARO / MODELO RARO | L4/C4 / L4/C4 | difiere: destino | ≠ R modelo fuera de rango anulado |
+| R09 | Existente, contenido idéntico | NISSAN · 2017 · IPR432 · 1 · HOY | NISSAN · 2017 · IPR432 · 1 · HOY | RGM EXISTENTE / RGM EXISTENTE | L4/C4 / L4/C4 | igual | = |
+| R10 | Existente; otro vehículo (placa distinta) | HYUNDAI · 2014 · TZL873 · 1 · viejo 2026-01-15<br>MINI · 2011 · RHV471 · 1 · HOY | HYUNDAI · 2014 · TZL873 · 1 · viejo 2026-01-15<br>MINI · 2011 · RHV471 · 1 · HOY | OTRO VEHICULO / OTRO VEHICULO | L4/C4 / L4/C4 | igual | = |
+| R11 | Vacía vieja en destino; ahora trae datos | BAJAJ · 2021 · OGT78F · 1 · HOY<br>∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | BAJAJ · 2021 · OGT78F · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L4/C4 / L4/C4 | difiere: destino | ≠ P5 política de vacías (el SP no purgaba) |
+| R12 | Datos en destino; el archivo trae fila vacía | TVS · 2025 · VTJ69G · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · 0 · HOY | TVS · 2025 · VTJ69G · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L4/C4 / L4/C4 | difiere: destino | ≠ P5 la vacía no entra (el SP la insertaba) |
+| R13 | Titular AJENO al archivo con duplicado exacto en destino | KIA · 2020 · GXR046 · 1 · viejo 2026-01-15 | KIA · 2020 · GXR046 · 1 · viejo 2026-01-15<br>KIA · 2020 · GXR046 · 1 · viejo 2026-01-15 | AJENO RGM / AJENO RGM | — / — | difiere: destino | ≠ E9 sin limpiezas globales (el paso 7 del SP deduplica toda la tabla) |
+| R14 | Titular repetido con dos vehículos igual de completos | NISSAN · 2017 · IPR367 · 1 · HOY | NISSAN · 2018 · IPR432 · 1 · HOY | DOS VEHICULOS / DOS VEHICULOS | L4/C4 / L4/C4 | difiere: destino | ? SP conserva una fila arbitraria; nuevo la última (misma completitud) con aviso |
+| R15 | Solo Marca | CREDIEMPLEADO · ∅ · ∅ · 1 · HOY | CREDIEMPLEADO · ∅ · ∅ · 1 · HOY | SOLO MARCA / SOLO MARCA | L4/C4 / L4/C4 | igual | = |
+| R16 | Solo Modelo | ∅ · 2020 · ∅ · 1 · HOY | ∅ · 2020 · ∅ · 1 · HOY | SOLO MODELO / SOLO MODELO | L4/C4 / L4/C4 | igual | = |
+| R17 | 'N/A' en Marca y '0' en Modelo | N/A · 0 · ∅ · 1 · HOY | ∅ · ∅ · ∅ · 0 · HOY | NA MARCA / NA MARCA | L4/C4 / L4/C4 | difiere: destino | ≠ P2 vacíos convencionales ('N/A','0' → NULL; flag 0) |
+| R18 | Moto: marca, modelo y placa AAA99A válidos | YAMAHA · 2021 · LZB10H · 1 · HOY | YAMAHA · 2021 · LZB10H · 1 · HOY | MOTO VALIDA / MOTO VALIDA | L4/C4 / L4/C4 | igual | = |
+| R19 | Titular existente con nombre mojibake en BD; archivo 'Piña Ruiz' | HONDA · ∅ · ∅ · 1 · HOY | HONDA · ∅ · ∅ · 1 · HOY | PIÃ‘A RUIZ / PIÑA RUIZ | L4/C4 / L4/C4 | difiere: titular | ≠ E1 nombre reparado |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 18, excluidas 1, duplicadas 1, expansión +0, candidatas 16, insertadas 14, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 11, nombres reparados 1, relaciones nuevas 16.
+Carga (ejecución 270): insertadas 14, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 11, nombres reparados 1, relaciones 16.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×2: Placa: valor que no es una placa anulado
+- aviso ×1: Modelo: no es un año de modelo plausible, anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×16: Relaciones titular-cartera nuevas
+- info ×11: Titulares nuevos que se crearán
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.RGM
+- info ×1: Nombres de titular rotos en BD que se repararán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; RGM 1663543→1663543; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 12 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 17 PERSONAS FUERON RELACIONADAS EN TITULAR CARTERA EN LA BASE DE DATOS
+PRINT: 2 DUPLICADOS FUERON ELIMINADOS DE #Dest
+```
+
+</details>
+
+#### Escenario RGM-B
+
+Columnas del destino: `Marca · Modelo · Placa · EstadoEnRGM · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| RB1 | Par activo con LiderID ≠ CarteraID (1, 29) | KIA · 2026 · PQS894 · 1 · HOY | KIA · 2026 · PQS894 · 1 · HOY | PAR NORMAL / PAR NORMAL | L29/C29 / L1/C29 | difiere: relación | ≠ relación: el SP inserta LiderID = CarteraID (viola FK_TitularCartera_LiderCartera en la BD real) |
+| RB2 | Par inactivo (5, 16) | RENAULT · ∅ · ∅ · 1 · HOY | RENAULT · ∅ · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L16/C16 / — | difiere: relación | ≠ E10 + LiderID = CarteraID en el SP |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 2, excluidas 0, duplicadas 0, expansión +0, candidatas 2, insertadas 2, refrescadas 0, vacías descartadas 0, vacías a purgar 0, titulares nuevos 2, nombres reparados 0, relaciones nuevas 1.
+Carga (ejecución 274): insertadas 2, refrescadas 0, vacías descartadas 0, purgadas 0, titulares nuevos 2, nombres reparados 0, relaciones 1.
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- info ×2: Titulares nuevos que se crearán
+- info ×1: Relaciones titular-cartera nuevas
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; RGM 1663543→1663543; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 2 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 2 PERSONAS FUERON RELACIONADAS EN TITULAR CARTERA EN LA BASE DE DATOS
+PRINT: 0 DUPLICADOS FUERON ELIMINADOS DE #Dest
+AVISO: 2 relaciones violarían FK_TitularCartera_LiderCartera
+```
+
+</details>
+
+#### Escenario RGM-C
+
+Columnas del destino: `Marca · Modelo · Placa · EstadoEnRGM · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| RC1 | Modelo 'ABC' (texto) | — | SUZUKI · ∅ · IVQ978 · 1 · HOY | MODELO TEXTO / MODELO TEXTO | L4/C4 / L4/C4 | difiere: destino | ≠ el nuevo lo anula con aviso; en el SP el INSERT a RGM falla entero (F) |
+| RC2 | Fila normal en el mismo archivo | — | JAC · 2023 · ETL038 · 1 · HOY | FILA NORMAL / FILA NORMAL | L4/C4 / L4/C4 | difiere: destino | ≠ F: víctima del fallo de RC1 (sin fila en RGM en el SP) |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 2, excluidas 0, duplicadas 0, expansión +0, candidatas 2, insertadas 2, refrescadas 0, vacías descartadas 0, vacías a purgar 0, titulares nuevos 2, nombres reparados 0, relaciones nuevas 2.
+Carga (ejecución 276): insertadas 2, refrescadas 0, vacías descartadas 0, purgadas 0, titulares nuevos 2, nombres reparados 0, relaciones 2.
+- aviso ×1: Modelo: valor no numérico anulado
+- info ×2: Relaciones titular-cartera nuevas
+- info ×2: Titulares nuevos que se crearán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; RGM 1663543→1663543; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 2 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 2 PERSONAS FUERON RELACIONADAS EN TITULAR CARTERA EN LA BASE DE DATOS
+ERROR 245 (línea 61): Error de conversión al convertir el valor varchar 'ABC' al tipo de datos int.
 ```
 
 </details>

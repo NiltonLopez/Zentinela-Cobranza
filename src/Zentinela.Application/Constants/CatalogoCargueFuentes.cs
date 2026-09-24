@@ -356,7 +356,39 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga];
+    /// <summary>
+    /// RGM (vehículos: marca, modelo y placa). Regla propia (<c>ReglaRgm</c>): el modelo debe ser un
+    /// año plausible. Verificado contra <c>sys.columns</c> de <c>dbo.RGM</c> el 2026-09-24: Marca
+    /// varchar(50), <b>Modelo int</b> (en RGMAuxiliar era varchar(50): un modelo no numérico tumbaba
+    /// el INSERT del SP), Placa varchar(50) (en RGMAuxiliar varchar(6), que truncaba), FechaConsulta
+    /// <c>date</c>; FK a Titular (FK_RGM), sin triggers; heap con IX_RGM_TitularID_Fecha. Una fila
+    /// vigente por titular (el SP deduplicaba el staging por titular; 1.663.543 filas, 1.662.514
+    /// titulares). La placa usa la misma validación que SIMIT (<c>PlacaVehiculo</c>): en dbo.RGM el
+    /// 99,7 % de las 8.765 placas la cumple; las 25 que no son '[objec' ('[object Object]' truncado
+    /// a 6), 'AVAL' y '0'. El flag, como en el SP, es marca, modelo o placa con valor.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Rgm = new()
+    {
+        Fuente          = "RGM",
+        Etiqueta        = "RGM (vehículos)",
+        TablaDestino    = "dbo.RGM",
+        ColumnaFlag     = "EstadoEnRGM",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Vehículo por titular: marca, modelo (año) y placa.",
+        ColumnasDato =
+        [
+            new("Marca", ["marca", "marcavehiculo"],
+                TipoColumnaCargue.Texto, 50, Descripcion: "Marca del vehículo"),
+            new("Modelo", ["modelo", "modelovehiculo", "anomodelo"],
+                TipoColumnaCargue.Entero, Descripcion: "Año del modelo (se anula si no es un año plausible)"),
+            new("Placa", ["placa", "placavehiculo", "numeroplaca"],
+                TipoColumnaCargue.Placa, 50, Descripcion: "Placa (sin espacios ni guiones; lo que no es placa se anula)"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga, Rgm];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

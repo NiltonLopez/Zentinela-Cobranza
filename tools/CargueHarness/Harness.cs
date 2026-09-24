@@ -48,6 +48,7 @@ internal sealed class Harness
         ("SIMIT",           "TitularID BETWEEN @d AND @h"),
         ("DatosClaro",      "TitularID BETWEEN @d AND @h"),
         ("Fosyga",          "TitularID BETWEEN @d AND @h"),
+        ("RGM",             "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];

@@ -62,6 +62,7 @@ internal static class Grupos
     public static readonly GrupoHarness Otras = new("otras", 999000003000, 999000003999, "harness-cargue-otras",
     [
         new("Fosyga",     "Fosyga",     CasoFosyga.Correr),       // Bloque(0): 3000-3099
+        new("RGM",        "RGM",        CasoRgm.Correr),          // Bloque(1): 3100-3199
     ]);
 
     // ── desglose: 999000004000..999000004999 ──

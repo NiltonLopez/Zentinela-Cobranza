@@ -176,4 +176,19 @@ public class CatalogoCoherenciaTests
         Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
         Assert.IsType<ReglaFosyga>(CatalogoReglasFuente.Obtener(d.Fuente));
     }
+
+    [Fact]
+    public void Rgm_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.RGM el 2026-09-24: Marca varchar(50), Modelo int,
+        // Placa varchar(50), FK a Titular. Flag = Marca, Modelo o Placa (paso 4 del SP).
+        var d = CatalogoCargueFuentes.Rgm;
+        Assert.Equal(("RGM", "dbo.RGM", "EstadoEnRGM", "FechaConsulta", TipoFechaSello.Date),
+                     (d.Fuente, d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["Marca:Texto:50", "Modelo:Entero:0", "Placa:Placa:50"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.True(d.ColumnasDato.All(c => c.EntraAClave));
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaRgm>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
 }
