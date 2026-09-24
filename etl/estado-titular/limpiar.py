@@ -90,7 +90,13 @@ def _fecha_promesa(serie):
             break
         convertidas = pd.to_datetime(s[pendientes], format=formato, errors="coerce")
         ok = convertidas.notna()
-        resultado.loc[convertidas.index[ok]] = convertidas[ok].dt.strftime("%Y-%m-%d")
+        # Año con 4 digitos SIEMPRE. strftime('%Y') en Windows no rellena con ceros los
+        # años menores a 1000: '0202-06-30' salia como '202-06-30', SQL no lo entendia y
+        # quedaba NULL, mientras SSIS guardaba el año 202 tal cual. Son fechas basura del
+        # origen (0202, 0433, 0025...), pero el cargador imita a SSIS; tratarlas como
+        # invalidas es una decision aparte, no un efecto colateral de un formato.
+        fechas = convertidas[ok]
+        resultado.loc[fechas.index] = [f"{d.year:04d}-{d.month:02d}-{d.day:02d}" for d in fechas]
     return resultado
 
 

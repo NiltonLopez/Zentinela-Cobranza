@@ -269,6 +269,27 @@ Si se prueba el 64 bits, hacerlo con el ` /X86` listo para restaurar. Ancla segu
 insertarlo: `REPLACE(command, '/CALLERINFO', '/X86 /CALLERINFO')`, verificando que el largo suba
 exactamente 5 caracteres.
 
+### El cargador sin SSIS (ADR-039) — la salida de fondo
+
+`etl/estado-titular/` reemplaza el flujo de datos del paquete. Una vez desplegado, **deja sin
+efecto todo lo de 32 bits, lotes y alistamiento** de esta sección: no usa Excel ni ACE, y una
+cartera sin registrar ya no tumba la carga, se aparta y se informa.
+
+```powershell
+# comparar contra lo que hay hoy, sin escribir nada
+powershell -NoProfile -ExecutionPolicy Bypass -File etl\estado-titular\cargar.ps1 -Modo comparar
+# publicar
+powershell -NoProfile -ExecutionPolicy Bypass -File etl\estado-titular\cargar.ps1 -Modo publicar
+```
+
+Qué no se cargó, y por qué:
+
+```sql
+SELECT * FROM DBCallCenter.dbo.vw_EtlEstadoTitularRechazos;
+```
+
+Mientras no esté desplegado en el servidor, lo que sigue vale.
+
 ### Cargar por lotes
 
 ```bash

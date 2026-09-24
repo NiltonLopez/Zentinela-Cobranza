@@ -278,7 +278,30 @@ try {
         $enStaging = @($stgTabla.Rows | ForEach-Object { [int]$_.CarteraID })
         $intrusas = @($enStaging | Where-Object { $esperadas -notcontains $_ })
 
-        if ($filas -eq 0) {
+        # ── ¿El Foreach termino? ────────────────────────────────────────────
+        # En modo lotes el paquete TIENE que fallar, pero en el paso 4 (la compuerta
+        # aborta por pocas carteras), que corre DESPUES del Foreach. Si el que fallo es el
+        # Foreach, el paquete murio a mitad de la lectura y el staging trae solo parte.
+        #
+        # Esta comprobacion falto el 24-sep y costo caro: Delmar_Cast (~740 mil filas)
+        # murio por memoria a las ~271 mil. Las tres carteras del lote aparecian en el
+        # staging, el script las dio por completas, las publico, y como el reemplazo es
+        # acotado por cartera BORRO los ~469 mil titulares restantes. Informo "OK".
+        $foreachRes = Escalar @"
+SELECT TOP 1 es.execution_result
+FROM SSISDB.catalog.executable_statistics es
+JOIN SSISDB.catalog.executables e ON e.executable_id = es.executable_id AND e.execution_id = es.execution_id
+WHERE es.execution_id = $ej AND e.executable_name = 'Contenedor Foreach Por Cartera'
+ORDER BY es.start_time DESC
+"@ 60
+        $foreachOk = ($foreachRes -ne $null -and $foreachRes -ne [DBNull]::Value -and [int]$foreachRes -eq 0)
+
+        if (-not $foreachOk -and $filas -gt 0) {
+            Write-Output "[$(Ahora)] LOTE $n NO SE PUBLICA: el Foreach NO termino (resultado=$foreachRes). El staging trae una carga a medias ($filas filas)."
+            Write-Output "[$(Ahora)] Publicarla borraria los titulares que no alcanzaron a leerse. Revisar la ejecucion $ej (casi seguro memoria, 32 bits)."
+            $resumen += [pscustomobject]@{ Lote = $n; Carteras = $claves -join ','; Filas = $filas; Estado = 'INCOMPLETO' }
+        }
+        elseif ($filas -eq 0) {
             Write-Output "[$(Ahora)] LOTE $n SIN DATOS en el staging. Se saltea; revisar los errores de la ejecucion $ej."
             $resumen += [pscustomobject]@{ Lote = $n; Carteras = $claves -join ','; Filas = 0; Estado = 'SIN DATOS' }
         }

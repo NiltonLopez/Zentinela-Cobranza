@@ -131,9 +131,37 @@ Contra la carga que hizo SSIS el 2026-09-24 **a partir de los mismos CSV**, con 
     lo nuevo.
 - Ninguna diferencia en titulares únicos fuera del recorte de gestión.
 
-**Completa (19 archivos):** ver la sección siguiente.
+**Completa (19 archivos, 22 carteras)**, contra lo que dejó en `UltimoEstadoTitular` la carga por
+lotes del 2026-09-24:
 
-<!-- RESULTADOS-COMPLETA -->
+- 2.584.023 filas leídas → 41.339 apartadas → **2.321.834 titulares únicos**.
+- Apartadas: las 41.339 son `tipo-cartera-inactiva` (`ALIARCOM CASTIGADA`, de `grupo_ceiba`). Es
+  exactamente lo que SSIS perdía en silencio.
+- **`solo_en_ssis = 0` en las 22 carteras**: no hay un solo titular que SSIS cargara y el cargador no.
+- **19 carteras con conjuntos idénticos.** Las otras 3 (las de `Delmar_Cast`: IDs 8, 11 y 33) traen
+  +324.087, +24.839 y +120.459 titulares que **no estaban** en la tabla. Ver abajo.
+- Diferencias de columna, todas explicadas:
+  - En titulares **repetidos** en el archivo (fila al azar en SSIS): saldo 21.946, fecha de promesa
+    1.113, valor de promesa 1.139, gestión 2.671.
+  - En titulares únicos: **45.287 gestiones truncadas a 255**; en el 100 % lo de SSIS es el comienzo
+    exacto de lo nuevo.
+  - 5 fechas de promesa en titulares únicos, todas con año de 3 dígitos (`0202-06-30` y similares):
+    el cargador las dejaba en `NULL` porque `strftime('%Y')` en Windows no rellena con ceros.
+    **Corregido** en `limpiar.py` (año siempre con 4 dígitos, como SSIS).
+
+**Lo que destapó la comparación en `Delmar_Cast`.** Esas 469 mil filas faltantes no son un error
+del cargador nuevo: la carga por lotes (`cargar-por-lotes.ps1`) procesó `Delmar_Cast` en un lote
+propio, el paquete se quedó sin memoria a las ~271 mil filas, **y el script publicó igual** lo que
+había llegado al staging. Como el reemplazo es por cartera (ADR-038), borró de la tabla los
+titulares que no alcanzaron a entrar. Las compuertas no lo frenaron porque la referencia de volumen
+era de otra cartera. Quedó corregido en el script: antes de publicar un lote comprueba en `SSISDB`
+que el `Contenedor Foreach Por Cartera` terminó con éxito; si no, lo marca `INCOMPLETO` y no
+publica. Verificado contra las ejecuciones reales: la de `Delmar_Cast` da *no se publicaría*, las
+otras tres, *se publicaría*.
+
+**Tiempo, desde la estación de trabajo:** 30 min 20 s (limpieza 23 min 23 s, subida 4 min 55 s,
+proceso en SQL 1 min 58 s). La subida y buena parte de la limpieza son el enlace de 0,4 MB/s: los
+CSV se leen por la red.
 
 **Modo publicar**, en una base de prueba de LocalDB con las carteras reales del subconjunto:
 publica de punta a punta (staging, compuertas, histórico) en 1 segundo, y la comparación de lo
