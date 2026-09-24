@@ -135,12 +135,14 @@ Si un `<select>` nativo aparece en código nuevo (o al tocar código viejo), ree
 
 | Prop | Tipo | Default | Descripción |
 |---|---|---|---|
-| `options` | `ZDropdownOption<T>[]` | — | `{ value: T, label: string, sublabel?: string }[]` — incluir una opción con `value` vacío/null como placeholder ("— Selecciona... —") si el campo es opcional |
+| `options` | `ZDropdownOption<T>[]` | — | `{ value: T, label: string, sublabel?: string, textoBusqueda?: string }[]` — incluir una opción con `value` vacío/null como placeholder ("— Selecciona... —") si el campo es opcional. `textoBusqueda` (no visible) solo sirve con `buscable` |
 | `value` | `T` | — | Valor seleccionado actualmente |
 | `onChange` | `(value: T) => void` | — | Callback al elegir una opción (cierra el panel automáticamente) |
 | `style` | `React.CSSProperties` | — | Estilos adicionales (ej. `{ width: '320px' }`); `minWidth` se combina con el ancho auto-calculado |
 | `background` | `string` | `'var(--z-bg-card)'` | Fondo del botón cerrado — usar `'var(--z-bg-page)'` cuando el dropdown vive dentro de una tarjeta con fondo `var(--z-bg-card)`, para que se distinga del contenedor |
 | `disabled` | `boolean` | `false` | Deshabilita el botón (opacidad reducida, cursor `not-allowed`) |
+| `buscable` | `boolean` | `false` | Permite escribir para filtrar las opciones (ver abajo). Opt-in: sin la prop el dropdown es el de siempre |
+| `ariaLabel` | `string` | — | Nombre accesible del campo cuando es `buscable` (no hay `<label>` visible) |
 
 Es genérico (`ZDropdown<T>`): `T` puede ser `string`, `number`, o cualquier tipo primitivo
 usado como `value` (ej. `''` para "sin selección" mezclado con `number` para IDs reales).
@@ -148,6 +150,32 @@ usado como `value` (ej. `''` para "sin selección" mezclado con `number` para ID
 El ancho del botón se auto-calcula midiendo el texto real de la opción más larga (canvas
 `measureText`, tope de 340px) — no hace falta fijar un ancho manualmente salvo que se quiera
 forzar uno específico vía `style.width`.
+
+#### Variante `buscable` (2026-09-24)
+
+Para listas largas donde conviene escribir en vez de recorrer. Hoy **solo la usa el selector de fuente
+de Cargue de Fuentes de Datos** (22 fuentes, `CargueFuentesDatosPage`); las demás pantallas no cambian.
+
+- **Cerrado se ve igual** que el dropdown normal (mismo recuadro, etiqueta en negrita, flecha). Al
+  abrirlo, el texto del botón pasa a ser un `<input>` vacío con la opción elegida como placeholder.
+- **Filtro**: por `label` y `textoBusqueda` (p. ej. la clave técnica "NuevaEps"), sin tildes ni mayúsculas
+  (`normalize('NFD')`), por "contiene". Sin resultados muestra "Sin coincidencias para …".
+- **Teclado**: ↓/↑ recorren (y ↓ o Enter abren), Enter elige, Escape cierra sin cambiar, Tab cierra. La
+  opción resaltada se mantiene visible desplazando solo el panel.
+- **Accesibilidad**: patrón ARIA *combobox + listbox* (`role="combobox"`, `aria-expanded`,
+  `aria-controls`, `aria-activedescendant`); el foco no sale del input. Pasar siempre `ariaLabel`.
+- El panel no se sale de la pantalla en móvil (`maxWidth: min(420px, 100vw - 32px)`).
+
+```tsx
+<ZDropdown<string>
+  buscable
+  ariaLabel="Fuente de datos"
+  options={fuentes.map(f => ({ value: f.fuente, label: f.etiqueta, textoBusqueda: f.fuente }))}
+  value={fuenteSel}
+  onChange={setFuenteSel}
+  background="var(--z-bg-page)"
+/>
+```
 
 #### Ejemplo de uso
 

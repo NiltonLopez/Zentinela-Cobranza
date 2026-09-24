@@ -57,9 +57,18 @@ Las 22 fuentes de localización ya se cargan por el módulo. Lo nuevo de la Fase
   de NULL. Sin pérdida (las vistas toman la más reciente, que es la limpia), pero la tabla crece una fila
   por titular afectado. Volumen legacy medido el 2026-09-24: **Positiva 140.758 correos `''` y 30.056
   celulares `'0'`**, **Coosalud 32.698 correos `''`**, **MiVacuna 1.118 correos `''`**, SaludTotal 14 y
-  SOS 6 teléfonos, TigoUne 27.166 filas con `''` en teléfono o email. Se evitaría con un **script de
-  normalización** del legacy (`''`/`'0'` → NULL, como el de placas de SIMIT) antes de la primera carga.
-  Decisión pendiente del coordinador.
+  SOS 6 teléfonos, TigoUne 27.166 filas con `''` en teléfono o email. El script ya existe (commit
+  199d99b) y **no se ha ejecutado**: ver "PENDIENTE: normalizar vacíos legacy" abajo.
+- **Ejecuciones de prueba ocultas** (commit cb20c62, `UsuariosPruebaCargue`). La lista "Cargues en curso y
+  recientes" no muestra las ejecuciones de cuentas `harness-cargue*`: el harness escribe **temporalmente en
+  la BD de producción** (`CargueFuenteEjecucion`, que borra al limpiar). El filtro va en el SQL de
+  `ListarAsync`, y eso además evita que abrir la lista mientras el harness corre cierre su ejecución
+  `EN CURSO` como `ERROR` "Interrumpida (reinicio del servidor)" (no tiene job en la memoria de la API).
+  **Un grupo nuevo del harness debe usar ese prefijo** (`harness-cargue-<grupo>`) o sus corridas aparecerán
+  en la lista y se cerrarán como interrumpidas. Para ver lo del harness: consultar la tabla directamente.
+- **Selector de fuente con búsqueda.** Es el único `ZDropdown` con `buscable` (escribir filtra por nombre y
+  clave, sin tildes ni mayúsculas); las demás pantallas no cambian. Las columnas esperadas ya no salen en
+  cada opción, solo en su panel del paso 2.
 - **Tigo exige la columna Nombre.** `dbo.Tigo` tiene FK a `Titular`, así que el cargue crea titulares y
   el archivo debe traer Nombre. El formato viejo de `TigoAuxiliar` (sin Nombre) **se rechaza** con
   "Faltan columnas obligatorias: Nombre". Tigo no tenía SP: se llenó a mano en 2025 y es la primera vez que
@@ -86,6 +95,36 @@ Las 22 fuentes de localización ya se cargan por el módulo. Lo nuevo de la Fase
 - **Columna `Entero` contra destino `int`** (H1 de `PARIDAD-otras.md`): `#Carga` la lleva como `bigint` y un
   número enorme haría fallar el cargue entero (con rollback, sin decir la fila). Hoy solo `RGM.Modelo`, que
   `ReglaRgm` valida como año.
+
+## PENDIENTE: normalizar vacíos legacy antes de la primera carga (ADR-039, commit 199d99b)
+
+- `docs/sql/migrations/2026-09-25_normalizar_vacios_legacy.sql`, **NO ejecutado. Solo con confirmación
+  explícita del usuario**, fuera de horario y antes de la primera carga de cada fuente con el módulo.
+  Pasa a NULL los centinelas legacy (`''`, `'0'`, `'NULL'`, `'N/A'`, blancos, NIT `0`, fechas <= 1900) y
+  recorta/colapsa blancos con el mismo criterio del motor; sin él la primera recarga inserta una fila por
+  titular afectado en vez de refrescar (S1).
+- **≈500.591 filas en 19 tablas** (Positiva 170.455, PositivaEmpresas 102.661, Coosalud 101.539…; medido el
+  2026-09-24). Sura y Compensados: nada. **SIMIT va por su propio script** (`2026-09-24_simit_placas_legacy.sql`).
+- **Titulares que pasan de flag 1 a 0** (sin ninguna fila con flag 1): Positiva 28.683, MiVacuna 269,
+  Cámara 57, CamaraEmpresa 6, ARLSura 1, MutualSer 1. Cambian `[Estado <Fuente>]` de la BaseMadre y las
+  vistas `vw_Datos*` / `vw_SinDatos*` (pasan a "sin datos"). El **panel de localización del Calificador casi
+  no cambia** (ya trata `''` y `'0'` como vacíos): solo 16 titulares de Positiva con fecha de nacimiento
+  <= 1900. **No recalcula el flag de Compensados** (sale también del Estado del archivo).
+- **Cómo:** `@Solo = '<Fuente>'` para una sola (o NULL = todas); correr primero el bloque 0 (solo lectura) y
+  comparar con las cifras de la cabecera. Una transacción por tabla con `TABLOCKX`: **bloquea cada tabla**
+  mientras se normaliza (la BaseMadre y el Calificador esperan); ~15 min las 19, más ~7 del diagnóstico.
+  Aborta sola si hay un cargue de esa fuente en curso o algo no cuadra. Respaldo de las filas tocadas en
+  `dbo.<Tabla>_RespaldoVacios_20260925`; reversión comentada al final del script (ojo: si ya corrió un
+  cargue de esa fuente, revertir devuelve centinelas a filas refrescadas). Tras correrlo, la caché del
+  Calificador no se invalida sola (reciclar el AppPool o esperar la 1 p. m.).
+
+## DOS documentos ADR-039 (2026-09-24)
+
+- `docs/decisions/ADR-039-cargue-fuentes-motor-generico-historial-acumulativo.md` (Cargue de Fuentes, en
+  `main` desde el 2026-09-24) y `docs/decisions/ADR-039-cargador-estado-titular-sin-ssis.md` (cargador de
+  `UltimoEstadoTitular` sin SSIS, de otra sesión, posterior) comparten número. **No renombrar ninguno**: los
+  commits, el código y los demás documentos citan "ADR-039" para los dos. Al citarlos, dar el nombre del
+  archivo o el tema; el próximo ADR nuevo es el 040.
 
 ## PENDIENTE: DROP de las 6 Auxiliar de la Fase 1 (ADR-039)
 

@@ -190,6 +190,9 @@ de la misma fuente) está bloqueado salvo que se fuerce.
   `EN CURSO`; la lista de cargues la muestra como **"Interrumpido"** y la cierra en BD como `ERROR`
   con `Interrumpida (reinicio del servidor)`. Mitigación de despliegue: AppPool con `Idle Time-out = 0`
   y `Start Mode = AlwaysRunning` (`docs/despliegue.md`).
+- **Ejecuciones del harness fuera de la lista** (commit cb20c62): `ListarAsync` no devuelve los jobs en
+  memoria ni las filas de `CargueFuenteEjecucion` de usuarios `harness-cargue*` (ver "Interfaz y ejecuciones
+  de prueba").
 
 ## Fase 2 (2026-09-24): 22 fuentes
 
@@ -326,6 +329,70 @@ número**: grupos con cantidad exacta, y cada grupo con hasta 10 filas de ejempl
 - **Front**: componente `DesgloseChips` reutilizable; las listas de errores y advertencias pasaron a ser los
   chips Excluidas / Advertencias (abiertos al inicio).
 
+## Interfaz y ejecuciones de prueba (2026-09-24, commit cb20c62)
+
+- **Buscador de fuente (paso 1).** Con 22 fuentes el selector pasó a ser `ZDropdown` con la prop nueva
+  **`buscable`** (opt-in, `false` por defecto: el resto de pantallas no cambia). Cerrado se ve igual que el
+  dropdown normal; al abrirlo, el texto del botón pasa a ser un campo que filtra por etiqueta y por
+  `textoBusqueda` (la clave técnica de la fuente, p. ej. "NuevaEps"), sin tildes ni mayúsculas. Teclado
+  (↓/↑, Enter, Escape, Tab cierra) y patrón ARIA *combobox + listbox* (`aria-activedescendant`: el foco no
+  sale del input). Sin coincidencias muestra "Sin coincidencias para …". Las fuentes no habilitadas se ven
+  con "(próximamente)" y no se pueden elegir. Detalle de la prop en `docs/design-system.md`.
+- **Sin leyenda de columnas en las opciones.** El `sublabel` "Columnas: …" de cada opción se quitó: las
+  columnas esperadas siguen en su propio panel (`ColumnasEsperadas`), debajo del paso 2.
+- **Estética alineada con Cargue de Reportes.** Pasos 1 y 2 dentro de una tarjeta; tablas (lista de cargues,
+  columnas esperadas, muestra del preview) en tarjeta con franja de título y encabezado sobre fondo de página; `PanelJob` con la
+  misma tarjeta; `DesgloseChips` con el diseño del panel de errores; ancho máximo 960. Los estilos quedaron
+  en `pages/administracion/historico-virtualidad/compartidos.tsx` (`tarjeta`, `etiquetaPaso`, `tarjetaTabla`,
+  `franjaTabla`, `filaEncabezado`), junto a `DropZone`, `btnSecundario` y `cajaError`, para reutilizarlos.
+- **Ejecuciones de prueba ocultas** (`UsuariosPruebaCargue`, `Prefijo = "harness-cargue"`). El harness
+  (`tools/CargueHarness`) corre contra la BD de **producción** y deja filas en `CargueFuenteEjecucion`
+  mientras dura la corrida (las borra al limpiar): la lista "Cargues en curso y recientes" las mostraba como
+  si alguien las hubiera subido. `ListarAsync` filtra los jobs en memoria con `EsDePrueba` (sin distinguir
+  mayúsculas) y las filas de BD **en el SQL** (`Usuario NOT LIKE @PatronHarness`), no después: así no gastan
+  el `TOP` y, sobre todo, una ejecución del harness `EN CURSO` (que no tiene job en la memoria de la API) no
+  entra como "huérfana" al `UPDATE` que la cerraría como `ERROR` con "Interrumpida (reinicio del servidor)"
+  en plena corrida. Los cargues reales guardan la cuenta del token (claim `userName`), que nunca empieza
+  así; un job del harness sigue accesible por `Obtener(id)`. **Un grupo nuevo del harness debe usar el
+  prefijo** (`harness-cargue-<grupo>`) para quedar oculto; el prefijo no debe llevar comodines de `LIKE`
+  (`%`, `_`, `[`), porque va sin escapar (lo fija `UsuariosPruebaCargueTests`).
+
+## Normalización de vacíos legacy (script pendiente, 2026-09-24, commit 199d99b)
+
+Respuesta a S1 de `PARIDAD-salud.md`: `docs/sql/migrations/2026-09-25_normalizar_vacios_legacy.sql`,
+**no ejecutado**. Los SP legacy guardaban centinelas (`''`, `'0'`, `'NULL'`, `'N/A'`, solo blancos, NIT `0`,
+fechas <= 1900) y textos con blancos de sobra; el motor guarda NULL y textos recortados, y su igualdad
+NULL-safe no los reconoce: sin el script, la primera recarga de cada titular afectado **inserta** una fila
+en vez de refrescar.
+
+- **Criterio = el del motor** (si uno cambia, cambiar el otro): texto como `LimpiarTexto` (blancos de
+  `CHAR(9)`–`CHAR(13)`, `CHAR(32)` y `CHAR(160)` a un espacio, colapsados y recortados; `''`/`'0'`/`'NULL'`/
+  `'N/A'` → NULL, comparando en `Latin1_General_BIN` con `DATALENGTH`), entero `0` → NULL, fecha con año
+  <= 1900 → NULL. El flag se recalcula (como `CalcularFlag`, con `EntraAlFlag` del catálogo) **solo** en las
+  filas donde una columna del flag pasa a NULL; el resto conserva el suyo. **Compensados no**: su flag sale
+  también del Estado del archivo (`FlagDesdeArchivo`), y sus 2.315 filas con flag 1 sin EPS ni período son
+  válidas; hoy no tiene nada que normalizar.
+- **Cifras medidas el 2026-09-24:** **≈500.591 filas en 19 tablas** (Positiva 170.455, PositivaEmpresas
+  102.661, Coosalud 101.539, SaludTotal 37.297, SaviaSalud 31.804, TigoUne 27.300, ARLSura 18.043, MutualSer
+  8.078, … RGM 7). Sura y Compensados: nada. **SIMIT va por su propio script**
+  (`2026-09-24_simit_placas_legacy.sql`, que además borra filas; este no borra ni deduplica).
+- **Flag 1 → 0** (titulares que se quedan sin ninguna fila con flag 1): **Positiva 28.683**, MiVacuna 269,
+  Camara 57, CamaraEmpresa 6, ARLSura 1, MutualSer 1; flag 0 → 1, ninguno. Cambian la columna
+  `[Estado <Fuente>]` de la BaseMadre y las vistas `vw_Datos<Fuente>` / `vw_SinDatos<Fuente>` (esos
+  titulares pasan a "sin datos"), y el próximo cargue trata esas filas como vacías. El **panel de
+  localización del Calificador casi no cambia**: ya evalúa con `NULLIF(NULLIF(x, ''), '0')`; solo 16
+  titulares de Positiva (fecha de nacimiento <= 1900) pasan de encontrado a no encontrado.
+- **Qué no hace:** no replica validaciones de formato (teléfono, correo, lista negra, placa, NIT-DV) ni
+  reglas propias de fuente, no cambia mayúsculas, no toca SIMIT, Sura, Compensados, las Auxiliar, los SP
+  ni las vistas. Esos titulares sí tendrán una fila nueva en la primera recarga.
+- **Cómo se corre:** `@Solo` = la clave de una fuente (o NULL = todas); bloque 0 de diagnóstico (solo
+  lectura) contra las cifras medidas; luego una transacción por tabla (`XACT_ABORT`, `TABLOCKX`, lotes) que
+  respalda las filas tocadas en `dbo.<Tabla>_RespaldoVacios_20260925` (con su RID), normaliza y verifica
+  antes del `COMMIT` (aborta si hay un cargue de esa fuente `EN CURSO`, muchas más filas que las medidas,
+  centinelas remanentes, otro conteo o un flag distinto del calculado). **Fuera de horario**: bloquea cada
+  tabla en exclusiva; ~10-15 min las 19 (más ~7 min del diagnóstico). Probado con `ROLLBACK` en Positiva,
+  Coosalud, MiVacuna y ARLSura. Reversión por tabla desde el respaldo (comentada al final del script).
+
 ## Alternativas descartadas
 
 - **Una pantalla que ejecute los SP existentes.** Heredaba todos los defectos, 21 variantes que mantener
@@ -397,7 +464,9 @@ Paridad caso por caso en `docs/sql/legacy/PARIDAD*.md`.
 - Los datos que ya estaban en las tablas no se re-limpian (excepto SIMIT, por su script aparte): el
   motor solo decide sobre lo que carga. Consecuencia en la Fase 2: donde el legacy guardó `''` o `'0'`
   (Positiva, Coosalud, MiVacuna, TigoUne…) la primera recarga de un titular inserta una fila nueva en vez
-  de refrescar (S1 de `PARIDAD-salud.md`); sin pérdida, las vistas toman la más reciente.
+  de refrescar (S1 de `PARIDAD-salud.md`); sin pérdida, las vistas toman la más reciente. Lo evita
+  `2026-09-25_normalizar_vacios_legacy.sql` (ver "Normalización de vacíos legacy"), **pendiente de
+  ejecutar** con confirmación del usuario, fuera de horario y antes de la primera carga de cada fuente.
 
 ## Riesgos
 
@@ -445,3 +514,7 @@ Paridad caso por caso en `docs/sql/legacy/PARIDAD*.md`.
 - Script de reversión: lista blanca de las 22 fuentes comprobada contra `ColumnasDato` del catálogo
   (mismo orden), compilado con `SET NOEXEC ON` junto con las sentencias dinámicas de las 22, y la
   expresión de hash ejecutada (solo lectura) sobre cada destino.
+- Ejecuciones de prueba ocultas: `UsuariosPruebaCargueTests` (cuentas del harness sí, cuentas reales no,
+  prefijo sin comodines de `LIKE`) y el paso 7 de `CasoSura` (commit cb7c576): ni el job en memoria ni las
+  ejecuciones del harness en BD (que sí existen, >= 4) salen en `ListarAsync`, y el job sigue accesible por
+  `Obtener(id)`.
