@@ -29,6 +29,13 @@ CREATE TABLE dbo.Staging_UltimoEstadoTitular (
     MotivoNoPago VARCHAR(100) NULL, Gestion NVARCHAR(1000) NULL,
     FechaActualizacion DATETIME NOT NULL);
 
+-- La compuerta toma el universo de carteras de aca (activas y con archivo de origen).
+-- 22 carteras con archivo, como en produccion; la 99 no tiene archivo porque representa
+-- lo que carga Zentinela a mano, y no debe contar en el universo del ETL.
+CREATE TABLE dbo.Cartera (
+    ID INT NOT NULL PRIMARY KEY, NombreCartera VARCHAR(100) NULL,
+    Activa BIT NOT NULL, NombreArchivo NVARCHAR(50) NULL);
+
 CREATE TABLE dbo.HistoricoEstadoTitular (
     TitularID BIGINT NOT NULL, CarteraID INT NOT NULL, AgenteID INT NULL,
     UltimoPerfil VARCHAR(50) NULL, MejorPerfil VARCHAR(50) NULL,
@@ -36,6 +43,13 @@ CREATE TABLE dbo.HistoricoEstadoTitular (
     FechaUltimaGestion DATE NULL, FechaPromesa DATE NULL, ValorPromesa DECIMAL(18,0) NULL,
     MotivoNoPago VARCHAR(100) NULL, Gestion NVARCHAR(1000) NULL,
     FechaActualizacion DATETIME NOT NULL);
+GO
+
+INSERT INTO dbo.Cartera (ID, NombreCartera, Activa, NombreArchivo)
+SELECT TOP (22) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)), 'CARTERA', 1, NULL FROM sys.all_objects;
+UPDATE dbo.Cartera SET NombreCartera = 'CARTERA ' + CAST(ID AS VARCHAR(4)),
+                       NombreArchivo = 'archivo_' + CAST(ID AS VARCHAR(4));
+INSERT INTO dbo.Cartera (ID, NombreCartera, Activa, NombreArchivo) VALUES (99, 'CARGUE MANUAL', 1, NULL);
 GO
 
 -- Estado de partida: 22 carteras cargadas por el ETL (1..22) + la cartera 99,

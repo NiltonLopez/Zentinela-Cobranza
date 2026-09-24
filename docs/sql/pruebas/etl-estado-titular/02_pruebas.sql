@@ -155,6 +155,48 @@ DROP TABLE dbo.Respaldo;
 -- ══════════════════════════════════════════════════════════════════════════
 SELECT @n = COUNT(*) FROM dbo.vw_EtlEstadoTitularEstado WHERE UltimaCargaOk IS NOT NULL;
 EXEC dbo.Afirmar '7. vista de frescura responde',                 1, @n;
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 8. Una corrida parcial que termina OK NO baja la vara (2026-09-24: un lote
+--    OK de 2 carteras, y el ultimo dia del historico con ~4, dejaron pasar
+--    despues un lote de 7 como si fuera una carga completa).
+-- ══════════════════════════════════════════════════════════════════════════
+INSERT INTO dbo.EtlEstadoTitular_Ejecucion (Paso, Origen, Forzada, Resultado, CarterasStaging, FilasInsertadas, FechaFin)
+VALUES ('UltimoEstadoTitular', 'SSIS', 0, 'OK', 2, 150, SYSDATETIME());
+
+TRUNCATE TABLE dbo.Staging_UltimoEstadoTitular;
+INSERT INTO dbo.Staging_UltimoEstadoTitular
+    (TitularID, CarteraID, AgenteID, UltimoPerfil, SaldoTotal, Rotacion, FechaUltimaGestion, FechaActualizacion)
+SELECT TitularID, CarteraID, AgenteID, 'PARCIAL', 1, 7, '2026-09-25', '2026-09-25T10:00:00'
+FROM dbo.UltimoEstadoTitular WHERE CarteraID BETWEEN 1 AND 7;
+
+SET @err = 0;
+BEGIN TRY EXEC dbo.sp_Insertar_UltimoEstadoTitular @Origen = 'SSIS'; END TRY
+BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH
+SELECT @n = COUNT(*) FROM dbo.UltimoEstadoTitular WHERE UltimoPerfil = 'PARCIAL';
+EXEC dbo.Afirmar '8. lote de 7 aborta aunque haya un OK de 2', 50038, @err;
+EXEC dbo.Afirmar '8. y no publico ni una fila',                0,     @n;
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 9. El universo sale de Cartera: si se dan de baja 3 carteras, una carga de
+--    las 19 que quedan es completa y pasa.
+-- ══════════════════════════════════════════════════════════════════════════
+UPDATE dbo.Cartera SET Activa = 0 WHERE ID IN (20, 21, 22);
+
+TRUNCATE TABLE dbo.Staging_UltimoEstadoTitular;
+INSERT INTO dbo.Staging_UltimoEstadoTitular
+    (TitularID, CarteraID, AgenteID, UltimoPerfil, SaldoTotal, Rotacion, FechaUltimaGestion, FechaActualizacion)
+SELECT TitularID, CarteraID, AgenteID, 'UNIVERSO19', 1, 8, '2026-09-25', '2026-09-25T11:00:00'
+FROM dbo.UltimoEstadoTitular WHERE CarteraID BETWEEN 1 AND 19;
+
+SET @err = 0;
+BEGIN TRY EXEC dbo.sp_Insertar_UltimoEstadoTitular @Origen = 'SSIS'; END TRY
+BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH
+SELECT @n = COUNT(DISTINCT CarteraID) FROM dbo.UltimoEstadoTitular WHERE UltimoPerfil = 'UNIVERSO19';
+EXEC dbo.Afirmar '9. universo de 19 activas: la carga pasa', 0,  @err;
+EXEC dbo.Afirmar '9. y publica las 19 carteras',             19, @n;
+
+UPDATE dbo.Cartera SET Activa = 1 WHERE ID IN (20, 21, 22);
 GO
 
 SELECT N, Caso, Esperado, Obtenido, Estado FROM dbo.Resultado ORDER BY N;

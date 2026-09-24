@@ -143,28 +143,42 @@ BEGIN
     SET @EjecucionID = SCOPE_IDENTITY();
 
     BEGIN TRY
-        -- ── Referencia: la última corrida COMPLETA que terminó bien ─────────
-        -- Solo cuentan las del ETL (@Origen = 'SSIS'). Una recuperación o una
-        -- carga por lotes traen a propósito menos carteras que el universo
-        -- entero; si entraran acá, bajarían la vara y la compuerta dejaría
-        -- pasar después una carga incompleta de verdad.
-        SELECT TOP (1) @CarterasRef = CarterasStaging, @FilasRef = FilasInsertadas
-        FROM dbo.EtlEstadoTitular_Ejecucion
-        WHERE Paso = 'UltimoEstadoTitular' AND Resultado = 'OK' AND Origen = 'SSIS'
-        ORDER BY EjecucionID DESC;
+        -- ── Referencia de CARTERAS: el universo real ────────────────────────
+        -- Cuantas carteras tiene que traer una carga completa sale de Cartera
+        -- (activas y con archivo de origen), no de la historia de corridas.
+        --
+        -- Asi estuvo antes, y fallo DOS veces (2026-09-24):
+        --   * De la ultima corrida OK: una carga por lotes que terminaba OK con 2
+        --     carteras bajaba la vara para la siguiente carga completa.
+        --   * Del ultimo dia del historico: tras recargas parciales ese dia tenia
+        --     ~4 carteras, la compuerta exigio 4 y el paquete publico un lote de 7
+        --     por su cuenta (auditoria, EjecucionID 16).
+        -- Cartera no se puede contaminar con ninguna carga, parcial o no.
+        SELECT @CarterasRef = COUNT(*)
+        FROM dbo.Cartera
+        WHERE Activa = 1 AND NombreArchivo IS NOT NULL;
 
-        -- Primera corrida tras el despliegue: todavía no hay historial propio,
-        -- así que la referencia sale del último día cargado en el histórico.
-        IF @CarterasRef IS NULL
-            SELECT @CarterasRef = COUNT(DISTINCT h.CarteraID)
-            FROM dbo.HistoricoEstadoTitular h
-            WHERE h.FechaActualizacion >= (
-                      SELECT DATEADD(DAY, -1, MAX(h2.FechaActualizacion))
-                      FROM dbo.HistoricoEstadoTitular h2);
+        -- Respaldo solo para una base sin NombreArchivo cargado: la ultima corrida
+        -- completa conocida.
+        IF ISNULL(@CarterasRef, 0) = 0
+            SELECT TOP (1) @CarterasRef = CarterasStaging
+            FROM dbo.EtlEstadoTitular_Ejecucion
+            WHERE Paso = 'UltimoEstadoTitular' AND Resultado = 'OK' AND Origen IN ('SSIS', 'Cargador')
+            ORDER BY EjecucionID DESC;
 
         SET @MinExigido = ISNULL(
                               @MinimoCarteras,
                               CEILING(ISNULL(@CarterasRef, 1) * (100 - @ToleranciaCarterasPct) / 100.0));
+
+        -- ── Referencia de VOLUMEN: solo corridas que fueron completas ──────
+        -- Una corrida OK que trajo menos carteras que el minimo no es una carga
+        -- completa (una recuperacion parcial, un lote) y no sirve de vara.
+        SELECT TOP (1) @FilasRef = FilasInsertadas
+        FROM dbo.EtlEstadoTitular_Ejecucion
+        WHERE Paso = 'UltimoEstadoTitular' AND Resultado = 'OK'
+          AND Origen IN ('SSIS', 'Cargador')
+          AND CarterasStaging >= @MinExigido
+        ORDER BY EjecucionID DESC;
 
         -- ── Compuertas ──────────────────────────────────────────────────────
         IF @FilasStaging = 0
