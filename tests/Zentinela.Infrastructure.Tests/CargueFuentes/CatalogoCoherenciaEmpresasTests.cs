@@ -91,6 +91,40 @@ public class CatalogoCoherenciaEmpresasTests
     }
 
     [Fact]
+    public void ArlSura_coincide_con_el_destino_real()
+    {
+        // dbo.ARLSura: NIT bigint, Empresa varchar(100), EstadoEnSura bit, FechaConsulta date.
+        var d = CatalogoCargueFuentes.ArlSura;
+        Assert.Equal(("dbo.ARLSura", "EstadoEnSura", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NIT:Entero:0", "Empresa:Texto:100"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && d.ClaveEsTitular && d.AplicaPoliticaVacias);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
+
+    [Fact]
+    public void ArlSura_y_Sura_son_fuentes_distintas_sin_colision_de_nombre()
+    {
+        // Antecedente: bug por prefijos de nombre Sura/ARLSura (alias de BaseMadre, 2026-09-02).
+        var eps = CatalogoCargueFuentes.Sura;
+        var arl = CatalogoCargueFuentes.ArlSura;
+        Assert.Same(eps, CatalogoCargueFuentes.Buscar("Sura"));
+        Assert.Same(eps, CatalogoCargueFuentes.Buscar(" sura "));
+        Assert.Same(arl, CatalogoCargueFuentes.Buscar("ARLSura"));
+        Assert.Same(arl, CatalogoCargueFuentes.Buscar("arlsura"));
+        Assert.Null(CatalogoCargueFuentes.Buscar("ARL"));
+        Assert.Null(CatalogoCargueFuentes.Buscar("SuraARL"));
+        Assert.NotEqual(eps.TablaDestino, arl.TablaDestino);
+        Assert.NotEqual(eps.Etiqueta, arl.Etiqueta);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener("Sura"));
+        Assert.Equal("Sura", CatalogoReglasFuente.Obtener("Sura").Fuente);
+        Assert.Equal("ARLSura", CatalogoReglasFuente.Obtener("ARLSura").Fuente);
+        // Mismo nombre de flag, tablas distintas: el SQL de una nunca nombra la tabla de la otra.
+        Assert.DoesNotContain("[dbo].[Sura]", GeneradorSqlCargue.Insertar(arl));
+        Assert.DoesNotContain("[dbo].[ARLSura]", GeneradorSqlCargue.Insertar(eps));
+    }
+
+    [Fact]
     public void Prefijos_suman_PrefijosDepartamento_como_filas_solo_departamento()
     {
         var sql = GeneradorSqlCargue.ConsultarPrefijos;

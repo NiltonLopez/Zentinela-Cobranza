@@ -479,8 +479,39 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// ARL Sura: empleador del titular (NIT y empresa). Fuente DISTINTA de <see cref="Sura"/> (la
+    /// EPS): otra tabla (<c>dbo.ARLSura</c>), otra clave de ruta ("ARLSura" ≠ "Sura", el catálogo
+    /// compara por igualdad, nunca por prefijo) y otra etiqueta; en la BaseMadre sus alias son
+    /// <c>[NIT ARL Sura]</c>/<c>[Empresa ARL Sura]</c> desde la integración de Sura (2026-09-02). Su
+    /// flag se llama igual que el de la EPS (<c>EstadoEnSura</c>), pero es otra columna de otra tabla.
+    /// Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarArlSuraAuxiliar</c> solo creaba Titular
+    /// y relaciones, calculaba el flag e insertaba. Verificado contra <c>sys.columns</c> de
+    /// <c>dbo.ARLSura</c> el 2026-09-24: NIT bigint, Empresa varchar(100), EstadoEnSura bit,
+    /// FechaConsulta date; FK a Titular, índice (TitularID, FechaConsulta DESC), sin triggers;
+    /// 1.565.455 filas. El flag, como en el SP, mira NIT y Empresa.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue ArlSura = new()
+    {
+        Fuente          = "ARLSura",
+        Etiqueta        = "ARL Sura (empleador)",
+        TablaDestino    = "dbo.ARLSura",
+        ColumnaFlag     = "EstadoEnSura",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Empleador del titular según ARL Sura (no es la EPS Sura): NIT y empresa.",
+        ColumnasDato =
+        [
+            new("NIT", ["nit", "nitempresa", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("Empresa", ["empresa", "nombreempresa", "empleador", "razonsocialempresa"],
+                TipoColumnaCargue.Texto, 100, Descripcion: "Empresa empleadora"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
-        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara, CamaraEmpresa, PositivaEmpresas];
+        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara, CamaraEmpresa, PositivaEmpresas, ArlSura];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

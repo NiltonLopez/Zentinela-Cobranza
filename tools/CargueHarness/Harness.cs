@@ -53,6 +53,7 @@ internal sealed class Harness
         // CamaraEmpresa no tiene TitularID: su clave es el NIT (ColumnaClaveTitular = NitEmpresa).
         ("CamaraEmpresa",   "NitEmpresa BETWEEN @d AND @h"),
         ("PositivaEmpresas", "TitularID BETWEEN @d AND @h"),
+        ("ARLSura",         "TitularID BETWEEN @d AND @h"),
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 

@@ -17,6 +17,7 @@ Mismo método, misma herramienta y misma leyenda que la paridad de la Fase 1
 | Camara | 23 | 7 | 16 | 0 | Paridad OK (E1, E9, E10, E11, P1, P3, P4, P5, P7, R) |
 | CamaraEmpresa | 15 | 4 | 11 | 0 | Paridad OK (E9, E11, P1, P3, P5, P7, R); clave `NitEmpresa` |
 | PositivaEmpresas | 13 | 3 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P4, P5) |
+| ARLSura | 12 | 3 | 9 | 0 | Paridad OK (E9, E10, E11, P2, P3, P4, P5); sin tocar `dbo.Sura` |
 
 ## Método
 
@@ -340,4 +341,68 @@ PRINT: 8 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
 PRINT: 12 PERSONAS FUERON RELACIONADAS EN #Titular CARTERA EN LA BASE DE DATOS
 PRINT: 12 EMPRESAS FUERON INGRESADAS A POSITIVA DE EMPRESAS
 PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL DE EMPRESAS
+```
+
+## ARLSura
+
+**Conclusión: paridad OK — 12 casos, 3 iguales, 9 diferencias explicadas (E9, E10, E11, P2, P3, P4, P5), 0 sin explicar.**
+Iguales: titular nuevo completo, solo empresa (flag 1 en los dos; hoy 60.139 filas reales son así) y
+contenido idéntico.
+
+Detalles:
+
+- **Fuente distinta de Sura (EPS).** El SP escribe la misma tabla como `ARLSuraAuxiliar`,
+  `ArlSuraAuxiliar`, `ArlSura` y `ARLSura`; la herramienta sustituye sin distinguir mayúsculas y su
+  verificación anti-tablas-reales prohíbe `Sura` además de `ARLSura`: el batch no nombra `dbo.Sura`
+  ni `SuraAuxiliar` (solo queda 'SURA' dentro de un literal de PRINT). En el motor, clave de ruta
+  `ARLSura`, etiqueta "ARL Sura (empleador)" y tabla `dbo.ARLSura`; el catálogo busca por igualdad y
+  un test fija que `Buscar("Sura")` y `Buscar("ARLSura")` devuelven cada una la suya. El harness
+  verifica que cargar ARLSura deja `dbo.Sura` con el mismo `COUNT(*)`.
+- **A06 (P4).** El SP deduplicaba por titular + NIT: si la empresa cambiaba de razón social se
+  borraba la fila vieja. El motor guarda las dos.
+- **A04 (P2).** NIT `0` sin empresa: el SP guardaba 0 con flag 1; el motor NULL con flag 0.
+
+#### Escenario ARLSura
+
+
+Columnas del destino: `NIT · Empresa · EstadoEnSura · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Predicción |
+|---|---|---|---|---|---|---|---|
+| A01 | Titular nuevo, NIT + empresa | 890900608 · GRUPO LA VIRGINIA S.A.S. · 1 · HOY | 890900608 · GRUPO LA VIRGINIA S.A.S. · 1 · HOY | ARL COMPLETO / ARL COMPLETO | L1/C29 / L1/C29 | igual | = |
+| A02 | Documento inválido (4 dígitos) | 800222444 · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | ≠ P3 documento inválido |
+| A03 | Solo empresa (el 60.139 de la tabla real) | ∅ · MERCA VILLA LA ECONOMICA S.A.S. · 1 · HOY | ∅ · MERCA VILLA LA ECONOMICA S.A.S. · 1 · HOY | SOLO EMPRESA / SOLO EMPRESA | L1/C29 / L1/C29 | igual | = (flag 1 en los dos) |
+| A04 | NIT '0' sin empresa | 0 · ∅ · 1 · HOY | ∅ · ∅ · 0 · HOY | NIT CERO / NIT CERO | L1/C29 / L1/C29 | difiere: destino | ≠ P2 vacíos convencionales (NIT 0 → NULL y flag 0; el SP flag 1) |
+| A05 | Titular existente, contenido idéntico | 800222005 · ACME SAS · 1 · HOY | 800222005 · ACME SAS · 1 · HOY | CARLOS EXISTENTE / CARLOS EXISTENTE | L1/C29 / L1/C29 | igual | = (refresco vs insert + dedup) |
+| A06 | Mismo NIT, empresa con otro nombre | 800222006 · ACME SAS · 1 · HOY | 800222006 · ACME LTDA · 1 · viejo 2026-01-15<br>800222006 · ACME SAS · 1 · HOY | EMPRESA RENOMBRADA / EMPRESA RENOMBRADA | L1/C29 / L1/C29 | difiere: destino | ≠ P4 clave completa (el SP deduplicaba por titular+NIT y borraba la fila con el nombre viejo) |
+| A07 | Vacía vieja; ahora trae datos | 800222007 · ∅ · 1 · HOY<br>∅ · ∅ · 0 · viejo 2026-01-15 | 800222007 · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (purga) |
+| A08 | Datos en destino; el archivo trae fila vacía | 800222008 · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · 0 · HOY | 800222008 · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (no inserta la vacía) |
+| A09 | Titular AJENO con duplicado exacto en destino | 800222009 · ∅ · 1 · viejo 2026-01-15 | 800222009 · ∅ · 1 · viejo 2026-01-15<br>800222009 · ∅ · 1 · viejo 2026-01-15 | AJENO / AJENO | — / — | difiere: destino | ≠ E9 sin limpiezas globales |
+| A10 | Titular repetido; la 2ª fila tiene más datos | 800222010 · ∅ · 1 · HOY | 800222010 · REPETIDA S.A.S. · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | ? SP fila arbitraria; nuevo la más completa (E11) |
+| A11 | Par Líder/Cartera inactivo | 800222011 · ∅ · 1 · HOY | 800222011 · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | ≠ E10 sin relación con par inactivo |
+| A12 | Empresa con espacios dobles | 800222012 · INVERSIONES  LA   CABRA SAS · 1 · HOY | 800222012 · INVERSIONES LA CABRA SAS · 1 · HOY | ESPACIOS / ESPACIOS | L1/C29 / L1/C29 | difiere: destino | ≠ P2 limpieza de texto (espacios colapsados) |
+
+Lado nuevo:
+
+```
+Preview: leídas 12, excluidas 1, duplicadas 1, expansión +0, candidatas 10, insertadas 8, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 6, nombres reparados 0, relaciones nuevas 9.
+Carga (ejecución 342): insertadas 8, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 6, nombres reparados 0, relaciones 9.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×9: Relaciones titular-cartera nuevas
+- info ×6: Titulares nuevos que se crearán
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.ARLSura
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; ARLSura 1565455→1565455; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+Lado viejo (mensajes del batch):
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 7 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 11 PERSONAS FUERON RELACIONADAS EN #Titular_Cartera LA BASE DE DATOS
+PRINT: 11 PERSONAS FUERON INGRESADAS A SURA
+PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
 ```

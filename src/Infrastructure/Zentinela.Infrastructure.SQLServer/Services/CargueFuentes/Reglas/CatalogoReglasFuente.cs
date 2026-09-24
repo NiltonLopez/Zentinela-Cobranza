@@ -26,6 +26,8 @@ internal static class CatalogoReglasFuente
         [CatalogoCargueFuentes.CamaraEmpresa.Fuente] = new ReglaCamaraEmpresa(),
         // PositivaEmpresas: su SP no limpiaba nada (Titular, relaciones, flag NIT/Empresa, INSERT).
         [CatalogoCargueFuentes.PositivaEmpresas.Fuente] = new ReglaGenerica(CatalogoCargueFuentes.PositivaEmpresas.Fuente),
+        // ARLSura (≠ Sura, la EPS): su SP no limpiaba nada (Titular, relaciones, flag NIT/Empresa, INSERT).
+        [CatalogoCargueFuentes.ArlSura.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.ArlSura.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);
