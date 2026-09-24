@@ -16,6 +16,16 @@ solo se anota lo que cambia.
 | Fosyga (+ B, C) | `sp_ProcesarFosygaAuxiliar` (2026-09-22) | 21 | 5 | 16 | 0 | Paridad OK: E1, E9, E10, E11, P2–P5, R, F |
 | RGM (+ B, C) | `sp_ProcesarRGMAuxiliar` (2026-04-13) | 22 | 5 | 17 | 0 | Paridad OK: E1, E9, E10, E11, P2, P3, P5, R, F y el defecto `LiderID = CarteraID` |
 | TigoUne (+ B) | `sp_ProcesarTigoUneAuxiliar` (2026-08-04) | 20 | 4 | 16 | 0 | Paridad OK: E1, E2, E8, E10, E11, P1–P3, P5, F |
+| Tigo | — (no existe) | — | — | — | — | Sin paridad posible: la tabla se llenó a mano en 2025 y nadie la escribe. Se agrega por analogía con TigoUne porque sigue en uso |
+| Runt | — (no existe) | — | — | — | — | **No se agrega**: tabla y Auxiliar vacías, nada la consume |
+| **Total** | | **63** | **14** | **49** | **0** | **Sin pérdida ni corrupción de datos atribuible al motor** |
+
+Diferencias nuevas respecto de la Fase 1, todas a favor del motor: la regla de fallecido de Fosyga
+también casa el Estado con salto de línea; las placas de RGM se validan y normalizan como en SIMIT;
+el modelo de RGM se valida como año; el refresco de fecha del contenido idéntico en TigoUne (el SP no
+refrescaba); y cuatro fragilidades nuevas del SP (F) en las que un valor tumba el archivo entero:
+fila sin nombre (Fosyga, TigoUne), EPS > 120 (Fosyga), modelo no numérico (RGM, error 245 que aborta
+el batch). Hallazgos al final (H1–H5).
 
 ## Método (diferencias con la Fase 1)
 
@@ -537,6 +547,74 @@ AVISO: 2 relaciones violarían FK_TitularCartera_Titular (en la BD real el INSER
 
 </details>
 
+## Tigo (sin SP: no hay paridad posible)
+
+**Cómo se carga hoy: no se carga.** Búsqueda del 2026-09-24:
+
+- `sys.sql_modules`: ningún objeto escribe en `dbo.Tigo` ni lee `TigoAuxiliar`. Los que nombran `Tigo`
+  solo la leen: `vw_BaseMadre`, `fn_BaseMadrePorCartera`, `fn_BaseMadreParaTitulares`,
+  `fn_BaseMadreParaTitulares_CarteraChica`, `vw_BaseMadreBaseGeneral`, `vw_BaseMadreTitularAuxiliar`,
+  `vw_DatosTigo`, `vw_SinDatosTigo` y `sp_Actualizar_AuditoriaMensajeria`
+  (un `LEFT JOIN Tigo` para marcar `ConsultaTigo`). `sys.dm_sql_referencing_entities('dbo.TigoAuxiliar')`:
+  vacío. Sin sinónimos.
+- `msdb.dbo.sysjobsteps`: ningún paso nombra Tigo (los trabajos son el ETL de Estado Titular, el ETL
+  de lista negra, `Actualizar_Titular`, backups y mantenimiento). SSISDB tiene dos paquetes
+  (`Carga_UltimoEstadoTitular`, `Carga_ListaNegra`), ninguno de Tigo.
+- `src/`, `docs/`, `.claude/`: nada escribe `Tigo`; `docs/schema.md` la marca **Inactivo** en el estado
+  operativo del Calificador.
+- Datos: `dbo.Tigo` (creada 2025-03-18) tiene 1.026.333 filas de cuatro tandas, 2025-02-20 (415.838),
+  2025-02-21 (244.989), 2025-02-26 (365.337) y 2025-03-07 (168), más 1 fila del 2025-03-14. Tres de
+  esas tandas son exactamente `TigoAuxiliar` (ver [Auxiliar con datos](#auxiliar-con-datos)); las fechas
+  son anteriores a la creación de la tabla, así que se copiaron a mano con su `FechaConsulta`. La
+  primera columna de la tabla fue eliminada (`column_id` empieza en 2).
+
+**Sigue en uso**: la leen las cuatro BaseMadre (`[Celular Tigo]`, `[Email Tigo]`), el Calificador
+(desglose de celulares y fila "Tigo" del panel de localización), Rastreo, Uso de Base de Datos,
+Consulta Integrada y `sp_Actualizar_AuditoriaMensajeria`. Por eso **se agrega** al cargue: es la
+única forma de volver a actualizarla.
+
+**Definición por analogía** (`CatalogoCargueFuentes.Tigo`, `ReglaGenerica`): la misma forma que
+TigoUne. `sys.columns` de `dbo.Tigo` (2026-09-24): NumeroTelefono varchar(10), Email varchar(255),
+EstadoEnTigo bit (default 0), FechaConsulta `date` (default `getdate()`); **FK a Titular**
+(`FK_Titular_Tigo`); CHECK `chk_Telefono` (7 o 10 caracteres que empiezan en 3 o 6); sin triggers;
+heap con `IX_Tigo_TitularID_Fecha`. Decisiones:
+
+- NumeroTelefono = **Celular** (como `[Celular Tigo]` en la BaseMadre): 340.972 de los 342.128 números
+  empiezan en 3; los 1.101 fijos y 55 de 7 dígitos legacy no se tocan, pero uno nuevo se anula con aviso.
+  Todo celular que deja pasar el motor cumple `chk_Telefono` (verificado en el harness).
+- `CreaTitular = true`: con FK a Titular, un titular inexistente haría fallar el `INSERT` de todo el
+  cargue. Consecuencia: **el archivo debe traer Nombre**, como toda fuente con FK. `TigoAuxiliar` no
+  tenía esa columna (los titulares de 2025 ya existían); un archivo con el formato viejo se rechaza
+  con "Faltan columnas obligatorias: Nombre".
+- Flag = teléfono o email (el 100 % de las filas con datos de `dbo.Tigo` tiene flag 1). Hay 2.579 filas
+  legacy con flag 1 y sin datos: no se tocan.
+- Una fila por titular (1.026.333 filas, 1.025.216 titulares).
+
+Harness: caso `Tigo` (Bloque 3) desde **CSV**, con doble carga = 0 insertadas, `chk_Telefono` y FK
+verificados.
+
+## Runt (no se agrega)
+
+**No es una fuente activa: no se agrega al catálogo** (hay un test que lo fija:
+`CatalogoCoherenciaTests.Runt_no_esta_en_el_catalogo`). Evidencia del 2026-09-24:
+
+- `dbo.Runt` y `dbo.RuntAuxiliar`: **0 filas** las dos, creadas el 2026-02-18 (`RuntAuxiliar`
+  modificada el 2026-04-13).
+- No hay `sp_ProcesarRuntAuxiliar` ni ningún objeto en `sys.sql_modules` que nombre `Runt`;
+  `sys.dm_sql_referencing_entities` vacío para las dos tablas; ningún trabajo del Agente ni paquete SSIS.
+- **Nadie la lee**: no está en `vw_BaseMadre` ni en los tres `fn_BaseMadre*`, ni en
+  `CalificadorCarteraService`, `RastreoLineasService`, `UsoBaseDatosService` o Consulta Integrada. En el
+  front solo existe `RuntPage.tsx`, un `PaginaEnConstruccion`.
+- `dbo.Runt` es un heap **sin índices y sin FK a Titular**. `docs/schema.md` y
+  `docs/arquitectura-sistema.md` dicen que tiene `IX_Runt_TitularID_Fecha`, pero ese índice **no
+  existe** en la BD (hallazgo H3).
+
+Si algún día se activa, dos cosas a tener en cuenta: `Runt.FechaConsulta` es **`datetime`** (sería la
+primera fuente con `TipoFechaSello.DateTime`: revisar `GeneradorSqlCargue.LeerSello` y el script de
+reversión), y `EstadoRunt` no sigue el patrón `EstadoEn<Fuente>`. Columnas: Placa varchar(50),
+NumeroLicencia bigint, TipoVehiculo/Marca varchar(50), Modelo bigint, NumeroChasis, EstadoSoat,
+EntidadSoat, EstadoTecnicomecanica varchar(50).
+
 ## Auxiliar con datos
 
 Tres Auxiliar del grupo tienen filas. **No se modificaron, no se vaciaron y no se ejecutó ningún SP**:
@@ -576,3 +654,31 @@ fechas 415.838, 244.989 y 168. Los 661.072 titulares están en `Tigo`; 661.005 (
 contenido y 660.932 además con la misma fecha. `Tigo` tiene una tanda más (2025-02-26, 365.337 filas)
 que no pasó por esta Auxiliar, y nada posterior al 2025-03-14.
 
+## Hallazgos
+
+- **H1 (medio, genérico del motor, no corregido aquí):** una columna `Entero` va a `#Carga` como
+  `bigint` sin mirar el tipo real del destino. Si el destino es `int` (RGM.Modelo) o más chico, un número
+  grande hace fallar el `INSERT` de **todo** el cargue por desbordamiento, dentro de la transacción (se
+  revierte, pero no dice qué fila). En RGM lo cubre `ReglaRgm` (año plausible). Una solución genérica
+  sería un rango por columna en `ColumnaFuenteCargue`; no se hizo porque toca Application/motor, que
+  otros agentes están modificando en paralelo.
+- **H2 (cosmético, genérico):** en una columna `Celular`, un número de 10 dígitos que no empieza en 3 ni
+  en 6 (`'5551234567'`) se anula con el aviso "número fijo en la columna de celular", porque
+  `TelefonoColombiano.Normalizar` lo devuelve como fijo. El dato se anula bien; solo el texto engaña.
+  Es el mismo origen que B1 de la Fase 1 (corregido allí solo para la columna `Telefono`).
+- **H3 (documentación):** `docs/schema.md` y `docs/arquitectura-sistema.md` listan
+  `IX_Runt_TitularID_Fecha`; en la BD `dbo.Runt` no tiene índices.
+- **H4 (operativo):** `FosygaAuxiliar` guarda una carga fallida del 2026-09-23 (18.053 filas que no
+  entraron a Fosyga) y **alguien está cargando Fosyga a mano esta semana** con el SP viejo. Conviene
+  avisarle antes de desplegar, para que use el módulo y para decidir qué hacer con esas filas.
+- **H5 (pendiente del coordinador):** `docs/sql/revertir_cargue_fuente.sql` tiene una lista blanca de
+  fuentes (`@Fuentes` + `@Columnas`, en el orden de `ColumnasDato`, que entra al hash). Faltan las
+  cuatro de este grupo (no se tocó por la restricción de `docs/`):
+  - `Fosyga`: Estado, EPS, Regimen, FechaAfiliacionEfectiva, FechaFinalizacionAfiliacion, TipoAfiliado,
+    Departamento, Municipio (flag EstadoEnFosyga, FechaConsulta).
+  - `RGM`: Marca, Modelo, Placa (flag EstadoEnRGM, FechaConsulta).
+  - `TigoUne`: NumeroTelefono, Email (flag EstadoEnTigoUne, FechaConsulta).
+  - `Tigo`: NumeroTelefono, Email (flag EstadoEnTigo, FechaConsulta).
+- **Legacy sin tocar** (el motor solo decide sobre lo que carga): 901 filas de Fosyga del 2025-10-23
+  con fechas en `Regimen`; 69 Estados con salto de línea; 21 placas `[objec` y 3 `AVAL` en RGM; 27.166
+  filas de TigoUne con `''` en vez de NULL; 2.579 filas de Tigo con flag 1 y sin datos.

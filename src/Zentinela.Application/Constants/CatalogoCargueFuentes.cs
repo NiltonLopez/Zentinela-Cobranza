@@ -419,7 +419,42 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga, Rgm, TigoUne];
+    /// <summary>
+    /// Tigo (operador). <b>No tiene SP que traducir</b>: <c>dbo.Tigo</c> se llenó a mano en
+    /// febrero-marzo de 2025 desde <c>TigoAuxiliar</c> (sin Nombre, sin Cartera/Líder: los titulares
+    /// ya existían) y no recibe nada desde el 2025-03-14; ningún objeto de la BD, trabajo del Agente
+    /// ni paquete SSIS escribe en ella. Sigue EN USO: la leen las cuatro BaseMadre ([Celular Tigo] /
+    /// [Email Tigo]), el Calificador, Rastreo, Uso de Base de Datos, Consulta Integrada y
+    /// sp_Actualizar_AuditoriaMensajeria; este cargue es la forma de actualizarla. Definición por
+    /// analogía con su gemela <c>TigoUne</c> (misma forma, <c>ReglaGenerica</c>). Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.Tigo</c> el 2026-09-24: NumeroTelefono varchar(10), Email
+    /// varchar(255), FechaConsulta <c>date</c> (defaults EstadoEnTigo 0 y FechaConsulta getdate(),
+    /// que el motor no usa: escribe los dos); FK a Titular (por eso crea Titular y el archivo debe
+    /// traer Nombre, como toda fuente con FK); CHECK chk_Telefono (7 o 10 dígitos que empiezan en 3
+    /// o 6: un celular validado por el motor siempre lo cumple); sin triggers; heap con
+    /// IX_Tigo_TitularID_Fecha. NumeroTelefono es celular ([Celular Tigo]; 340.972 de sus 342.128
+    /// números empiezan en 3; los 1.101 fijos y 55 de 7 dígitos legacy no se tocan).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Tigo = new()
+    {
+        Fuente          = "Tigo",
+        Etiqueta        = "Tigo (operador)",
+        TablaDestino    = "dbo.Tigo",
+        ColumnaFlag     = "EstadoEnTigo",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Celular y correo del operador Tigo. Sin SP legacy: definición por analogía con Tigo Une.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "linea", "numerolinea"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga, Rgm, TigoUne, Tigo];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

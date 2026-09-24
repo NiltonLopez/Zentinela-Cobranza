@@ -50,6 +50,7 @@ internal sealed class Harness
         ("Fosyga",          "TitularID BETWEEN @d AND @h"),
         ("RGM",             "TitularID BETWEEN @d AND @h"),
         ("TigoUne",         "TitularID BETWEEN @d AND @h"),
+        ("Tigo",            "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];

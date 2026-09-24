@@ -206,4 +206,29 @@ public class CatalogoCoherenciaTests
         var regla = Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
         Assert.Equal("TigoUne", regla.Fuente);
     }
+
+    [Fact]
+    public void Tigo_coincide_con_el_destino_real_y_con_TigoUne()
+    {
+        // Verificado con sys.columns de dbo.Tigo el 2026-09-24 (FK a Titular, CHECK chk_Telefono).
+        // Sin SP legacy: misma forma que TigoUne, pero fuente y tabla distintas.
+        var d = CatalogoCargueFuentes.Tigo;
+        Assert.Equal(("Tigo", "dbo.Tigo", "EstadoEnTigo", "FechaConsulta", TipoFechaSello.Date),
+                     (d.Fuente, d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NumeroTelefono:Celular:10", "Email:Email:255"], Firma(d));
+        Assert.Equal(Firma(CatalogoCargueFuentes.TigoUne), Firma(d));
+        Assert.NotEqual(CatalogoCargueFuentes.TigoUne.TablaDestino, d.TablaDestino);
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        var regla = Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        Assert.Equal("Tigo", regla.Fuente);
+    }
+
+    [Fact]
+    public void Runt_no_esta_en_el_catalogo()
+    {
+        // dbo.Runt y RuntAuxiliar están vacías y nada en la BD ni en el código las consume
+        // (docs/sql/legacy/PARIDAD-otras.md, sección Runt). No se agrega sin una fuente activa.
+        Assert.Null(CatalogoCargueFuentes.Buscar("Runt"));
+    }
 }
