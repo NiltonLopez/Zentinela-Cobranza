@@ -23,6 +23,7 @@ internal static class CatalogoReglasFuente
         // genérico). Lo propio (sello datetime) es de la definición.
         [CatalogoCargueFuentes.Rues.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Rues.Fuente),
         [CatalogoCargueFuentes.Camara.Fuente]    = new ReglaCamara(),
+        [CatalogoCargueFuentes.CamaraEmpresa.Fuente] = new ReglaCamaraEmpresa(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

@@ -50,6 +50,8 @@ internal sealed class Harness
         // ← fuentes nuevas aquí
         ("RUES",            "TitularID BETWEEN @d AND @h"),
         ("Camara",          "TitularID BETWEEN @d AND @h"),
+        // CamaraEmpresa no tiene TitularID: su clave es el NIT (ColumnaClaveTitular = NitEmpresa).
+        ("CamaraEmpresa",   "NitEmpresa BETWEEN @d AND @h"),
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 

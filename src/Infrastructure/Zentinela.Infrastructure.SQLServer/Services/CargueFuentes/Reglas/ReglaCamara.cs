@@ -91,7 +91,7 @@ internal sealed class ReglaCamara : IReglaFuente
     /// Teléfono de 7 dígitos (fijo sin indicativo) → indicativo + número, resuelto por
     /// departamento/municipio; si no se resuelve, null con advertencia. Cualquier otro largo se
     /// devuelve tal cual: lo valida el motor (celular 3xx o fijo 60x de 10 dígitos).
-    /// Compartido con la regla de CamaraEmpresa (mismo paso en su SP).
+    /// Compartido con <see cref="ReglaCamaraEmpresa"/> (mismo paso en su SP).
     /// </summary>
     internal static string? PrefijarFijoDe7(string? telefono, string? departamento, string? municipio, string columna, ContextoCargue ctx)
     {

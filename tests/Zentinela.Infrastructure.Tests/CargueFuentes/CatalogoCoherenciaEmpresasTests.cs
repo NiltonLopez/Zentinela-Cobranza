@@ -1,6 +1,7 @@
 using Zentinela.Application;
 using Zentinela.Infrastructure.SQLServer.Services.CargueFuentes;
 using Zentinela.Infrastructure.SQLServer.Services.CargueFuentes.Reglas;
+using Zentinela.Infrastructure.SQLServer.Services.Shared;
 
 namespace Zentinela.Infrastructure.Tests.CargueFuentes;
 
@@ -57,6 +58,23 @@ public class CatalogoCoherenciaEmpresasTests
         Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
         Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
         Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaPrefijos);
+    }
+
+    [Fact]
+    public void CamaraEmpresa_coincide_con_el_destino_real()
+    {
+        // dbo.CamaraEmpresa: NitEmpresa bigint NULL (sin TitularID), NumeroTelefono varchar(10),
+        // Email varchar(255), EstadoEnCamara bit, FechaConsulta date; heap sin FK.
+        var d = CatalogoCargueFuentes.CamaraEmpresa;
+        Assert.Equal(("dbo.CamaraEmpresa", "EstadoEnCamara", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NumeroTelefono:Telefono:10", "Email:Email:255"], Firma(d));
+        Assert.Equal("NitEmpresa", d.ColumnaClaveTitular);
+        Assert.False(d.ClaveEsTitular || d.CreaTitular || d.CreaTitularCartera || d.TitularIdComoTexto);
+        Assert.True(d.AplicaPoliticaVacias);
+        Assert.Equal(["Departamento", "Municipio"], d.ColumnasArchivoExtra.Select(c => c.Nombre));
+        foreach (var a in d.AliasDeClave) Assert.Equal(ArchivoTabular.Normalizar(a), a);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
     }
 
     [Fact]

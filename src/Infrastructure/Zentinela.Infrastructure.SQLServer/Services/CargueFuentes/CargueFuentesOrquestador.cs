@@ -66,8 +66,9 @@ internal sealed class CargueFuentesOrquestador : ICargueFuentesService
 
         var lista = new List<ColumnaEsperadaDto>
         {
-            new() { Nombre = "TitularID", Alias = Comunes(CatalogoCargueFuentes.AliasTitularId), Tipo = "Documento",
-                    Obligatoria = true, Descripcion = "Documento del titular (5 a 15 dígitos)" },
+            // La clave: TitularID, o la columna propia de la fuente (CamaraEmpresa: NitEmpresa).
+            new() { Nombre = d.ColumnaClaveTitular, Alias = Comunes(d.AliasDeClave), Tipo = "Documento",
+                    Obligatoria = true, Descripcion = d.DescripcionClaveTitular },
         };
         if (d.CreaTitular)
             lista.Add(new() { Nombre = "Nombre", Alias = Comunes(CatalogoCargueFuentes.AliasNombre), Tipo = "Texto",

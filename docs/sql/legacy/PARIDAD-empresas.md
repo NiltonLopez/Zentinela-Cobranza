@@ -15,6 +15,7 @@ Mismo método, misma herramienta y misma leyenda que la paridad de la Fase 1
 |---|---:|---:|---:|---:|---|
 | RUES | 16 | 6 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P5; sello P6) |
 | Camara | 23 | 7 | 16 | 0 | Paridad OK (E1, E9, E10, E11, P1, P3, P4, P5, P7, R) |
+| CamaraEmpresa | 15 | 4 | 11 | 0 | Paridad OK (E9, E11, P1, P3, P5, P7, R); clave `NitEmpresa` |
 
 ## Método
 
@@ -202,4 +203,75 @@ PRINT: 17 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
 PRINT: 22 PERSONAS FUERON RELACIONADAS EN #Titular_Cartera LA BASE DE DATOS
 PRINT: 22 PERSONAS FUERON INGRESADAS A CÁMARA
 PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
+```
+
+## CamaraEmpresa
+
+**Conclusión: paridad OK — 15 casos, 4 iguales, 11 diferencias explicadas (E9, E11, P1, P3, P5, P7, R), 0 sin explicar.**
+Iguales: NIT nuevo completo, fijo de 7 con 'ANTIOQUIA' (604 en los dos), contenido idéntico y
+email nuevo (conviven dos filas).
+
+Detalles:
+
+- **Clave NIT (extensión `ColumnaClaveTitular`).** `dbo.CamaraEmpresa` no tiene `TitularID`: su
+  clave es `NitEmpresa` (bigint NULL; 71.424 filas, 69.389 NIT distintos, solo 2.999 coinciden con
+  un `Titular`). El SP no tocaba `Titular` ni `Titular_Cartera`, y el motor tampoco: ninguna fila del
+  lado nuevo creó titulares, relaciones ni avisos de "titular inexistente". Refresco, inserción,
+  purga de vacías y reversión se hacen por `NitEmpresa`.
+- **E15 (R).** 'NIT-DV' (`…-7`) no cabía en `CamaraEmpresaAuxiliar.NitEmpresa bigint`: el import
+  fallaba y el SP nunca veía la fila. El motor le quita el DV (si no, lo pegaría al NIT y la fila no
+  cruzaría con `ARLSura.NIT` en `vw_DatosCamaraEmpresa`) y lo informa.
+- **E04/E05 (P7, R).** Igual que Cámara: el SP casaba el departamento exacto con tildes y guardaba 7
+  dígitos si no casaba; el Departamento del archivo no se guarda en el destino, solo resuelve el indicativo.
+- **E06–E08 (P1).** El SP no validaba teléfono ni email ni cruzaba `ListaNegraCorreos`.
+
+#### Escenario CamaraEmpresa
+
+
+Columnas del destino: `NumeroTelefono · Email · EstadoEnCamara · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Predicción |
+|---|---|---|---|---|---|---|---|
+| E01 | NIT nuevo, celular + email + departamento | 3001234567 · empresa1@gmail.com · 1 · HOY | 3001234567 · empresa1@gmail.com · 1 · HOY | — / — | — / — | igual | = |
+| E02 | NIT inválido (4 dígitos) | 3001234568 · ∅ · 1 · HOY | — | — / — | — / — | difiere: destino | ≠ P3 NIT inválido: el nuevo excluye la fila |
+| E03 | Fijo de 7 + 'ANTIOQUIA' | 6042345678 · ∅ · 1 · HOY | 6042345678 · ∅ · 1 · HOY | — / — | — / — | igual | = (604 en los dos) |
+| E04 | Fijo de 7 + 'BOGOTA D.C.' sin tilde | 2345679 · ∅ · 1 · HOY | 6012345679 · ∅ · 1 · HOY | — / — | — / — | difiere: destino | ≠ P7 prefijo sin tildes (el SP guardaba 7 dígitos) |
+| E05 | Fijo de 7 + 'Seleccione un departamento' | 2345670 · ∅ · 1 · HOY | ∅ · ∅ · 0 · HOY | — / — | — / — | difiere: destino | ≠ R relleno + P7 fijo sin prefijo anulado (flag 0; el SP flag 1) |
+| E06 | Email en mayúsculas | ∅ · VENTAS@EMPRESA.COM · 1 · HOY | ∅ · ventas@empresa.com · 1 · HOY | — / — | — / — | difiere: destino | ≠ P1 email en minúsculas |
+| E07 | Email exacto en ListaNegraCorreos ('no@gmail.com') | 3001234569 · no@gmail.com · 1 · HOY | 3001234569 · ∅ · 1 · HOY | — / — | — / — | difiere: destino | ≠ P1 lista negra (el SP no la cruzaba) |
+| E08 | Teléfono de 10 dígitos que no es celular ni fijo | 5551234567 · raro@empresa.com · 1 · HOY | ∅ · raro@empresa.com · 1 · HOY | — / — | — / — | difiere: destino | ≠ P1 teléfono validado |
+| E09 | NIT existente, contenido idéntico | 3001110709 · igual@empresa.com · 1 · HOY | 3001110709 · igual@empresa.com · 1 · HOY | — / — | — / — | igual | = (SP: insert + dedup; nuevo: refresca) |
+| E10 | NIT existente, email nuevo | 3001110710 · nuevo@empresa.com · 1 · HOY<br>3001110710 · viejo@empresa.com · 1 · viejo 2026-01-15 | 3001110710 · nuevo@empresa.com · 1 · HOY<br>3001110710 · viejo@empresa.com · 1 · viejo 2026-01-15 | — / — | — / — | igual | = (conviven las dos filas) |
+| E11 | Vacía vieja; ahora trae datos | 3001110711 · ∅ · 1 · HOY<br>∅ · ∅ · 0 · viejo 2026-01-15 | 3001110711 · ∅ · 1 · HOY | — / — | — / — | difiere: destino | ≠ P5 política de vacías (purga) |
+| E12 | Datos en destino; el archivo trae fila vacía | 3001110712 · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · 0 · HOY | 3001110712 · ∅ · 1 · viejo 2026-01-15 | — / — | — / — | difiere: destino | ≠ P5 política de vacías (no inserta la vacía) |
+| E13 | NIT AJENO con duplicado exacto en destino | 3001110713 · ∅ · 1 · viejo 2026-01-15 | 3001110713 · ∅ · 1 · viejo 2026-01-15<br>3001110713 · ∅ · 1 · viejo 2026-01-15 | — / — | — / — | difiere: destino | ≠ E9 sin limpiezas globales |
+| E14 | NIT repetido; la 2ª fila tiene más datos | 3001110714 · ∅ · 1 · HOY | 3001110714 · repetida@empresa.com · 1 · HOY | — / — | — / — | difiere: destino | ? SP fila arbitraria; nuevo la más completa (E11) |
+| E15 | 'NIT-DV' ('…-7') | — | 3001110715 · ∅ · 1 · HOY | — / — | — / — | difiere: destino | ≠ R el nuevo quita el DV (en la Auxiliar NitEmpresa era bigint: la fila no se podía importar) |
+
+Lado nuevo:
+
+```
+Preview: leídas 15, excluidas 1, duplicadas 1, expansión +0, candidatas 13, insertadas 11, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 0, nombres reparados 0, relaciones nuevas 0.
+Carga (ejecución 292): insertadas 11, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 0, nombres reparados 0, relaciones 0.
+- error ×1: NitEmpresa inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Departamento: texto de relleno del formulario ('Seleccione…', 'Cargando…') anulado
+- aviso ×1: Email: email en lista negra anulado
+- aviso ×1: NumeroTelefono: fijo de 7 dígitos sin prefijo resoluble por departamento/municipio, anulado
+- aviso ×1: NumeroTelefono: teléfono inválido anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Columna del archivo que no se usa: NombreEmpresa
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.CamaraEmpresa
+- info ×1: NitEmpresa con dígito de verificación ('NIT-DV'): se guardó el NIT sin el DV
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; CamaraEmpresa 71424→71424; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+Lado viejo (mensajes del batch):
+
+```
+E15: fila no importable a CamaraEmpresaAuxiliar (NitEmpresa='999000002715-7' no es bigint); el SP no la recibe
+── ejecución del cuerpo del SP ──
+PRINT: 13 EMPRESAS FUERON INGRESADAS A CÁMARA DE EMPRESAS
+PRINT: 2 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL DE EMPRESAS
 ```

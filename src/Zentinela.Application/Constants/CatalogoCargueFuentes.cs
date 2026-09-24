@@ -77,6 +77,28 @@ public sealed record DefinicionFuenteCargue
     public TipoFechaSello TipoFecha { get; init; } = TipoFechaSello.Date;
     /// <summary>El destino guarda el TitularID como varchar (NuevaEps).</summary>
     public bool TitularIdComoTexto { get; init; }
+
+    /// <summary>
+    /// Columna del destino que identifica la fila y contra la que se refresca, inserta y purga
+    /// (Fase 2). "TitularID" en todas salvo CamaraEmpresa, que no tiene TitularID: guarda el NIT
+    /// de la empresa en <c>NitEmpresa</c>. Una clave que no es TitularID no es un titular: la
+    /// fuente no crea Titular ni Titular_Cartera ni se cruza con dbo.Titular (lo exige
+    /// <c>GeneradorSqlCargue.ValidarDefinicion</c>). Se valida con la misma regla que un documento
+    /// (5 a 15 dígitos) y se escribe en <c>CargueFuenteReversion.TitularID</c> como texto.
+    /// </summary>
+    public string ColumnaClaveTitular { get; init; } = "TitularID";
+
+    /// <summary>Encabezados de la clave en el archivo; null = <see cref="CatalogoCargueFuentes.AliasTitularId"/>.</summary>
+    public string[]? AliasClaveTitular { get; init; }
+
+    /// <summary>Texto del panel de columnas esperadas para la clave.</summary>
+    public string DescripcionClaveTitular { get; init; } = "Documento del titular (5 a 15 dígitos)";
+
+    /// <summary>La clave es el documento de un titular de dbo.Titular (todas menos CamaraEmpresa).</summary>
+    public bool ClaveEsTitular => string.Equals(ColumnaClaveTitular, "TitularID", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Alias efectivos de la clave en el archivo.</summary>
+    public string[] AliasDeClave => AliasClaveTitular ?? CatalogoCargueFuentes.AliasTitularId;
     public bool CreaTitular { get; init; } = true;
     public bool CreaTitularCartera { get; init; } = true;
     public CardinalidadCargue Cardinalidad { get; init; } = CardinalidadCargue.UnaPorTitular;
@@ -382,8 +404,52 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// Cámara de Comercio (empresas): teléfono y email de la EMPRESA, identificada por su NIT.
+    /// Primera fuente cuya clave no es TitularID (<see cref="DefinicionFuenteCargue.ColumnaClaveTitular"/>
+    /// = NitEmpresa): no crea Titular ni relaciones (su SP tampoco) y se cruza con ARLSura por NIT
+    /// (<c>vw_DatosCamaraEmpresa</c>: <c>ARLSura.NIT = CamaraEmpresa.NitEmpresa</c>). Regla propia
+    /// (<c>ReglaCamaraEmpresa</c>): quita el dígito de verificación de 'NIT-DV' e indicativo a los
+    /// fijos de 7 dígitos por el Departamento del archivo, que no se guarda. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.CamaraEmpresa</c> el 2026-09-24: NitEmpresa bigint NULL,
+    /// NumeroTelefono varchar(10), Email varchar(255), EstadoEnCamara bit, FechaConsulta date;
+    /// heap sin índices, sin FK ni triggers. El flag, como en el SP, mira teléfono y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue CamaraEmpresa = new()
+    {
+        Fuente                  = "CamaraEmpresa",
+        Etiqueta                = "Cámara de Comercio (empresas)",
+        TablaDestino            = "dbo.CamaraEmpresa",
+        ColumnaFlag             = "EstadoEnCamara",
+        ColumnaFecha            = "FechaConsulta",
+        TipoFecha               = TipoFechaSello.Date,
+        ColumnaClaveTitular     = "NitEmpresa",
+        AliasClaveTitular       = ["nitempresa", "nit", "nitdelaempresa", "numeronit"],
+        DescripcionClaveTitular = "NIT de la empresa sin dígito de verificación (5 a 15 dígitos; 'NIT-DV' se acepta y se le quita el DV)",
+        CreaTitular             = false,
+        CreaTitularCartera      = false,
+        FaseIntegracion         = 2,
+        Notas                   = "Teléfono y email de empresas por NIT (no crea titulares). El fijo de 7 dígitos recibe indicativo por el departamento.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "telefonofijo", "fijo"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x; fijo de 7 dígitos → indicativo)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+        // No se guardan: solo resuelven el indicativo del fijo de 7 dígitos (CamaraEmpresaAuxiliar
+        // tenía Departamento varchar(60); Municipio no estaba y aquí es opcional).
+        ColumnasArchivoExtra =
+        [
+            new("Departamento", ["departamento", "depto", "dpto"], TipoColumnaCargue.Texto, 60,
+                Descripcion: "Departamento (solo resuelve el indicativo del fijo; no se guarda)"),
+            new("Municipio", ["municipio", "ciudad"], TipoColumnaCargue.Texto, 50,
+                Descripcion: "Municipio (opcional; solo resuelve el indicativo del fijo; no se guarda)"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
-        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara];
+        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara, CamaraEmpresa];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

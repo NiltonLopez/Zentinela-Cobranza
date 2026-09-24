@@ -419,7 +419,8 @@ internal sealed class CargueFuentesMotor
 
         var mapa = new MapaColumnas
         {
-            TitularID = Comun(CatalogoCargueFuentes.AliasTitularId),
+            // La clave de la fila: TitularID, o la columna propia de la fuente (CamaraEmpresa: NitEmpresa).
+            TitularID = Comun(def.AliasDeClave),
             Nombre    = def.CreaTitular ? Comun(CatalogoCargueFuentes.AliasNombre) : -1,
             CarteraID = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasCarteraId) : -1,
             Cartera   = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasCartera) : -1,
@@ -440,7 +441,7 @@ internal sealed class CargueFuentesMotor
             else opcionales.Add(nombre);
         }
 
-        Anotar("TitularID", mapa.TitularID, true);
+        Anotar(def.ColumnaClaveTitular, mapa.TitularID, true);
         if (def.CreaTitular) Anotar("Nombre", mapa.Nombre, true);
         if (def.CreaTitularCartera)
         {
@@ -523,9 +524,11 @@ internal sealed class CargueFuentesMotor
             ctx.ExcluirCruda("La fila tiene menos columnas que el encabezado (fila corrida)");
             return null;
         }
-        if (!TryDocumento(Celda(cruda, mapa.TitularID), out var titularId))
+        if (!TryDocumento(regla.NormalizarClave(Celda(cruda, mapa.TitularID), ctx), out var titularId))
         {
-            ctx.ExcluirCruda("Documento inválido o vacío (se esperan de 5 a 15 dígitos)");
+            ctx.ExcluirCruda(def.ClaveEsTitular
+                ? "Documento inválido o vacío (se esperan de 5 a 15 dígitos)"
+                : $"{def.ColumnaClaveTitular} inválido o vacío (se esperan de 5 a 15 dígitos)");
             return null;
         }
 
@@ -887,6 +890,10 @@ internal sealed class CargueFuentesMotor
         List<FilaCargue> candidatas, DefinicionFuenteCargue def, Preparacion prep, SqlConnection conn, CancellationToken ct)
     {
         await EjecutarAsync(conn, null, GeneradorSqlCargue.CrearTablasApoyo, ct);
+
+        // Clave que no es un titular (CamaraEmpresa: NIT de la empresa): no hay nada que cruzar
+        // con dbo.Titular (ni titulares nuevos, ni nombres, ni aviso de "titular inexistente").
+        if (!def.ClaveEsTitular) return candidatas;
 
         var ids = candidatas.Select(f => f.TitularID).Distinct().ToList();
         var titulares = new DataTable();

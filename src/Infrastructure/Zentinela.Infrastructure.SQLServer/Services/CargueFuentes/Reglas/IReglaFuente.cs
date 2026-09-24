@@ -17,6 +17,14 @@ internal interface IReglaFuente
     bool NecesitaListaNegraTelefonos => false;
 
     /// <summary>
+    /// Texto crudo de la clave de la fila (documento o, en CamaraEmpresa, NIT) ANTES de que el
+    /// motor la valide (5 a 15 dígitos, se ignoran puntos y espacios). Para normalizaciones propias
+    /// de la fuente: CamaraEmpresa quita el dígito de verificación de 'NIT-DV', que el motor si no
+    /// pegaría al NIT. Por defecto, tal cual.
+    /// </summary>
+    string? NormalizarClave(string? bruto, ContextoCargue ctx) => bruto;
+
+    /// <summary>
     /// Después del tipado genérico (trim, vacíos → NULL) y ANTES de validar celular/fijo/email:
     /// aquí se mueven o prefijan teléfonos; lo que quede mal lo anula el motor.
     /// </summary>
