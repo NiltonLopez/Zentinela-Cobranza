@@ -12,6 +12,7 @@ nuevo (`CargueFuentesMotor` + `Regla<Fuente>`). Corrida del **2026-09-24** contr
 |---|---:|---:|---:|---:|---|
 | Positiva | 23 | 4 | 19 | 0 | Paridad OK (E1, E2, E9–E11, P1–P6, R) |
 | SaludTotal | 19 | 5 | 14 | 0 | Paridad OK (E1, E9–E11, P1, P2, P4, P5) |
+| SOS (+ SOS-B) | 16 | 4 | 12 | 0 | Paridad OK (E1, E9–E11, P1–P3, P5, F) |
 
 "Sin explicar" = diferencia que no está en la leyenda (decisiones de ADR-039 o del plan) ni en el
 comentario de la regla. Una diferencia sin explicar es un bug: se corrige y se vuelve a correr.
@@ -253,6 +254,113 @@ PRINT: 13 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
 PRINT: 18 PERSONAS FUERON RELACIONADAS EN TITULAR_CARTERA LA BASE DE DATOS
 PRINT: 18 PERSONAS FUERON INGRESADAS A SALUD TOTAL
 PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
+```
+</details>
+
+## SOS
+
+**Conclusión: paridad OK con 12 diferencias explicadas (10 + 2 de SOS-B), 0 sin explicar.** Sin
+regla propia (`ReglaGenerica`). Hay 4 casos idénticos: solo NIT (SO03), NIT `0` → NULL con flag 0
+(SO04), contenido idéntico (SO08) y cambio de dirección (SO09): la clave de dedup del SP sí tenía
+las cuatro columnas, así que ahí conserva el historial igual que el motor.
+
+Detalles:
+
+- **SO05, SO06 (P1).** `Telefono` se trata como celular, el mismo criterio que NuevaEps en
+  ADR-039 §4: la BaseMadre lo expone como `[Celular SOS]` y alimenta el selector de celulares.
+  El SP guardaba el fijo de 7 dígitos (`3301921`) y el fijo `6021234567`; el motor los anula
+  con advertencia. En la tabla real, de las 2.099 filas con teléfono, 625 son fijos de 7 dígitos
+  y 34 son fijos 60x.
+- **SO10, SO11 (P5).** El SP no purgaba ni descartaba vacías.
+- **SOS-B (F).** `SOSAuxiliar.Dirección` es `varchar(150)` y `SOS.Direccion`, `varchar(70)`: una
+  sola dirección de 80 caracteres hace fallar el `INSERT` del paso 7 **para todo el archivo**
+  (SOB2, un titular normal, queda sin fila en SOS, aunque sí se creó su Titular y su relación). El
+  motor trunca a 70 con advertencia y sigue.
+- La sustitución de nombres de tabla también alcanza los textos de los `PRINT` del SP
+  ("INGRESADAS A #Dest"); no cambia la lógica.
+
+
+#### Escenario SOS
+
+Columnas del destino: `NitEmpresa · RazonSocial · Telefono · Direccion · EstadoEnSOS · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| SO01 | Titular nuevo; nombre con tilde; las cuatro columnas | 891300237 · INGENIO DEL CAUCA · 3001234567 · CORREG LA PAILA · 1 · HOY | 891300237 · INGENIO DEL CAUCA · 3001234567 · CORREG LA PAILA · 1 · HOY | Óscar Díaz / OSCAR DIAZ | L1/C29 / L1/C29 | difiere: titular | E1 solo el nombre |
+| SO02 | Documento inválido (4 dígitos) | ∅ · ∅ · 3001234568 · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | P3 documento inválido |
+| SO03 | Solo NitEmpresa | 900336004 · ∅ · ∅ · ∅ · 1 · HOY | 900336004 · ∅ · ∅ · ∅ · 1 · HOY | SOLO NIT / SOLO NIT | L1/C29 / L1/C29 | igual | = |
+| SO04 | NitEmpresa '0' como único dato | ∅ · ∅ · ∅ · ∅ · 0 · HOY | ∅ · ∅ · ∅ · ∅ · 0 · HOY | NIT CERO / NIT CERO | L1/C29 / L1/C29 | igual | = |
+| SO05 | Teléfono fijo de 7 dígitos + razón social | ∅ · COVATRANS LTDA · 3301921 · ∅ · 1 · HOY | ∅ · COVATRANS LTDA · ∅ · ∅ · 1 · HOY | FIJO DE SIETE / FIJO DE SIETE | L1/C29 / L1/C29 | difiere: destino | P1 celular de 10 dígitos (el SP guardaba el fijo de 7) |
+| SO06 | Fijo 60x en Telefono, único dato | ∅ · ∅ · 6021234567 · ∅ · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 0 · HOY | FIJO DIEZ / FIJO DIEZ | L1/C29 / L1/C29 | difiere: destino | P1 Telefono es celular (el SP lo guardaba con flag 1) |
+| SO08 | Titular existente, contenido idéntico en destino | 800111222 · ACME · 3001110708 · CL 1 2 3 · 1 · HOY | 800111222 · ACME · 3001110708 · CL 1 2 3 · 1 · HOY | SOS EXISTENTE / SOS EXISTENTE | L1/C29 / L1/C29 | igual | = |
+| SO09 | Existente; solo cambia la dirección | ∅ · ∅ · 3001110709 · CL 1 2 3 · 1 · viejo 2026-01-15<br>∅ · ∅ · 3001110709 · CR 4 5 6 · 1 · HOY | ∅ · ∅ · 3001110709 · CL 1 2 3 · 1 · viejo 2026-01-15<br>∅ · ∅ · 3001110709 · CR 4 5 6 · 1 · HOY | CAMBIA DIRECCION / CAMBIA DIRECCION | L1/C29 / L1/C29 | igual | = |
+| SO10 | Vacía vieja en destino; ahora trae celular | ∅ · ∅ · 3001110710 · ∅ · 1 · HOY<br>∅ · ∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | ∅ · ∅ · 3001110710 · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | P5 el SP de SOS no purgaba vacías |
+| SO11 | Datos en destino; el archivo trae fila vacía | ∅ · ∅ · 3001110711 · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · ∅ · 0 · HOY | ∅ · ∅ · 3001110711 · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | P5 el SP inserta la vacía |
+| SO12 | Titular AJENO al archivo con duplicado exacto en destino | ∅ · ∅ · 3001110712 · ∅ · 1 · viejo 2026-01-15 | ∅ · ∅ · 3001110712 · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · 3001110712 · ∅ · 1 · viejo 2026-01-15 | AJENO AL ARCHIVO / AJENO AL ARCHIVO | — / — | difiere: destino | E9 sin limpiezas globales |
+| SO13 | Titular repetido; la 2ª fila tiene más datos | ∅ · ∅ · 3001110713 · ∅ · 1 · HOY | ∅ · POLLOS EL BUCANERO S.A. · 3001110713 · ∅ · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | E11 el SP conserva una fila arbitraria; el nuevo, la más completa |
+| SO14 | Par Líder/Cartera inactivo | ∅ · ∅ · 3001110714 · ∅ · 1 · HOY | ∅ · ∅ · 3001110714 · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | E10 sin relación con par inactivo |
+| SO16 | RazonSocial 'N/A' como único dato | ∅ · N/A · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 0 · HOY | RAZON NA / RAZON NA | L1/C29 / L1/C29 | difiere: destino | P2 'N/A' → NULL (el SP lo guardaba con flag 1) |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 14, excluidas 1, duplicadas 1, expansión +0, candidatas 12, insertadas 10, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 8, nombres reparados 0, relaciones nuevas 11.
+Carga (ejecución 267): insertadas 10, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 8, nombres reparados 0, relaciones 11.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: Telefono: celular inválido anulado
+- aviso ×1: Telefono: número fijo en la columna de celular, anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×11: Relaciones titular-cartera nuevas
+- info ×8: Titulares nuevos que se crearán
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.SOS
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; SOS 226946→226946; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 9 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 13 PERSONAS FUERON RELACIONADAS EN TITULAR_CARTERA LA BASE DE DATOS
+PRINT: 13 PERSONAS FUERON INGRESADAS A #Dest
+PRINT: 2 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
+```
+</details>
+
+#### Escenario SOS-B
+
+Columnas del destino: `NitEmpresa · RazonSocial · Telefono · Direccion · EstadoEnSOS · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| SOB1 | Dirección de 80 caracteres | — | ∅ · ∅ · 3001110741 · CALLE 5 # 10-20 BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB · 1 · HOY | DIRECCION LARGA / DIRECCION LARGA | L1/C29 / L1/C29 | difiere: destino | F el INSERT del SP falla para todo el archivo; el motor trunca a 70 |
+| SOB2 | Titular normal en el mismo archivo | — | ∅ · ∅ · 3001110742 · ∅ · 1 · HOY | TITULAR NORMAL / TITULAR NORMAL | L1/C29 / L1/C29 | difiere: destino | F víctima del fallo de SOB1 (sin fila en SOS) |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 2, excluidas 0, duplicadas 0, expansión +0, candidatas 2, insertadas 2, refrescadas 0, vacías descartadas 0, vacías a purgar 0, titulares nuevos 2, nombres reparados 0, relaciones nuevas 2.
+Carga (ejecución 271): insertadas 2, refrescadas 0, vacías descartadas 0, purgadas 0, titulares nuevos 2, nombres reparados 0, relaciones 2.
+- aviso ×1: Direccion: valor truncado a 70 caracteres
+- info ×2: Relaciones titular-cartera nuevas
+- info ×2: Titulares nuevos que se crearán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; SOS 226946→226946; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 2 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 2 PERSONAS FUERON RELACIONADAS EN TITULAR_CARTERA LA BASE DE DATOS
+ERROR 2628 (línea 72): Los datos binarios o de la cadena se truncan en la columna "Direccion" de la tabla "tempdb.dbo.#Dest_______________________________________________________________________________________________________________000000000DEF". Valor truncado: "CALLE 5 # 10-20 BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".
+PRINT: Se terminó la instrucción.
+PRINT: 0 PERSONAS FUERON INGRESADAS A #Dest
+PRINT: 0 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
 ```
 </details>
 

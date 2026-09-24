@@ -400,11 +400,48 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// SOS (EPS Servicio Occidental de Salud): empleador, teléfono y dirección. Sin regla propia
+    /// (<c>ReglaGenerica</c>): <c>sp_ProcesarSOSAuxiliar</c> solo pasaba vacíos a NULL (NitEmpresa 0
+    /// incluido), creaba Titular y relaciones, calculaba el flag e insertaba. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.SOS</c> el 2026-09-24 (NitEmpresa bigint, RazonSocial
+    /// varchar(100), Telefono varchar(10), <b>Direccion varchar(70)</b> —en SOSAuxiliar era
+    /// <c>Dirección varchar(150)</c>—, FechaConsulta <c>date</c> NOT NULL; FK a Titular, sin
+    /// triggers; 226.946 filas / 226.878 titulares). El flag, como en el SP, mira las cuatro columnas.
+    /// Telefono se trata como <b>celular</b> (mismo criterio que NuevaEps, ADR-039 §4): la BaseMadre
+    /// lo expone como [Celular SOS] y alimenta el selector de celulares del Creador. De las 2.099
+    /// filas con dato, 1.372 (65 %) son 3xx de 10 dígitos; 625 son fijos de 7 dígitos sin indicativo
+    /// (SOS no trae departamento ni municipio para resolverlo) y 34 son fijos 60x: esos se anulan
+    /// con advertencia.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Sos = new()
+    {
+        Fuente          = "SOS",
+        Etiqueta        = "SOS (EPS)",
+        TablaDestino    = "dbo.SOS",
+        ColumnaFlag     = "EstadoEnSOS",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS SOS: empleador (NIT y razón social), celular y dirección.",
+        ColumnasDato =
+        [
+            new("NitEmpresa", ["nitempresa", "nit", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("RazonSocial", ["razonsocial", "empresa", "nombreempresa", "empleador"],
+                TipoColumnaCargue.Texto, 100, Descripcion: "Razón social del empleador"),
+            new("Telefono", ["telefono", "celular", "numerotelefono", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Direccion", ["direccion", "direcciondomicilio", "domicilio"],
+                TipoColumnaCargue.Texto, 70, Descripcion: "Dirección"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
         // Fase 2, grupo salud
-        Positiva, SaludTotal,
+        Positiva, SaludTotal, Sos,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>

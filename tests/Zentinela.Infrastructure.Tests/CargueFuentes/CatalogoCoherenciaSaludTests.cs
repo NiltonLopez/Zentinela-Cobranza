@@ -61,4 +61,23 @@ public class CatalogoCoherenciaSaludTests
         Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
         SinAliasRepetidos(d);
     }
+
+    [Fact]
+    public void Sos_coincide_con_el_destino_real()
+    {
+        var d = CatalogoCargueFuentes.Sos;
+        Assert.Equal(("dbo.SOS", "EstadoEnSOS", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        // Las cuatro columnas entran al flag, como en el SP. Direccion es varchar(70) en el
+        // destino (la Auxiliar admitía 150).
+        Assert.Equal(["NitEmpresa:Entero:0", "RazonSocial:Texto:100", "Telefono:Celular:10", "Direccion:Texto:70"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        SinAliasRepetidos(d);
+        // "razonsocial" y "nit" también son alias comunes (Nombre, TitularID): en SOS son del dato,
+        // y el motor no los usa para las comunes.
+        Assert.Contains("razonsocial", d.ColumnasDato.Single(c => c.Nombre == "RazonSocial").Alias);
+        Assert.Contains("razonsocial", CatalogoCargueFuentes.AliasNombre);
+    }
 }

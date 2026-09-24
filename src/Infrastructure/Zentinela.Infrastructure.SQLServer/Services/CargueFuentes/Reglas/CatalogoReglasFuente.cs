@@ -25,6 +25,10 @@ internal static class CatalogoReglasFuente
         // 1900-01-01), creaba Titular/relaciones, calculaba el flag e insertaba: todo genérico.
         // No cruzaba ListaNegraCorreos ni validaba el teléfono: el motor sí (ADR-039 §4).
         [CatalogoCargueFuentes.SaludTotal.Fuente] = new ReglaGenerica(CatalogoCargueFuentes.SaludTotal.Fuente),
+        // SOS: sp_ProcesarSOSAuxiliar solo pasaba vacíos a NULL ('' y NitEmpresa 0), creaba
+        // Titular/relaciones, calculaba el flag e insertaba: todo genérico. Direccion > 70 (la
+        // Auxiliar admitía 150) hacía fallar su INSERT entero; el motor la trunca con advertencia.
+        [CatalogoCargueFuentes.Sos.Fuente]        = new ReglaGenerica(CatalogoCargueFuentes.Sos.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);
