@@ -22,14 +22,20 @@ namespace Zentinela.Infrastructure.SQLServer.Services.CargueFuentes.Reglas;
 /// texto con LTRIM/RTRIM: "573001234567" y "3001234567" son el mismo celular. El paso 7 (fijo
 /// de largo ≠ 10), el paso 10 (lista negra de correos) y el 15 (vacías) los hace el motor.
 ///
-/// Por qué el fijo que es celular se mueve ANTES que los 60x (el SP lo hacía al revés): con el
-/// orden del SP, un celular en la columna fijo "ocupaba" el fijo y el 60x del celular se perdía;
-/// así los dos números quedan cada uno en su columna.
+/// El orden es el mismo del SP: el fijo que es celular pasa a celular 2 (paso 6) ANTES de llevar
+/// los 60x al fijo (pasos 8 y 9), y por eso el intercambio (celular en el fijo + 60x en el
+/// celular) deja cada número en su columna en los dos lados. Donde el SP sí perdía datos era con
+/// el celular 2 ocupado: el celular se quedaba en el fijo, el 60x se le concatenaba y el
+/// UPDATE del paso 8 (o 9) fallaba para TODA la carga (ver el primer defecto abajo). Aquí el 60x
+/// reemplaza, con advertencia, al celular mal ubicado en el fijo (que no tiene columna libre y
+/// se pierde), y el resto de las filas no se ve afectado.
 ///
 /// Defectos del SP que NO se copian:
 /// <list type="bullet">
-/// <item>Pasos 8 y 9 concatenaban <c>fijo + ', ' + celular</c> en una columna varchar(10): el
-///   INSERT truncaba (o fallaba) y el fijo quedaba corrupto. Aquí nunca se concatena.</item>
+/// <item>Pasos 8 y 9 concatenaban <c>fijo + ', ' + celular</c> en
+///   <c>MutualSerAuxiliar.NumeroTelefonoFijo varchar(10)</c>: con un solo conflicto el UPDATE
+///   fallaba entero (error 2628) y las filas sin conflicto quedaban con su 60x como celular.
+///   Aquí nunca se concatena.</item>
 /// <item>Paso 10 anulaba correos con <c>LIKE '%' + CorreoErroneo + '%'</c> y los dejaba en ''
 ///   (no NULL): el motor usa igualdad exacta de correo o dominio y deja NULL.</item>
 /// <item>El flag se calculaba contando '' como vacío pero el INSERT guardaba '' como dato.</item>

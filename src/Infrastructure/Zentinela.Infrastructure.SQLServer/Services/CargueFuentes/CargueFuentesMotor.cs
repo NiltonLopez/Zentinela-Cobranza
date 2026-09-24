@@ -537,15 +537,7 @@ internal sealed class CargueFuentesMotor
             Extra     = mapa.Extra.Select(i => Celda(cruda, i)).ToArray(),
         };
 
-        if (mapa.Nombre >= 0)
-        {
-            var n = NormalizadorTitular.LimpiarNombre(Celda(cruda, mapa.Nombre));
-            fila.Nombre = n.Nombre.Length == 0 ? null : n.Nombre;
-            fila.NombreReparado = n.Reparado;
-            fila.NombreIrrecuperable = n.Irrecuperable;
-            if (n.Reparado) ctx.Advertir("Nombre con mojibake reparado (p. ej. 'Ã‘' → 'Ñ')");
-            if (n.Irrecuperable) ctx.Advertir("Nombre con caracteres irrecuperables ('?'): no se usa para reparar Titular");
-        }
+        if (mapa.Nombre >= 0) AsignarNombre(fila, Celda(cruda, mapa.Nombre), ctx);
 
         if (def.CreaTitularCartera) ResolverRelacion(cruda, mapa, fila, ctx);
 
@@ -561,6 +553,21 @@ internal sealed class CargueFuentesMotor
 
         regla.Validar(fila, ctx);
         return fila.MotivoExclusion is null ? fila : null;
+    }
+
+    /// <summary>
+    /// Nombre del titular limpio (ver <see cref="NormalizadorTitular"/>), con un aviso agrupado
+    /// por cada cosa que se le hizo: reparar mojibake, marcarlo irrecuperable o recortarlo.
+    /// </summary>
+    internal static void AsignarNombre(FilaCargue fila, string? bruto, ContextoCargue ctx)
+    {
+        var n = NormalizadorTitular.LimpiarNombre(bruto);
+        fila.Nombre = n.Nombre.Length == 0 ? null : n.Nombre;
+        fila.NombreReparado = n.Reparado;
+        fila.NombreIrrecuperable = n.Irrecuperable;
+        if (n.Reparado) ctx.Advertir("Nombre con mojibake reparado (p. ej. 'Ã‘' → 'Ñ')");
+        if (n.Irrecuperable) ctx.Advertir("Nombre con caracteres irrecuperables ('?'): no se usa para reparar Titular");
+        if (n.Truncado) ctx.Advertir($"Nombre: truncado a {NormalizadorTitular.LargoMaximo} caracteres");
     }
 
     private static string? Celda(string[] cruda, int indice) =>
@@ -672,7 +679,7 @@ internal sealed class CargueFuentesMotor
     }
 
     /// <summary>Validación fuerte de teléfonos, correos y placas; lo inválido se anula con advertencia.</summary>
-    private static object? ValidarContacto(ColumnaFuenteCargue col, object? valor, ContextoCargue ctx)
+    internal static object? ValidarContacto(ColumnaFuenteCargue col, object? valor, ContextoCargue ctx)
     {
         if (valor is not string texto) return valor;
 
@@ -698,16 +705,27 @@ internal sealed class CargueFuentesMotor
             }
             case TipoColumnaCargue.Telefono:
             {
-                var numero = TelefonoColombiano.Normalizar(texto).Numero;
+                // Celular (empieza en 3) o fijo (empieza en 6). Diez dígitos con otro inicio
+                // ('5551234567', '1234567890') no son un teléfono colombiano marcable.
+                var numero = TelefonoColombiano.NormalizarCelular(texto) ?? TelefonoColombiano.NormalizarFijo(texto);
                 if (numero is null) ctx.Advertir($"{col.Nombre}: teléfono inválido anulado");
                 return numero;
             }
             case TipoColumnaCargue.Email:
             {
-                var email = EmailColombiano.Normalizar(texto, col.Largo > 0 ? col.Largo : 255);
+                // Se normaliza sin tope de largo para distinguir "no es un correo" de "no cabe en
+                // la columna": los dos se anulan, pero el aviso debe decir cuál de los dos pasó.
+                var largo = col.Largo > 0 ? col.Largo : 255;
+                var email = EmailColombiano.Normalizar(texto, int.MaxValue);
                 if (email is null)
                 {
                     ctx.Advertir($"{col.Nombre}: email con formato inválido anulado");
+                    return null;
+                }
+                if (email.Length > largo)
+                {
+                    // Un correo truncado es un correo equivocado: se anula, no se recorta.
+                    ctx.Advertir($"{col.Nombre}: email de más de {largo} caracteres anulado (no cabe en la columna)");
                     return null;
                 }
                 if (ctx.ListaNegraCorreos?.Contiene(email) == true)

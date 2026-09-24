@@ -49,6 +49,7 @@ public class NormalizadorTitularTests
         Assert.Equal(esperado, r.Nombre);
         Assert.Equal(reparado, r.Reparado);
         Assert.Equal(irrecuperable, r.Irrecuperable);
+        Assert.False(r.Truncado);
     }
 
     [Fact]
@@ -58,6 +59,7 @@ public class NormalizadorTitularTests
 
         Assert.Equal(NormalizadorTitular.LargoMaximo, r.Nombre.Length);
         Assert.Equal(new string('A', 70), r.Nombre);
+        Assert.True(r.Truncado);
     }
 
     [Fact]
@@ -68,6 +70,27 @@ public class NormalizadorTitularTests
         var r = NormalizadorTitular.LimpiarNombre(entrada);
 
         Assert.Equal(new string('A', 69), r.Nombre);
+        Assert.True(r.Truncado);
+    }
+
+    [Fact]
+    public void LimpiarNombre_de_70_exactos_no_es_truncado()
+    {
+        var r = NormalizadorTitular.LimpiarNombre(new string('A', 70));
+
+        Assert.Equal(new string('A', 70), r.Nombre);
+        Assert.False(r.Truncado);
+    }
+
+    [Fact]
+    public void LimpiarNombre_largo_solo_por_basura_no_es_truncado()
+    {
+        // 80 caracteres crudos que, ya limpios (espacios colapsados), son 10: el aviso de
+        // truncado se decide sobre el nombre limpio, no sobre la celda cruda.
+        var r = NormalizadorTitular.LimpiarNombre("JUAN" + new string(' ', 36) + "-" + new string(' ', 34) + "PEREZ");
+
+        Assert.Equal("JUAN PEREZ", r.Nombre);
+        Assert.False(r.Truncado);
     }
 
     [Fact]

@@ -23,8 +23,10 @@ internal static class NormalizadorTitular
     /// <summary>
     /// <paramref name="Reparado"/>: se corrigió mojibake. <paramref name="Irrecuperable"/>: el
     /// nombre trae '?' (carácter perdido); se conserva tal cual para que sea visible y auditable.
+    /// <paramref name="Truncado"/>: ya limpio, excedía <see cref="LargoMaximo"/> y se recortó
+    /// (el llamador lo avisa: un nombre recortado en silencio parece un dato completo).
     /// </summary>
-    public sealed record Resultado(string Nombre, bool Reparado, bool Irrecuperable);
+    public sealed record Resultado(string Nombre, bool Reparado, bool Irrecuperable, bool Truncado);
 
     // Marcador temporal para la Ñ: FormD la descompondría en N + U+0303 y se perdería la virgulilla
     // junto con las tildes. U+0001 no puede venir en un nombre legítimo.
@@ -53,7 +55,7 @@ internal static class NormalizadorTitular
 
     public static Resultado LimpiarNombre(string? bruto)
     {
-        if (string.IsNullOrWhiteSpace(bruto)) return new Resultado(string.Empty, false, false);
+        if (string.IsNullOrWhiteSpace(bruto)) return new Resultado(string.Empty, false, false, false);
 
         var texto = RepararMojibake(bruto);
         var reparado = !string.Equals(texto, bruto, StringComparison.Ordinal);
@@ -104,10 +106,11 @@ internal static class NormalizadorTitular
         var nombre = limpio.ToString().Trim();
         var irrecuperable = nombre.Contains('?');
 
-        if (nombre.Length > LargoMaximo)
+        var truncado = nombre.Length > LargoMaximo;
+        if (truncado)
             nombre = nombre[..LargoMaximo].TrimEnd();
 
-        return new Resultado(nombre, reparado, irrecuperable);
+        return new Resultado(nombre, reparado, irrecuperable, truncado);
     }
 
     /// <summary>
