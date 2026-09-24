@@ -1850,6 +1850,122 @@ Solo aplica a **SMS y Correo**: el canal IVR usa carga única (`POST /api/virtua
 
 ---
 
+## Cargue de Fuentes de Datos (ADR-039)
+
+Base: `/api/cargue-fuentes`. Roles: **Admin, Auxiliar de Sistemas** (`Roles.AuxiliarSistemas`). Carga
+archivos de las fuentes de localización de la Fase 1 (`Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`,
+`SIMIT`, `DatosClaro`) con el motor genérico. **Validar y confirmar corren en segundo plano**: responden
+`202 Accepted` con la foto del job (header `Location` → `GET jobs/{id}`) y el front hace polling a
+`GET jobs/{id}` cada 1,5 s mientras `estado` sea `Validando` o `Cargando`. El job vive en memoria de la
+API hasta 48 h; un reciclaje de IIS lo borra (ver `docs/despliegue.md`).
+
+Enums **como texto** (`JsonStringEnumConverter`):
+- `estado` (`EstadoCargueJob`): `Validando` · `PreviewListo` · `Cargando` · `Completado` · `Error` · `Cancelado`.
+  En `GET jobs` además puede venir `Interrumpido` (ejecución que murió con un reinicio del servidor).
+- `fase` (`FaseCargueJob`): `Leyendo` · `Columnas` · `Apoyo` · `Limpieza` · `Dedup` · `Cruces` · `Preview` ·
+  `Escribiendo` · `Auditoria` · `Terminado`.
+
+Transiciones: `Validando → PreviewListo | Error | Cancelado`; `PreviewListo → Cargando | Cancelado`;
+`Cargando → Completado | Error | Cancelado`. Un job activo (`Validando`/`Cargando`) **por fuente** y como
+máximo `CargueFuentes:MaxJobsSimultaneos` (2) en todo el servidor.
+
+| Verbo | Ruta | Respuesta |
+|-------|------|-----------|
+| GET | `/fuentes` | `200` `FuenteCargueDto[]` |
+| POST | `/{fuente}/validar` | `202` `CargueJobDto` (estado `Validando`) |
+| GET | `/jobs` | `200` `CargueJobResumenDto[]` — jobs en memoria + ejecuciones de `CargueFuenteEjecucion` de las últimas `RetencionHoras` (48) |
+| GET | `/jobs/{id}` | `200` `CargueJobDto` (polling) |
+| POST | `/jobs/{id}/confirmar` | `202` `CargueJobDto` (estado `Cargando`) |
+| POST | `/jobs/{id}/cancelar` | `200` `CargueJobDto` |
+| DELETE | `/jobs/{id}` | `204` — borra el job y su archivo temporal |
+
+### POST /api/cargue-fuentes/{fuente}/validar
+
+`multipart/form-data` con el campo `archivo` (`.csv` o `.xlsx`). `{fuente}` es la clave del catálogo, sin
+distinguir mayúsculas. Límite **120 MB** (`[RequestSizeLimit]` + `maxAllowedContentLength` de `web.config`,
+que IIS aplica antes). **XLSX: máximo 250.000 filas** (`CargueFuentes:LimiteFilasXlsx`; ClosedXML carga el
+libro entero en memoria): por encima el job termina en `Error` pidiendo CSV. CSV sin tope (se lee por
+streaming; comillas RFC-4180, separador `;` o `,`, UTF-8 o ANSI detectado).
+
+Columnas: se resuelven por alias normalizado (sin tildes, espacios ni mayúsculas). `TitularID` siempre
+obligatoria (alias `titularid`, `numerodocumento`, `documento`, `cedula`, `identificacion`, `nit`);
+`Nombre` obligatoria si la fuente crea titulares; `CarteraID`/`Cartera` + `LiderID`/`Lider` opcionales
+(la relación solo se crea si el par está activo en `Lider_Cartera`). Las de dato de cada fuente vienen en
+`GET /fuentes` → `columnasEsperadas`. Una obligatoria faltante o un archivo sin ninguna columna de dato
+dejan el job en `Error` con `preview.columnasFaltantes` / `columnasEncontradas` (no se adivina).
+
+### `CargueJobDto`
+
+```json
+{
+  "jobId": "5b7e…", "fuente": "Sura", "etiqueta": "Sura (EPS)", "usuario": "auxiliar1",
+  "nombreArchivo": "sura_septiembre.csv", "tamanoKB": 48213,
+  "creadoEn": "2026-09-24T09:12:03", "actualizadoEn": "2026-09-24T09:13:40",
+  "estado": "PreviewListo", "fase": "Preview", "porcentaje": 100, "mensaje": "Preview listo: revisa y confirma",
+  "preview": { }, "resultado": null, "error": null,
+  "puedeCancelar": true, "puedeConfirmar": true
+}
+```
+
+`puedeConfirmar` = `PreviewListo` con `candidatas > 0` y sin columnas faltantes.
+
+**`preview` (`PreviewCargueDto`)** — solo agregados, el job no retiene las filas:
+`totalLeidas`, `excluidas`, `duplicadasEnArchivo`, `agregadasPorExpansion` (SIMIT: filas de más por placa),
+`candidatas`, `insertadas`, `refrescadas`, `descartadasVacias`, `vaciasQuePurgara`, `titularesNuevos`,
+`nombresReparados`, `nombresIrrecuperables`, `relacionesNuevas`, `filasSinCarteraLider`;
+`columnasEncontradas`, `columnasFaltantes`, `columnasOpcionalesFaltantes`;
+`errores` / `advertencias` / `info`: `[{ mensaje, cantidad }]` agrupados por mensaje (sin número de línea;
+tope 200 mensajes distintos por lista, los de mayor conteo primero); `columnasMuestra` + `muestra`
+(10 filas ya limpias, con la acción que tendrán: `Insertar` / `Refrescar fecha` / `Descartar (vacía)`);
+`huellaArchivo` (SHA-256 hex); `selloPrevisto` (fecha del servidor SQL).
+Invariantes: `totalLeidas + agregadasPorExpansion = excluidas + duplicadasEnArchivo + candidatas` y
+`candidatas = insertadas + refrescadas + descartadasVacias`.
+
+**`resultado` (`ResultadoCargueDto`)** — tras `Completado`: `ejecucionID`, `selloFechaConsulta`,
+`insertadas`, `refrescadas`, `descartadasVacias`, `vaciasPurgadas`, `titularesNuevos`, `nombresReparados`,
+`relacionesNuevas`, `advertencias`, `mensaje`, `duracionSegundos`.
+
+### `FuenteCargueDto`
+
+`fuente`, `etiqueta`, `tablaDestino`, `notas`, `habilitada`, `faseIntegracion`,
+`columnasEsperadas: [{ nombre, alias[], tipo, obligatoria, descripcion }]` (incluye TitularID, Nombre y
+Cartera/Líder si aplican; `tipo` = `Documento`, `Texto`, `Entero`, `Celular`, `Fijo`, `Telefono`, `Email`,
+`Fecha` o `Placa`), `extensionesAceptadas` (`[".csv", ".xlsx"]`), `limiteFilasXlsx`.
+
+### `CargueJobResumenDto` (GET jobs)
+
+`jobId?`, `ejecucionID?`, `fuente`, `usuario`, `nombreArchivo`, `creadoEn`, `estado` (texto: el vocabulario
+de `EstadoCargueJob` + `Interrumpido`), `porcentaje`, `insertadas?`, `refrescadas?`, `enMemoria`. Solo se
+puede "Retomar" (polling a `jobs/{id}`) si `enMemoria = true`. Si la BD no responde, la lista trae solo
+lo que hay en memoria.
+
+### Confirmar, cancelar, descartar
+
+- **Confirmar** registra la ejecución `EN CURSO` en `CargueFuenteEjecucion` antes de responder, re-lee el
+  archivo guardado (la huella debe coincidir con la validada) y escribe en **una transacción**. Si las
+  invariantes no cuadran → rollback y `Error`.
+- **Cancelar** en `Validando`/`Cargando` detiene el trabajo (en `Cargando` la transacción se revierte y la
+  ejecución queda `CANCELADA`); en `PreviewListo` descarta el preview y borra el archivo.
+- **Descartar** (`DELETE`) solo para jobs que no están en curso.
+
+### Códigos HTTP
+
+| Código | Descripción |
+|--------|-------------|
+| `200 OK` | `fuentes`, `jobs`, `jobs/{id}`, `cancelar` |
+| `202 Accepted` | `validar` y `confirmar`: el trabajo quedó corriendo; seguir con `GET jobs/{id}` |
+| `204 No Content` | `DELETE jobs/{id}` |
+| `400 Bad Request` | Sin archivo o vacío, extensión distinta de `.csv`/`.xlsx`, fuente desconocida o no habilitada (`{ mensaje }`) |
+| `401` / `403` | Sin token / rol distinto de Admin o Auxiliar de Sistemas |
+| `404 Not Found` | El job no existe o ya expiró (48 h o reinicio del servidor) |
+| `409 Conflict` | Ya hay un cargue en curso de la fuente, se alcanzó el tope global, confirmar fuera de `PreviewListo` o sin filas, cancelar un job terminado, descartar uno en curso (`{ mensaje }`) |
+| `413` | Archivo de más de 120 MB (lo corta IIS/Kestrel antes del controller) |
+
+Los errores del archivo o de la carga **no** son códigos HTTP: el job termina en `estado: "Error"` con
+`error` (y `preview` con columnas si el problema fue de encabezado).
+
+---
+
 ## Exploración interactiva (solo Development)
 
 - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`

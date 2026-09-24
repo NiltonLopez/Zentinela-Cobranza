@@ -77,6 +77,15 @@ Dependencias comprobadas el mismo día:
 resto de tablas Auxiliar (Coosalud, Positiva, RUES, Titular, etc.) no forman
 parte de este respaldo ni de la eliminación de la Fase 1.
 
+## El DROP
+
+`docs/sql/migrations/2026-09-25_drop_auxiliares_fase1.sql` — **a mano, después de validar el cargue en
+producción**. Antes de borrar comprueba que `HASHBYTES('SHA2_256', OBJECT_DEFINITION(sp))` sea igual al
+SHA-256 del texto de estos archivos (sin BOM, en UTF-16LE) y que la firma de columnas de cada tabla
+(nombre, tipo, largo, nulabilidad) sea la tomada de la BD el 2026-09-24, que coincide con su
+`_CREATE.sql` (ninguna tabla se modificó después del respaldo): si alguien modificó un objeto después de este respaldo, el DROP aborta y hay que
+respaldar de nuevo. Verificado igual el 2026-09-24 para los seis SP.
+
 ## Cómo restaurar
 
 En SSMS o `sqlcmd`, sobre `DBCallCenter`, **primero las tablas y después los SP**

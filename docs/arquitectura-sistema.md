@@ -126,6 +126,7 @@ Flujo sin autenticación previa (auto-registro):
 | Administración | Cargue de Reportes | ✅ Completo | Admin |
 | Administración | Cargue de Pagos | ✅ Completo | Admin |
 | Administración | Asignación de Metas | ✅ Completo | Admin |
+| Administración | Cargue de Fuentes de Datos (Fase 1: Sura, Cajacopi, MutualSer, NuevaEps, SIMIT, DatosClaro) | ✅ Completo | Admin, Auxiliar de Sistemas (ADR-039) |
 | Consulta Integrada | — | ✅ Completo | Todos |
 
 ---
@@ -148,6 +149,55 @@ Política `FrontendPolicy`: origen `http://localhost:5173`, cualquier header y m
 En producción: actualizar `WithOrigins` con la URL del servidor dedicado.
 
 > **Nota:** No llamar `app.UseRouting()` explícitamente en ASP.NET Core 9 — rompe CORS con endpoint routing. El routing es implícito.
+
+---
+
+## Trabajo en segundo plano — Cargue de Fuentes de Datos (ADR-039)
+
+Primer patrón de Zentinela para un trabajo largo **con avance** que sobrevive a la petición que lo
+inició (el store singleton se modeló sobre `AuditoriaReportesStore`, que solo guarda resultados ya
+generados): validar o cargar un archivo de hasta un millón de filas tarda minutos y no
+cabe en una petición HTTP síncrona. Sin cola persistente ni servicio aparte: todo vive en el proceso de
+la API.
+
+```
+ Front (React)                         API                                   Infrastructure.SQLServer
+ ─────────────                         ───                                   ────────────────────────
+ POST {fuente}/validar ──────────────► CargueFuentesController ────────────► CargueFuentesOrquestador (Singleton)
+   ◄── 202 CargueJobDto                  (Admin, AuxiliarSistemas)             · guarda el archivo en disco
+ sessionStorage['cargue-fuentes-job']                                          · cupos: 1 job activo por fuente, 2 global
+ useQuery polling 1,5 s ─────────────► GET jobs/{id} ────────────────────►     · CargueFuentesJobStore.Agregar(job)
+   mientras Validando/Cargando           ◄── job.Snapshot()                    · Task.Run ──┐
+                                                                                             ▼
+                                                                    IServiceScopeFactory.CreateAsyncScope()
+                                                                      └─ CargueFuentesMotor (Scoped, CallCenterDbContext)
+                                                                           IProgress → job.Progreso(fase, %, mensaje)
+```
+
+| Pieza | Dónde | Ciclo de vida | Qué hace |
+|---|---|---|---|
+| `CatalogoCargueFuentes` | `Application/Constants/` | estático | Definición declarativa por fuente (columnas, alias, tipos, largos, flag, sello, cardinalidad). El front la recibe por `GET /fuentes` |
+| `ICargueFuentesService` + DTOs + `CargueFuentesSettings` | `Application/Interfaces/`, `DTOs/CargueFuentes/`, `Settings/` | — | Contrato; `EstadoCargueJob`/`FaseCargueJob` viajan como texto |
+| `CargueFuentesController` | `API/Controllers/` | por petición | Traduce `CargueFuentesConflictoException` → 409, `ArgumentException` → 400; 120 MB |
+| `CargueFuentesOrquestador` | `Infrastructure/.../Services/CargueFuentes/` | **Singleton** | Implementa el servicio. Cupos bajo `JobStore.Cerrojo`, copia del archivo, `Task.Run` con **scope propio** (el scope de la petición muere al responder el 202), captura **toda** excepción (una excepción no observada en `Task.Run` dejaría el job en `Validando` para siempre), inserta la fila `EN CURSO` de `CargueFuenteEjecucion` **antes** de lanzar la carga, une memoria + BD en `ListarAsync` |
+| `CargueFuentesJobStore` + `CargueJob` | ídem | **Singleton** | `ConcurrentDictionary<Guid, CargueJob>`; el job guarda su estado detrás de un `lock` y expone solo `Snapshot()` inmutable; `CancellationTokenSource` por job; purga cada hora lo terminado hace más de `RetencionHoras` (48) y, al arrancar, las carpetas huérfanas de un reinicio |
+| `CargueFuentesMotor` | ídem | **Scoped** (uno por trabajo) | Pipeline por fases (Leyendo → Columnas → Apoyo → Limpieza → Dedup → Cruces → Preview / Escribiendo → Auditoría) con `IProgress<ProgresoCargue>`; confirmar re-ejecuta las fases 1–6 sobre el archivo en disco y escribe en una transacción; invalida `ICalificadorCarteraCache` |
+| `GeneradorSqlCargue`, `FilaCargue`, `ContextoCargue`, `Reglas/*` | ídem | estático / por trabajo | Todo el SQL desde la definición; reglas por fuente (`IReglaFuente`: `Transformar`, `Expandir`, `Validar`) |
+| Helpers | `Services/Shared/` | estático | `NormalizadorTitular`, `EmailColombiano`, `ListaNegraCorreos`, `PrefijosFijo`, `PlacaVehiculo`, `TelefonoColombiano`, `ArchivoTabular` (CSV/XLSX por filas), `ResolucionCarteraLider` |
+| Página | `Web/src/pages/administracion/CargueFuentesDatosPage.tsx` + `cargue-fuentes/*` | — | Selector, columnas esperadas, `DropZone`, `PanelJob` (barra + fase + cancelar), `PreviewCargue`, `ListaCargues` (en curso / 48 h, "Retomar") |
+
+**Retomar al volver.** El `jobId` se guarda en `sessionStorage` (`'cargue-fuentes-job'`, se limpia en
+`AuthContext.cerrarSesion`); al volver a la página el `useQuery` lo re-consulta (`gcTime` 48 h). Un 404
+(job purgado o servidor reiniciado) limpia la clave y avisa. Sin `beforeunload`: el trabajo sigue en el
+servidor aunque el usuario cierre la pestaña. La lista de cargues (polling cada 10 s) permite retomar
+desde otra pestaña.
+
+**Límite del patrón (hosting in-process en IIS).** Un reciclaje del AppPool o su *idle timeout* matan el
+`Task.Run`. En `Cargando` la transacción se revierte sola (no hay escritura parcial) y la fila de
+`CargueFuenteEjecucion` queda `EN CURSO`: `ListarAsync` la muestra como **Interrumpido** y la cierra en
+BD como `ERROR` con `Interrumpida (reinicio del servidor)`. Configuración del AppPool obligatoria:
+`docs/despliegue.md`. Si algún día se necesita durabilidad real, el siguiente paso es una cola persistente
+o un servicio Windows (descartado en ADR-039 por costo).
 
 ---
 

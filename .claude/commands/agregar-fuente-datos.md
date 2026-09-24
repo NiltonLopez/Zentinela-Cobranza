@@ -23,7 +23,8 @@ Si el usuario no provee los 3 argumentos, **preguntar antes de ejecutar** (prefl
 4. **Cardinalidad** respecto a `TitularID`: ¿1:1 (una fila por titular) o N:1 (varias filas)? Esto cambia la entidad de ConsultaIntegrada y si el TVF necesita `ROW_NUMBER()` o no.
 5. ¿Aplica como filtro en Calificador/Creador (selector de celular o email)? Si expone múltiples celulares (ej. MutualSer) confirmar si entran como entradas separadas o COALESCE.
 6. ¿Es fuente de **localización**? **La respuesta por defecto es SÍ.** El panel "Porcentajes de Localización" del Calificador NO requiere Departamento/Municipio — mide encontrado/no-encontrado/falta-por-buscar para **cualquier fuente con al menos un campo identificable** (celular, email, NIT, empresa, placa, lo que sea). De las 16 fuentes activas hoy, solo hay que verificar con el usuario si hay una razón real para excluirla (p. ej. la fuente fue retirada del sistema, como `DatosExternos`). **No asumas "no" solo porque la fuente no trae geografía** — SIMIT y RGM son datos vehiculares y SÍ están en el panel; MutualSer/Positiva/Cajacopi tampoco traen depto/municipio y también están. Si el usuario responde "no", pedir la justificación explícita y registrarla en la memoria (paso 9) y en `docs/para-tener-en-cuenta.md` (paso 8) — no dejarlo como una omisión silenciosa. Si sí, ejecutar el paso 5b.
-7. ¿Tiene página propia en el Sidebar? (raro — solo si hay vista dedicada útil al líder).
+7. ¿Se alimenta **por archivo** (el proveedor entrega un Excel/CSV que hoy alguien importa a `<Fuente>Auxiliar` y procesa con `sp_Procesar<Fuente>Auxiliar`)? **Por defecto SÍ** para toda fuente de localización. Si sí → paso **5f** (Cargue de Fuentes de Datos). Solo se omite si la tabla la llena otro sistema (un ETL, una API) — registrar el motivo.
+8. ¿Tiene página propia en el Sidebar? (raro — solo si hay vista dedicada útil al líder).
 
 ## Contexto del proyecto (snapshot)
 
@@ -96,6 +97,7 @@ src/
 | Uso de Base de Datos        | `UsoBaseDatosService`               | `InformesGeneralesController`  | `InformesGeneralesPage`      | NO consume el TVF, pero es el **espejo masivo de Rastreo** — mismo UNION ALL, contra `#Telefonos` en vez de `@numero`. Se actualiza **siempre junto con Rastreo** |
 | Gestión de Carteras (admin) | `GestionCarterasService`            | `GestionCarterasController`    | `GestionCarterasPage`        | NO |
 | Cargue de Reportes          | `CargueReporteService`              | `CargueReportesController`     | `CargueReportesPage`         | NO |
+| Cargue de Fuentes de Datos  | `CargueFuentesMotor` + `Reglas/*` (orquestado por `CargueFuentesOrquestador`) | `CargueFuentesController` | `CargueFuentesDatosPage` | NO — **ESCRIBE la tabla fuente** (es su única entrada de datos, ADR-039) e invalida `ICalificadorCarteraCache` al terminar. Se extiende en el paso **5f** |
 | Localización (6 stubs)      | (sin servicio actualmente)          | —                              | `Arl/Caja/Camara/...` stubs  | NO |
 
 > **Nota crítica de arquitectura — vw_BaseMadre aplana NULLs a `'0'`**: por eso los módulos de localización con 3 estados (valor / vacío / sin consulta) NO la consultan: usan `LEFT JOIN (SELECT DISTINCT TitularID FROM TablaFuente)` directo + flags `EnFuente`. Si la nueva fuente expone localización, sigue ese patrón también en `ObtenerLocalizacionAsync` — no asumas que `vw_BaseMadre` te da la verdad sobre "no encontrado vs sin consultar".
@@ -104,27 +106,29 @@ src/
 
 > ⚠️ Corregido 2026-07-08: la columna Localización de esta tabla estaba desactualizada en varias filas (Tigo, PositivaEmpresas, Compensados, SIMIT, RGM decían "no" cuando el código actual **sí** las incluye en el panel — arrastraba el supuesto incorrecto de que localización = geografía). Verificar contra `LeerLocalizacionAsync`/`Fuentes` en `CalificadorCarteraService.cs` si hay dudas, no confiar ciegamente en esta tabla.
 
-| Fuente | Cardinalidad | Selector cel/email | Localización | Patrón ConsultaIntegrada |
-|---|---|---|---|---|
-| Cajacopi | 1:1 | sí / sí | sí | entidad 1:1 simple |
-| Camara | 1:1 | sí / sí | sí | entidad 1:1 simple |
-| SaludTotal | 1:1 | sí / sí | sí | entidad 1:1 + empresa |
-| Positiva | 1:1 | sí / sí | sí | entidad 1:1 simple |
-| Tigo | 1:1 | sí / sí | sí (aunque `ESTADO_FUENTE` la marca "Inactivo" — son cosas distintas) | entidad 1:1 simple |
-| SOS | 1:1 | sí / no | sí | entidad 1:1 + empresa |
-| DatosClaro | **N:1** | sí / sí | sí (Rastreo) | entidad N:1, aplana con sufijos `Email 1`, `Email 2`, … |
-| MiVacuna | 1:1 | sí / sí | sí (agregado 2026-07-08 — se omitió por error en la integración original, ver `project_fuente_mivacuna.md`) | entidad 1:1 simple |
-| MutualSer | 1:1 | sí (×2 cels) / sí | sí (Rastreo + Localización) | entidad 1:1 simple |
-| ARLSura | 1:1 | no | sí (solo empresa) | entidad simple |
-| Sura | 1:1 | sí / sí | sí | entidad 1:1 simple. **Al integrarla (2026-09-02) hubo que renombrar los alias de ARLSura** a `[NIT ARL Sura]`/`[Empresa ARL Sura]` — ver anti-patrón de colisión de nombres |
-| PositivaEmpresas | 1:1 | no | sí | entidad simple |
-| RUES | 1:1 | no | sí (solo empresa) | entidad simple |
-| Fosyga | 1:1 | no | sí (regimen/depto/municipio) | entidad 1:1 |
-| Compensados | 1:1 | no | sí | entidad 1:1 |
-| NuevaEps | 1:1 | sí / no | sí | entidad 1:1 |
-| SIMIT | 1:1 | no | sí (vehicular — celular/email no aplica, pero placa sí es el campo identificable) | entidad 1:1 |
-| RGM | 1:1 | no | sí (vehicular — marca/modelo/placa como campo identificable) | entidad 1:1 |
-| DatosExternos | 1:1 | **ignorada** — no se mapea (ver `project_datos_externos_removido.md`) | — | — |
+| Fuente | Cardinalidad | Selector cel/email | Localización | Patrón ConsultaIntegrada | Cargue (5f) |
+|---|---|---|---|---|---|
+| Cajacopi | 1:1 | sí / sí | sí | entidad 1:1 simple | **sí** — `ReglaCajacopi` (prefijo a fijos de 7, `11111`, "NO TIENE") |
+| Camara | 1:1 | sí / sí | sí | entidad 1:1 simple | Fase 2 |
+| SaludTotal | 1:1 | sí / sí | sí | entidad 1:1 + empresa | Fase 2 |
+| Positiva | 1:1 | sí / sí | sí | entidad 1:1 simple | Fase 2 |
+| Tigo | 1:1 | sí / sí | sí (aunque `ESTADO_FUENTE` la marca "Inactivo" — son cosas distintas) | entidad 1:1 simple | Fase 2 |
+| SOS | 1:1 | sí / no | sí | entidad 1:1 + empresa | Fase 2 |
+| DatosClaro | **N:1** | sí / sí | sí (Rastreo) | entidad N:1, aplana con sufijos `Email 1`, `Email 2`, … | **sí** — `ReglaDatosClaro` (N:1, no crea Titular, lista negra de teléfonos real) |
+| MiVacuna | 1:1 | sí / sí | sí (agregado 2026-07-08 — se omitió por error en la integración original, ver `project_fuente_mivacuna.md`) | entidad 1:1 simple | Fase 2 |
+| MutualSer | 1:1 | sí (×2 cels) / sí | sí (Rastreo + Localización) | entidad 1:1 simple | **sí** — `ReglaMutualSer` (reubica cel/cel2/fijo) |
+| ARLSura | 1:1 | no | sí (solo empresa) | entidad simple | Fase 2 |
+| Sura | 1:1 | sí / sí | sí | entidad 1:1 simple. **Al integrarla (2026-09-02) hubo que renombrar los alias de ARLSura** a `[NIT ARL Sura]`/`[Empresa ARL Sura]` — ver anti-patrón de colisión de nombres | **sí** — `ReglaGenerica` (plantilla) |
+| PositivaEmpresas | 1:1 | no | sí | entidad simple | Fase 2 |
+| RUES | 1:1 | no | sí (solo empresa) | entidad simple | Fase 2 |
+| Fosyga | 1:1 | no | sí (regimen/depto/municipio) | entidad 1:1 | Fase 2 |
+| Compensados | 1:1 | no | sí | entidad 1:1 | Fase 2 (necesita `FlagDesdeArchivo`) |
+| NuevaEps | 1:1 | sí / no | sí | entidad 1:1 | **sí** — `ReglaGenerica` + `TitularIdComoTexto` |
+| SIMIT | 1:1 | no | sí (vehicular — celular/email no aplica, pero placa sí es el campo identificable) | entidad 1:1 | **sí** — `ReglaSimit` (`Expandir` Placa1..15 → una fila por placa) |
+| RGM | 1:1 | no | sí (vehicular — marca/modelo/placa como campo identificable) | entidad 1:1 | Fase 2 |
+| DatosExternos | 1:1 | **ignorada** — no se mapea (ver `project_datos_externos_removido.md`) | — | — | no aplica |
+
+> Coosalud, SaviaSalud, TigoUne y CamaraEmpresa (no listadas arriba) también tienen `sp_Procesar*Auxiliar` vivo: **Fase 2** (CamaraEmpresa necesita `ColumnaClaveTitular`, clave `NitEmpresa`).
 
 ## Pasos automáticos
 
@@ -255,6 +259,38 @@ Si la fuente debe consultarse fuera de la vista (3 estados o consulta dedicada),
   grep -c "UNION ALL" src/Infrastructure/*/Services/RastreoLineasService.cs src/Infrastructure/*/Services/UsoBaseDatosService.cs
   ```
 
+**5f. Cargue de Fuentes de Datos** (`Services/CargueFuentes/`, ADR-039) — **por defecto SÍ** (pregunta 7 del preflight): es la **única entrada de datos** de la tabla fuente y reemplaza al par `<Fuente>Auxiliar` + `sp_Procesar<Fuente>Auxiliar`. El motor genérico ya hace todo lo común; por fuente son cuatro toques y el front **no cambia** (el selector y el panel de columnas se alimentan de `GET /api/cargue-fuentes/fuentes`).
+
+1. **Definición** — `src/Zentinela.Application/Constants/CatalogoCargueFuentes.cs`: una `DefinicionFuenteCargue` nueva, sumada a `Todas`.
+   - `TablaDestino`, `ColumnaFlag` (`EstadoEn<Fuente>`, o `null` si no tiene), `ColumnaFecha` (`FechaConsulta`/`FechaInsercion`) y **`TipoFecha` según el tipo REAL de la columna destino** (`date` → `Date`; `datetime` → `DateTime`, primera fuente que lo use: revisar `GeneradorSqlCargue.LeerSello` y el script de reversión).
+   - `ColumnasDato`: nombre EXACTO de la columna destino, alias ya normalizados (`ArchivoTabular.Normalizar`: minúsculas, sin tildes ni espacios), `Tipo` (`Texto`, `Celular`, `Fijo`, `Telefono`, `Email`, `Entero`, `Fecha`, `Placa`) y **`Largo` = `max_length` real verificado con `sys.columns`** (no con `schema.md`, que ha tenido errores; con `nvarchar` es la mitad). Un largo mal puesto hace que SQL lance *"String or binary data would be truncated"* a mitad de la transacción; bien puesto, el motor trunca con advertencia.
+     ```sql
+     SELECT c.name, t.name AS tipo, c.max_length, c.is_nullable
+       FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id
+      WHERE c.object_id = OBJECT_ID('dbo.<Tabla>') ORDER BY c.column_id;
+     -- y además: FK a Titular, triggers (sys.triggers) e índices (sys.indexes) del destino
+     ```
+   - **Clave de contenido = TODAS las columnas de dato** (`EntraAClave = true`, el default). No copiar la clave recortada del SP viejo: perdía cambios (p. ej. de Municipio) en silencio. `EntraAlFlag = false` para lo que no es dato de contacto (localización, régimen, fechas del proveedor), replicando el flag del SP.
+   - `TitularIdComoTexto` si el `TitularID` del destino es varchar (NuevaEps); `CreaTitular`/`CreaTitularCartera = false` si la tabla no tiene FK a `Titular` (DatosClaro); `Cardinalidad = VariasPorTitular` para N:1; `AplicaPoliticaVacias = false` sin flag; `ColumnasArchivoExtra` para columnas del archivo que no van tal cual al destino (SIMIT `Placa1..15`) y `DesdeArchivo: false` para la columna que produce la regla.
+   - Si la fuente no cabe en el modelo (clave de titular distinta de `TitularID`, flag que viene del archivo), **parar y consultar**: las extensiones previstas son `ColumnaClaveTitular` (CamaraEmpresa) y `FlagDesdeArchivo` (Compensados), y son cambios del motor, no de una regla.
+2. **Regla** — `src/Infrastructure/Zentinela.Infrastructure.SQLServer/Services/CargueFuentes/Reglas/Regla<Fuente>.cs` (o `ReglaGenerica` si el SP no hace nada propio) y registro en `CatalogoReglasFuente`. **Traducir** el SP viejo leyendo su respaldo (`OBJECT_DEFINITION` → `docs/sql/legacy/`): mover/prefijar datos en `Transformar` (corre antes de validar), 1→N filas en `Expandir`, exclusiones propias en `Validar`; `NecesitaPrefijos` / `NecesitaListaNegraTelefonos` si hacen falta. Lo genérico (vacíos → NULL, celular 3xx/10, fijo 6xx/10, email + lista negra exacta, truncado, flag, dedup, Titular, nombres, Titular_Cartera, refrescar/insertar, vacías) **no se reescribe**. Documentar en el `<summary>` de la regla qué se tradujo y **qué defectos del SP NO se copian**. Defectos típicos a no copiar (todos vistos en la Fase 1):
+   - lista negra de correos con `LIKE '%x%'` (el motor usa igualdad exacta de correo o dominio) y correo anulado a `''` en vez de NULL;
+   - flag calculado **antes** de limpiar, o contando `''` como dato;
+   - concatenar dos teléfonos en un `varchar(10)`; `INSERT` posicional;
+   - `JOIN` con conversión implícita varchar/bigint; `ISNULL(x, '')` que iguala NULL con `''`;
+   - dedup por titular **antes** de despivotar; dedup, limpieza o purga de vacías sobre **toda** la tabla final;
+   - cruzar contra una tabla staging (`ListaNegraTelefonosAuxiliar`) en vez de la real;
+   - `Titular_Cartera` sin validar el par activo en `Lider_Cartera` (o con `LiderID = CarteraID`, RGM);
+   - texto de relleno del proveedor guardado como dato (`PAZ Y SALVO` como placa, `1111111` como fijo): validar la forma del dato y anularlo con advertencia agrupada (mensaje fijo, sin el valor).
+3. **Pruebas**:
+   - `tests/Zentinela.Infrastructure.Tests/CargueFuentes/Regla<Fuente>Tests.cs` (unitarios de la regla, con `ReglaTestUtil`) y el caso de la fuente en `CatalogoCoherenciaTests` (tiene regla, largos, alias normalizados).
+   - Caso en `tools/CargueHarness/Casos/Caso<Fuente>.cs` con **su propio sub-rango de 100 TitularIDs** del rango reservado `999000000001..999000000999` (ocupados: Sura 001-099, Cajacopi 100-199, MutualSer 200-299, NuevaEps 300-399, SIMIT 400-499, DatosClaro 500-599; la siguiente usa 600-699). Registrar la tabla en `Harness.TablasDelRango` y `Harness.TablasDestino` y el caso en `Program.cs`. El caso usa `Harness.FlujoEstandar`: validar → simular (rollback, tabla intacta) → cargar → **segunda carga del mismo archivo = 0 insertadas, N refrescadas y `COUNT(*)` igual** → limpieza total del rango. Un XLSX sintético con cada exclusión y cada advertencia de la regla.
+   - Antes de borrar el SP viejo: comparar contra él con el mismo archivo (`EXEC` en transacción con ROLLBACK vs `simular: true`). Toda diferencia que no sea un defecto documentado en el paso 2 es un bug.
+   - No levantar la API (lo hace el usuario). `dotnet test tests/Zentinela.Infrastructure.Tests` y `dotnet run --project tools/CargueHarness` (cadena en `ZENTINELA_CARGUE_CS`, nunca en un archivo) sí se corren; con la API arrancada el build puede fallar con MSB3027. No correr el harness mientras corre el ETL de Estado Titular (se queda quieto en `WRITELOG`).
+4. **Front**: nada. **`docs/sql/revertir_cargue_fuente.sql`**: agregar la fuente a su lista blanca (`@Fuentes` + `@Columnas` en el MISMO orden que `ColumnasDato`: el orden entra al hash).
+
+**Al cerrar la fuente** (después de validarla en producción, no antes): respaldar `sp_Procesar<Fuente>Auxiliar` (texto íntegro de `OBJECT_DEFINITION`, UTF-8 con BOM) y el CREATE de `<Fuente>Auxiliar` en `docs/sql/legacy/` (+ fila en su README); script de DROP en `docs/sql/migrations/` con el patrón de `2026-09-25_drop_auxiliares_fase1.sql` (guarda de 0 filas, hash de la definición contra el respaldo, dependencias, transacción, idempotente); y `docs/schema.md`: sección de la Auxiliar marcada, tabla de SP, sección "Flujo de carga masiva".
+
 **Servicios que NO se tocan** (verificado: no consultan `vw_BaseMadre` ni `fn_BaseMadrePorCartera`): `ComparadorCarterasService`, `GestionCarterasService`, `CargueReporteService`.
 
 ### 6. Backend — API
@@ -340,6 +376,7 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - Si la fuente expone columnas de teléfono: `RastreoLineasService.SqlConsulta` **y `UsoBaseDatosService`** extendidos con `UNION ALL` por cada columna, con el mismo conteo de fuentes en ambos.
 - ConsultaIntegrada renderiza la nueva fuente como sub-bloque dentro del grupo "Contactabilidad" (sin tocar el frontend).
 - `ESTADO_FUENTE` en CalificadorCarteraPage incluye la nueva fuente con etiqueta + color.
+- **Si la fuente se alimenta por archivo (5f):** aparece habilitada en `GET /api/cargue-fuentes/fuentes`; su caso del harness cumple la **invariante de conteos** (`leídas + agregadas por expansión = excluidas + duplicadas + candidatas` y `candidatas = insertadas + refrescadas + vacías descartadas`) y la **doble carga del mismo archivo da 0 insertadas** con `COUNT(*)` del destino igual; el rango reservado queda limpio. `CatalogoCoherenciaTests` y los tests de la regla en verde.
 - Sidebar sigue alfabético; no se duplican rutas.
 - Localización con 3 estados (si aplica) usa `LEFT JOIN DISTINCT` directo, **no** `vw_BaseMadre`.
 - `dotnet build` y `npm run build` sin errores.
@@ -358,6 +395,7 @@ Indexar en `MEMORY.md` con una línea de hook bajo el orden alfabético.
 - ❌ **Olvidar alguna de las 4 piezas del panel de localización** — `SUM(CASE...)` en result set 9, el `LEFT JOIN`, la entrada en `LeerLocalizacionAsync`, y la entrada en el diccionario `Fuentes` (CSV) son 4 lugares distintos en el mismo archivo (`CalificadorCarteraService.cs`) que deben quedar sincronizados. Faltar cualquiera de los 4 deja la fuente a medias (aparece en la tabla pero sin datos, o con datos pero sin poder descargar el CSV).
 - ❌ **Confiar en referencias a `ObtenerLocalizacionAsync`/`LocalizacionResumenRaw`** — esos nombres son de una arquitectura anterior a la fusión del 2026-05-21; el código actual vive en el batch único `SqlAgregados` (result set 9) + `LeerLocalizacionAsync` + el diccionario `Fuentes`. Si una memoria de sesión vieja o un comentario menciona esos nombres, están obsoletos — verificar contra el archivo real.
 - ❌ **Asumir que `RastreoLineasService` no se toca solo porque ADR-015 lo dice** — el ADR-015 quedó parcialmente desactualizado. La regla práctica vigente: si la fuente expone teléfono, **se añade al `UNION ALL` de `RastreoLineasService.SqlConsulta`**.
+- ❌ **Copiar el SP viejo dentro de la regla de cargue (5f)** — la regla traduce solo lo propio de la fuente; lo genérico ya lo hace el motor y los defectos del SP (lista de 5f.2) no se reproducen. Tampoco borrar `<Fuente>Auxiliar` ni su SP antes de validar el cargue en producción y respaldarlos en `docs/sql/legacy/`.
 - ❌ **Hardcodear cadenas de conexión** (regla global #3).
 - ❌ **Consumir la tabla fuente vía `vw_BaseMadre` cuando se necesitan 3 estados** — rompe localización (la vista aplana NULLs a `'0'`).
 - ❌ **Añadir la fuente al `switch` de celular/email si la BD no la expone como tal** — generaría columnas fantasma y excepciones EF.

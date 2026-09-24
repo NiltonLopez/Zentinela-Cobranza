@@ -1,6 +1,6 @@
 # Despliegue On-Premise — Zentinela
 
-> Última actualización: 2026-04-29
+> Última actualización: 2026-09-24
 
 Este documento describe cómo publicar el sistema al servidor de oficina. Zentinela está dividido en dos artefactos independientes: la **API .NET** y la **SPA React**. Cada uno se despliega por separado.
 
@@ -54,6 +54,52 @@ app.MapControllers();
 > Si la SPA cambia de host (otro dominio interno, IP directa, etc.), actualizar `WithOrigins(...)` o agregar más orígenes a la lista — `AllowCredentials()` es incompatible con `AllowAnyOrigin()`, los orígenes deben enumerarse explícitamente.
 >
 > La política `FrontendPolicy` (localhost 5173/5174) sigue registrada pero ya no se aplica globalmente; queda disponible para activarla condicionalmente en Development si se requiere.
+
+### AppPool y trabajos en segundo plano — Cargue de Fuentes de Datos (ADR-039)
+
+El módulo *Administración → Cargue de Fuentes de Datos* valida y carga archivos grandes en un
+`Task.Run` **dentro del proceso de la API** (hosting in-process). Todo lo que reinicie el proceso mata
+el trabajo en curso:
+
+- **Idle Time-out** del AppPool (20 min sin peticiones por defecto). Mientras el usuario tiene la página
+  abierta el polling lo mantiene vivo; si cierra el navegador con un cargue de 30 min, el pool se apaga.
+- **Reciclaje** del AppPool (periódico, por memoria, por cambio de configuración o por un despliegue).
+
+Configuración obligatoria del AppPool de la aplicación `api` (IIS Manager → Application Pools →
+*pool* → Advanced Settings):
+
+| Parámetro | Valor | Por qué |
+|---|---|---|
+| Process Model → **Idle Time-out (minutes)** | `0` | Sin apagado por inactividad |
+| General → **Start Mode** | `AlwaysRunning` | El pool arranca solo y no espera a la primera petición |
+| Recycling → Regular Time Interval | `0` o una hora fija fuera de horario | Evitar el reciclaje cada 29 h a media tarde |
+
+Qué pasa si igual se muere:
+- En **Validando**: se pierde el job (nada se había escrito); hay que volver a subir el archivo.
+- En **Cargando**: la conexión muere y **la transacción se revierte sola**: no hay escritura parcial. La
+  fila de `CargueFuenteEjecucion` queda `EN CURSO`; la lista de cargues de la UI la muestra como
+  **Interrumpido** y la cierra como `ERROR` (`Interrumpida (reinicio del servidor)`). Volver a subir.
+- **No publicar con un cargue en curso**: el despliegue recicla el pool. Mirar antes la lista "en curso".
+
+**Carpeta temporal** (`appsettings` → `CargueFuentes:CarpetaTemporal`). El archivo subido se guarda en
+`<carpeta>/<jobId>/archivo.<ext>` entre validar y confirmar (confirmar lo vuelve a leer). Vacío = subcarpeta
+`zentinela-cargues` del TEMP del proceso, que con IIS suele ser `C:\Windows\Temp` o el temp del perfil
+del AppPool: si ese disco es chico, configurar una ruta en un disco con espacio **y dar permiso de
+escritura a la identidad del AppPool** (`IIS AppPool\<pool>`). Espacio: hasta 2 archivos en curso de
+≤120 MB más los que esperan confirmación; se borran al terminar y, si quedan (reinicio), la purga los
+elimina a las **48 h** (`CargueFuentes:RetencionHoras`). Otros parámetros de la sección:
+`LimiteFilasXlsx` (250.000; por encima se pide CSV) y `MaxJobsSimultaneos` (2).
+
+**Límite de subida: 120 MB.** Lo fija `src/Zentinela.API/web.config`
+(`<requestLimits maxAllowedContentLength="125829120" />`, IIS corta antes que la aplicación) junto con
+`[RequestSizeLimit]` del controller. Si se regenera el `web.config`, conservar ese valor.
+
+**No cargar mientras corre el ETL de Estado Titular** (`Ejecutar_ETL_UltimoEstadoTitular` →
+`sp_Insertar_UltimoEstadoTitular`, ADR-038). No se bloquean entre sí, pero los dos escriben mucho log de
+transacciones en el mismo servidor: medido el 2026-09-24, con el ETL corriendo el servidor quedó
+saturado de escritura de log (esperas `WRITELOG`) y el harness del cargue se detuvo hasta que el ETL
+terminó. Consultar el horario del trabajo del Agente (o
+`vw_EtlEstadoTitularEstado`) antes de un cargue grande.
 
 ### Flujo de publicación
 1. VS 2022 → Solution Explorer → click derecho `Zentinela.API` → **Publish**.
@@ -133,3 +179,5 @@ Antes de publicar a producción:
 - [ ] Backup de la BD antes de cualquier release con cambios de schema.
 - [ ] Verificar que el binding de IIS escucha en 5051 y el firewall permite el tráfico.
 - [ ] Smoke test post-deploy: login + un endpoint de cada módulo crítico.
+- [ ] AppPool de `api` con `Idle Time-out = 0` y `Start Mode = AlwaysRunning`; ningún Cargue de Fuentes en curso al publicar (ADR-039).
+- [ ] `CargueFuentes:CarpetaTemporal` con espacio en disco y permiso de escritura para la identidad del AppPool.

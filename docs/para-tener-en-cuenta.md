@@ -3,7 +3,53 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-09-22**.
+Última actualización: **2026-09-24**.
+
+---
+
+## Cargue de Fuentes de Datos — lo que hay que saber (2026-09-24, ADR-039)
+
+- **Caché del Calificador.** El cargue llama `ICalificadorCarteraCache.InvalidarTodo()` al terminar OK
+  (cachea hasta 24 h y solo se limpia sola al corte de la 1 p. m.). **No** se invalida si los datos
+  cambian por otro camino: `revertir_cargue_fuente.sql`, un `sp_Procesar*Auxiliar` de la Fase 2 o un
+  UPDATE a mano → reciclar el AppPool o esperar la 1 p. m. El harness corre en otro proceso: tampoco
+  limpia la caché de la API.
+- **NuevaEps guarda `TitularID` como varchar(30).** El motor valida el documento como número y escribe
+  `CONVERT(varchar(30), bigint)` (sin ceros a la izquierda); los joins convierten del lado de `#Carga`
+  para usar el índice. Una fila legacy con ceros a la izquierda o espacios no matchearía y se insertaría
+  como nueva (hoy hay 0). Sus ~3.000 teléfonos de 7 dígitos ya no entran como celular; los existentes
+  quedan.
+- **SIMIT: placas.** Placa válida = sin espacios ni guiones, mayúsculas, 5–7 caracteres A-Z/0-9 con letra y
+  dígito. Marcas (`PAZ Y SALVO`, `NO CARGO`, `SIN`…) = "sin placa". **Aplicar
+  `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql` antes (o junto con) la primera carga de
+  SIMIT**: sin él, `QUR25` no reconoce la fila legacy `QUR 25` y la duplica, y las marcas siguen contando
+  como titulares encontrados.
+- **Clave de contenido con collation `Modern_Spanish_CI_AS`.** El refresco compara con `INTERSECT`, que usa
+  la collation: un cambio **solo de mayúsculas** (o de espacios finales) cuenta como contenido idéntico,
+  se refresca la fecha y el texto viejo se conserva. Un cambio de tilde sí es contenido nuevo.
+- **Duplicados legacy en destino.** Los SP deduplicaban tarde y las tablas son heaps sin PK: una fila del
+  archivo puede refrescar varias filas idénticas. Por eso `Refrescadas` se cuenta del lado de `#Carga` (no
+  con `@@ROWCOUNT`) y `CargueFuenteReversion` puede tener más `U` que `Refrescadas`. No es un error.
+- **XLSX se abre dos veces por pasada** (contar filas y leerlas, ClosedXML carga el libro entero cada vez)
+  y confirmar repite las dos: cuatro aperturas por cargue. De ahí el tope de 250.000 filas; para archivos
+  grandes, **CSV**. Un CSV "ANSI" cuyos primeros 64 KB son ASCII puro se detecta como UTF-8 y una Ñ
+  posterior llega rota (`PI�A`): guardarlo como "CSV UTF-8".
+- **Estado `Interrumpido`.** No es un valor de `EstadoCargueJob`: solo aparece en `GET jobs` para una
+  ejecución que quedó `EN CURSO` sin job en memoria (el proceso murió). En BD se cierra como `ERROR` con
+  `Error = 'Interrumpida (reinicio del servidor)'`. No escribió nada (la transacción se revirtió). El front
+  lo trata aparte (ámbar).
+- **No cargar con el ETL de Estado Titular corriendo** (ADR-038): contención de log (`WRITELOG`), el cargue
+  se queda quieto hasta que el ETL termina. Medido el 2026-09-24.
+- **Un job activo por fuente y 2 en total** (409). Dos cargues de la misma tabla compartirían sello y se
+  pisarían la política de vacías.
+
+## PENDIENTE: DROP de las 6 Auxiliar de la Fase 1 (ADR-039)
+
+- `docs/sql/migrations/2026-09-25_drop_auxiliares_fase1.sql`, **a mano y solo después de validar el
+  cargue en producción** (al menos un cargue real por fuente). Guardas: 0 filas, definición idéntica al
+  respaldo de `docs/sql/legacy/` (hash), sin dependencias. `ARLSuraAuxiliar` no entra.
+- Antes del DROP: la comparación de cada fuente contra su SP viejo (mismo archivo, `EXEC` en transacción
+  con ROLLBACK vs `simular: true`) que pide el plan de la etapa E.
 
 ---
 
