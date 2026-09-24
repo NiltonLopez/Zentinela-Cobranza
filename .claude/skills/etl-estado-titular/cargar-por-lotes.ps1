@@ -97,8 +97,10 @@ $todos = Get-ChildItem -LiteralPath $Carpeta -File | Where-Object { $_.Extension
 if (-not $todos) { Fallar "No hay archivos en $Carpeta" 1 }
 
 # El peso que importa es el del .xlsx, que es lo que el Foreach carga. Pero los .xlsx
-# son intermedios: el ultimo paso del paquete los borra, y corre AUNQUE el paquete falle.
-# O sea que lo normal es empezar una corrida sin ninguno, y pesar solo por xlsx daba
+# son intermedios y pueden no estar: amanecieron borrados el 24-sep, casi seguro por el
+# proceso que regenera los CSV cada dia. (OJO: en un commit anterior se afirmo que los
+# borra el ultimo paso del paquete aun cuando falla. Es FALSO: ese mismo dia 21 xlsx
+# sobrevivieron seis corridas fallidas seguidas.) Sin xlsx, pesar solo por ellos daba
 # CERO para todas las carteras: los 19 grupos entraban en un unico lote y se reproducia
 # exactamente el fallo por memoria que esto viene a evitar.
 #
@@ -181,10 +183,18 @@ try {
         $claves = ($lote | ForEach-Object Clave)
         Write-Output "[$(Ahora)] ===== LOTE $n de $($lotes.Count): $($claves -join ', ') ====="
 
-        # Apartar todo lo que no sea de este lote
-        $deEsteLote = $lote | ForEach-Object { $_.Archivos } | ForEach-Object { $_.Name }
-        foreach ($a in $todos) {
-            if ($deEsteLote -notcontains $a.Name -and (Test-Path $a.FullName)) {
+        # Apartar todo lo que no sea de este lote.
+        #
+        # SE RE-ENUMERA LA CARPETA EN CADA VUELTA, no se usa el $todos del plan. Durante la
+        # corrida aparecen .xlsx que no existian al armar el plan (los crea el conversor) y
+        # que el paquete NO borra cuando falla. Con la lista vieja esos Excel no se apartaban
+        # nunca: se acumulaban, y como el Foreach enumera ReporteClientes\*.xlsx*, cada lote
+        # volvia a procesar los mismos archivos alfabeticamente primeros hasta reventar por
+        # memoria. Los lotes 5 y 6 del 24-sep cargaron exactamente lo mismo por esto.
+        $clavesLote = @($lote | ForEach-Object Clave)
+        $presentes = Get-ChildItem -LiteralPath $Carpeta -File | Where-Object { $_.Extension -in '.csv', '.xlsx' }
+        foreach ($a in $presentes) {
+            if ($clavesLote -notcontains (Clave $a.Name)) {
                 Move-Item -LiteralPath $a.FullName -Destination (Join-Path $espera $a.Name) -Force
             }
         }
@@ -209,11 +219,37 @@ try {
         $filas    = [int]$stg.Rows[0].filas
         $carteras = [int]$stg.Rows[0].carteras
 
+        # ── La comprobacion que faltaba ──────────────────────────────────────
+        # No alcanza con que el staging tenga filas: hay que verificar que sean LAS DE
+        # ESTE LOTE. El 24-sep los seis lotes publicaron siempre las mismas carteras
+        # (cada uno borraba lo que habia insertado el anterior) y el script informo
+        # "OK" seis veces, porque solo miraba que hubiera filas.
+        $inClave = ($clavesLote | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
+        $espTabla = Sql "SELECT DISTINCT ID FROM DBCallCenter.dbo.Cartera WHERE NombreArchivo IN ($inClave)" 120
+        $esperadas = @($espTabla.Rows | ForEach-Object { [int]$_.ID })
+        $stgTabla = Sql "SELECT DISTINCT CarteraID FROM DBCallCenter.dbo.Staging_UltimoEstadoTitular" 120
+        $enStaging = @($stgTabla.Rows | ForEach-Object { [int]$_.CarteraID })
+        $intrusas = @($enStaging | Where-Object { $esperadas -notcontains $_ })
+
         if ($filas -eq 0) {
             Write-Output "[$(Ahora)] LOTE $n SIN DATOS en el staging. Se saltea; revisar los errores de la ejecucion $ej."
             $resumen += [pscustomobject]@{ Lote = $n; Carteras = $claves -join ','; Filas = 0; Estado = 'SIN DATOS' }
         }
+        elseif ($intrusas.Count -gt 0) {
+            Write-Output "[$(Ahora)] LOTE $n NO SE PUBLICA: el staging trae carteras ajenas al lote ($($intrusas -join ', '))."
+            Write-Output "[$(Ahora)] Esperadas: $($esperadas -join ', ')  |  En staging: $($enStaging -join ', ')"
+            Write-Output "[$(Ahora)] Sintoma tipico de Excel de otro lote sin apartar. Revisar la ejecucion $ej."
+            $resumen += [pscustomobject]@{ Lote = $n; Carteras = $claves -join ','; Filas = $filas; Estado = 'CARTERAS AJENAS' }
+        }
         else {
+            # Faltan carteras del lote = el paquete revento a mitad. Publicar igual es
+            # SEGURO: el reemplazo acotado solo toca las carteras presentes, asi que las
+            # que faltan conservan su dato anterior en vez de quedar vacias. Pero se avisa,
+            # porque esas carteras NO quedaron al dia.
+            $faltantes = @($esperadas | Where-Object { $enStaging -notcontains $_ })
+            if ($faltantes.Count -gt 0) {
+                Write-Output "[$(Ahora)] ATENCION: faltan carteras del lote en el staging ($($faltantes -join ', ')). Se publican las que llegaron; esas quedan con su dato anterior."
+            }
             Write-Output "[$(Ahora)] publicando $filas filas de $carteras cartera(s)..."
             # @ToleranciaFilasPct = 100 desactiva la compuerta de volumen: un lote
             # trae a proposito una fraccion del total. La compuerta de carteras
@@ -252,6 +288,19 @@ finally {
             Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Carpeta $_.Name) -Force
         }
         Remove-Item -LiteralPath $espera -Force -ErrorAction SilentlyContinue
+    }
+
+    # Los .xlsx que quedaron son DATOS DE HOY y envenenan la corrida de mañana: el
+    # conversor omite ("OMITIDO") todo CSV cuyo Excel ya existe, asi que el Foreach
+    # cargaria estos en vez de los CSV frescos, sin ningun aviso. En una corrida normal
+    # los borra EliminarExcel.py; aca el paquete termina en rojo a proposito y ese paso
+    # no siempre llega. Se apartan (no se borran) a una subcarpeta con fecha.
+    $sobrantes = Get-ChildItem -LiteralPath $Carpeta -File -Filter '*.xlsx'
+    if ($sobrantes) {
+        $procesados = Join-Path $Carpeta ('_procesados_' + (Get-Date -Format 'yyyyMMdd_HHmm'))
+        New-Item -ItemType Directory -Path $procesados -Force | Out-Null
+        $sobrantes | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination (Join-Path $procesados $_.Name) -Force }
+        Write-Output "[$(Ahora)] $($sobrantes.Count) Excel intermedio(s) apartado(s) a $(Split-Path $procesados -Leaf) para no contaminar la proxima corrida."
     }
 }
 
