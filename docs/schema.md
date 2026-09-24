@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-09-24  
+> Generado: 2026-04-02 — Actualizado: 2026-09-24 (Fase 2 del Cargue de Fuentes de Datos, ADR-039: las 22 fuentes; tipos verificados con `sys.columns`)  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 88 | Vistas: 40 | Stored Procedures: 33 (conteo de `sys.tables` / `sys.views` / `sys.procedures` del 2026-09-24; no todas están documentadas aquí)
@@ -216,13 +216,13 @@ Solo registra confirmaciones: una validación que no se confirma no deja fila.
 |---------|------|----------|-------|
 | EjecucionID | bigint identity | NO | PK clustered |
 | JobID | uniqueidentifier | NO | Id del job en memoria de la API: enlaza la fila con el preview confirmado |
-| Fuente | varchar(30) | NO | Clave del catálogo (`Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`, `SIMIT`, `DatosClaro`) |
+| Fuente | varchar(30) | NO | Clave del catálogo (`CatalogoCargueFuentes`, 22 fuentes): `Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`, `SIMIT`, `DatosClaro`, `Positiva`, `SaludTotal`, `SOS`, `Coosalud`, `SaviaSalud`, `MiVacuna`, `Fosyga`, `RGM`, `TigoUne`, `Tigo`, `RUES`, `Camara`, `CamaraEmpresa`, `PositivaEmpresas`, `ARLSura`, `Compensados` |
 | Usuario | varchar(100) | NO | Claim `userName` de quien confirmó |
 | NombreArchivo | nvarchar(260) | NO | Nombre original (solo para mostrar; en disco se guarda como `archivo.<ext>`) |
 | HuellaArchivo | char(64) | NO | SHA-256 hex; la confirmación exige que el archivo re-leído tenga la misma |
 | FechaInicio / FechaFin | datetime2(3) | NO / SI | `FechaFin` NULL mientras está EN CURSO |
 | Estado | varchar(12) | NO | CHECK `EN CURSO` \| `OK` \| `ERROR` \| `CANCELADA`; default `EN CURSO` |
-| SelloFechaConsulta | datetime2(0) | SI | Valor exacto escrito en `FechaConsulta`/`FechaInsercion` (fecha del servidor SQL) |
+| SelloFechaConsulta | datetime2(0) | SI | Valor exacto escrito en `FechaConsulta`/`FechaInsercion` (fecha del servidor SQL). En RUES (destino `datetime`) lleva hora, truncada al segundo |
 | TotalLeidas, Excluidas, DuplicadasArchivo, Candidatas | int | SI | Invariante: `TotalLeidas + expansión = Excluidas + DuplicadasArchivo + Candidatas` |
 | Insertadas, Refrescadas, DescartadasVacias | int | SI | Invariante: `Candidatas = Insertadas + Refrescadas + DescartadasVacias` |
 | VaciasPurgadas | int | SI | Filas vacías viejas del destino eliminadas por la política de vacías |
@@ -243,10 +243,10 @@ runtime. No registra `Titular` ni `Titular_Cartera` (no se revierten).
 | Columna | Tipo | Nullable | Notas |
 |---------|------|----------|-------|
 | EjecucionID | bigint | NO | `CargueFuenteEjecucion.EjecucionID` (sin FK) |
-| TitularID | varchar(30) | NO | Texto porque NuevaEps guarda el TitularID como varchar |
+| TitularID | varchar(30) | NO | Clave de la fila tocada, como texto: el TitularID (NuevaEps lo guarda como varchar) o, en CamaraEmpresa, el `NitEmpresa` |
 | HashContenido | binary(32) | NO | `HASHBYTES('SHA2_256', CONCAT_WS(N'\|', ISNULL(CONVERT(nvarchar(400), col), N'~') …))` sobre TODAS las columnas de dato, en el orden del catálogo (una sola columna: sin `CONCAT_WS`). `0x00` para `D` |
 | Accion | char(1) | NO | `I` insertada · `U` refrescada · `D` vacía purgada |
-| FechaAnterior | datetime2(0) | SI | `U`: fecha previa al refresco · `D`: fecha de la fila purgada · `I`: NULL |
+| FechaAnterior | datetime2(0) | SI | `U`: fecha previa al refresco · `D`: fecha de la fila purgada · `I`: NULL. De RUES queda redondeada al segundo (el `GETDATE()` legacy tenía milisegundos) |
 
 Índice: `IX_CargueFuenteReversion` clustered (EjecucionID, TitularID). Una ejecución puede tener más `U` que
 `Refrescadas`: una fila del archivo refresca todas las filas idénticas del destino (duplicados legacy).
@@ -395,12 +395,16 @@ Tabla de portafolio completo con datos de cliente, financiacion y contacto (impo
 
 Estas tablas almacenan datos consultados desde entidades externas (ARL, EPS, Camara de Comercio, etc.).
 
-> **Cómo se cargan (2026-09-24, ADR-039):** `Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`, `SIMIT` y
-> `DatosClaro` (Fase 1) se cargan desde **Administración → Cargue de Fuentes de Datos**; las demás siguen
-> con el patrón `<Fuente>Auxiliar` + `sp_Procesar<Fuente>Auxiliar` hasta la Fase 2. En todas el modelo es
+> **Cómo se cargan (2026-09-24, ADR-039):** **todas** las fuentes de esta sección se cargan desde
+> **Administración → Cargue de Fuentes de Datos** — Fase 1: `Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`,
+> `SIMIT`, `DatosClaro`; Fase 2: `Positiva`, `SaludTotal`, `SOS`, `Coosalud`, `SaviaSalud`, `MiVacuna`,
+> `Fosyga`, `RGM`, `TigoUne`, `Tigo`, `RUES`, `Camara`, `CamaraEmpresa`, `PositivaEmpresas`, `ARLSura`,
+> `Compensados` —, salvo `Runt` (vacía, fuera del módulo) y `DatosExternos` (no consumida). Los
+> `<Fuente>Auxiliar` + `sp_Procesar<Fuente>Auxiliar` quedan sin uso hasta su DROP. En todas el modelo es
 > **historial acumulativo**: nunca se modifica el contenido de una fila; si llega igual se refresca su
 > `FechaConsulta`, si cambió se inserta otra fila, y las vistas toman la última por fecha. Ver
-> "Flujo de carga masiva" al final.
+> "Flujo de carga masiva" al final. En cada tabla, la nota **Carga** dice qué hace la regla de la fuente;
+> "FK → Titular" solo donde la FK existe en la BD (verificado con `sys.foreign_keys` el 2026-09-24).
 
 ### ARLSura
 Datos de afiliacion a ARL Sura por titular.
@@ -418,6 +422,13 @@ Datos de afiliacion a ARL Sura por titular.
 > (ver más abajo). Pasaron a `[NIT ARL Sura]` / `[Empresa ARL Sura]`, con las propiedades C#
 > `NITArlSura` / `EmpresaArlSura`. En el panel de localización del Calificador la etiqueta pasó de
 > `Sura (ARL)` a `ARL Sura` y su slug de `sura` a `arlsura`.
+>
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, fuente `ARLSura` ("ARL Sura (empleador)"),
+> `ReglaGenerica`. **Otra fuente que `Sura` (la EPS)**: otra clave de ruta, otra etiqueta, otra tabla; el
+> flag se llama igual (`EstadoEnSura`) pero es de esta tabla. FK `FK_Titular_ArlSura`, índice
+> `IX_ARLSura_TitularID_Fecha`; 1.565.455 filas. Flag = NIT o Empresa. NIT `0` → NULL; un 'NIT-DV' se anula
+> con advertencia (columna `Entero`). Clave de contenido = NIT + Empresa (el SP deduplicaba por titular + NIT y
+> un cambio de razón social borraba la fila vieja).
 
 ### Cajacopi
 Datos de afiliacion a Cajacopi (caja de compensacion).
@@ -453,8 +464,19 @@ Datos de la Camara de Comercio por titular (persona natural).
 | EstadoEnCamara | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaCamara`. `NumeroTelefono` es tipo
+> `Telefono` (mezcla celulares 3xx y fijos 60x). Fijo de 7 dígitos → indicativo por Departamento o
+> Municipio, sin tildes (`PrefijoMunicipio` + `PrefijosDepartamento`); si no se resuelve, se anula con
+> advertencia (el SP casaba el departamento exacto con tildes y dejaba 7 dígitos: 3.189 filas legacy). Los
+> textos de relleno del formulario del proveedor (`'Seleccione un departamento'`, `'Cargando...'`) y una
+> localización sin letras se anulan con advertencia. Correo validado y cruzado con `ListaNegraCorreos`
+> exacta (el SP no hacía ninguna de las dos cosas). Flag = teléfono o email. FK `FK_Titular_Camara`,
+> índice `IX_Camara_TitularID_Fecha`.
+
 ### CamaraEmpresa
-Datos de la Camara de Comercio por empresa (NIT).
+Datos de la Camara de Comercio por empresa (NIT). Heap **sin índices, sin FK y sin `TitularID`**: la fila
+es de una empresa, identificada por `NitEmpresa` (71.424 filas, 69.389 NIT distintos; solo 2.999 coinciden
+con un `Titular`). Se cruza con ARLSura por NIT en `vw_DatosCamaraEmpresa` (`ARLSura.NIT = CamaraEmpresa.NitEmpresa`).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -464,8 +486,16 @@ Datos de la Camara de Comercio por empresa (NIT).
 | EstadoEnCamara | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaCamaraEmpresa`. **Clave = `NitEmpresa`**
+> (`ColumnaClaveTitular`, única fuente cuya clave no es `TitularID`): el archivo trae el NIT (alias
+> `nitempresa`, `nit`…), 'NIT-DV' se acepta y se le quita el DV (`NormalizarClave`); **no crea `Titular`
+> ni `Titular_Cartera`** (su SP tampoco) y no se cruza con `dbo.Titular`. Refresco, inserción, purga de
+> vacías y reversión van por `NitEmpresa` (en `CargueFuenteReversion.TitularID` como texto). Departamento y
+> Municipio del archivo solo resuelven el indicativo del fijo de 7 dígitos; **no se guardan**. Correo
+> validado y cruzado con la lista negra exacta.
+
 ### Compensados
-Datos de compensacion laboral (cajas de compensacion) por titular.
+Datos de compensacion laboral (cajas de compensacion) por titular. 366.072 filas.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -473,8 +503,20 @@ Datos de compensacion laboral (cajas de compensacion) por titular.
 | EPS | varchar(50) | SI | — | — |
 | UltimoPeriodoCompensado | date | SI | — | — |
 | TipoAfiliado | varchar(50) | SI | — | — |
-| Estado | int | SI | — | — |
+| EstadoEnCompensados | **int** | NO | — | — (flag; `int`, no `bit`) |
 | FechaConsulta | date | NO | — | — |
+
+> ⚠️ **Corregido el 2026-09-24:** este documento decía `Estado int NULL`; la columna real es
+> `EstadoEnCompensados int NOT NULL` (`sys.columns`). `Estado` es el nombre de la columna en
+> `CompensadosAuxiliar`, no en esta tabla.
+>
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaCompensados`. El flag **no** viene del
+> archivo: el motor escribe 0/1 según EPS o período (lo que se guarda); la columna Estado del archivo se
+> informa como "no se usa" (el SP la usaba solo para dar flag 1 a filas sin ningún dato: 2.315 hoy;
+> decisión pendiente H2 de `PARIDAD-empresas.md`). La marca del proveedor `'NO SE ENCUENTRA'` en EPS o
+> TipoAfiliado se anula con aviso (594 filas legacy la tienen como tipo de afiliado, y el Calificador las
+> cuenta como "encontrado"). Un período inválido se anula y la fila sigue (el SP perdía el archivo entero,
+> error 241). FK `FK_Compensados_Titular`, índice `IX_Compensados_TitularID_Fecha`.
 
 ### DatosClaro
 Contactabilidad telefónica y email obtenida del operador Claro. Cardinalidad ~955k filas (~775k titulares únicos, varios registros por titular). Se consume vía `vw_BaseMadre` con TOP 1 por `FechaInsercion DESC`. Tabla espejo `DatosClaroAuxiliar` (staging) y vista `vw_DatosClaro` (concatenado legacy) **no se usan en código**.
@@ -521,12 +563,21 @@ Datos de afiliacion al SGSSS (Fosyga/ADRES).
 | EstadoEnFosyga | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaFosyga`: Estado 'AFILIADO FALLECIDO' →
+> TipoAfiliado 'FALLECIDO' (sin distinguir mayúsculas y después de colapsar saltos de línea: las 69 filas
+> legacy con 'AFILIADO↵FALLECIDO' que el SP no casaba no se tocan). Flag = Estado, EPS o Régimen; fechas,
+> tipo de afiliado y localización no entran. Clave de contenido = las 8 columnas. FK `FK_Titular_Fosyga`
+> (la fila sin nombre de un titular nuevo se excluye con error; en el SP tumbaba el archivo: es la carga
+> del 2026-09-23 que quedó en `FosygaAuxiliar`), índice `IX_Fosyga_TitularID_Fecha`; 2.140.272 filas.
+> Legacy sin tocar: 901 filas del 2025-10-23 con fechas en `Regimen` (mapeo de columnas errado de ese
+> import; el motor resuelve cada columna por su encabezado).
+
 ### MiVacuna
 Contactabilidad proveniente de la plataforma MiVacuna. Cardinalidad 1:1 por `TitularID` (36.985 filas == titulares únicos). Tabla heap (sin PK ni índices nativos) — la migración `2026-05-29_mivacuna_in_basemadre.sql` crea `IX_MiVacuna_TitularID_FechaConsulta` para soportar el JOIN del iTVF. Tabla espejo `MiVacunaAuxiliar` (staging).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| TitularID | bigint | NO | — | Titular |
+| TitularID | bigint | NO | — | — (sin FK en la BD; lógicamente Titular) |
 | FechaExpedicion | date | SI | — | — |
 | Celular | varchar(10) | SI | — | — |
 | Email | varchar(255) | SI | — | — |
@@ -534,6 +585,12 @@ Contactabilidad proveniente de la plataforma MiVacuna. Cardinalidad 1:1 por `Tit
 | FechaConsulta | date | SI | — | — |
 
 > **Expuesta en `vw_BaseMadre` + `fn_BaseMadrePorCartera`** con alias `[Celular MiVacuna]`, `[Email MiVacuna]`, `[Fecha Expedicion MiVacuna]`, `[Estado MiVacuna]` (bit → VARCHAR(1), patrón MutualSer). `Celular` entra al switch `ColumnaCelular` y `Email` al `ColumnaEmail` (clave `MiVacuna`). `FechaConsulta` queda como metadato interno (no se expone). No aporta localización. Sí entra al `UNION ALL` de Rastreo de Líneas (columna `Celular`).
+>
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`. `Celular` se valida como
+> **celular**. Flag = celular o email. Sin FK, pero crea `Titular` y `Titular_Cartera` (como el SP). El
+> correo vetado queda NULL (el SP lo dejaba en `''`, que contaba como dato: 1.118 filas legacy con
+> `Email = ''`; la primera recarga de esos titulares inserta una fila nueva en vez de refrescar). Sin
+> purgas ni dedup sobre toda la tabla.
 
 ### MutualSer
 Contactabilidad y calificación socioeconómica del afiliado a MutualSer EPS. Cardinalidad 1:1 por `TitularID` (614.145 filas == titulares únicos). Tabla heap (sin PK ni índices nativos) — la migración `2026-05-07_mutualser_in_basemadre.sql` crea `IX_MutualSer_TitularID_FechaConsulta` para soportar el JOIN del iTVF. Tabla espejo `MutualSerAuxiliar` (staging).
@@ -598,6 +655,14 @@ Datos de afiliacion a Positiva (ARL) por titular.
 | EstadoEnPositiva | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaPositiva`: un fijo 60x que llega en la
+> columna de celular pasa al fijo **sin concatenar** (el SP escribía `'fijo, celular'` en el `varchar(30)`:
+> 522 filas legacy); si el fijo ya trae otro fijo se conserva el suyo con advertencia; si trae un celular
+> (columnas intercambiadas) cada número va a su columna; si trae basura, el fijo la reemplaza. Flag =
+> celular, fijo o email. Legacy: 140.758 filas con `Email = ''` y 30.056 con `NumeroTelefonoCelular = '0'`
+> (el motor guarda NULL: la primera recarga de esos titulares inserta una fila nueva). FK
+> `FK_Titular_Positiva`, índice `IX_Positiva_TitularID_Fecha`; 2.213.891 filas.
+
 ### PositivaEmpresas
 Datos de afiliacion a Positiva por empresa vinculada al titular.
 
@@ -610,6 +675,13 @@ Datos de afiliacion a Positiva por empresa vinculada al titular.
 | EstadoEnPositivaEmpresa | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`. Flag = NIT o Empresa
+> (`EstadoAfiliacion` no entra). La razón social llega partida en líneas (texto de un PDF; 94.096 filas
+> legacy): el motor colapsa los saltos a un espacio. NIT `0` → NULL; 'NIT-DV' se anula con advertencia.
+> `EstadoAfiliacion` se guarda como texto libre (160 filas legacy con basura del PDF, H3 de
+> `PARIDAD-empresas.md`). FK `FK_PositivaEmpresas_Titular`, índice `IX_PositivaEmpresas_TitularID_Fecha`
+> (TitularID, FechaConsulta — ascendente, a diferencia de los demás); 2.013.318 filas.
+
 ### RGM
 Datos del Registro de Garantias Mobiliarias por titular.
 
@@ -619,8 +691,16 @@ Datos del Registro de Garantias Mobiliarias por titular.
 | Marca | varchar(50) | SI | — | — |
 | Modelo | int | SI | — | — |
 | Placa | varchar(50) | SI | — | — |
-| EstadoEnRGM | bit | SI | — | — |
+| EstadoEnRGM | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
+
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaRgm`. Placa con la validación de SIMIT
+> (`PlacaVehiculo`: sin espacios ni guiones, mayúsculas; lo que no es placa se anula con aviso). Modelo =
+> año entre 1900 y el actual + 2 (el destino es `int`: un número enorme tumbaría el `INSERT` de todo el
+> cargue; `'2021.0'` de Excel se lee como 2021). Flag = marca, modelo o placa. La relación usa el par
+> líder/cartera del archivo validado contra `Lider_Cartera` activo (el SP insertaba `LiderID = CarteraID`).
+> FK `FK_RGM`, índice `IX_RGM_TitularID_Fecha`; 1.663.543 filas (8.774 con datos). *Corregido el
+> 2026-09-24: `EstadoEnRGM` es NOT NULL.*
 
 ### RUES
 Datos del Registro Unico Empresarial y Social por titular.
@@ -633,10 +713,25 @@ Datos del Registro Unico Empresarial y Social por titular.
 | ActividadEconomica | varchar(250) | SI | — | — |
 | NombreEmpresa | varchar(70) | SI | — | — |
 | EstadoEnRUES | bit | NO | — | — |
-| FechaConsulta | datetime | NO | — | — |
+| FechaConsulta | **datetime** | NO | — | — ⚠️ única fuente con sello con hora |
+
+> ⚠️ **`FechaConsulta` es `datetime`, no `date`** — la única de las 22 fuentes del cargue (el SP guardaba
+> `GETDATE()`; 799.156 de las 873.188 filas tienen hora). Quien la compare con una fecha debe convertir o
+> usar rangos.
+>
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`, `TipoFecha = DateTime`: el
+> sello es `GETDATE()` **truncado al segundo** (`GeneradorSqlCargue.LeerSello`), para que
+> `SelloFechaConsulta`/`FechaAnterior` (`datetime2(0)`) lo ubiquen por igualdad al revertir. Flag =
+> matrícula, estado o actividad (`NombreEmpresa` no entra, como en el SP). Matrícula `0` → NULL. Aplica la
+> política de vacías (el SP no purgaba: 809.306 filas legacy con flag 0). FK `FK_Titular_RUES`, índice
+> `IX_RUES_TitularID_Fecha`.
 
 ### Runt
-Datos del Registro Unico Nacional de Transito por titular.
+Datos del Registro Unico Nacional de Transito por titular. **0 filas** (creada 2026-02-18), heap **sin
+índices y sin FK**, sin SP ni consumidores (no está en la BaseMadre ni en ningún servicio; el front es un
+stub). **No está en el Cargue de Fuentes de Datos** (ADR-039, Fase 2; lo fija
+`CatalogoCoherenciaTests.Runt_no_esta_en_el_catalogo`). Si se activa: `FechaConsulta` es `datetime` y el
+flag se llama `EstadoRunt`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -673,6 +768,12 @@ Datos de afiliacion a EPS Salud Total por titular.
 | EstadoEnSaludTotal | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`. `NumeroTelefono` se valida
+> como **celular** (expuesto como `[Celular Salud Total]`; el 100 % de las filas con dato es 3xx): un fijo
+> se anula con advertencia. Correo validado y cruzado con `ListaNegraCorreos` exacta (el SP no hacía
+> ninguna de las dos). Flag = teléfono, email o NIT. NIT `0`, `IngresoBase` `''`/`'0'` y la fecha
+> `1900-01-01` → NULL. FK `FK_Titular_SaludTotal`, índice `IX_SaludTotal_TitularID_Fecha`; 1.586.180 filas.
+
 ### SIMIT
 Datos del Sistema Integrado de Multas e Infracciones de Transito por titular.
 
@@ -704,12 +805,19 @@ Datos del Sistema de Ocupacion y Seguridad laboral por titular.
 | EstadoEnSOS | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`. `Telefono` se valida como
+> **celular** (la BaseMadre lo expone como `[Celular SOS]`): un fijo de 7 dígitos (SOS no trae
+> departamento para el indicativo) o un 60x se anula con advertencia; los legacy (625 de 7 dígitos y 34
+> 60x de 2.099 con dato) no se tocan. `razonsocial` es alias de `RazonSocial`, no del nombre del titular.
+> `Direccion` larga se trunca a 70 con aviso (la Auxiliar admitía 150 y el SP perdía el archivo entero).
+> Flag = las cuatro columnas. FK `FK_SOS_Titular`, índice `IX_SOS_TitularID_Fecha`; 226.946 filas.
+
 ### Sura
 Contactabilidad + datos laborales de Sura (EPS/aseguradora). Fuente 1:1. Único teléfono en
 `NumeroCelular` (no hay columna de fijo). Integrada el 2026-09-02 con la tabla **vacía (0 filas)**;
 desde el 2026-09-24 se carga desde **Administración → Cargue de Fuentes de Datos** (ADR-039: primera
 fuente del módulo y su plantilla, sin regla propia). No confundir con **ARLSura**, que es otra tabla y
-otra fuente (sigue con `ARLSuraAuxiliar` + `sp_ProcesarArlSuraAuxiliar` hasta la Fase 2).
+otra fuente (clave de ruta `ARLSura`, también en el módulo desde la Fase 2).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -732,33 +840,52 @@ otra fuente (sigue con `ARLSuraAuxiliar` + `sp_ProcesarArlSuraAuxiliar` hasta la
 > ARLSura — ver la nota en esa sección y `docs/para-tener-en-cuenta.md`.
 
 ### Tigo
-Datos de contacto obtenidos de Tigo.
+Datos de contacto obtenidos de Tigo. 1.026.333 filas, llenadas **a mano** en feb-mar de 2025 desde
+`TigoAuxiliar` (no hay `sp_ProcesarTigoAuxiliar`); nada la escribía desde el 2025-03-14. La primera columna
+de la tabla se eliminó (`column_id` empieza en 2).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| TitularID | bigint | NO | — | Titular |
-| NumeroTelefono | varchar(10) | SI | — | — |
+| TitularID | bigint | NO | — | Titular (`FK_Titular_Tigo`) |
+| NumeroTelefono | varchar(10) | SI | — | — CHECK `chk_Telefono` (7 o 10 caracteres que empiezan en 3 o 6) |
 | Email | varchar(255) | SI | — | — |
-| EstadoEnTigo | bit | NO | — | — |
-| FechaConsulta | date | NO | — | — |
+| EstadoEnTigo | bit | NO | — | — (default 0) |
+| FechaConsulta | date | NO | — | — (default `getdate()`) |
+
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`, definición por analogía con
+> TigoUne (sin SP que traducir). `NumeroTelefono` se valida como **celular** (`[Celular Tigo]`); todo
+> celular que pasa cumple `chk_Telefono`; los 1.101 fijos y 55 de 7 dígitos legacy no se tocan. Con FK a
+> `Titular` crea titulares, así que **el archivo debe traer Nombre**: el formato de `TigoAuxiliar` (sin
+> Nombre) se rechaza. Flag = teléfono o email (el motor escribe flag y fecha: no usa los defaults).
+> Índice `IX_Tigo_TitularID_Fecha`. Legacy: 2.579 filas con flag 1 y sin datos (no se tocan).
 
 ### TigoUne
-Datos de contacto obtenidos de Tigo Une. Estructura idéntica a `Tigo` (fuente gemela). Con datos desde 2026-08-05 (5.192 titulares; vacía al integrarse el 2026-08-04).
+Datos de contacto obtenidos de Tigo Une. Misma forma que `Tigo` pero **otra fuente** (tabla, SP, columnas
+de la BaseMadre `[Celular TigoUne]`/`[Email TigoUne]` y fila del Calificador propias), y a diferencia de
+ella **sin FK a `Titular`**. Cargas del 2026-08-04 (5.192), 2026-09-15 (88.586) y 2026-09-22 (30.005):
+123.783 filas.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| TitularID | bigint | NO | — | Titular |
+| TitularID | bigint | NO | — | — (sin FK en la BD; lógicamente Titular) |
 | NumeroTelefono | varchar(10) | SI | — | — |
 | Email | varchar(255) | SI | — | — |
 | EstadoEnTigoUne | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
+
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`. `NumeroTelefono` se valida
+> como **celular** (el SP solo miraba el largo: pasaban fijos y `'555…'`). Correo validado, en minúsculas y
+> con lista negra exacta. Crea `Titular` y `Titular_Cartera` aunque no haya FK (como el SP). El contenido
+> idéntico refresca la fecha (el SP no lo hacía). Legacy: 27.166 filas de la carga del 2026-09-15 con `''`
+> en teléfono o email (la primera recarga de esos titulares inserta una fila nueva). Índice
+> `IX_TigoUne_TitularID_FechaConsulta`.
 
 ### Coosalud
 Contactabilidad + afiliación Coosalud (EPS). Fuente 1:1 tipo NuevaEps ampliada (celular, email, régimen, tipo afiliado, estado afiliación, nivel Sisbén, geografía, fecha nacimiento). Con datos desde 2026-08-05 (369.049 titulares; vacía al integrarse el 2026-08-04).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| TitularID | bigint | NO | — | Titular |
+| TitularID | bigint | NO | — | — (sin FK en la BD; lógicamente Titular) |
 | NumeroTelefono | varchar(10) | SI | — | — |
 | Email | varchar(255) | SI | — | — |
 | MunicipioOrigen | varchar(50) | SI | — | — |
@@ -771,20 +898,37 @@ Contactabilidad + afiliación Coosalud (EPS). Fuente 1:1 tipo NuevaEps ampliada 
 | EstadoEnCoosalud | bit | NO | — | — |
 | FechaConsulta | date | NO | — | — |
 
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaGenerica`. `NumeroTelefono` se valida
+> como **celular** (77.977 de las 77.983 filas con dato son 3xx; `[Celular Coosalud]`). Correo con lista
+> negra exacta (el SP usaba `LIKE`). Flag = teléfono o email. Crea `Titular` y `Titular_Cartera` aunque
+> no haya FK (como el SP). Clave de contenido completa (el SP descartaba un municipio nuevo con el mismo
+> contacto) y el contenido idéntico refresca la fecha (el SP no). Legacy: 32.698 filas con `Email = ''`
+> (la primera recarga de esos titulares inserta una fila nueva). Índice
+> `IX_Coosalud_TitularID_FechaConsulta`; 1.037.887 filas.
+
 ### SaviaSalud
-Contactabilidad + afiliación Savia Salud (EPS). Fuente 1:1 **con datos** (193.752 filas al integrarse, 2026-08-05). Celular en `NumeroCelular`; `NumeroTelefono` está 100% vacío y NO se mapea. Sin email.
+Contactabilidad + afiliación Savia Salud (EPS). Fuente 1:1 **con datos** (193.752 filas al integrarse, 2026-08-05; 719.743 el 2026-09-24). Celular en `NumeroCelular`; `NumeroTelefono` NO se mapea en la BaseMadre (tiene dato en 4.123 filas, incluidos municipios truncados de un import corrido: `COPACABANA`, `LA ESTRELL`…). Sin email. El flag se llama `Estado`, no `EstadoEnSaviaSalud`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
-| TitularID | bigint | SI | — | Titular |
+| TitularID | bigint | SI | — | — (sin FK en la BD; lógicamente Titular) |
 | FechaDeNacimiento | date | SI | — | — |
 | TipoAfiliado | varchar(50) | SI | — | — |
 | EstadoDeAfiliacion | varchar(50) | SI | — | — |
 | Regimen | varchar(70) | SI | — | — |
-| NumeroTelefono | varchar(10) | SI | — | — (vacío, no mapeado) |
+| NumeroTelefono | varchar(10) | SI | — | — (no mapeado en la BaseMadre) |
 | NumeroCelular | varchar(100) | SI | — | — |
-| Estado | bit | SI | — | — |
+| Estado | bit | SI | — | — (flag) |
 | FechaConsulta | date | SI | — | — |
+
+> **Carga (ADR-039, Fase 2):** Cargue de Fuentes de Datos, `ReglaSaviaSalud`: una celda con varios
+> números separados por coma se reparte **sin concatenar** (primer celular en `NumeroCelular`, el teléfono
+> propio o el siguiente de la lista en `NumeroTelefono`, el resto se descarta con aviso); un fijo que llega
+> solo en `NumeroCelular` pasa a `NumeroTelefono` (tipo `Telefono`: celular o fijo). Flag `Estado` = uno
+> de los dos teléfonos (el SP contaba el correo, que esta tabla no guarda). El correo del archivo se
+> informa como "no se usa". Crea `Titular` y `Titular_Cartera` aunque no haya FK. Legacy sin tocar: 161
+> filas con listas en `NumeroCelular`, 175 con un fijo en `NumeroCelular`, 2.051 con `Estado = 1` y sin
+> teléfonos. Índice `IX_SaviaSalud_TitularID_FechaConsulta`.
 
 ---
 
@@ -798,8 +942,23 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 > **Se eliminarán con `docs/sql/migrations/2026-09-25_drop_auxiliares_fase1.sql`** (a mano, después de
 > validar el cargue en producción); definición íntegra respaldada en `docs/sql/legacy/`. Las columnas de
 > abajo están tomadas de ese respaldo. `ARLSuraAuxiliar` NO es de la Fase 1.
+>
+> **Fase 2 de ADR-039 (2026-09-24):** `ARLSuraAuxiliar`, `CamaraAuxiliar`, `CamaraEmpresaAuxiliar`,
+> `CompensadosAuxiliar`, `CoosaludAuxiliar`, `FosygaAuxiliar`, `MiVacunaAuxiliar`, `PositivaAuxiliar`,
+> `PositivaEmpresasAuxiliar`, `RGMAuxiliar`, `RUESAuxiliar`, `SaludTotalAuxiliar`, `SaviaSaludAuxiliar`,
+> `SOSAuxiliar`, `TigoUneAuxiliar` (y sus 15 `sp_Procesar*`) y `TigoAuxiliar` (sin SP) quedan **sin uso**.
+> **Se eliminarán con `docs/sql/migrations/2026-09-26_drop_auxiliares_fase2.sql`** (a mano, después de
+> validar el cargue en producción); estructura y SP respaldados en `docs/sql/legacy/`. Hoy tres tienen
+> filas y la guarda del DROP las bloquea: `FosygaAuxiliar` (18.598, carga fallida del 2026-09-23),
+> `RGMAuxiliar` (30.144) y `TigoAuxiliar` (661.072), estas dos residuo ya contenido en su destino.
+> **Siguen en uso / fuera del alcance:** `TitularAuxiliar`, `Titular_CarteraAuxiliar`,
+> `ListaNegraTelefonosAuxiliar`, `DatosExternosAuxiliar` y `RuntAuxiliar` (motivos en la cabecera del DROP).
+> *Corregido el 2026-09-24:* las `<Fuente>Auxiliar` de la Fase 2 (todas menos `CamaraEmpresaAuxiliar`,
+> que no crea relaciones) tienen además `LiderID int NULL` como última columna, que no estaba documentada;
+> `CoosaludAuxiliar`, `MiVacunaAuxiliar`, `SaviaSaludAuxiliar` y `TigoUneAuxiliar` no estaban documentadas.
 
 ### ARLSuraAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -810,6 +969,7 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaConsulta | datetime | SI | — | — |
 | Nombre | varchar(80) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### CajacopiAuxiliar
 > Fase 1 (ADR-039): sin uso; se eliminará con `2026-09-25_drop_auxiliares_fase1.sql`; definición en `docs/sql/legacy/`.
@@ -830,6 +990,7 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | LiderID | int | SI | — | — |
 
 ### CamaraAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -842,8 +1003,10 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaConsulta | datetime | SI | — | — |
 | Nombre | varchar(80) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### CamaraEmpresaAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -856,6 +1019,7 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | NombreEmpresa | varchar(120) | SI | — | — |
 
 ### CompensadosAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -868,6 +1032,29 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | Nombre | varchar(50) | SI | — | — |
 | CarteraID | int | SI | — | — |
 | FechaInsercion | datetime | SI | — | — |
+| LiderID | int | SI | — | — |
+
+### CoosaludAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
+> (No estaba documentada: columnas de `sys.columns` del 2026-09-24.)
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | SI | — | — |
+| NumeroTelefono | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| MunicipioOrigen | varchar(50) | SI | — | — |
+| DepartamentoOrigen | varchar(50) | SI | — | — |
+| Regimen | varchar(50) | SI | — | — |
+| TipoAfiliado | varchar(50) | SI | — | — |
+| EstadoAfiliacion | varchar(50) | SI | — | — |
+| NivelSisben | varchar(50) | SI | — | — |
+| FechaNacimiento | datetime | SI | — | — |
+| EstadoEnCoosalud | bit | SI | — | — |
+| FechaConsulta | datetime | SI | — | — |
+| Nombre | varchar(50) | SI | — | — |
+| CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### DatosClaroAuxiliar
 > Fase 1 (ADR-039): sin uso; se eliminará con `2026-09-25_drop_auxiliares_fase1.sql`; definición en `docs/sql/legacy/`.
@@ -880,6 +1067,8 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaInsercion | date | SI | — | — |
 
 ### DatosExternosAuxiliar
+> Fuera de ADR-039 (1.046.532 filas): staging de `DatosExternos`, fuente que Zentinela no consume y que
+> no está en el catálogo del cargue. Borrarla es otra decisión.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -888,6 +1077,10 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | Email | varchar(max) | SI | — | — |
 
 ### FosygaAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
+> ⚠️ Tiene **18.598 filas** (2026-09-24): una carga del 2026-09-23 que el SP no pudo pasar a `Fosyga`
+> (sin Nombre ni cartera/líder; 4.124 titulares inexistentes → FK). ~18.053 filas de afiliación que no
+> están en el destino: hablar con quien carga Fosyga antes de vaciarla.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -905,8 +1098,12 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | Nombre | varchar(60) | SI | — | — |
 | CarteraID | int | SI | — | — |
 | FechaInsercion | datetime | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### ListaNegraTelefonosAuxiliar
+> **No es del flujo de fuentes** (fuera de los DROP de ADR-039): staging de la lista negra de teléfonos,
+> 1.204.923 filas. Su único lector en la BD era `sp_ProcesarDatosClaroAuxiliar` (Fase 1); el cargue cruza
+> contra `ListaNegraTelefonos` real.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -914,6 +1111,22 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | NumeroTelefono | varchar(10) | SI | — | — |
 | Cartera | varchar(50) | SI | — | — |
 | Codigo | varchar(20) | SI | — | — |
+
+### MiVacunaAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
+> (No estaba documentada: columnas de `sys.columns` del 2026-09-24.)
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | SI | — | — |
+| FechaExpedicion | date | SI | — | — |
+| Celular | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| EstadoEnMiVacuna | bit | SI | — | — |
+| Nombre | varchar(70) | SI | — | — |
+| FechaConsulta | date | SI | — | — |
+| CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### MutualSerAuxiliar
 > Fase 1 (ADR-039): sin uso; se eliminará con `2026-09-25_drop_auxiliares_fase1.sql`; definición en `docs/sql/legacy/`.
@@ -955,6 +1168,7 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaConsulta | date | SI | — | — |
 
 ### PositivaAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -969,8 +1183,10 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaConsulta | datetime | SI | — | — |
 | Nombre | varchar(70) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### PositivaEmpresasAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -983,8 +1199,12 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaInsercion | datetime | SI | — | — |
 | Nombre | varchar(70) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### RGMAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
+> Tiene **30.144 filas** (2026-09-24): residuo de la carga del 2026-08-31, con el 100 % de su contenido ya
+> en `RGM`. Vaciarla antes del DROP, con confirmación del usuario.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -997,8 +1217,10 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | CarteraID | int | SI | — | — |
 | FechaConsulta | datetime | SI | — | — |
 | FechaInsercion | datetime | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### RUESAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1011,8 +1233,11 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaConsulta | datetime | SI | — | — |
 | Nombre | varchar(70) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### RuntAuxiliar
+> 0 filas, sin SP. **No entra en ningún DROP de ADR-039**: Runt no se agregó al cargue; si se activa, el
+> módulo la reemplaza, y si se abandona se borran `Runt` y `RuntAuxiliar` juntas (decisión aparte).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1033,6 +1258,7 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaInsercion | datetime | SI | — | — |
 
 ### SaludTotalAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1052,6 +1278,28 @@ Tablas intermedias de carga/importacion masiva. Patron: datos crudos antes de pr
 | FechaConsulta | datetime | SI | — | — |
 | Nombre | varchar(70) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
+
+### SaviaSaludAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
+> (No estaba documentada: columnas de `sys.columns` del 2026-09-24.) Ojo: los nombres no son los del
+> destino (`FechaNacimiento`/`EstadoAfiliacion` aquí, `FechaDeNacimiento`/`EstadoDeAfiliacion` en
+> `SaviaSalud`), tiene `Email` (el destino no) y no tiene `FechaConsulta`.
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | SI | — | — |
+| FechaNacimiento | datetime | SI | — | — |
+| TipoAfiliado | varchar(70) | SI | — | — |
+| EstadoAfiliacion | varchar(70) | SI | — | — |
+| Regimen | varchar(70) | SI | — | — |
+| Email | varchar(100) | SI | — | — |
+| NumeroTelefono | varchar(10) | SI | — | — |
+| NumeroCelular | varchar(30) | SI | — | — |
+| Nombre | varchar(70) | SI | — | — |
+| Estado | bit | SI | — | — |
+| CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### SIMITAuxiliar
 Tabla de staging para SIMIT con soporte de hasta 15 placas por titular.
@@ -1083,6 +1331,7 @@ Tabla de staging para SIMIT con soporte de hasta 15 placas por titular.
 | LiderID | int | SI | — | — |
 
 ### SOSAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1090,15 +1339,16 @@ Tabla de staging para SIMIT con soporte de hasta 15 placas por titular.
 | NitEmpresa | bigint | SI | — | — |
 | RazonSocial | varchar(100) | SI | — | — |
 | Telefono | varchar(10) | SI | — | — |
-| Direccion | varchar(150) | SI | — | — |
+| Dirección | varchar(150) | SI | — | — (con tilde en el nombre; en `SOS` es `Direccion varchar(70)`) |
 | EstadoEnSos | bit | SI | — | — |
 | FechaConsulta | datetime | SI | — | — |
 | Nombre | varchar(80) | SI | — | — |
 | CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### SuraAuxiliar
 > Fase 1 (ADR-039): sin uso; se eliminará con `2026-09-25_drop_auxiliares_fase1.sql`; definición en `docs/sql/legacy/`.
-> No confundir con `ARLSuraAuxiliar`, que sigue en uso.
+> No confundir con `ARLSuraAuxiliar` (otra fuente; queda sin uso en la Fase 2 y se elimina con el DROP de la Fase 2).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1117,6 +1367,11 @@ Tabla de staging para SIMIT con soporte de hasta 15 placas por titular.
 | LiderID | int | SI | — | — |
 
 ### TigoAuxiliar
+> Fase 2 (ADR-039): sin uso (nunca tuvo SP: `Tigo` se llenó a mano desde aquí en 2025); se eliminará con
+> `2026-09-26_drop_auxiliares_fase2.sql`; estructura en `docs/sql/legacy/TigoAuxiliar_CREATE.sql`.
+> Tiene **661.072 filas** (2026-09-24): residuo de feb-mar de 2025; todos sus titulares están en `Tigo`
+> (661.005 con el mismo contenido, 67 con otro). Vaciarla antes del DROP, con confirmación del usuario.
+> *Corregido el 2026-09-24:* faltaban `CarteraID` y `LiderID`. No tiene `Nombre` (el cargue nuevo sí lo exige).
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1125,8 +1380,27 @@ Tabla de staging para SIMIT con soporte de hasta 15 placas por titular.
 | Email | varchar(255) | SI | — | — |
 | EstadoEnTigo | bit | SI | — | — |
 | FechaConsulta | datetime | SI | — | — |
+| CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
+
+### TigoUneAuxiliar
+> Fase 2 (ADR-039): sin uso; se eliminará con `2026-09-26_drop_auxiliares_fase2.sql`; definición en `docs/sql/legacy/`.
+> (No estaba documentada: columnas de `sys.columns` del 2026-09-24.)
+
+| Columna | Tipo | Nullable | PK | FK → Tabla |
+|---------|------|----------|----|------------|
+| TitularID | bigint | SI | — | — |
+| NumeroTelefono | varchar(10) | SI | — | — |
+| Email | varchar(255) | SI | — | — |
+| EstadoEnTigoUne | bit | SI | — | — |
+| FechaConsulta | datetime | SI | — | — |
+| Nombre | varchar(70) | SI | — | — |
+| CarteraID | int | SI | — | — |
+| LiderID | int | SI | — | — |
 
 ### TitularAuxiliar
+> **Sigue en uso, fuera de ADR-039** (47.531 filas): carga de titulares y asignaciones con
+> `sp_ProcesarTitularAuxiliar` (→ `Titular` + `Titular_Cartera`); la lee `vw_BaseMadreTitularAuxiliar`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1138,6 +1412,7 @@ Tabla de staging para SIMIT con soporte de hasta 15 placas por titular.
 | FechaExpedicionDocumento | datetime | SI | — | — |
 
 ### Titular_CarteraAuxiliar
+> Fuera de ADR-039 (2 filas): staging de asignaciones, mismo dominio que `TitularAuxiliar`.
 
 | Columna | Tipo | Nullable | PK | FK → Tabla |
 |---------|------|----------|----|------------|
@@ -1580,32 +1855,32 @@ Diagramas de base de datos (sistema SQL Server Management Studio).
 
 ### Stored Procedures de negocio — Procesamiento de datos auxiliares
 
-Estos SPs procesan las tablas *Auxiliar (staging) y transfieren los datos a las tablas de produccion correspondientes. Son el nucleo del flujo de carga masiva **de las fuentes que todavía no pasan por el módulo de cargue** (ADR-039). Lista verificada contra `sys.procedures` el 2026-09-24 (22 `sp_Procesar*`).
+Estos SPs procesaban las tablas *Auxiliar (staging) y transferían los datos a las tablas de producción correspondientes. Desde la Fase 2 de ADR-039 (2026-09-24) **todas las fuentes de localización se cargan por el módulo** y los 21 SP de fuentes quedan sin uso (respaldo íntegro en `docs/sql/legacy/`); solo `sp_ProcesarTitularAuxiliar` sigue vivo. Lista verificada contra `sys.procedures` el 2026-09-24 (22 `sp_Procesar*`).
 
 | Stored Procedure | Descripcion |
 |-----------------|-------------|
-| sp_ProcesarArlSuraAuxiliar | Procesa ARLSuraAuxiliar → ARLSura (Fase 2; sigue en uso) |
+| sp_ProcesarArlSuraAuxiliar | Procesa ARLSuraAuxiliar → ARLSura. **Fase 2: sin uso, se elimina con `2026-09-26_drop_auxiliares_fase2.sql`; respaldo en `docs/sql/legacy/`** |
 | sp_ProcesarCajacopiAuxiliar | Procesa CajacopiAuxiliar → Cajacopi. **Fase 1: sin uso, se elimina con `2026-09-25_drop_auxiliares_fase1.sql`; respaldo en `docs/sql/legacy/`** |
-| sp_ProcesarCamaraAuxiliar | Procesa CamaraAuxiliar → Camara |
-| sp_ProcesarCamaraEmpresaAuxiliar | Procesa CamaraEmpresaAuxiliar → CamaraEmpresa |
-| sp_ProcesarCompensadosAuxiliar | Procesa CompensadosAuxiliar → Compensados |
-| sp_ProcesarCoosaludAuxiliar | Procesa CoosaludAuxiliar → Coosalud |
+| sp_ProcesarCamaraAuxiliar | Procesa CamaraAuxiliar → Camara. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarCamaraEmpresaAuxiliar | Procesa CamaraEmpresaAuxiliar → CamaraEmpresa. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarCompensadosAuxiliar | Procesa CompensadosAuxiliar → Compensados. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarCoosaludAuxiliar | Procesa CoosaludAuxiliar → Coosalud. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
 | sp_ProcesarDatosClaroAuxiliar | Procesa DatosClaroAuxiliar → DatosClaro. **Fase 1: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
-| sp_ProcesarFosygaAuxiliar | Procesa FosygaAuxiliar → Fosyga |
-| sp_ProcesarMiVacunaAuxiliar | Procesa MiVacunaAuxiliar → MiVacuna |
+| sp_ProcesarFosygaAuxiliar | Procesa FosygaAuxiliar → Fosyga. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** (alguien lo usaba a mano la semana del 2026-09-24) |
+| sp_ProcesarMiVacunaAuxiliar | Procesa MiVacunaAuxiliar → MiVacuna. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
 | sp_ProcesarMutualSerAuxiliar | Procesa MutualSerAuxiliar → MutualSer. **Fase 1: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
 | sp_ProcesarNuevaEpsAuxiliar | Procesa NuevaEpsAuxiliar → NuevaEps. **Fase 1: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
-| sp_ProcesarPositivaAuxiliar | Procesa PositivaAuxiliar → Positiva |
-| sp_ProcesarPositivaEmpresasAuxiliar | Procesa PositivaEmpresasAuxiliar → PositivaEmpresas |
-| sp_ProcesarRGMAuxiliar | Procesa RGMAuxiliar → RGM |
-| sp_ProcesarRUESAuxiliar | Procesa RUESAuxiliar → RUES |
-| sp_ProcesarSaludTotalAuxiliar | Procesa SaludTotalAuxiliar → SaludTotal |
-| sp_ProcesarSaviaSaludAuxiliar | Procesa SaviaSaludAuxiliar → SaviaSalud |
+| sp_ProcesarPositivaAuxiliar | Procesa PositivaAuxiliar → Positiva. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarPositivaEmpresasAuxiliar | Procesa PositivaEmpresasAuxiliar → PositivaEmpresas. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarRGMAuxiliar | Procesa RGMAuxiliar → RGM. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarRUESAuxiliar | Procesa RUESAuxiliar → RUES. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarSaludTotalAuxiliar | Procesa SaludTotalAuxiliar → SaludTotal. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** (su texto nombra `RUESAuxiliar` en un comentario) |
+| sp_ProcesarSaviaSaludAuxiliar | Procesa SaviaSaludAuxiliar → SaviaSalud. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
 | sp_ProcesarSIMITAuxiliar | Procesa SIMITAuxiliar → SIMIT (despivota Placa1..15). **Fase 1: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
-| sp_ProcesarSOSAuxiliar | Procesa SOSAuxiliar → SOS |
+| sp_ProcesarSOSAuxiliar | Procesa SOSAuxiliar → SOS. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
 | sp_ProcesarSuraAuxiliar | Procesa SuraAuxiliar → Sura. **Fase 1: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
-| sp_ProcesarTigoUneAuxiliar | Procesa TigoUneAuxiliar → TigoUne |
-| sp_ProcesarTitularAuxiliar | Procesa TitularAuxiliar → Titular + Titular_Cartera |
+| sp_ProcesarTigoUneAuxiliar | Procesa TigoUneAuxiliar → TigoUne. **Fase 2: sin uso, se elimina; respaldo en `docs/sql/legacy/`** |
+| sp_ProcesarTitularAuxiliar | Procesa TitularAuxiliar → Titular + Titular_Cartera. **Sigue en uso** (fuera de ADR-039) |
 | sp_Actualizar_AuditoriaMensajeria | Actualiza la tabla AuditoriaMensajeria con los envios recientes |
 
 ### Stored Procedures del sistema (SQL Server Management Studio)
@@ -1640,12 +1915,16 @@ HistoricoEstadoTitular: historial por (TitularID, CarteraID, AgenteID)
 
 ### Flujo de carga masiva de fuentes externas
 
-Desde el 2026-09-24 conviven dos caminos. Ambos escriben el mismo **historial acumulativo** en la tabla
-de la fuente (contenido igual → se refresca la fecha; contenido nuevo → fila nueva; las vistas toman la
-última por `FechaConsulta`), pero solo el primero lo hace con transacción, conteos y reversión.
+Desde el 2026-09-24 (Fase 2 de ADR-039) **todas las fuentes de localización se cargan por el módulo**.
+El modelo es un **historial acumulativo** en la tabla de la fuente (contenido igual → se refresca la
+fecha; contenido nuevo → fila nueva; las vistas toman la última por `FechaConsulta`), con transacción,
+conteos y reversión.
 
-**1. Módulo Cargue de Fuentes de Datos (ADR-039) — Fase 1: `Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`,
-`SIMIT`, `DatosClaro`.**
+**Módulo Cargue de Fuentes de Datos (ADR-039) — 22 fuentes.** Fase 1: `Sura`, `Cajacopi`, `MutualSer`,
+`NuevaEps`, `SIMIT`, `DatosClaro`. Fase 2: `Positiva`, `SaludTotal`, `SOS`, `Coosalud`, `SaviaSalud`,
+`MiVacuna`, `Fosyga`, `RGM`, `TigoUne`, `Tigo`, `RUES`, `Camara`, `CamaraEmpresa` (clave `NitEmpresa`, no
+crea titulares), `PositivaEmpresas`, `ARLSura`, `Compensados`. Fuera: `Runt` (vacía, sin consumidores) y
+`DatosExternos` (no consumida).
 ```
 Archivo CSV / XLSX (Administración → Cargue de Fuentes de Datos, Admin + Auxiliar de Sistemas)
   → validar en segundo plano: limpiar, deduplicar, cruzar con Titular / Lider_Cartera / listas negras
@@ -1656,20 +1935,22 @@ Archivo CSV / XLSX (Administración → Cargue de Fuentes de Datos, Admin + Auxi
       (OUTPUT → CargueFuenteReversion)
   → CargueFuenteEjecucion (auditoría) + invalidar caché del Calificador
 ```
-Las `<Fuente>Auxiliar` y `sp_Procesar<Fuente>Auxiliar` de estas seis no se usan más (respaldo en
-`docs/sql/legacy/`, DROP en `2026-09-25_drop_auxiliares_fase1.sql`). Revertir un cargue:
-`docs/sql/revertir_cargue_fuente.sql`.
+Revertir un cargue: `docs/sql/revertir_cargue_fuente.sql` (lista blanca de las 22). Una fuente nueva
+sigue el paso 5f de `/agregar-fuente-datos`.
 
-**2. Patrón Auxiliar (legacy) — el resto de las fuentes hasta la Fase 2** (ARLSura, Camara,
-CamaraEmpresa, Compensados, Coosalud, Fosyga, MiVacuna, Positiva, PositivaEmpresas, RGM, RUES,
-SaludTotal, SaviaSalud, SOS, TigoUne; más Titular):
+**Patrón Auxiliar (legacy, sin uso)** — lo que había antes del módulo, y que solo sigue vivo para
+`TitularAuxiliar` → `sp_ProcesarTitularAuxiliar` (titulares y asignaciones, fuera de ADR-039):
 ```
 Fuente externa (archivo/API)
   → Tabla*Auxiliar  (staging, sin constraints; se llena a mano con SSMS)
   → sp_Procesar*Auxiliar  (sin transacción ni conteos)
-  → Tabla produccion (con FK a Titular)
+  → Tabla produccion
 ```
-Cada fuente que pase a la Fase 2 sigue el paso 5f de `/agregar-fuente-datos`.
+Las 21 `<Fuente>Auxiliar` con SP y `TigoAuxiliar` (Tigo se llenaba a mano, sin SP) quedan sin uso:
+respaldo en `docs/sql/legacy/`, DROP en `2026-09-25_drop_auxiliares_fase1.sql` (6) y
+`2026-09-26_drop_auxiliares_fase2.sql` (15 + `TigoAuxiliar`), a mano y después de validar el cargue en
+producción. El de la Fase 2 se bloquea mientras `FosygaAuxiliar`, `RGMAuxiliar` o `TigoAuxiliar` tengan
+filas (ver su cabecera).
 
 ---
 
@@ -1716,7 +1997,7 @@ Patrón aplicado: `CREATE INDEX IX_<Tabla>_TitularID_Fecha ON <Tabla>(TitularID,
 | PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` (la tabla seguía siendo HEAP sin este índice en producción pese a estar documentado aquí; backfill en migración `2026-07-08_index_positivaempresas_titularid.sql`) |
 | RGM | `IX_RGM_TitularID_Fecha` |
 | RUES | `IX_RUES_TitularID_Fecha` |
-| Runt | `IX_Runt_TitularID_Fecha` |
+| Runt | ~~`IX_Runt_TitularID_Fecha`~~ **no existe** (verificado con `sys.indexes` el 2026-09-24: `dbo.Runt` es un heap sin índices, 0 filas) |
 | SaludTotal | `IX_SaludTotal_TitularID_Fecha` |
 | SIMIT | `IX_SIMIT_TitularID_Fecha` |
 | SOS | `IX_SOS_TitularID_Fecha` |

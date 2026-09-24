@@ -43,13 +43,69 @@ backlog: los items se cierran o se descartan con razón explícita.
 - **Un job activo por fuente y 2 en total** (409). Dos cargues de la misma tabla compartirían sello y se
   pisarían la política de vacías.
 
+## Cargue de Fuentes de Datos, Fase 2 — lo que hay que saber (2026-09-24, ADR-039)
+
+Las 22 fuentes de localización ya se cargan por el módulo. Lo nuevo de la Fase 2:
+
+- **AVISAR ANTES DE DESPLEGAR: alguien carga Fosyga a mano esta semana** con `FosygaAuxiliar` +
+  `sp_ProcesarFosygaAuxiliar` (el SP se modificó el 2026-09-22 y hubo cargas el 22 y el 23). Hay que
+  decirle que pase al módulo. Además `FosygaAuxiliar` guarda una carga **fallida** del 2026-09-23 (18.598
+  filas; ~18.053 no están en `Fosyga`): el SP no pudo con filas sin Nombre ni cartera/líder. Si esos datos
+  se quieren, se recargan por el módulo con un archivo que traiga el nombre (H4 de `PARIDAD-otras.md`).
+- **S1 — `''`/`'0'` legacy vs NULL: la primera recarga crea una fila nueva en vez de refrescar.** El motor
+  guarda NULL donde los SP dejaban `''` o `'0'`, y la igualdad de contenido (`INTERSECT`) distingue `''`
+  de NULL. Sin pérdida (las vistas toman la más reciente, que es la limpia), pero la tabla crece una fila
+  por titular afectado. Volumen legacy medido el 2026-09-24: **Positiva 140.758 correos `''` y 30.056
+  celulares `'0'`**, **Coosalud 32.698 correos `''`**, **MiVacuna 1.118 correos `''`**, SaludTotal 14 y
+  SOS 6 teléfonos, TigoUne 27.166 filas con `''` en teléfono o email. Se evitaría con un **script de
+  normalización** del legacy (`''`/`'0'` → NULL, como el de placas de SIMIT) antes de la primera carga.
+  Decisión pendiente del coordinador.
+- **Tigo exige la columna Nombre.** `dbo.Tigo` tiene FK a `Titular`, así que el cargue crea titulares y
+  el archivo debe traer Nombre. El formato viejo de `TigoAuxiliar` (sin Nombre) **se rechaza** con
+  "Faltan columnas obligatorias: Nombre". Tigo no tenía SP: se llenó a mano en 2025 y es la primera vez que
+  se puede actualizar.
+- **Teléfono como celular.** SOS (`Telefono`), SaludTotal, Coosalud, TigoUne y Tigo (`NumeroTelefono`) y
+  MiVacuna (`Celular`) se validan como **celular** (10 dígitos, empieza en 3), porque la BaseMadre los
+  expone como `[Celular <Fuente>]` y alimentan el selector de celulares: un fijo o un número de 7 dígitos
+  se anula con advertencia. **Los fijos legacy no se tocan** (SOS tiene 625 de 7 dígitos y 34 60x; Tigo
+  1.101 fijos). Camara, CamaraEmpresa y `SaviaSalud.NumeroTelefono` sí aceptan fijo (tipo `Telefono`).
+- **CamaraEmpresa se identifica por NIT, no por titular.** Clave `NitEmpresa` (`ColumnaClaveTitular`): el
+  archivo trae el NIT de la empresa, no crea `Titular` ni `Titular_Cartera`, y la reversión la ubica por NIT
+  (guardado como texto en `CargueFuenteReversion.TitularID`). 'NIT-DV' se acepta y se le quita el DV.
+- **H4 — NIT-DV en columnas NIT enteras se anula.** En las columnas de dato `NIT` de tipo `Entero` (Sura,
+  SaludTotal, PositivaEmpresas, ARLSura; `NitEmpresa` de SOS) un '900123456-7' se anula con la advertencia
+  genérica "valor no numérico anulado": no se pierde en silencio, pero se pierde. Solo la clave de
+  CamaraEmpresa le quita el DV. Si los proveedores traen DV, conviene un tipo `Nit` genérico.
+- **RUES tiene sello con hora.** `RUES.FechaConsulta` es `datetime` (la única): el sello va truncado al
+  segundo. Quien compare esa columna con una fecha debe usar rangos o convertir.
+- **ARLSura ≠ Sura.** Dos fuentes, dos tablas; el flag de las dos se llama `EstadoEnSura`.
+- **Compensados: la columna Estado del archivo no se usa** (el flag sale de EPS y período). Si Estado
+  significa "encontrado sin datos", hace falta la extensión `FlagDesdeArchivo`: decisión pendiente (H2 de
+  `PARIDAD-empresas.md`; afecta 2.315 de 366.072 filas).
+- **Columna `Entero` contra destino `int`** (H1 de `PARIDAD-otras.md`): `#Carga` la lleva como `bigint` y un
+  número enorme haría fallar el cargue entero (con rollback, sin decir la fila). Hoy solo `RGM.Modelo`, que
+  `ReglaRgm` valida como año.
+
 ## PENDIENTE: DROP de las 6 Auxiliar de la Fase 1 (ADR-039)
 
 - `docs/sql/migrations/2026-09-25_drop_auxiliares_fase1.sql`, **a mano y solo después de validar el
   cargue en producción** (al menos un cargue real por fuente). Guardas: 0 filas, definición idéntica al
-  respaldo de `docs/sql/legacy/` (hash), sin dependencias. `ARLSuraAuxiliar` no entra.
-- Antes del DROP: la comparación de cada fuente contra su SP viejo (mismo archivo, `EXEC` en transacción
-  con ROLLBACK vs `simular: true`) que pide el plan de la etapa E.
+  respaldo de `docs/sql/legacy/` (hash), sin dependencias. `ARLSuraAuxiliar` no entra (va en la Fase 2).
+- La comparación de cada fuente contra su SP viejo ya se hizo (`docs/sql/legacy/PARIDAD.md`, 2026-09-24).
+
+## PENDIENTE: DROP de las 16 Auxiliar de la Fase 2 (ADR-039)
+
+- `docs/sql/migrations/2026-09-26_drop_auxiliares_fase2.sql`: 15 `<Fuente>Auxiliar` + sus SP y
+  `TigoAuxiliar` (sin SP). **A mano y solo después de validar el cargue en producción.** Mismas guardas
+  que la Fase 1; la de dependencias excluye todos los SP que se borran juntos (`sp_ProcesarSaludTotalAuxiliar`
+  nombra `RUESAuxiliar` en un comentario).
+- **Hoy la guarda de filas lo bloquea**: `FosygaAuxiliar` (18.598, carga fallida: hablar con quien carga
+  Fosyga), `RGMAuxiliar` (30.144, residuo ya contenido en RGM) y `TigoAuxiliar` (661.072, residuo ya en
+  Tigo; 67 variantes con otro teléfono/correo se perderían). Vaciarlas es decisión del usuario, con
+  confirmación explícita; la cabecera del script trae las consultas para comprobarlo de nuevo.
+- No entran (y por qué, en la cabecera): `TitularAuxiliar`, `Titular_CarteraAuxiliar`,
+  `ListaNegraTelefonosAuxiliar`, `DatosExternosAuxiliar`, `RuntAuxiliar` y los `Staging_*`.
+- Paridad hecha: 264 casos en 15 fuentes, 0 sin explicar (`docs/sql/legacy/README.md`).
 
 ---
 

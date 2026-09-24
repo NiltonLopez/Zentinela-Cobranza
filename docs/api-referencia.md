@@ -1853,8 +1853,18 @@ Solo aplica a **SMS y Correo**: el canal IVR usa carga única (`POST /api/virtua
 ## Cargue de Fuentes de Datos (ADR-039)
 
 Base: `/api/cargue-fuentes`. Roles: **Admin, Auxiliar de Sistemas** (`Roles.AuxiliarSistemas`). Carga
-archivos de las fuentes de localización de la Fase 1 (`Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`,
-`SIMIT`, `DatosClaro`) con el motor genérico. **Validar y confirmar corren en segundo plano**: responden
+archivos de las **22 fuentes de localización** con el motor genérico. `{fuente}` es la clave del catálogo
+(`CatalogoCargueFuentes`):
+
+| Fase | Claves (`{fuente}`) |
+|---|---|
+| 1 | `Sura`, `Cajacopi`, `MutualSer`, `NuevaEps`, `SIMIT`, `DatosClaro` |
+| 2 — salud | `Positiva`, `SaludTotal`, `SOS`, `Coosalud`, `SaviaSalud`, `MiVacuna` |
+| 2 — otras | `Fosyga`, `RGM`, `TigoUne`, `Tigo` |
+| 2 — empresas | `RUES`, `Camara`, `CamaraEmpresa`, `PositivaEmpresas`, `ARLSura`, `Compensados` |
+
+`ARLSura` (ARL, empleador) y `Sura` (EPS) son fuentes distintas: se buscan por igualdad, nunca por prefijo.
+`Runt` no está (tabla vacía y sin consumidores). **Validar y confirmar corren en segundo plano**: responden
 `202 Accepted` con la foto del job (header `Location` → `GET jobs/{id}`) y el front hace polling a
 `GET jobs/{id}` cada 1,5 s mientras `estado` sea `Validando` o `Cargando`. El job vive en memoria de la
 API hasta 48 h; un reciclaje de IIS lo borra (ver `docs/despliegue.md`).
@@ -1887,9 +1897,13 @@ que IIS aplica antes). **XLSX: máximo 250.000 filas** (`CargueFuentes:LimiteFil
 libro entero en memoria): por encima el job termina en `Error` pidiendo CSV. CSV sin tope (se lee por
 streaming; comillas RFC-4180, separador `;` o `,`, UTF-8 o ANSI detectado).
 
-Columnas: se resuelven por alias normalizado (sin tildes, espacios ni mayúsculas). `TitularID` siempre
-obligatoria (alias `titularid`, `numerodocumento`, `documento`, `cedula`, `identificacion`, `nit`);
-`Nombre` obligatoria si la fuente crea titulares; `CarteraID`/`Cartera` + `LiderID`/`Lider` opcionales
+Columnas: se resuelven por alias normalizado (sin tildes, espacios ni mayúsculas). La **clave** siempre
+obligatoria: `TitularID` (alias `titularid`, `numerodocumento`, `documento`, `cedula`, `identificacion`,
+`nit`), salvo en `CamaraEmpresa`, cuya clave es `NitEmpresa` (alias `nitempresa`, `nit`, `nitdelaempresa`,
+`numeronit`; 'NIT-DV' se acepta y se le quita el DV; no crea titulares ni relaciones). Un alias que la
+fuente usa para una columna de dato (p. ej. `nit` en Sura, `razonsocial` en SOS) no vale para las comunes.
+`Nombre` obligatoria si la fuente crea titulares (todas menos `DatosClaro` y `CamaraEmpresa`; en `Tigo`
+también, aunque el staging viejo no la traía); `CarteraID`/`Cartera` + `LiderID`/`Lider` opcionales
 (la relación solo se crea si el par está activo en `Lider_Cartera`). Las de dato de cada fuente vienen en
 `GET /fuentes` → `columnasEsperadas`. Una obligatoria faltante o un archivo sin ninguna columna de dato
 dejan el job en `Error` con `preview.columnasFaltantes` / `columnasEncontradas` (no se adivina).
@@ -1917,19 +1931,58 @@ dejan el job en `Error` con `preview.columnasFaltantes` / `columnasEncontradas` 
 `errores` / `advertencias` / `info`: `[{ mensaje, cantidad }]` agrupados por mensaje (sin número de línea;
 tope 200 mensajes distintos por lista, los de mayor conteo primero); `columnasMuestra` + `muestra`
 (10 filas ya limpias, con la acción que tendrán: `Insertar` / `Refrescar fecha` / `Descartar (vacía)`);
-`huellaArchivo` (SHA-256 hex); `selloPrevisto` (fecha del servidor SQL).
+`huellaArchivo` (SHA-256 hex); `selloPrevisto` (fecha del servidor SQL);
+`desglose: DesgloseChipDto[]` (ver abajo).
 Invariantes: `totalLeidas + agregadasPorExpansion = excluidas + duplicadasEnArchivo + candidatas` y
 `candidatas = insertadas + refrescadas + descartadasVacias`.
 
-**`resultado` (`ResultadoCargueDto`)** — tras `Completado`: `ejecucionID`, `selloFechaConsulta`,
-`insertadas`, `refrescadas`, `descartadasVacias`, `vaciasPurgadas`, `titularesNuevos`, `nombresReparados`,
-`relacionesNuevas`, `advertencias`, `mensaje`, `duracionSegundos`.
+**`resultado` (`ResultadoCargueDto`)** — tras `Completado`: `ejecucionID`, `selloFechaConsulta`
+(`DateTime`; con hora al segundo solo en RUES, cuyo destino es `datetime`), `insertadas`, `refrescadas`,
+`descartadasVacias`, `vaciasPurgadas`, `titularesNuevos`, `nombresReparados`, `nombresIrrecuperables`
+(filas con nombre dañado sin arreglo, `?`: entran pero no reparan `Titular`), `relacionesNuevas`,
+`advertencias`, `mensaje`, `duracionSegundos`; `desglose: DesgloseChipDto[]` (los 8 chips de la escritura).
+
+### Desglose de chips (`DesgloseChipDto`)
+
+Cada chip de conteo se despliega en grupos con su cantidad exacta y hasta 10 ejemplos (ADR-039,
+"Desglose de chips").
+
+```json
+"desglose": [
+  { "clave": "Excluidas", "grupos": [
+      { "titulo": "Documento inválido o vacío (se esperan de 5 a 15 dígitos)", "cantidad": 3, "tono": "Error",
+        "ejemplos": ["Fila 12 · 1234", "Fila 40 · (vacío)", "Fila 41 · 12AB"] } ] },
+  { "clave": "Insertadas", "grupos": [
+      { "titulo": "Titular sin datos previos en Positiva (ARL)", "cantidad": 120, "tono": "Info",
+        "ejemplos": ["1020304050 · 3001234567 · 6012345678"] },
+      { "titulo": "Contenido distinto al vigente", "cantidad": 8, "tono": "Info", "ejemplos": [] } ] }
+]
+```
+
+- **`clave`** (`ChipCargue`, texto): `Leidas` · `Excluidas` · `Duplicadas` · `Insertadas` · `Refrescadas` ·
+  `VaciasDescartadas` · `VaciasPurgadas` · `TitularesNuevos` · `NombresReparados` · `RelacionesNuevas` ·
+  `SinCarteraLider` · `Advertencias`. El preview trae los 12; el resultado, `Insertadas`, `Refrescadas`,
+  `VaciasDescartadas`, `VaciasPurgadas`, `TitularesNuevos`, `NombresReparados`, `RelacionesNuevas` y
+  `Advertencias`.
+- **`grupos[]`** (`GrupoDesgloseDto`): `titulo` (sin número de fila), `cantidad` (exacta aunque los ejemplos
+  se corten), `tono` (`TonoDesglose`, texto: `Error` · `Aviso` · `Info`) y `ejemplos` (hasta 10, formato
+  `"Fila N · documento · valor"`, omitiendo lo que no haya; valor recortado a 80 caracteres).
+- **Invariante**: la suma de `cantidad` de los grupos de un chip es el número del chip. Número del chip:
+  `NombresReparados` = `nombresReparados + nombresIrrecuperables`; `Advertencias` = suma de las
+  advertencias agrupadas; el resto, el campo homónimo. Ningún grupo es negativo, salvo el de ajuste
+  "Diferencia entre la preparación y la escritura (la base cambió entre ambas)", que solo aparece si otra
+  sesión escribió en las mismas tablas entre preparar y escribir.
+- **`Leidas`** se compone de "Excluidas", "Duplicadas en el archivo" y "Pasaron a la carga", en filas del
+  archivo (con SIMIT el último dice cuántas filas destino generan, una por placa).
+- **Topes**: 10 ejemplos por grupo y 200 grupos por chip; los motivos que pasen de 200 van a
+  "Otros motivos (demasiados distintos para listarlos uno por uno)", con conteo exacto y el motivo en el ejemplo.
 
 ### `FuenteCargueDto`
 
 `fuente`, `etiqueta`, `tablaDestino`, `notas`, `habilitada`, `faseIntegracion`,
-`columnasEsperadas: [{ nombre, alias[], tipo, obligatoria, descripcion }]` (incluye TitularID, Nombre y
-Cartera/Líder si aplican; `tipo` = `Documento`, `Texto`, `Entero`, `Celular`, `Fijo`, `Telefono`, `Email`,
+`columnasEsperadas: [{ nombre, alias[], tipo, obligatoria, descripcion }]` (incluye la clave —`TitularID`,
+o `NitEmpresa` en CamaraEmpresa—, Nombre y Cartera/Líder si aplican, y las columnas del archivo que no se
+guardan pero la regla usa, como Departamento/Municipio de CamaraEmpresa o Placa1..15 de SIMIT; `tipo` = `Documento`, `Texto`, `Entero`, `Celular`, `Fijo`, `Telefono`, `Email`,
 `Fecha` o `Placa`), `extensionesAceptadas` (`[".csv", ".xlsx"]`), `limiteFilasXlsx`.
 
 ### `CargueJobResumenDto` (GET jobs)

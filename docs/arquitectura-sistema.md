@@ -305,7 +305,7 @@ La vista `vw_BaseMadre` usa `ROW_NUMBER() OVER (PARTITION BY TitularID ORDER BY 
 | PositivaEmpresas | `IX_PositivaEmpresas_TitularID_Fecha` |
 | RGM | `IX_RGM_TitularID_Fecha` |
 | RUES | `IX_RUES_TitularID_Fecha` |
-| Runt | `IX_Runt_TitularID_Fecha` |
+| Runt | ~~`IX_Runt_TitularID_Fecha`~~ no existe (2026-09-24: `dbo.Runt` es un heap sin índices, 0 filas) |
 | SaludTotal | `IX_SaludTotal_TitularID_Fecha` |
 | SIMIT | `IX_SIMIT_TitularID_Fecha` |
 | SOS | `IX_SOS_TitularID_Fecha` |
