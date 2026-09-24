@@ -38,6 +38,16 @@ internal static class CatalogoReglasFuente
         // lista negra de correos (con LIKE, anulando a ''), calculaba el flag e insertaba: todo
         // genérico en el motor, con igualdad exacta y NULL.
         [CatalogoCargueFuentes.MiVacuna.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.MiVacuna.Fuente),
+        // ── Fase 2 · grupo "otras" ──
+        [CatalogoCargueFuentes.Fosyga.Fuente]    = new ReglaFosyga(),
+        [CatalogoCargueFuentes.Rgm.Fuente]       = new ReglaRgm(),
+        // TigoUne: sp_ProcesarTigoUneAuxiliar solo hacía lo genérico (Titular, relaciones, dedup
+        // por titular, lista negra de correos —con LIKE, no se copia—, teléfono de 10, flag,
+        // INSERT de lo nuevo). Ver el <summary> de CatalogoCargueFuentes.TigoUne.
+        [CatalogoCargueFuentes.TigoUne.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.TigoUne.Fuente),
+        // Tigo: NO hay SP que traducir (la tabla se llenó a mano en 2025 y nadie la escribe desde
+        // entonces). Misma forma que TigoUne → lo genérico basta. Ver CatalogoCargueFuentes.Tigo.
+        [CatalogoCargueFuentes.Tigo.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Tigo.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

@@ -155,4 +155,80 @@ public class CatalogoCoherenciaTests
         Assert.Equal(CardinalidadCargue.VariasPorTitular, d.Cardinalidad);
         Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaListaNegraTelefonos);
     }
+
+    // ── Fase 2 · grupo "otras" ──────────────────────────────────────────────
+
+    [Fact]
+    public void Fosyga_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.Fosyga el 2026-09-24: EPS varchar(120), Departamento
+        // varchar(70), fechas date, FK a Titular. Flag = Estado, EPS o Régimen (paso 5 del SP).
+        var d = CatalogoCargueFuentes.Fosyga;
+        Assert.Equal(("dbo.Fosyga", "EstadoEnFosyga", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["Estado:Texto:30", "EPS:Texto:120", "Regimen:Texto:30",
+             "FechaAfiliacionEfectiva:Fecha:0:sinflag", "FechaFinalizacionAfiliacion:Fecha:0:sinflag",
+             "TipoAfiliado:Texto:50:sinflag", "Departamento:Texto:70:sinflag", "Municipio:Texto:50:sinflag"],
+            Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.True(d.ColumnasDato.All(c => c.EntraAClave));
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaFosyga>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
+
+    [Fact]
+    public void Rgm_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.RGM el 2026-09-24: Marca varchar(50), Modelo int,
+        // Placa varchar(50), FK a Titular. Flag = Marca, Modelo o Placa (paso 4 del SP).
+        var d = CatalogoCargueFuentes.Rgm;
+        Assert.Equal(("RGM", "dbo.RGM", "EstadoEnRGM", "FechaConsulta", TipoFechaSello.Date),
+                     (d.Fuente, d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["Marca:Texto:50", "Modelo:Entero:0", "Placa:Placa:50"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.True(d.ColumnasDato.All(c => c.EntraAClave));
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaRgm>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
+
+    [Fact]
+    public void TigoUne_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.TigoUne el 2026-09-24: NumeroTelefono varchar(10),
+        // Email varchar(255), FechaConsulta date, sin FK a Titular. Celular: [Celular TigoUne].
+        var d = CatalogoCargueFuentes.TigoUne;
+        Assert.Equal(("TigoUne", "dbo.TigoUne", "EstadoEnTigoUne", "FechaConsulta", TipoFechaSello.Date),
+                     (d.Fuente, d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NumeroTelefono:Celular:10", "Email:Email:255"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        var regla = Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        Assert.Equal("TigoUne", regla.Fuente);
+    }
+
+    [Fact]
+    public void Tigo_coincide_con_el_destino_real_y_con_TigoUne()
+    {
+        // Verificado con sys.columns de dbo.Tigo el 2026-09-24 (FK a Titular, CHECK chk_Telefono).
+        // Sin SP legacy: misma forma que TigoUne, pero fuente y tabla distintas.
+        var d = CatalogoCargueFuentes.Tigo;
+        Assert.Equal(("Tigo", "dbo.Tigo", "EstadoEnTigo", "FechaConsulta", TipoFechaSello.Date),
+                     (d.Fuente, d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NumeroTelefono:Celular:10", "Email:Email:255"], Firma(d));
+        Assert.Equal(Firma(CatalogoCargueFuentes.TigoUne), Firma(d));
+        Assert.NotEqual(CatalogoCargueFuentes.TigoUne.TablaDestino, d.TablaDestino);
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        var regla = Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        Assert.Equal("Tigo", regla.Fuente);
+    }
+
+    [Fact]
+    public void Runt_no_esta_en_el_catalogo()
+    {
+        // dbo.Runt y RuntAuxiliar están vacías y nada en la BD ni en el código las consume
+        // (docs/sql/legacy/PARIDAD-otras.md, sección Runt). No se agrega sin una fuente activa.
+        Assert.Null(CatalogoCargueFuentes.Buscar("Runt"));
+    }
 }

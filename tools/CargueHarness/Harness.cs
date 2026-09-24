@@ -53,6 +53,10 @@ internal sealed class Harness
         ("Coosalud",        "TitularID BETWEEN @d AND @h"),
         ("SaviaSalud",      "TitularID BETWEEN @d AND @h"),
         ("MiVacuna",        "TitularID BETWEEN @d AND @h"),
+        ("Fosyga",          "TitularID BETWEEN @d AND @h"),
+        ("RGM",             "TitularID BETWEEN @d AND @h"),
+        ("TigoUne",         "TitularID BETWEEN @d AND @h"),
+        ("Tigo",            "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];

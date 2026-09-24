@@ -548,11 +548,152 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    // ── Fase 2 · grupo "otras" ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Fosyga (ADRES / BDUA: afiliación a salud). Regla propia (<c>ReglaFosyga</c>): Estado
+    /// 'AFILIADO FALLECIDO' → TipoAfiliado 'FALLECIDO', como el SP. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.Fosyga</c> el 2026-09-24: EPS varchar(120) (en FosygaAuxiliar
+    /// era varchar(200): un nombre de EPS largo tumbaba el INSERT entero del SP), Departamento
+    /// varchar(70), fechas y FechaConsulta <c>date</c>; FK a Titular, sin triggers; heap con
+    /// IX_Fosyga_TitularID_Fecha. El flag, como en el SP, solo mira Estado, EPS y Régimen.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Fosyga = new()
+    {
+        Fuente          = "Fosyga",
+        Etiqueta        = "Fosyga (ADRES)",
+        TablaDestino    = "dbo.Fosyga",
+        ColumnaFlag     = "EstadoEnFosyga",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliación a salud según ADRES: estado, EPS, régimen, fechas, tipo de afiliado y localización.",
+        ColumnasDato =
+        [
+            new("Estado", ["estado", "estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 30, Descripcion: "Activo, retirado, afiliado fallecido…"),
+            new("EPS", ["eps", "entidad", "nombreentidad", "nombreeps", "entidadpromotora"],
+                TipoColumnaCargue.Texto, 120, Descripcion: "EPS (entidad) a la que está afiliado"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 30, Descripcion: "Contributivo, subsidiado…"),
+            new("FechaAfiliacionEfectiva", ["fechaafiliacionefectiva", "fechadeafiliacionefectiva", "fechaafiliacion"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de afiliación efectiva"),
+            new("FechaFinalizacionAfiliacion", ["fechafinalizacionafiliacion", "fechadefinalizaciondeafiliacion", "fechafinalizacion", "fechafinafiliacion"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de finalización (31/12/2999 = vigente)"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario, cabeza de familia…"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Departamento"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio"),
+        ],
+    };
+
+    /// <summary>
+    /// RGM (vehículos: marca, modelo y placa). Regla propia (<c>ReglaRgm</c>): el modelo debe ser un
+    /// año plausible. Verificado contra <c>sys.columns</c> de <c>dbo.RGM</c> el 2026-09-24: Marca
+    /// varchar(50), <b>Modelo int</b> (en RGMAuxiliar era varchar(50): un modelo no numérico tumbaba
+    /// el INSERT del SP), Placa varchar(50) (en RGMAuxiliar varchar(6), que truncaba), FechaConsulta
+    /// <c>date</c>; FK a Titular (FK_RGM), sin triggers; heap con IX_RGM_TitularID_Fecha. Una fila
+    /// vigente por titular (el SP deduplicaba el staging por titular; 1.663.543 filas, 1.662.514
+    /// titulares). La placa usa la misma validación que SIMIT (<c>PlacaVehiculo</c>): en dbo.RGM el
+    /// 99,7 % de las 8.765 placas la cumple; las 25 que no son '[objec' ('[object Object]' truncado
+    /// a 6), 'AVAL' y '0'. El flag, como en el SP, es marca, modelo o placa con valor.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Rgm = new()
+    {
+        Fuente          = "RGM",
+        Etiqueta        = "RGM (vehículos)",
+        TablaDestino    = "dbo.RGM",
+        ColumnaFlag     = "EstadoEnRGM",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Vehículo por titular: marca, modelo (año) y placa.",
+        ColumnasDato =
+        [
+            new("Marca", ["marca", "marcavehiculo"],
+                TipoColumnaCargue.Texto, 50, Descripcion: "Marca del vehículo"),
+            new("Modelo", ["modelo", "modelovehiculo", "anomodelo"],
+                TipoColumnaCargue.Entero, Descripcion: "Año del modelo (se anula si no es un año plausible)"),
+            new("Placa", ["placa", "placavehiculo", "numeroplaca"],
+                TipoColumnaCargue.Placa, 50, Descripcion: "Placa (sin espacios ni guiones; lo que no es placa se anula)"),
+        ],
+    };
+
+    /// <summary>
+    /// Tigo Une (operador). Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarTigoUneAuxiliar</c>
+    /// solo hacía lo genérico (lista negra de correos —con LIKE—, teléfono de 10 caracteres, flag).
+    /// Es una fuente DISTINTA de Tigo (<c>dbo.Tigo</c>): tabla, SP, columnas de la BaseMadre
+    /// ([Celular TigoUne]/[Email TigoUne]) y fila del Calificador propias; comparten solo la forma.
+    /// Verificado contra <c>sys.columns</c> de <c>dbo.TigoUne</c> el 2026-09-24: NumeroTelefono
+    /// varchar(10), Email varchar(255), FechaConsulta <c>date</c>; <b>sin FK a Titular</b> (el SP
+    /// igual creaba el Titular y la relación, y el motor también), sin triggers ni CHECK; heap con
+    /// IX_TigoUne_TitularID_FechaConsulta. NumeroTelefono es celular: la BaseMadre lo expone como
+    /// [Celular TigoUne] (42.581 de sus 42.585 números empiezan en 3). Una fila vigente por titular
+    /// (el SP deduplicaba el staging por titular).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue TigoUne = new()
+    {
+        Fuente          = "TigoUne",
+        Etiqueta        = "Tigo Une (operador)",
+        TablaDestino    = "dbo.TigoUne",
+        ColumnaFlag     = "EstadoEnTigoUne",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Celular y correo del operador Tigo Une.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "linea", "numerolinea"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+    };
+
+    /// <summary>
+    /// Tigo (operador). <b>No tiene SP que traducir</b>: <c>dbo.Tigo</c> se llenó a mano en
+    /// febrero-marzo de 2025 desde <c>TigoAuxiliar</c> (sin Nombre, sin Cartera/Líder: los titulares
+    /// ya existían) y no recibe nada desde el 2025-03-14; ningún objeto de la BD, trabajo del Agente
+    /// ni paquete SSIS escribe en ella. Sigue EN USO: la leen las cuatro BaseMadre ([Celular Tigo] /
+    /// [Email Tigo]), el Calificador, Rastreo, Uso de Base de Datos, Consulta Integrada y
+    /// sp_Actualizar_AuditoriaMensajeria; este cargue es la forma de actualizarla. Definición por
+    /// analogía con su gemela <c>TigoUne</c> (misma forma, <c>ReglaGenerica</c>). Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.Tigo</c> el 2026-09-24: NumeroTelefono varchar(10), Email
+    /// varchar(255), FechaConsulta <c>date</c> (defaults EstadoEnTigo 0 y FechaConsulta getdate(),
+    /// que el motor no usa: escribe los dos); FK a Titular (por eso crea Titular y el archivo debe
+    /// traer Nombre, como toda fuente con FK); CHECK chk_Telefono (7 o 10 dígitos que empiezan en 3
+    /// o 6: un celular validado por el motor siempre lo cumple); sin triggers; heap con
+    /// IX_Tigo_TitularID_Fecha. NumeroTelefono es celular ([Celular Tigo]; 340.972 de sus 342.128
+    /// números empiezan en 3; los 1.101 fijos y 55 de 7 dígitos legacy no se tocan).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Tigo = new()
+    {
+        Fuente          = "Tigo",
+        Etiqueta        = "Tigo (operador)",
+        TablaDestino    = "dbo.Tigo",
+        ColumnaFlag     = "EstadoEnTigo",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Celular y correo del operador Tigo. Sin SP legacy: definición por analogía con Tigo Une.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "linea", "numerolinea"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
         // Fase 2, grupo salud
         Positiva, SaludTotal, Sos, Coosalud, SaviaSalud, MiVacuna,
+        // Fase 2, grupo otras
+        Fosyga, Rgm, TigoUne, Tigo,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
