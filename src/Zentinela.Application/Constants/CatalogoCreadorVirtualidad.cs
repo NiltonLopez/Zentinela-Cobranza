@@ -29,6 +29,32 @@ public static class CatalogoCreadorVirtualidad
     /// <summary>Filas limpias que se muestran como muestra en el preview.</summary>
     public const int FilasMuestra = 10;
 
+    /// <summary>
+    /// Ejemplos concretos que viajan por cada grupo de exclusión, para que el líder pueda
+    /// desplegar un conteo y ver QUÉ filas lo componen. Diez alcanza para entender el
+    /// patrón sin convertir la respuesta en un volcado del archivo.
+    /// </summary>
+    public const int EjemplosPorGrupo = 10;
+
+    /// <summary>
+    /// Claves estables de cada motivo de exclusión. Son el puente entre el contador que se
+    /// muestra como chip y el grupo de errores que se despliega al hacerle clic: sin una
+    /// clave, la UI tendría que emparejarlos por el texto del mensaje.
+    /// </summary>
+    public static class Motivos
+    {
+        public const string CedulaInvalida     = "cedula-invalida";
+        public const string TelefonoInvalido   = "telefono-invalido";
+        public const string Fijo               = "fijo";
+        public const string NombreVacio        = "nombre-vacio";
+        public const string PerfilArchivo      = "perfil-archivo";
+        public const string PerfilBD           = "perfil-bd";
+        public const string ListaNegraTabla    = "lista-negra-bd";
+        public const string ListaNegraArchivo  = "lista-negra-archivo";
+        public const string Duplicado          = "duplicado";
+        public const string Archivo            = "archivo";
+    }
+
     // ── Placeholders ────────────────────────────────────────────────────────
 
     public const string PhNombre        = "{NOMBRE}";
@@ -152,8 +178,14 @@ public static class CatalogoCreadorVirtualidad
         public static readonly string[] FechaGestion  = ["fechagestion", "fechadegestion", "fechaultimagestion", "ultimagestion", "fecha"];
         public static readonly string[] UltimoPerfil  = ["ultimoperfil", "perfil", "ultimoestado", "estado", "tipificacion"];
         public static readonly string[] NumeroMarcado = ["numeromarcado", "numero", "celular", "telefono", "numerotelefono", "numerocelular", "movil", "destino"];
-        public static readonly string[] Cartera       = ["cartera", "nombrecartera", "portafolio"];
-        public static readonly string[] Empresa       = ["empresa", "nombreempresa", "entidad", "cliente", "acreedor"];
+        // "carteraopcional" / "empresaopcional" NO son un capricho: la plantilla que se
+        // repartió hasta el 2026-09-24 titulaba esas columnas "Cartera (opcional)" y
+        // "Empresa (opcional)", y como Normalizar quita los paréntesis quedaban así. Sin
+        // estos alias, un archivo hecho con la plantilla vieja —lleno y correcto— hacía
+        // que los mensajes con {CARTERA} o {EMPRESA} salieran deshabilitados. La plantilla
+        // ya genera el nombre limpio; esto es para los archivos que siguen dando vueltas.
+        public static readonly string[] Cartera       = ["cartera", "carteraopcional", "nombrecartera", "portafolio"];
+        public static readonly string[] Empresa       = ["empresa", "empresaopcional", "nombreempresa", "entidad", "cliente", "acreedor"];
     }
 
     // ── Cálculo de longitud ─────────────────────────────────────────────────

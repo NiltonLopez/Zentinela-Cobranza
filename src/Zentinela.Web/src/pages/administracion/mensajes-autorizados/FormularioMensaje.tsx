@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { btnPrimario, btnSecundario, cajaError } from '../historico-virtualidad/compartidos';
 import { validarMensajeAutorizado } from '../../../api/mensajesAutorizadosApi';
@@ -48,6 +48,7 @@ export function FormularioMensaje({ inicial, guardando, error, onGuardar, onCanc
   const [texto, setTexto]   = useState(inicial?.texto ?? '');
   const [activo, setActivo] = useState(inicial?.activo ?? true);
   const [validacionServidor, setValidacionServidor] = useState<{ mensaje?: string; rechazados: CaracterRechazado[] } | null>(null);
+  const textoRef = useRef<HTMLTextAreaElement>(null);
 
   const sospechosos = useMemo(() => caracteresSospechosos(texto), [texto]);
   const faltantes   = useMemo(() => ['{CELULAR_ASESOR}', '{LINK_ASESOR}'].filter(p => !texto.includes(p)), [texto]);
@@ -68,7 +69,29 @@ export function FormularioMensaje({ inicial, guardando, error, onGuardar, onCanc
 
   const bloqueado = titulo.trim().length === 0 || texto.trim().length === 0 || faltantes.length > 0 || sospechosos.length > 0 || guardando;
 
-  const insertar = (ph: string) => setTexto(t => t + ph);
+  /**
+   * Inserta el placeholder donde está el cursor (reemplazando la selección, si hay), no al
+   * final: redactando un SMS lo normal es querer la variable en medio de la frase, y pegarla
+   * siempre al final obligaba a cortarla y moverla a mano.
+   *
+   * Si el textarea nunca recibió foco, no hay posición: ahí sí se agrega al final.
+   * El caret se reposiciona después del placeholder en el siguiente frame, porque React
+   * todavía no repintó el value cuando termina el onClick.
+   */
+  const insertar = (ph: string) => {
+    const ta = textoRef.current;
+    if (!ta) { setTexto(t => t + ph); return; }
+
+    const desde = ta.selectionStart ?? ta.value.length;
+    const hasta = ta.selectionEnd   ?? desde;
+    setTexto(t => t.slice(0, desde) + ph + t.slice(hasta));
+
+    const caret = desde + ph.length;
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+    });
+  };
 
   // Texto con los caracteres rechazados resaltados (posiciones base 1).
   const marcados = new Set([...sospechosos, ...(validacionServidor?.rechazados ?? [])].map(r => r.posicion));
@@ -82,13 +105,13 @@ export function FormularioMensaje({ inicial, guardando, error, onGuardar, onCanc
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Texto del SMS</label>
-        <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={4} maxLength={320}
+        <textarea ref={textoRef} value={texto} onChange={e => setTexto(e.target.value)} rows={4} maxLength={320}
           placeholder="Sr(a) {NOMBRE}, ... CONCILIE {CELULAR_ASESOR} o {LINK_ASESOR}"
           style={{ ...inputStyle, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', borderColor: sospechosos.length ? '#dc2626' : 'var(--z-border)' }} />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--z-text-muted)' }}>Insertar variable:</span>
           {PLACEHOLDERS.map(p => (
-            <button key={p} onClick={() => insertar(p)} type="button"
+            <button key={p} onMouseDown={e => e.preventDefault()} onClick={() => insertar(p)} type="button"
               style={{ ...btnSecundario, padding: '3px 8px', fontSize: 11, fontFamily: 'ui-monospace, Menlo, monospace' }}>{p}</button>
           ))}
         </div>

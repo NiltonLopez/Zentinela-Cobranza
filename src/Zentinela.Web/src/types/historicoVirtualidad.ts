@@ -26,6 +26,10 @@ export interface AlertaSolicitud {
 export interface ErrorAgrupado {
   mensaje:  string;
   cantidad: number;
+  /** Clave del motivo, para emparejar un contador con su grupo. Ausente fuera del Creador de Virtualidad. */
+  motivo?:  string | null;
+  /** Hasta diez filas concretas del grupo, para desplegar el detalle. */
+  ejemplos?: string[];
 }
 
 export interface ValidarSolicitudResponse {

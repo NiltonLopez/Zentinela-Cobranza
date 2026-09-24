@@ -11,6 +11,7 @@ using Zentinela.Application.Interfaces;
 using Zentinela.Core.Entities;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 using Zentinela.Infrastructure.SQLServer.Services.Shared;
+using M = Zentinela.Application.CatalogoCreadorVirtualidad.Motivos;
 
 namespace Zentinela.Infrastructure.SQLServer.Services;
 
@@ -66,9 +67,20 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         // Cédula y número como texto: evita que Excel los convierta a 1,02E+09.
         ws.Column(1).Style.NumberFormat.Format = "@";
         ws.Column(5).Style.NumberFormat.Format = "@";
-        // Cartera y Empresa son opcionales: se marcan en la cabecera.
-        ws.Cell(1, 6).Value = "Cartera (opcional)";
-        ws.Cell(1, 7).Value = "Empresa (opcional)";
+
+        // Cartera y Empresa son opcionales. Se señalan con un color distinto y un
+        // comentario, NO cambiándoles el nombre: la plantilla anterior las titulaba
+        // "Cartera (opcional)" y "Empresa (opcional)", y como ArchivoTabular.Normalizar
+        // quita los paréntesis el encabezado quedaba en "carteraopcional", que no
+        // coincide con ningún alias. Resultado: el archivo se llenaba entero y los
+        // mensajes con {CARTERA} o {EMPRESA} salían deshabilitados diciendo que las
+        // columnas no estaban. El encabezado tiene que ser exactamente el nombre.
+        foreach (var col in new[] { 6, 7 })
+        {
+            var h = ws.Cell(1, col);
+            h.Style.Fill.BackgroundColor = XLColor.FromHtml("#64748b");
+            h.GetComment().AddText("Opcional. Solo hace falta si el mensaje usa {CARTERA} o {EMPRESA}. No cambies el nombre de la columna.");
+        }
         ws.Columns().AdjustToContents();
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
@@ -321,7 +333,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             .Select(a => (Celular: a.NumeroCorporativo.Trim(), Link: a.LinkWhatsapp.Trim()))
             .ToList();
         if (asesores.Count == 0)
-            throw new InvalidOperationException("Debes indicar al menos un asesor con celular (10 dígitos, empieza en 3) y link.");
+            throw new InvalidOperationException("Debes indicar al menos una fila con número válido (10 dígitos, empieza en 3 o en 6) y link.");
 
         var mensaje = await _db.MensajesAutorizados.AsNoTracking()
             .FirstOrDefaultAsync(m => m.ID == request.MensajeAutorizadoID, ct)
@@ -412,8 +424,12 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         public List<string>  ColumnasEncontradas = [];
         public List<string>  ColumnasFaltantes   = [];
         public List<string>  ColumnasOpcionalesFaltantes = [];
-        public List<string>  Errores             = [];
+        public List<ErrorFila> Errores           = [];
         public List<FilaSmsDto> Validas          = [];
+
+        /// <summary>Registra una exclusión con su motivo, la línea y el dato que la identifica.</summary>
+        public void Excluir(string motivo, int linea, string mensaje, string? detalle = null) =>
+            Errores.Add(new ErrorFila(motivo, linea, mensaje, detalle));
 
         public ValidarArchivoSmsResponse AResponse() => new()
         {
@@ -442,6 +458,12 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
     /// <summary>Fila candidata mientras pasa por las exclusiones que necesitan BD.</summary>
     private sealed record Candidata(int Linea, FilaSmsDto Fila);
 
+    /// <summary>
+    /// Una exclusión concreta. Se guarda la línea y el dato que identifica la fila para
+    /// poder mostrar ejemplos al desplegar el conteo; el motivo es lo que agrupa.
+    /// </summary>
+    private sealed record ErrorFila(string Motivo, int Linea, string Mensaje, string? Detalle);
+
     private async Task<Depuracion> DepurarAsync(EntradaSms entrada, CancellationToken ct)
     {
         var d = new Depuracion();
@@ -450,7 +472,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
 
         if (filas.Count == 0)
         {
-            d.Errores.Add("El archivo está vacío.");
+            d.Excluir(M.Archivo, 0, "El archivo está vacío.");
             return d;
         }
 
@@ -473,7 +495,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             if (indices[i] == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasFaltantes.Add(esperadas[i]);
         if (d.ColumnasFaltantes.Count > 0)
         {
-            d.Errores.Add($"Faltan columnas obligatorias: {string.Join(", ", d.ColumnasFaltantes)}.");
+            d.Excluir(M.Archivo, 0, $"Faltan columnas obligatorias: {string.Join(", ", d.ColumnasFaltantes)}.");
             return d;
         }
 
@@ -485,7 +507,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             d.HuellaListaNegra = huellaLn;
             negraArchivo = numerosLn;
             d.TotalNumerosListaNegraArchivo = numerosLn.Count;
-            if (errorLn is not null) d.Errores.Add(errorLn);
+            if (errorLn is not null) d.Excluir(M.ListaNegraArchivo, 0, errorLn);
         }
 
         // ── Exclusiones locales (orden fijo) ──
@@ -502,29 +524,33 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             if (partes.Length < totalColumnas)
             {
                 d.ExcluidosCedulaInvalida++;
-                d.Errores.Add($"Línea {linea}: la fila tiene menos columnas que el encabezado (¿una coma dentro de un campo?).");
+                d.Excluir(M.CedulaInvalida, linea, "La fila tiene menos columnas que el encabezado (¿una coma dentro de un campo?).");
                 continue;
             }
 
-            var cedulaTxt = SoloDigitos(QuitarSufijoDecimal(Cel(partes, iCedula)));
+            var cedulaCruda = ColapsarEspacios(Cel(partes, iCedula));
+            var cedulaTxt = SoloDigitos(QuitarSufijoDecimal(cedulaCruda));
             if (cedulaTxt.Length < 5 || !long.TryParse(cedulaTxt, out var cedula) || cedula <= 0)
             {
                 d.ExcluidosCedulaInvalida++;
-                d.Errores.Add($"Línea {linea}: cédula inválida (vacía, sin dígitos o demasiado corta).");
+                d.Excluir(M.CedulaInvalida, linea, "Cédula inválida (vacía, sin dígitos o demasiado corta).",
+                          cedulaCruda.Length > 0 ? $"cédula '{Recortar(cedulaCruda)}'" : "cédula vacía");
                 continue;
             }
 
-            var (numero, esCelular) = TelefonoColombiano.Normalizar(Cel(partes, iNumero));
+            var numeroCrudo = ColapsarEspacios(Cel(partes, iNumero));
+            var (numero, esCelular) = TelefonoColombiano.Normalizar(numeroCrudo);
             if (numero is null)
             {
                 d.ExcluidosTelefonoInvalido++;
-                d.Errores.Add($"Línea {linea}: número marcado inválido (no son 10 dígitos).");
+                d.Excluir(M.TelefonoInvalido, linea, "Número marcado inválido (no son 10 dígitos).",
+                          $"cédula {cedula} · '{Recortar(numeroCrudo)}'");
                 continue;
             }
             if (!esCelular)
             {
                 d.ExcluidosFijo++;
-                d.Errores.Add("Número fijo: los SMS solo van a celulares.");
+                d.Excluir(M.Fijo, linea, "Número fijo: los SMS solo van a celulares.", $"cédula {cedula} · {numero}");
                 continue;
             }
 
@@ -532,7 +558,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             if (nombre.Length == 0)
             {
                 d.ExcluidosNombreVacio++;
-                d.Errores.Add("Nombre vacío después de la limpieza.");
+                d.Excluir(M.NombreVacio, linea, "Nombre vacío después de la limpieza.", $"cédula {cedula} · {numero}");
                 continue;
             }
 
@@ -540,7 +566,8 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             if (CatalogoCreadorVirtualidad.PerfilesExcluidosClave.Contains(CatalogoCreadorVirtualidad.ClaveComparacion(perfilBruto)))
             {
                 d.ExcluidosPerfilArchivo++;
-                d.Errores.Add($"Perfil '{perfilBruto}' no se puede contactar (según el archivo).");
+                d.Excluir(M.PerfilArchivo, linea, $"Perfil '{perfilBruto}' no se puede contactar (según el archivo).",
+                          $"cédula {cedula} · {numero}");
                 continue;
             }
 
@@ -571,28 +598,30 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         foreach (var c in candidatas)
         {
             var f = c.Fila;
+            var quien = $"cédula {f.Cedula} · {f.NumeroMarcado}";
             if (cedulasPerfilBD.Contains(f.Cedula))
             {
                 d.ExcluidosPerfilBD++;
-                d.Errores.Add("Titular con perfil no contactable en el histórico de gestiones (Paz y salvo, PQR, No gestionar, Fallecido…).");
+                d.Excluir(M.PerfilBD, c.Linea,
+                          "Titular con perfil no contactable en el histórico de gestiones (Paz y salvo, PQR, No gestionar, Fallecido…).", quien);
                 continue;
             }
             if (numerosNegraBD.Contains(f.NumeroMarcado))
             {
                 d.ExcluidosListaNegraTabla++;
-                d.Errores.Add("Número en lista negra (carteras seleccionadas).");
+                d.Excluir(M.ListaNegraTabla, c.Linea, "Número en lista negra (carteras seleccionadas).", quien);
                 continue;
             }
             if (negraArchivo.Contains(f.NumeroMarcado))
             {
                 d.ExcluidosListaNegraArchivo++;
-                d.Errores.Add("Número en la lista negra cargada por archivo.");
+                d.Excluir(M.ListaNegraArchivo, c.Linea, "Número en la lista negra cargada por archivo.", quien);
                 continue;
             }
             if (!vistos.Add(f.NumeroMarcado))
             {
                 d.ExcluidosDuplicado++;
-                d.Errores.Add("Número marcado repetido en el archivo (se conserva la primera fila).");
+                d.Excluir(M.Duplicado, c.Linea, "Número marcado repetido en el archivo (se conserva la primera fila).", quien);
                 continue;
             }
             d.Validas.Add(f);
@@ -738,9 +767,20 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
     }
 
     /// <summary>
-    /// XLSX/CSV opcional con números a excluir en esta estrategia. Columna resuelta por
-    /// alias (misma lista que Uso de Base de Datos). Devuelve un mensaje de error en vez
-    /// de lanzar: un archivo de lista negra malo no debe tumbar la validación principal.
+    /// XLSX/CSV opcional con números a excluir en esta estrategia.
+    ///
+    /// Se toma SIEMPRE la PRIMERA COLUMNA, sin mirar el encabezado. Es lo contrario de lo
+    /// que hace el archivo principal (ADR-004: resolver por nombre, no adivinar), y es
+    /// deliberado: una lista negra es una columna de números pegada de donde sea —una
+    /// consulta, un correo, otro Excel— y exigirle un encabezado de una lista cerrada
+    /// rechazaba archivos perfectamente válidos. Acá no hay ambigüedad que resolver: solo
+    /// hay una cosa que leer.
+    ///
+    /// Se recorre desde la fila 0 porque puede no haber encabezado. Si lo hay, no parsea
+    /// como teléfono y se descarta solo, sin necesidad de detectarlo.
+    ///
+    /// Devuelve un mensaje de error en vez de lanzar: un archivo de lista negra malo no
+    /// debe tumbar la validación principal.
     /// </summary>
     private static async Task<(string Huella, HashSet<string> Numeros, string? Error)> LeerListaNegraArchivoAsync(
         Stream archivo, string nombre)
@@ -749,25 +789,19 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         var (huella, filas) = await LeerArchivoAsync(archivo, nombre);
         if (filas.Count == 0) return (huella, numeros, "La lista negra por archivo está vacía.");
 
-        var encabezados = filas[0];
-        var indice = -1;
-        for (var i = 0; i < encabezados.Length; i++)
+        for (var i = 0; i < filas.Count; i++)
         {
-            if (!AliasColumnaTelefono.Todos.Contains(ArchivoTabular.Normalizar(encabezados[i]))) continue;
-            indice = i;
-            break;
-        }
-        if (indice < 0)
-        {
-            var vistos = string.Join(", ", encabezados.Select(h => h.Trim()).Where(h => h.Length > 0));
-            return (huella, numeros, $"Lista negra por archivo: no se encontró una columna de teléfono. Columnas: {vistos}.");
+            if (filas[i].Length == 0) continue;
+            var (n, _) = TelefonoColombiano.Normalizar(filas[i][0]);
+            if (n is not null) numeros.Add(n);
         }
 
-        for (var i = 1; i < filas.Count; i++)
+        if (numeros.Count == 0)
         {
-            if (indice >= filas[i].Length) continue;
-            var (n, _) = TelefonoColombiano.Normalizar(filas[i][indice]);
-            if (n is not null) numeros.Add(n);
+            var primera = filas[0].Length > 0 ? filas[0][0].Trim() : string.Empty;
+            return (huella, numeros,
+                $"Lista negra por archivo: la primera columna no trae ningún teléfono válido de 10 dígitos" +
+                (primera.Length > 0 ? $" (el primer valor era '{Recortar(primera)}')." : "."));
         }
         return (huella, numeros, null);
     }
@@ -787,7 +821,13 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
                 "El archivo cambió desde que se validó. Vuelve a cargarlo desde el paso 1.");
     }
 
-    private static readonly Regex CelularRegex = new(@"^3\d{9}$", RegexOptions.Compiled);
+    /// <summary>
+    /// Número desde el que virtualidad distribuye. Acepta móvil (3…) y fijo nacional (6…),
+    /// los dos de 10 dígitos: hay asesores que atienden desde una línea fija corporativa y
+    /// exigir el 3 los dejaba afuera. NO se reutiliza TelefonoColombiano.NormalizarCelular
+    /// porque ese sí filtra fijos a propósito, para las columnas de celular de las fuentes.
+    /// </summary>
+    private static readonly Regex CelularRegex = new(@"^[36]\d{9}$", RegexOptions.Compiled);
     private static bool EsCelularValido(string? s) => s is not null && CelularRegex.IsMatch(s.Trim());
 
     private static string Cel(string[] partes, int i) => i >= 0 && i < partes.Length ? partes[i] : string.Empty;
@@ -803,13 +843,33 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
     private static readonly Regex Espacios = new(@"\s+", RegexOptions.Compiled);
     private static string ColapsarEspacios(string s) => Espacios.Replace(s ?? string.Empty, " ").Trim();
 
-    private static readonly Regex PrefijoLinea = new(@"^Línea \d+: ", RegexOptions.Compiled);
-    private static List<ErrorAgrupadoDto> AgruparErrores(IEnumerable<string?> mensajes) =>
-        mensajes
-            .Where(m => !string.IsNullOrEmpty(m))
-            .Select(m => PrefijoLinea.Replace(m!, ""))
-            .GroupBy(m => m)
-            .Select(g => new ErrorAgrupadoDto { Mensaje = g.Key, Cantidad = g.Count() })
+    /// <summary>
+    /// Agrupa por (motivo, mensaje) y conserva hasta diez ejemplos concretos por grupo.
+    /// Se agrupa también por mensaje y no solo por motivo para no fundir en un renglón
+    /// perfiles distintos: "Perfil 'PQR'…" y "Perfil 'Fallecido'…" comparten motivo pero
+    /// son cosas distintas para quien lee.
+    /// </summary>
+    private static List<ErrorAgrupadoDto> AgruparErrores(IEnumerable<ErrorFila> errores) =>
+        errores
+            .GroupBy(e => new { e.Motivo, e.Mensaje })
+            .Select(g => new ErrorAgrupadoDto
+            {
+                Motivo   = g.Key.Motivo,
+                Mensaje  = g.Key.Mensaje,
+                Cantidad = g.Count(),
+                // Línea 0 = problema del archivo entero (vacío, columnas), no de una fila:
+                // ahí no hay número de línea que mostrar.
+                Ejemplos = g.OrderBy(e => e.Linea)
+                            .Take(CatalogoCreadorVirtualidad.EjemplosPorGrupo)
+                            .Select(e => e.Linea <= 0
+                                ? (e.Detalle ?? string.Empty)
+                                : e.Detalle is null ? $"Línea {e.Linea}" : $"Línea {e.Linea} · {e.Detalle}")
+                            .Where(s => s.Length > 0)
+                            .ToList(),
+            })
             .OrderByDescending(e => e.Cantidad)
             .ToList();
+
+    /// <summary>Corta un valor del archivo para que un campo basura no infle la respuesta.</summary>
+    private static string Recortar(string s) => s.Length <= 40 ? s : s[..40] + "…";
 }

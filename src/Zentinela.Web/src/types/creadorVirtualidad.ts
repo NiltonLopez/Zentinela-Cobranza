@@ -105,3 +105,22 @@ export interface EntradaSms {
   carterasListaNegra: string[];
   archivoListaNegra: File | null;
 }
+
+/**
+ * Claves de motivo de exclusión. Espejo de CatalogoCreadorVirtualidad.Motivos: son el
+ * puente entre el contador que se muestra como chip y el grupo de errores que se despliega
+ * al hacerle clic. Si cambian del lado del servidor, el chip deja de encontrar su grupo y
+ * se despliega vacío — por eso viven acá y no sueltas en el JSX.
+ */
+export const MOTIVOS = {
+  cedulaInvalida:    'cedula-invalida',
+  telefonoInvalido:  'telefono-invalido',
+  fijo:              'fijo',
+  nombreVacio:       'nombre-vacio',
+  perfilArchivo:     'perfil-archivo',
+  perfilBD:          'perfil-bd',
+  listaNegraTabla:   'lista-negra-bd',
+  listaNegraArchivo: 'lista-negra-archivo',
+  duplicado:         'duplicado',
+  archivo:           'archivo',
+} as const;

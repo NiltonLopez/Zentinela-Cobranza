@@ -4,6 +4,7 @@ import { CargandoSpiral } from '../../../components/CargandoSpiral';
 import { DropZone, ChipConteo, ListaErroresAgrupados, TH, TD, btnPrimario, btnSecundario, cajaError } from '../../administracion/historico-virtualidad/compartidos';
 import { descargarPlantillaSms, obtenerCarterasListaNegra, validarArchivoSms, mensajeDeErrorBlob } from '../../../api/creadorVirtualidadApi';
 import type { EstadoAsistente, Accion } from './estadoAsistente';
+import { MOTIVOS } from '../../../types/creadorVirtualidad';
 import { C, etiquetaPaso, Aviso, BarraAcciones } from './compartidosSms';
 
 interface Props {
@@ -19,6 +20,8 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
   const [generando, setGenerando] = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [verErrores, setVerErrores] = useState(false);
+  // Qué indicador está desplegado (null = ninguno). Uno a la vez: abrir otro cierra el anterior.
+  const [motivoAbierto, setMotivoAbierto] = useState<string | null>(null);
 
   const { data: carteras = [], isLoading: cargandoCarteras } = useQuery({
     queryKey: ['sms-lista-negra-carteras'],
@@ -56,9 +59,30 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
       + v.excluidosPerfilArchivo + v.excluidosPerfilBD + v.excluidosListaNegraTabla + v.excluidosListaNegraArchivo + v.excluidosDuplicado
     : 0;
 
-  const chip = (numero: number, label: string, color: string, bg: string) => numero > 0 && (
-    <ChipConteo numero={numero} label={label} bg={bg} border={color + '55'} colorNum={color} colorLabel={color} />
+  // Cada chip es un contador desplegable: al hacerle clic muestra hasta diez filas
+  // concretas de ESE motivo. El puente entre el conteo y sus ejemplos es la clave de
+  // motivo que manda el servidor, no el texto del mensaje.
+  const chip = (numero: number, label: string, color: string, bg: string, motivo: string) => numero > 0 && (
+    <ChipConteo
+      key={motivo + label}
+      numero={numero} label={label} bg={bg} border={color + '55'} colorNum={color} colorLabel={color}
+      onClick={() => setMotivoAbierto(m => (m === motivo ? null : motivo))}
+      abierto={motivoAbierto === motivo}
+    />
   );
+
+  const etiquetaMotivo = (motivo: string) =>
+    ({
+      [MOTIVOS.perfilArchivo]:     'Perfil no contactable según el archivo',
+      [MOTIVOS.perfilBD]:          'Perfil no contactable en el histórico de la base',
+      [MOTIVOS.listaNegraTabla]:   'En lista negra de las carteras seleccionadas',
+      [MOTIVOS.listaNegraArchivo]: 'En la lista negra cargada por archivo',
+      [MOTIVOS.fijo]:              'Teléfono fijo',
+      [MOTIVOS.telefonoInvalido]:  'Teléfono inválido',
+      [MOTIVOS.cedulaInvalida]:    'Cédula inválida',
+      [MOTIVOS.nombreVacio]:       'Nombre vacío',
+      [MOTIVOS.duplicado]:         'Número repetido',
+    }[motivo] ?? 'Detalle');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -115,7 +139,7 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>Lista negra adicional por archivo (opcional, columna de teléfono):</span>
+          <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>Lista negra adicional por archivo (opcional; se lee la PRIMERA columna, sin importar su nombre):</span>
           <input ref={inputLnRef} type="file" accept=".xlsx,.csv" style={{ display: 'none' }}
             onChange={e => dispatch({ tipo: 'SET_ARCHIVO_LN', archivo: e.target.files?.[0] ?? null })} />
           <button onClick={() => inputLnRef.current?.click()} style={{ ...btnSecundario, padding: '5px 12px' }}>
@@ -182,16 +206,24 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {chip(v.excluidosPerfilArchivo,    'perfil no contactable (archivo)', C.warning, '#fffbeb')}
-            {chip(v.excluidosPerfilBD,         'perfil no contactable (histórico BD)', C.warning, '#fffbeb')}
-            {chip(v.excluidosListaNegraTabla,  'lista negra (BD)', C.danger, '#fef2f2')}
-            {chip(v.excluidosListaNegraArchivo,'lista negra (archivo)', C.danger, '#fef2f2')}
-            {chip(v.excluidosFijo,             'teléfono fijo', C.gray, 'var(--z-bg-page)')}
-            {chip(v.excluidosTelefonoInvalido, 'teléfono inválido', C.gray, 'var(--z-bg-page)')}
-            {chip(v.excluidosCedulaInvalida,   'cédula inválida', C.gray, 'var(--z-bg-page)')}
-            {chip(v.excluidosNombreVacio,      'nombre vacío', C.gray, 'var(--z-bg-page)')}
-            {chip(v.excluidosDuplicado,        'número repetido', C.gray, 'var(--z-bg-page)')}
+            {chip(v.excluidosPerfilArchivo,    'perfil no contactable (archivo)', C.warning, '#fffbeb', MOTIVOS.perfilArchivo)}
+            {chip(v.excluidosPerfilBD,         'perfil no contactable (histórico BD)', C.warning, '#fffbeb', MOTIVOS.perfilBD)}
+            {chip(v.excluidosListaNegraTabla,  'lista negra (BD)', C.danger, '#fef2f2', MOTIVOS.listaNegraTabla)}
+            {chip(v.excluidosListaNegraArchivo,'lista negra (archivo)', C.danger, '#fef2f2', MOTIVOS.listaNegraArchivo)}
+            {chip(v.excluidosFijo,             'teléfono fijo', C.gray, 'var(--z-bg-page)', MOTIVOS.fijo)}
+            {chip(v.excluidosTelefonoInvalido, 'teléfono inválido', C.gray, 'var(--z-bg-page)', MOTIVOS.telefonoInvalido)}
+            {chip(v.excluidosCedulaInvalida,   'cédula inválida', C.gray, 'var(--z-bg-page)', MOTIVOS.cedulaInvalida)}
+            {chip(v.excluidosNombreVacio,      'nombre vacío', C.gray, 'var(--z-bg-page)', MOTIVOS.nombreVacio)}
+            {chip(v.excluidosDuplicado,        'número repetido', C.gray, 'var(--z-bg-page)', MOTIVOS.duplicado)}
           </div>
+
+          {motivoAbierto && (
+            <ListaErroresAgrupados
+              errores={v.erroresAgrupados}
+              filtrarMotivo={motivoAbierto}
+              titulo={`${etiquetaMotivo(motivoAbierto)} — detalle`}
+            />
+          )}
 
           {v.totalNumerosListaNegraArchivo > 0 && (
             <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>

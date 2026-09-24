@@ -5,7 +5,7 @@ import { TH, TD, btnPrimario, btnSecundario, cajaError } from '../../administrac
 import { obtenerAsesoresDelLider, obtenerAgentesActivos, guardarContactosAsesores, obtenerMensajesDisponibles, mensajeDeErrorBlob } from '../../../api/creadorVirtualidadApi';
 import type { EstadoAsistente, Accion, FilaAsesor } from './estadoAsistente';
 import type { AsesorEstrategia } from '../../../types/creadorVirtualidad';
-import { asesorValido, linkWaMe, linkMasLargo, CELULAR_REGEX } from './estadoAsistente';
+import { asesorValido, linkWaMe, linkMasLargo, CELULAR_REGEX, MOVIL_REGEX, siguienteIDManual } from './estadoAsistente';
 import { C, inputStyle, etiquetaPaso, Aviso, BarraAcciones } from './compartidosSms';
 
 interface Props {
@@ -55,7 +55,8 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
     const numero = valor.replace(/\D/g, '').slice(0, 10);
     const cambio: Partial<FilaAsesor> = { numeroCorporativo: numero };
     // Mientras el link no se haya editado a mano, se propone wa.me/57<numero> (18 caracteres).
-    if (!a.linkEditadoManual) cambio.linkWhatsapp = CELULAR_REGEX.test(numero) ? linkWaMe(numero) : '';
+    // Solo para móviles: a un fijo (6…) no se le inventa un wa.me.
+    if (!a.linkEditadoManual) cambio.linkWhatsapp = MOVIL_REGEX.test(numero) ? linkWaMe(numero) : '';
     actualizar(a.agenteID, cambio);
   };
 
@@ -63,7 +64,7 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
     actualizar(a.agenteID, { linkWhatsapp: valor.trim(), linkEditadoManual: valor.trim().length > 0 });
 
   const restaurarLink = (a: FilaAsesor) =>
-    actualizar(a.agenteID, { linkWhatsapp: CELULAR_REGEX.test(a.numeroCorporativo) ? linkWaMe(a.numeroCorporativo) : '', linkEditadoManual: false });
+    actualizar(a.agenteID, { linkWhatsapp: MOVIL_REGEX.test(a.numeroCorporativo) ? linkWaMe(a.numeroCorporativo) : '', linkEditadoManual: false });
 
   const eliminar = (agenteID: number) =>
     dispatch({ tipo: 'SET_ASESORES', asesores: estado.asesores.filter(a => a.agenteID !== agenteID) });
@@ -84,11 +85,30 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
     setBuscadorKey(k => k + 1);
   };
 
+  /**
+   * Fila suelta: un número más que entra al reparto sin estar atado a ningún agente
+   * (una línea de campaña, un celular prestado que no está en la nómina). Nace vacía y
+   * con nombre editable; no se persiste en Agente porque no hay a quién asociarla.
+   */
+  const agregarManual = () =>
+    dispatch({
+      tipo: 'SET_ASESORES',
+      asesores: [...estado.asesores, {
+        agenteID: siguienteIDManual(estado.asesores),
+        nombre: '', numeroCorporativo: '', linkWhatsapp: '',
+        precargado: false, linkEditadoManual: false, manual: true,
+      }],
+    });
+
   // Continuar = persistir contactos y pedir el catálogo anotado con el link más largo.
   const continuar = useMutation({
     mutationFn: async () => {
       const validos = estado.asesores.filter(asesorValido);
-      await guardarContactosAsesores(validos.map(a => ({ agenteID: a.agenteID, numeroCorporativo: a.numeroCorporativo.trim(), linkWhatsapp: a.linkWhatsapp.trim() })));
+      // Solo se persisten los que tienen agente detrás: una fila suelta no tiene dónde
+      // guardarse. Igual entra al reparto, que es lo único que importa para el archivo.
+      const persistibles = validos.filter(a => a.agenteID > 0);
+      if (persistibles.length > 0)
+        await guardarContactosAsesores(persistibles.map(a => ({ agenteID: a.agenteID, numeroCorporativo: a.numeroCorporativo.trim(), linkWhatsapp: a.linkWhatsapp.trim() })));
       return obtenerMensajesDisponibles(
         { archivo: estado.archivo!, liderID: estado.liderID, carterasListaNegra: estado.carterasListaNegra, archivoListaNegra: estado.archivoListaNegra },
         estado.validacion!.huellaArchivo,
@@ -118,14 +138,14 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
       <div>
         <p style={etiquetaPaso}>Enlaces a distribuir</p>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--z-text-muted)' }}>
-          Una fila por asesor. Escribe el <strong>número corporativo</strong> y el sistema propone el enlace
+          Una fila por asesor, o filas sueltas con cualquier número. Escribe el <strong>número corporativo</strong> (móvil 3… o fijo 6…) y el sistema propone el enlace
           <code style={{ margin: '0 4px' }}>wa.me/57…</code>(18 caracteres). Si tienes un enlace más corto (wa.link), pégalo encima:
           cada carácter que ahorres aquí es un carácter más para el mensaje. Todo se guarda por asesor para la próxima vez.
         </p>
       </div>
 
       {estado.asesores.length === 0 && (
-        <Aviso tipo="warning">Este líder no tiene asesores en Cartera_Agente. Agrega al menos uno desde la lista de agentes activos.</Aviso>
+        <Aviso tipo="warning">Este líder no tiene asesores en Cartera_Agente. Agrega al menos uno desde la lista de agentes activos, o una fila suelta con el número que quieras usar.</Aviso>
       )}
 
       <div style={{ overflowX: 'auto', border: '0.5px solid var(--z-border)', borderRadius: 8 }}>
@@ -145,8 +165,18 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
               return (
                 <tr key={a.agenteID}>
                   <td style={TD}>
-                    {a.nombre}
-                    {!a.precargado && <span style={{ marginLeft: 8, fontSize: 10, color: C.sms, fontWeight: 600, textTransform: 'uppercase' }}>prestado</span>}
+                    {a.manual ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input value={a.nombre} onChange={e => actualizar(a.agenteID, { nombre: e.target.value })}
+                          placeholder="Nombre o referencia (opcional)" style={{ ...inputStyle, minWidth: 170 }} />
+                        <span style={{ fontSize: 10, color: C.warning, fontWeight: 600, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>sin asesor</span>
+                      </div>
+                    ) : (
+                      <>
+                        {a.nombre}
+                        {!a.precargado && <span style={{ marginLeft: 8, fontSize: 10, color: C.sms, fontWeight: 600, textTransform: 'uppercase' }}>prestado</span>}
+                      </>
+                    )}
                   </td>
                   <td style={TD}>
                     <input value={a.numeroCorporativo} onChange={e => cambiarNumero(a, e.target.value)} placeholder="3001234567" inputMode="numeric"
@@ -178,10 +208,15 @@ export function PasoEnlaces({ estado, dispatch }: Props) {
         <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>Agregar asesor:</span>
         <BuscadorAsesor key={buscadorKey} candidatos={candidatos} seleccionadoID={agregarID} onSeleccionar={setAgregarID} />
         <BotonAnadir habilitado={agregarID !== 0} onClick={agregar} />
+        <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>o</span>
+        <button onClick={agregarManual} title="Sumar un número al reparto sin asociarlo a ningún asesor"
+          style={{ ...btnSecundario, padding: '9px 16px' }}>
+          + Fila sin asesor
+        </button>
       </div>
 
       {invalidos > 0 && (
-        <Aviso tipo="warning">{invalidos} fila{invalidos === 1 ? '' : 's'} sin número válido (10 dígitos, empieza en 3) o sin link. Complétalas o quítalas.</Aviso>
+        <Aviso tipo="warning">{invalidos} fila{invalidos === 1 ? '' : 's'} sin número válido (10 dígitos, empieza en 3 o en 6) o sin link. Complétalas o quítalas.</Aviso>
       )}
       {validos.length > 0 && (
         <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>

@@ -3,14 +3,22 @@ import type { ValidarArchivoSmsResponse, CatalogoMensajesResponse, ResultadoGene
 export type Paso = 1 | 2 | 3 | 4;
 
 export interface FilaAsesor {
+  /**
+   * AgenteID real, o un NEGATIVO correlativo para las filas sueltas que no corresponden a
+   * ningún agente (un número extra que el líder quiere sumar al reparto). El negativo sirve
+   * de clave de React y de identidad para editar/eliminar, y al guardar contactos se filtran
+   * por > 0: no hay a quién persistirle un número que no es de nadie.
+   */
   agenteID: number;
   nombre: string;
   numeroCorporativo: string;
   linkWhatsapp: string;
   /** true = vino de Cartera_Agente del líder; false = agregado a mano ("prestado"). */
   precargado: boolean;
-  /** Si es false, al escribir 10 dígitos se regenera wa.me/57<numero>. Se vuelve true al editar el link. */
+  /** Si es false, al escribir un móvil se regenera wa.me/57<numero>. Se vuelve true al editar el link. */
   linkEditadoManual: boolean;
+  /** true = fila suelta sin agente detrás; su nombre es editable y no se persiste. */
+  manual?: boolean;
 }
 
 export interface EstadoAsistente {
@@ -28,9 +36,25 @@ export interface EstadoAsistente {
   generacion: ResultadoGeneracion | null;
 }
 
-export const CELULAR_REGEX = /^3\d{9}$/;
+/**
+ * Número desde el que se distribuye: móvil (3…) o fijo nacional (6…), los dos de 10
+ * dígitos. Espejo de CreadorVirtualidadSmsService.CelularRegex; la validación que manda
+ * es la del servidor.
+ */
+export const CELULAR_REGEX = /^[36]\d{9}$/;
+
+/**
+ * Solo los móviles. El wa.me se propone únicamente para estos: un fijo puede tener
+ * WhatsApp Business, pero no se asume — si el número empieza en 6 el líder pega el enlace
+ * que corresponda en lugar de recibir un wa.me inventado.
+ */
+export const MOVIL_REGEX = /^3\d{9}$/;
 
 export const linkWaMe = (numero: string) => `wa.me/57${numero}`;
+
+/** Siguiente id negativo libre para una fila suelta (ver FilaAsesor.agenteID). */
+export const siguienteIDManual = (asesores: FilaAsesor[]) =>
+  Math.min(0, ...asesores.map(a => a.agenteID)) - 1;
 
 export function estadoInicial(liderID: number | null): EstadoAsistente {
   return {

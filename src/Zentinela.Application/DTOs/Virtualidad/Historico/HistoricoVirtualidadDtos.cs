@@ -29,6 +29,20 @@ public class ErrorAgrupadoDto
 {
     public string Mensaje  { get; set; } = string.Empty;
     public int    Cantidad { get; set; }
+
+    /// <summary>
+    /// Clave del motivo (ver CatalogoCreadorVirtualidad.Motivos). Permite que la UI
+    /// empareje un contador con su grupo de errores sin compararlos por texto.
+    /// Null en los módulos que no clasifican por motivo (Histórico de Virtualidad).
+    /// </summary>
+    public string? Motivo { get; set; }
+
+    /// <summary>
+    /// Hasta diez filas concretas del grupo ("Línea 42 · cédula 1020304050 · 3001234567"),
+    /// para desplegar el detalle. Un conteo sin ejemplos obliga a abrir el archivo y
+    /// adivinar cuáles fueron.
+    /// </summary>
+    public List<string> Ejemplos { get; set; } = [];
 }
 
 public class ValidarSolicitudResponse

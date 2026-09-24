@@ -5,6 +5,7 @@
 //
 // Piezas compartidas por las tres secciones del sub-módulo (Solicitud, Resultado y Carga
 // IVR). Viven aparte para que agregar un canal no duplique estilos ni componentes.
+import { useState } from 'react';
 import type { ErrorAgrupado } from '../../../types/historicoVirtualidad';
 
 export type Etapa = 'inicial' | 'preview' | 'resultado';
@@ -128,27 +129,80 @@ const TONOS: Record<'error' | 'aviso' | 'info', { bg: string; borde: string; tex
 
 // Agrupados por mensaje (no una fila por cada registro con el mismo error) y sobre
 // TODAS las filas del archivo, no solo la muestra del preview.
-export function ListaAgrupada({ titulo, items, tono }: {
-  titulo: string; items: ErrorAgrupado[]; tono: 'error' | 'aviso' | 'info';
+//
+// Cada grupo que traiga `ejemplos` se puede desplegar para ver filas concretas: un conteo
+// solo ("312 con cédula inválida") obliga a abrir el archivo y adivinar cuáles fueron. Los
+// grupos sin ejemplos se pintan igual que siempre, así que los módulos que no los mandan
+// no cambian.
+//
+// `filtrarMotivo` deja reusar el mismo componente para un solo indicador, que es lo que
+// necesita cada chip de conteo al desplegarse.
+export function ListaAgrupada({ titulo, items, tono, filtrarMotivo }: {
+  titulo: string; items: ErrorAgrupado[]; tono: 'error' | 'aviso' | 'info'; filtrarMotivo?: string;
 }) {
-  if (items.length === 0) return null;
+  const visibles = filtrarMotivo ? items.filter(e => e.motivo === filtrarMotivo) : items;
+  if (visibles.length === 0) return null;
   const t = TONOS[tono];
   return (
     <div style={{ background: t.bg, border: `1px solid ${t.borde}`, borderRadius: 8, padding: '12px 16px' }}>
       <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: t.texto }}>
         {titulo}
       </p>
-      <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {items.map((e, i) => (
-          <li key={i} style={{ fontSize: 13, color: t.texto }}>
-            {e.mensaje} <strong>({e.cantidad.toLocaleString('es-CO')} fila{e.cantidad !== 1 ? 's' : ''})</strong>
-          </li>
-        ))}
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {visibles.map((e, i) => <GrupoAgrupado key={i} item={e} color={t.texto} borde={t.borde} />)}
       </ul>
     </div>
   );
 }
 
-export function ListaErroresAgrupados({ errores }: { errores: ErrorAgrupado[] }) {
-  return <ListaAgrupada titulo="Errores encontrados — agrupados por tipo" items={errores} tono="error" />;
+function GrupoAgrupado({ item, color, borde }: { item: ErrorAgrupado; color: string; borde: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const ejemplos = item.ejemplos ?? [];
+  const desplegable = ejemplos.length > 0;
+  const alternar = () => setAbierto(a => !a);
+
+  return (
+    <li style={{ fontSize: 13, color }}>
+      <div
+        onClick={desplegable ? alternar : undefined}
+        role={desplegable ? 'button' : undefined}
+        tabIndex={desplegable ? 0 : undefined}
+        onKeyDown={desplegable ? ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); } } : undefined}
+        style={{ display: 'flex', alignItems: 'baseline', gap: 6, cursor: desplegable ? 'pointer' : 'default' }}
+        title={desplegable ? (abierto ? 'Ocultar el detalle' : 'Ver filas de ejemplo') : undefined}
+      >
+        <span style={{ width: 12, flexShrink: 0, fontSize: 10, display: 'inline-block', transform: abierto ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}>
+          {desplegable ? '▶' : '•'}
+        </span>
+        <span>
+          {item.mensaje} <strong>({item.cantidad.toLocaleString('es-CO')} fila{item.cantidad !== 1 ? 's' : ''})</strong>
+        </span>
+      </div>
+      {abierto && (
+        <div style={{ margin: '4px 0 2px 18px', padding: '6px 10px', background: 'var(--z-bg-card)', border: `0.5px solid ${borde}`, borderRadius: 6 }}>
+          {ejemplos.map((ej, k) => (
+            <div key={k} style={{ fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace' }}>{ej}</div>
+          ))}
+          {item.cantidad > ejemplos.length && (
+            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>
+              …y {(item.cantidad - ejemplos.length).toLocaleString('es-CO')} más.
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+export function ListaErroresAgrupados({ errores, titulo, filtrarMotivo }: {
+  errores: ErrorAgrupado[]; titulo?: string; filtrarMotivo?: string;
+}) {
+  return (
+    <ListaAgrupada
+      titulo={titulo ?? 'Errores encontrados — agrupados por tipo'}
+      items={errores}
+      tono="error"
+      filtrarMotivo={filtrarMotivo}
+    />
+  );
 }
