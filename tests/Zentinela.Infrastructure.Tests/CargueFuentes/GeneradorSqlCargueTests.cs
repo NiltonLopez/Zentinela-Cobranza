@@ -134,6 +134,27 @@ public class GeneradorSqlCargueTests
     }
 
     [Fact]
+    public void NuevaEps_compara_el_TitularID_texto_de_forma_sargable()
+    {
+        // dbo.NuevaEps.TitularID es varchar(30) con índice (TitularID, FechaConsulta): la conversión
+        // va SIEMPRE del lado de #Carga; convertir la columna del destino obligaría a recorrer la tabla.
+        var d = CatalogoCargueFuentes.NuevaEps;
+        string[] sentencias =
+        [
+            GeneradorSqlCargue.MarcarImpacto(d), GeneradorSqlCargue.ConsultarImpacto(d),
+            GeneradorSqlCargue.Refrescar(d), GeneradorSqlCargue.PurgarVacias(d)!,
+        ];
+        foreach (var sql in sentencias)
+        {
+            Assert.Contains("s.[TitularID] = CONVERT(varchar(30), c.TitularID)", sql);
+            Assert.DoesNotContain("CONVERT(varchar(30), s.", sql);
+            Assert.DoesNotContain("CAST(s.", sql);
+            Assert.DoesNotContain("s.[TitularID] = c.TitularID", sql);
+        }
+        Assert.Contains("SELECT CONVERT(varchar(30), c.TitularID), c.[NumeroTelefono]", GeneradorSqlCargue.Insertar(d));
+    }
+
+    [Fact]
     public void Sin_flag_no_hay_politica_de_vacias()
     {
         var sinFlag = Sura with { ColumnaFlag = null };

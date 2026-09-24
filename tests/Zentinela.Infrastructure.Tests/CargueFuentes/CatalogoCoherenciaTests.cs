@@ -111,4 +111,19 @@ public class CatalogoCoherenciaTests
         Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto);
         Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
     }
+
+    [Fact]
+    public void NuevaEps_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.NuevaEps el 2026-09-23: TitularID varchar(30).
+        var d = CatalogoCargueFuentes.NuevaEps;
+        Assert.Equal(("dbo.NuevaEps", "EstadoEnNuevaEps", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["NumeroTelefono:Celular:10", "EstadoAfiliacion:Texto:30", "TipoAfiliado:Texto:50",
+             "FechaNacimiento:Fecha:0:sinflag", "Departamento:Texto:50:sinflag", "Municipio:Texto:50:sinflag"],
+            Firma(d));
+        Assert.True(d.TitularIdComoTexto && d.CreaTitular && d.CreaTitularCartera);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
 }

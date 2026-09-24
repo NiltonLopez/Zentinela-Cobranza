@@ -13,6 +13,9 @@ internal static class CatalogoReglasFuente
         [CatalogoCargueFuentes.Sura.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Sura.Fuente),
         [CatalogoCargueFuentes.Cajacopi.Fuente]  = new ReglaCajacopi(),
         [CatalogoCargueFuentes.MutualSer.Fuente] = new ReglaMutualSer(),
+        // NuevaEps: sp_ProcesarNuevaEpsAuxiliar solo creaba Titular/relaciones, calculaba el flag
+        // e insertaba: todo genérico. Lo propio (TitularID varchar) es de la definición.
+        [CatalogoCargueFuentes.NuevaEps.Fuente]  = new ReglaGenerica(CatalogoCargueFuentes.NuevaEps.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

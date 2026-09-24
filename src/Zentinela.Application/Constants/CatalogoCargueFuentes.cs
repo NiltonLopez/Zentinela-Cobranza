@@ -217,7 +217,43 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer];
+    /// <summary>
+    /// Nueva EPS. Sin regla propia (<c>ReglaGenerica</c>): el SP legacy no limpiaba nada que el
+    /// motor no haga ya. Verificado contra <c>sys.columns</c> de <c>dbo.NuevaEps</c> el 2026-09-23:
+    /// <b>TitularID es varchar(30)</b> (las demás fuentes son bigint; índice
+    /// IX_NuevaEps_TitularID_FechaConsulta; sin FK ni triggers) → <see cref="DefinicionFuenteCargue.TitularIdComoTexto"/>:
+    /// el documento se valida como número y se guarda <c>CONVERT(varchar(30), bigint)</c>, sin
+    /// ceros a la izquierda. NumeroTelefono es celular: la BaseMadre lo expone como [Celular NuevaEps].
+    /// El flag, como en el SP, solo mira teléfono, estado y tipo de afiliación.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue NuevaEps = new()
+    {
+        Fuente             = "NuevaEps",
+        Etiqueta           = "Nueva EPS",
+        TablaDestino       = "dbo.NuevaEps",
+        ColumnaFlag        = "EstadoEnNuevaEps",
+        ColumnaFecha       = "FechaConsulta",
+        TipoFecha          = TipoFechaSello.Date,
+        TitularIdComoTexto = true,
+        Notas              = "Afiliados Nueva EPS: celular, afiliación y localización.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 30, Descripcion: "Activo, retirado…"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, Descripcion: "Cotizante, beneficiario…"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)
