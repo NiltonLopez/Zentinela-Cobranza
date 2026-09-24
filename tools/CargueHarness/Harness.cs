@@ -20,19 +20,23 @@ namespace CargueHarness;
 /// Utilidades comunes del harness: aserciones, consultas, motor, archivos sintéticos y el
 /// flujo estándar de una fuente (validar → simular → cargar → segunda carga = 0 insertadas).
 ///
-/// Rango RESERVADO de TitularIDs: 999000000001..999000000999, repartido por fuente
-/// (Sura 001-099, Cajacopi 100-199, MutualSer 200-299, NuevaEps 300-399, SIMIT 400-499,
-/// DatosClaro 500-599). Si al empezar hay algo en el rango, no se escribe nada.
+/// Todo va acotado al GRUPO activo (ver <see cref="Grupos"/>): su rango reservado de
+/// TitularIDs y su usuario de auditoría. Varios grupos corren en paralelo desde distintos
+/// worktrees; ninguno lee, verifica ni borra el rango o las ejecuciones de otro.
 /// </summary>
 internal sealed class Harness
 {
-    public const long Desde = 999000000001, Hasta = 999000000999;
-    public const string Usuario = "harness-cargue";
-
     /// <summary>
     /// Tablas que el harness puede tocar, en orden de borrado (hijas antes que Titular), con
-    /// el filtro de rango. NuevaEps guarda el TitularID como varchar: TRY_CAST lo filtra como
-    /// número (también atraparía un '0999000000301' con ceros a la izquierda).
+    /// el filtro de rango (@d..@h = rango del grupo activo).
+    ///
+    /// FUENTE NUEVA → agregar AQUÍ su tabla destino, ANTES de "Titular" (una línea por tabla):
+    ///     ("MiFuente",        "TitularID BETWEEN @d AND @h"),
+    /// y si su TitularID es varchar (como NuevaEps), filtrar como número con TRY_CAST, que
+    /// también atrapa ceros a la izquierda ('0999000000301'):
+    ///     ("MiFuente",        "TRY_CAST(TitularID AS bigint) BETWEEN @d AND @h"),
+    /// Todas las tablas se verifican (rango libre) y se limpian en TODOS los grupos, pero solo
+    /// dentro del rango del grupo activo, así que agregar una no afecta a los demás.
     /// </summary>
     public static readonly (string Tabla, string Filtro)[] TablasDelRango =
     [
@@ -43,21 +47,26 @@ internal sealed class Harness
         ("NuevaEps",        "TRY_CAST(TitularID AS bigint) BETWEEN @d AND @h"),
         ("SIMIT",           "TitularID BETWEEN @d AND @h"),
         ("DatosClaro",      "TitularID BETWEEN @d AND @h"),
+        // ← fuentes nuevas aquí
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 
-    /// <summary>Tablas destino cuyo COUNT(*) debe quedar igual al terminar.</summary>
-    public static readonly string[] TablasDestino = ["Sura", "Cajacopi", "MutualSer", "NuevaEps", "SIMIT", "DatosClaro"];
-
-    public Harness(string cs, string carpeta)
+    public Harness(string cs, string carpeta, GrupoHarness grupo)
     {
         Cs = cs;
         Carpeta = carpeta;
+        Grupo = grupo;
         DbOpciones = new DbContextOptionsBuilder<CallCenterDbContext>().UseSqlServer(cs).Options;
     }
 
     public string Cs { get; }
     public string Carpeta { get; }
+    public GrupoHarness Grupo { get; }
+    /// <summary>Rango reservado del grupo activo.</summary>
+    public long Desde => Grupo.Desde;
+    public long Hasta => Grupo.Hasta;
+    /// <summary>Usuario de auditoría del grupo activo (identifica y limpia sus ejecuciones).</summary>
+    public string Usuario => Grupo.Usuario;
     public DbContextOptions<CallCenterDbContext> DbOpciones { get; }
     public int Fallas { get; set; }
     public List<long> Ejecuciones { get; } = [];
@@ -92,11 +101,25 @@ internal sealed class Harness
 
     public Task<int> ContarTabla(string tabla) => Contar($"SELECT COUNT(*) FROM dbo.{tabla}");
 
-    /// <summary>Filas de una tabla dentro de [desde, hasta] (por defecto, todo el rango reservado).</summary>
-    public Task<int> EnRango(string tabla, long desde = Desde, long hasta = Hasta)
+    /// <summary>
+    /// Filas de una tabla dentro de [desde, hasta] (por defecto, todo el rango del grupo
+    /// activo). Un sub-rango fuera del grupo es un error del caso: se aborta en vez de leer
+    /// (o, más adelante, escribir) el rango de otro grupo.
+    /// </summary>
+    public Task<int> EnRango(string tabla, long? desde = null, long? hasta = null)
     {
+        var (d, hs) = (desde ?? Desde, hasta ?? Hasta);
+        ExigirDentroDelGrupo(d, hs);
         var filtro = TablasDelRango.Single(t => t.Tabla == tabla).Filtro;
-        return Contar($"SELECT COUNT(*) FROM dbo.{tabla} WHERE {filtro}", ("@d", desde), ("@h", hasta));
+        return Contar($"SELECT COUNT(*) FROM dbo.{tabla} WHERE {filtro}", ("@d", d), ("@h", hs));
+    }
+
+    /// <summary>Lanza si [desde, hasta] no cae completo dentro del rango del grupo activo.</summary>
+    public void ExigirDentroDelGrupo(long desde, long hasta)
+    {
+        if (desde < Desde || hasta > Hasta || desde > hasta)
+            throw new InvalidOperationException(
+                $"El sub-rango {desde}..{hasta} no está dentro del rango del grupo '{Grupo.Nombre}' ({Desde}..{Hasta}).");
     }
 
     // ── Motor ───────────────────────────────────────────────────────────────
@@ -107,7 +130,7 @@ internal sealed class Harness
         NullLogger<CargueFuentesMotor>.Instance,
         Options.Create(new CargueFuentesSettings()));
 
-    public static TrabajoCargue Trabajo(DefinicionFuenteCargue def, string ruta) =>
+    public TrabajoCargue Trabajo(DefinicionFuenteCargue def, string ruta) =>
         new(Guid.NewGuid(), def, CatalogoReglasFuente.Obtener(def.Fuente), ruta, Path.GetFileName(ruta), Usuario);
 
     public Task<PreviewCargueDto> Validar(DefinicionFuenteCargue def, string ruta) =>
@@ -201,6 +224,7 @@ internal sealed class Harness
         string etiqueta, DefinicionFuenteCargue def, string archivo, Esperado e, long desde, long hasta,
         Func<PreviewCargueDto, Task> trasValidar, Func<ResultadoCargueDto, long, Task> trasCargar)
     {
+        ExigirDentroDelGrupo(desde, hasta);
         var tabla = def.TablaDestino.Split('.').Last();
 
         Console.WriteLine($"\n== {etiqueta} 1. ValidarAsync ==");
@@ -260,7 +284,10 @@ internal sealed class Harness
 
     // ── Limpieza ────────────────────────────────────────────────────────────
 
-    /// <summary>Borra el rango reservado de todas las tablas y la auditoría del harness.</summary>
+    /// <summary>
+    /// Borra el rango del grupo activo de todas las tablas y la auditoría de SU usuario
+    /// (igualdad exacta: 'harness-cargue' no arrastra a 'harness-cargue-salud').
+    /// </summary>
     public async Task Limpiar()
     {
         var sb = new StringBuilder();
