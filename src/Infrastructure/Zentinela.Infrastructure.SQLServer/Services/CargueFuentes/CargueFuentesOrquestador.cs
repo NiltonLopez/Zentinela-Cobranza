@@ -83,7 +83,8 @@ internal sealed class CargueFuentesOrquestador : ICargueFuentesService
             lista.Add(new() { Nombre = "Lider", Alias = Comunes(CatalogoCargueFuentes.AliasLider), Tipo = "Texto",
                               Descripcion = "Opcional. Nombre del líder, alternativa a LiderID" });
         }
-        lista.AddRange(d.ColumnasDato.Concat(d.ColumnasArchivoExtra).Select(c => new ColumnaEsperadaDto
+        // Las columnas que produce la regla (SIMIT: Placa) no se piden en el archivo.
+        lista.AddRange(d.ColumnasDato.Where(c => c.DesdeArchivo).Concat(d.ColumnasArchivoExtra).Select(c => new ColumnaEsperadaDto
         {
             Nombre      = c.Nombre,
             Alias       = c.Alias,

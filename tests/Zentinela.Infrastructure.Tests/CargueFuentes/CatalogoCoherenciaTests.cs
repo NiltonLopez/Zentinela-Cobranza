@@ -41,7 +41,9 @@ public class CatalogoCoherenciaTests
         var def = CatalogoCargueFuentes.Buscar(fuente)!;
         foreach (var c in def.ColumnasDato.Concat(def.ColumnasArchivoExtra))
         {
-            Assert.NotEmpty(c.Alias);
+            // Una columna que produce la regla no se busca en el archivo: no lleva alias.
+            if (c.DesdeArchivo) Assert.NotEmpty(c.Alias);
+            else Assert.Empty(c.Alias);
             foreach (var a in c.Alias) Assert.Equal(ArchivoTabular.Normalizar(a), a);
             if (c.Tipo is not (TipoColumnaCargue.Entero or TipoColumnaCargue.Fecha))
                 Assert.True(c.Largo > 0, $"{fuente}.{c.Nombre} necesita Largo");
@@ -125,5 +127,19 @@ public class CatalogoCoherenciaTests
             Firma(d));
         Assert.True(d.TitularIdComoTexto && d.CreaTitular && d.CreaTitularCartera);
         Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
+
+    [Fact]
+    public void Simit_coincide_con_el_destino_real_y_con_SIMITAuxiliar()
+    {
+        // dbo.SIMIT: Placa varchar(10) NULL (sys.columns 2026-09-23). SIMITAuxiliar: Placa1..Placa15.
+        var d = CatalogoCargueFuentes.Simit;
+        Assert.Equal(("dbo.SIMIT", "EstadoEnSIMIT", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["Placa:Placa:10"], Firma(d));
+        Assert.False(d.ColumnasDato[0].DesdeArchivo);
+        Assert.Equal(Enumerable.Range(1, 15).Select(i => $"Placa{i}"), d.ColumnasArchivoExtra.Select(c => c.Nombre));
+        Assert.Equal(CardinalidadCargue.VariasPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaSimit>(CatalogoReglasFuente.Obtener(d.Fuente));
     }
 }

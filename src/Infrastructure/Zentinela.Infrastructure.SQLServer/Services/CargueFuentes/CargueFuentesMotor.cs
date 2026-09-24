@@ -260,7 +260,9 @@ internal sealed class CargueFuentesMotor
         progreso.Report(new(FaseCargueJob.Columnas, esc.LeyendoFin, "Resolviendo columnas"));
         var (mapa, encontradas, faltantes, opcionalesFaltantes, sinUso) = ResolverColumnas(def, encabezado);
         foreach (var c in sinUso) ctx.Informar($"Columna del archivo que no se usa: {c}");
-        if (faltantes.Count > 0 || mapa.Datos.All(i => i < 0))
+        // "Ninguna columna de datos" cuenta también las extra: en SIMIT el dato (Placa) no viene
+        // del archivo, lo producen Placa1..15.
+        if (faltantes.Count > 0 || (mapa.Datos.All(i => i < 0) && mapa.Extra.All(i => i < 0)))
         {
             var mensaje = faltantes.Count > 0
                 ? $"Faltan columnas obligatorias: {string.Join(", ", faltantes)}."
@@ -269,7 +271,9 @@ internal sealed class CargueFuentesMotor
             {
                 HuellaArchivo = huella,
                 ColumnasEncontradas = encontradas,
-                ColumnasFaltantes = faltantes.Count > 0 ? faltantes : def.ColumnasDato.Select(c => c.Nombre).ToList(),
+                ColumnasFaltantes = faltantes.Count > 0
+                    ? faltantes
+                    : def.ColumnasDato.Where(c => c.DesdeArchivo).Concat(def.ColumnasArchivoExtra).Select(c => c.Nombre).ToList(),
                 ColumnasOpcionalesFaltantes = opcionalesFaltantes,
                 Info = ctx.Info(),
             });
@@ -416,7 +420,8 @@ internal sealed class CargueFuentesMotor
             Cartera   = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasCartera) : -1,
             LiderID   = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasLiderId) : -1,
             Lider     = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasLider) : -1,
-            Datos     = def.ColumnasDato.Select(c => ArchivoTabular.ResolverColumna(headers, c.Alias)).ToArray(),
+            // Una columna que produce la regla (DesdeArchivo = false) no se busca en el archivo.
+            Datos     = def.ColumnasDato.Select(c => c.DesdeArchivo ? ArchivoTabular.ResolverColumna(headers, c.Alias) : -1).ToArray(),
             Extra     = def.ColumnasArchivoExtra.Select(c => ArchivoTabular.ResolverColumna(headers, c.Alias)).ToArray(),
         };
 
@@ -442,7 +447,8 @@ internal sealed class CargueFuentesMotor
             if (!mapa.HayLider) opcionales.Add("LiderID o Lider");
         }
         for (var i = 0; i < def.ColumnasDato.Count; i++)
-            Anotar(def.ColumnasDato[i].Nombre, mapa.Datos[i], def.ColumnasDato[i].Obligatoria);
+            if (def.ColumnasDato[i].DesdeArchivo)
+                Anotar(def.ColumnasDato[i].Nombre, mapa.Datos[i], def.ColumnasDato[i].Obligatoria);
         for (var i = 0; i < def.ColumnasArchivoExtra.Count; i++)
             Anotar(def.ColumnasArchivoExtra[i].Nombre, mapa.Extra[i], def.ColumnasArchivoExtra[i].Obligatoria);
 
@@ -572,8 +578,11 @@ internal sealed class CargueFuentesMotor
         return t.EndsWith(".0", StringComparison.Ordinal) ? t[..^2] : t;
     }
 
-    /// <summary>Trim + espacios colapsados; los vacíos convencionales ('', '0', 'NULL', 'N/A') a null.</summary>
-    private static string? LimpiarTexto(string? bruto)
+    /// <summary>
+    /// Trim + espacios colapsados; los vacíos convencionales ('', '0', 'NULL', 'N/A') a null.
+    /// Interno: las reglas lo usan sobre <c>FilaCargue.Extra</c>, que llega crudo.
+    /// </summary>
+    internal static string? LimpiarTexto(string? bruto)
     {
         if (bruto is null) return null;
         var t = string.Join(' ', bruto.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -705,7 +714,8 @@ internal sealed class CargueFuentesMotor
             }
             case TipoColumnaCargue.Placa:
             {
-                var placa = new string(texto.Where(c => !char.IsWhiteSpace(c)).ToArray()).ToUpperInvariant();
+                var placa = PlacaVehiculo.Normalizar(texto);
+                if (placa is null) return null;
                 if (col.Largo > 0 && placa.Length > col.Largo)
                 {
                     ctx.Advertir($"{col.Nombre}: placa de más de {col.Largo} caracteres anulada");
@@ -908,6 +918,7 @@ internal sealed class CargueFuentesMotor
             TotalLeidas           = prep.TotalLeidas,
             Excluidas             = prep.Excluidas,
             DuplicadasEnArchivo   = prep.DuplicadasEnArchivo,
+            AgregadasPorExpansion = prep.AgregadasPorExpansion,
             Candidatas            = prep.Candidatas,
             Insertadas            = prep.Insertadas,
             Refrescadas           = prep.Refrescadas,

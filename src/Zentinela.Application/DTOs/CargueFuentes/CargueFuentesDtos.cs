@@ -44,6 +44,8 @@ public class PreviewCargueDto
     public int TotalLeidas           { get; set; }
     public int Excluidas             { get; set; }
     public int DuplicadasEnArchivo   { get; set; }
+    /// <summary>Filas destino de más que produjo la regla al expandir (SIMIT: una por placa). Leídas + estas = excluidas + duplicadas + candidatas.</summary>
+    public int AgregadasPorExpansion { get; set; }
     public int Candidatas            { get; set; }
     public int Insertadas            { get; set; }
     public int Refrescadas           { get; set; }

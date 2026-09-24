@@ -439,6 +439,7 @@ try
     await CasoCajacopi.Correr(h);
     await CasoMutualSer.Correr(h);
     await CasoNuevaEps.Correr(h);
+    await CasoSimit.Correr(h);
 }
 catch (Exception ex)
 {

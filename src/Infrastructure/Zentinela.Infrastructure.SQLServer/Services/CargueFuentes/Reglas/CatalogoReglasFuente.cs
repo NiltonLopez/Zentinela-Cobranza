@@ -16,6 +16,7 @@ internal static class CatalogoReglasFuente
         // NuevaEps: sp_ProcesarNuevaEpsAuxiliar solo creaba Titular/relaciones, calculaba el flag
         // e insertaba: todo genérico. Lo propio (TitularID varchar) es de la definición.
         [CatalogoCargueFuentes.NuevaEps.Fuente]  = new ReglaGenerica(CatalogoCargueFuentes.NuevaEps.Fuente),
+        [CatalogoCargueFuentes.Simit.Fuente]     = new ReglaSimit(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

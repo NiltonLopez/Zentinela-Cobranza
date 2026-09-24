@@ -43,6 +43,9 @@ public enum TipoFechaSello { Date, DateTime }
 /// <param name="Obligatoria">La columna debe EXISTIR en el archivo (no que cada celda tenga valor).</param>
 /// <param name="EntraAlFlag">Si tener valor aquí cuenta para <c>EstadoEn&lt;Fuente&gt;</c>.</param>
 /// <param name="EntraAClave">Si participa en la clave de contenido (refrescar vs insertar).</param>
+/// <param name="DesdeArchivo">false = la columna no se lee del archivo: la produce la regla
+/// (SIMIT: <c>Placa</c> sale de Placa1..15 en <c>Expandir</c>). No se busca, no se pide y no se
+/// lista como faltante.</param>
 public sealed record ColumnaFuenteCargue(
     string Nombre,
     string[] Alias,
@@ -51,7 +54,8 @@ public sealed record ColumnaFuenteCargue(
     bool Obligatoria = false,
     bool EntraAlFlag = true,
     bool EntraAClave = true,
-    string Descripcion = "");
+    string Descripcion = "",
+    bool DesdeArchivo = true);
 
 /// <summary>
 /// Todo lo que el motor genérico de cargue necesita saber de una fuente. El motor no tiene
@@ -253,7 +257,35 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps];
+    /// <summary>
+    /// SIMIT (placas de vehículos). El archivo trae una fila por titular con Placa1..Placa15
+    /// (como SIMITAuxiliar: 15 columnas, la 15 era nchar(10)); el destino guarda una fila por
+    /// placa. <c>ReglaSimit.Expandir</c> hace el despivote. Verificado contra <c>sys.columns</c>
+    /// de <c>dbo.SIMIT</c> el 2026-09-23 (Placa varchar(10) NULL, FechaConsulta date, FK a
+    /// Titular, sin triggers).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Simit = new()
+    {
+        Fuente       = "SIMIT",
+        Etiqueta     = "SIMIT (placas)",
+        TablaDestino = "dbo.SIMIT",
+        ColumnaFlag  = "EstadoEnSIMIT",
+        ColumnaFecha = "FechaConsulta",
+        TipoFecha    = TipoFechaSello.Date,
+        Cardinalidad = CardinalidadCargue.VariasPorTitular,
+        Notas        = "Placas de vehículos: Placa1..Placa15 por titular, una fila por placa en SIMIT.",
+        ColumnasDato =
+        [
+            new("Placa", [], TipoColumnaCargue.Placa, 10, DesdeArchivo: false,
+                Descripcion: "Una fila por placa distinta de Placa1..Placa15"),
+        ],
+        ColumnasArchivoExtra = Enumerable.Range(1, 15)
+            .Select(i => new ColumnaFuenteCargue($"Placa{i}", i == 1 ? ["placa1", "placa"] : [$"placa{i}"],
+                TipoColumnaCargue.Placa, 10, Descripcion: i == 1 ? "Placa (o Placa1)" : $"Placa {i}"))
+            .ToList(),
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)
