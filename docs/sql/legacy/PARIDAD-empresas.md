@@ -16,6 +16,7 @@ Mismo método, misma herramienta y misma leyenda que la paridad de la Fase 1
 | RUES | 16 | 6 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P5; sello P6) |
 | Camara | 23 | 7 | 16 | 0 | Paridad OK (E1, E9, E10, E11, P1, P3, P4, P5, P7, R) |
 | CamaraEmpresa | 15 | 4 | 11 | 0 | Paridad OK (E9, E11, P1, P3, P5, P7, R); clave `NitEmpresa` |
+| PositivaEmpresas | 13 | 3 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P4, P5) |
 
 ## Método
 
@@ -274,4 +275,69 @@ E15: fila no importable a CamaraEmpresaAuxiliar (NitEmpresa='999000002715-7' no 
 ── ejecución del cuerpo del SP ──
 PRINT: 13 EMPRESAS FUERON INGRESADAS A CÁMARA DE EMPRESAS
 PRINT: 2 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL DE EMPRESAS
+```
+
+## PositivaEmpresas
+
+**Conclusión: paridad OK — 13 casos, 3 iguales, 10 diferencias explicadas (E1, E9, E10, E11, P2, P3, P4, P5), 0 sin explicar.**
+Iguales: titular nuevo completo, solo estado de afiliación (fila con flag 0 en los dos: el SP no
+contaba el estado para el flag y el motor tampoco) y contenido idéntico.
+
+Detalles:
+
+- **P03 (P2).** La razón social llega partida en líneas (texto sacado de un PDF; `dbo.PositivaEmpresas`
+  tiene 94.096 así, p. ej. 'MONICA ESTELA↵RAMIREZ OSORIO'). El motor colapsa el salto de línea a
+  un espacio; el SP lo guardaba. `↵` en la tabla = salto de línea real.
+- **P07 (P4).** El SP deduplicaba por titular + NIT + empresa: un cambio de estado de afiliación
+  borraba la fila vieja. El motor guarda las dos.
+- **P05 (P2).** NIT `0`: el SP lo guardaba y el flag quedaba en 1.
+- **No cambia (observación O-PE1).** `EstadoAfiliacion` llega con basura del PDF en 160 filas (incluidas 60 'NO')
+  ('RCIO', 'Tipo y Numero de Documento'…). Se guarda como texto libre, igual que el SP y que
+  `EstadoAfiliacion` de Sura y NuevaEps: validarla contra un catálogo cerrado es una decisión
+  aparte (ver hallazgos).
+
+#### Escenario PositivaEmpresas
+
+
+Columnas del destino: `NIT · Empresa · EstadoAfiliacion · EstadoEnPositivaEmpresa · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Predicción |
+|---|---|---|---|---|---|---|---|
+| P01 | Titular nuevo, NIT + empresa + estado | 899999103 · SENADO DE LA REPUBLICA · Activa · 1 · HOY | 899999103 · SENADO DE LA REPUBLICA · Activa · 1 · HOY | POSITIVA COMPLETO / POSITIVA COMPLETO | L1/C29 / L1/C29 | igual | = |
+| P02 | Documento inválido (4 dígitos) | 800111333 · ∅ · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | ≠ P3 documento inválido |
+| P03 | Razón social en dos líneas (PDF) | 900691735 · COMERCIALIZADORA ANDINA↵FRIO SAS · ∅ · 1 · HOY | 900691735 · COMERCIALIZADORA ANDINA FRIO SAS · ∅ · 1 · HOY | EN LINEAS / EN LINEAS | L1/C29 / L1/C29 | difiere: destino | ≠ P2 limpieza de texto (salto de línea → espacio) |
+| P04 | Solo estado de afiliación | ∅ · ∅ · Retirado · 0 · HOY | ∅ · ∅ · Retirado · 0 · HOY | SOLO ESTADO / SOLO ESTADO | L1/C29 / L1/C29 | igual | = (flag 0 con el estado guardado en los dos) |
+| P05 | NIT '0' + estado | 0 · ∅ · Activa · 1 · HOY | ∅ · ∅ · Activa · 0 · HOY | NIT CERO / NIT CERO | L1/C29 / L1/C29 | difiere: destino | ≠ P2 vacíos convencionales (NIT 0 → NULL; el SP daba flag 1) |
+| P06 | Titular existente, contenido idéntico | 800111006 · ACME SAS · Activa · 1 · HOY | 800111006 · ACME SAS · Activa · 1 · HOY | CARLOS EXISTENTE / CARLOS EXISTENTE | L1/C29 / L1/C29 | igual | = (refresco vs insert + dedup) |
+| P07 | Mismo NIT y empresa, estado nuevo (Activa → Retirado) | 800111007 · ACME SAS · Retirado · 1 · HOY | 800111007 · ACME SAS · Activa · 1 · viejo 2026-01-15<br>800111007 · ACME SAS · Retirado · 1 · HOY | ESTADO CAMBIA / ESTADO CAMBIA | L1/C29 / L1/C29 | difiere: destino | ≠ P4 clave completa (el SP deduplicaba por titular+NIT+empresa y borraba la fila vieja) |
+| P08 | Vacía vieja; ahora trae datos | 800111008 · ∅ · ∅ · 1 · HOY<br>∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | 800111008 · ∅ · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (purga) |
+| P09 | Datos en destino; el archivo trae fila vacía | 800111009 · ∅ · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · 0 · HOY | 800111009 · ∅ · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (no inserta la vacía) |
+| P10 | Titular AJENO con duplicado exacto en destino | 800111010 · ∅ · ∅ · 1 · viejo 2026-01-15 | 800111010 · ∅ · ∅ · 1 · viejo 2026-01-15<br>800111010 · ∅ · ∅ · 1 · viejo 2026-01-15 | AJENO / AJENO | — / — | difiere: destino | ≠ E9 sin limpiezas globales |
+| P11 | Titular repetido; la 2ª fila tiene más datos | 800111011 · ∅ · ∅ · 1 · HOY | 800111011 · REPETIDA SAS · Inactiva · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | ? SP fila arbitraria; nuevo la más completa (E11) |
+| P12 | Par Líder/Cartera inactivo | 800111012 · ∅ · ∅ · 1 · HOY | 800111012 · ∅ · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | ≠ E10 sin relación con par inactivo |
+| P13 | Nombre con tilde ('Ñoño Pérez') | 800111013 · ∅ · ∅ · 1 · HOY | 800111013 · ∅ · ∅ · 1 · HOY | Ñoño Pérez / ÑOÑO PEREZ | L1/C29 / L1/C29 | difiere: titular | ≠ E1 nombre limpio (conserva Ñ, quita tilde) |
+
+Lado nuevo:
+
+```
+Preview: leídas 13, excluidas 1, duplicadas 1, expansión +0, candidatas 11, insertadas 9, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 7, nombres reparados 0, relaciones nuevas 10.
+Carga (ejecución 328): insertadas 9, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 7, nombres reparados 0, relaciones 10.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×10: Relaciones titular-cartera nuevas
+- info ×7: Titulares nuevos que se crearán
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.PositivaEmpresas
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; PositivaEmpresas 2013318→2013318; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+Lado viejo (mensajes del batch):
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 8 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 12 PERSONAS FUERON RELACIONADAS EN #Titular CARTERA EN LA BASE DE DATOS
+PRINT: 12 EMPRESAS FUERON INGRESADAS A POSITIVA DE EMPRESAS
+PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL DE EMPRESAS
 ```

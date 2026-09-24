@@ -59,6 +59,7 @@ internal static class Grupos
         new("RUES",             "RUES",             CasoRues.Correr),              // Bloque(0): 2000-2099
         new("Camara",           "Camara",           CasoCamara.Correr),            // Bloque(1): 2100-2199
         new("CamaraEmpresa",    "CamaraEmpresa",    CasoCamaraEmpresa.Correr),     // Bloque(2): 2200-2299 (NitEmpresa)
+        new("PositivaEmpresas", "PositivaEmpresas", CasoPositivaEmpresas.Correr),  // Bloque(3): 2300-2399
     ]);
 
     // ── otras: 999000003000..999000003999 ──

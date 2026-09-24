@@ -78,6 +78,19 @@ public class CatalogoCoherenciaEmpresasTests
     }
 
     [Fact]
+    public void PositivaEmpresas_coincide_con_el_destino_real()
+    {
+        // dbo.PositivaEmpresas: NIT bigint, Empresa varchar(230), EstadoAfiliacion varchar(30),
+        // EstadoEnPositivaEmpresa bit, FechaConsulta date.
+        var d = CatalogoCargueFuentes.PositivaEmpresas;
+        Assert.Equal(("dbo.PositivaEmpresas", "EstadoEnPositivaEmpresa", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NIT:Entero:0", "Empresa:Texto:230", "EstadoAfiliacion:Texto:30:sinflag"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && d.ClaveEsTitular && d.AplicaPoliticaVacias);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
+
+    [Fact]
     public void Prefijos_suman_PrefijosDepartamento_como_filas_solo_departamento()
     {
         var sql = GeneradorSqlCargue.ConsultarPrefijos;
