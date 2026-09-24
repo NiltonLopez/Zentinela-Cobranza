@@ -6,10 +6,12 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Shared;
 /// Lista negra de correos (tabla <c>ListaNegraCorreos.CorreoErroneo</c>) evaluada por
 /// IGUALDAD, no por subcadena.
 ///
-/// Los SP viejos aplicaban <c>LIKE '%' + CorreoErroneo + '%'</c>: con entradas como
+/// Ocho SP viejos aplicaban <c>LIKE '%' + CorreoErroneo + '%'</c>: con entradas como
 /// "a@gmail.com" o "nt@gmail.com" en la lista, cualquier correo que las contuviera
-/// ("lauramejiacarepa@gmail.com") quedaba anulado. En Cámara eso borró 67.826 correos
-/// válidos. Aquí una entrada con '@' bloquea ese correo exacto, y una entrada sin '@' con
+/// ("lauramejiacarepa@gmail.com") quedaba anulado. Medido sobre <c>dbo.Camara</c> (cuyo SP,
+/// <c>sp_ProcesarCamaraAuxiliar</c>, nunca cruzó la lista): un cruce con LIKE habría anulado
+/// 67.826 correos distintos (89.937 filas), frente a 18 coincidencias exactas (126 filas).
+/// Aquí una entrada con '@' bloquea ese correo exacto, y una entrada sin '@' con
 /// forma de dominio ("uniquindio.edu.co") bloquea todo el dominio exacto.
 ///
 /// Las entradas que no son ni correo ni dominio ("NOTEINE") se ignoran y se cuentan en
