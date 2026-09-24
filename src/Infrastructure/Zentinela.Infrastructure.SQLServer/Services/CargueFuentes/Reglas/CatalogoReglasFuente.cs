@@ -18,6 +18,26 @@ internal static class CatalogoReglasFuente
         [CatalogoCargueFuentes.NuevaEps.Fuente]  = new ReglaGenerica(CatalogoCargueFuentes.NuevaEps.Fuente),
         [CatalogoCargueFuentes.Simit.Fuente]     = new ReglaSimit(),
         [CatalogoCargueFuentes.DatosClaro.Fuente] = new ReglaDatosClaro(),
+
+        // ── Fase 2, grupo salud ──
+        [CatalogoCargueFuentes.Positiva.Fuente]   = new ReglaPositiva(),
+        // SaludTotal: sp_ProcesarSaludTotalAuxiliar solo pasaba vacíos a NULL ('' , NIT 0, fecha
+        // 1900-01-01), creaba Titular/relaciones, calculaba el flag e insertaba: todo genérico.
+        // No cruzaba ListaNegraCorreos ni validaba el teléfono: el motor sí (ADR-039 §4).
+        [CatalogoCargueFuentes.SaludTotal.Fuente] = new ReglaGenerica(CatalogoCargueFuentes.SaludTotal.Fuente),
+        // SOS: sp_ProcesarSOSAuxiliar solo pasaba vacíos a NULL ('' y NitEmpresa 0), creaba
+        // Titular/relaciones, calculaba el flag e insertaba: todo genérico. Direccion > 70 (la
+        // Auxiliar admitía 150) hacía fallar su INSERT entero; el motor la trunca con advertencia.
+        [CatalogoCargueFuentes.Sos.Fuente]        = new ReglaGenerica(CatalogoCargueFuentes.Sos.Fuente),
+        // Coosalud: sp_ProcesarCoosaludAuxiliar anulaba teléfonos de largo ≠ 10 y correos de la
+        // lista negra (con LIKE), calculaba el flag e insertaba solo lo nuevo (clave recortada con
+        // ISNULL(x, '')): todo genérico en el motor, con validación exacta y clave completa.
+        [CatalogoCargueFuentes.Coosalud.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.Coosalud.Fuente),
+        [CatalogoCargueFuentes.SaviaSalud.Fuente] = new ReglaSaviaSalud(),
+        // MiVacuna: sp_ProcesarMiVacunaAuxiliar solo pasaba el celular '' o '0' a NULL, cruzaba la
+        // lista negra de correos (con LIKE, anulando a ''), calculaba el flag e insertaba: todo
+        // genérico en el motor, con igualdad exacta y NULL.
+        [CatalogoCargueFuentes.MiVacuna.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.MiVacuna.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

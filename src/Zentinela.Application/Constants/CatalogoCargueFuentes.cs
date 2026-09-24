@@ -315,7 +315,245 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro];
+    // ── Fase 2, grupo salud ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Positiva (ARL). Regla propia: un fijo que llega en la columna de celular pasa al fijo
+    /// (sin concatenar). Verificado contra <c>sys.columns</c> de <c>dbo.Positiva</c> el
+    /// 2026-09-24: NumeroTelefonoFijo es <b>varchar(30)</b> (el SP concatenaba "fijo, celular"
+    /// ahí; 522 filas legacy lo tienen; el motor guarda un solo fijo de 10 dígitos),
+    /// FechaNacimiento <c>date</c> NULL, FechaConsulta <c>date</c> NOT NULL, FK a Titular, sin
+    /// triggers; 2.213.891 filas / 1.967.407 titulares. El flag, como en el SP, solo mira celular,
+    /// fijo y email (FechaNacimiento, Departamento y Municipio no).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Positiva = new()
+    {
+        Fuente          = "Positiva",
+        Etiqueta        = "Positiva (ARL)",
+        TablaDestino    = "dbo.Positiva",
+        ColumnaFlag     = "EstadoEnPositiva",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados ARL Positiva: celular, fijo, email y localización.",
+        ColumnasDato =
+        [
+            new("NumeroTelefonoCelular", ["numerotelefonocelular", "celular", "numerocelular", "telefonocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("NumeroTelefonoFijo", ["numerotelefonofijo", "fijo", "telefonofijo", "numerofijo"],
+                TipoColumnaCargue.Fijo, 30, Descripcion: "Fijo (10 dígitos, empieza en 6)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 100, Descripcion: "Correo electrónico"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio"),
+        ],
+    };
+
+    /// <summary>
+    /// Salud Total (EPS). Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarSaludTotalAuxiliar</c>
+    /// solo pasaba vacíos a NULL (incluidos NIT 0 y la fecha 1900-01-01), creaba Titular y
+    /// relaciones, calculaba el flag e insertaba: todo genérico. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.SaludTotal</c> el 2026-09-24 (FechaNacimiento y
+    /// UltimaFechaPago <c>date</c> NULL, FechaConsulta <c>date</c> NOT NULL, NIT bigint,
+    /// IngresoBase varchar(20); FK a Titular, sin triggers; 1.586.180 filas / 1.525.448 titulares).
+    /// NumeroTelefono es celular: el 100 % de las filas con dato es 3xx de 10 dígitos y la BaseMadre
+    /// lo expone como [Celular Salud Total]. El flag, como en el SP, mira teléfono, email y NIT.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue SaludTotal = new()
+    {
+        Fuente          = "SaludTotal",
+        Etiqueta        = "Salud Total (EPS)",
+        TablaDestino    = "dbo.SaludTotal",
+        ColumnaFlag     = "EstadoEnSaludTotal",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS Salud Total: celular, email, afiliación y empleador.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 30, EntraAlFlag: false, Descripcion: "Activo, retirado…"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("Ciudad", ["ciudad", "municipio"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Ciudad"),
+            new("NIT", ["nit", "nitempresa", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("Empresa", ["empresa", "nombreempresa", "empleador"],
+                TipoColumnaCargue.Texto, 100, EntraAlFlag: false, Descripcion: "Empresa empleadora"),
+            new("Cargo", ["cargo"],
+                TipoColumnaCargue.Texto, 60, EntraAlFlag: false, Descripcion: "Cargo en la empresa"),
+            new("UltimaFechaPago", ["ultimafechapago", "fechaultimopago", "fechaultimapago", "ultimopago"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Último pago de aportes"),
+            new("IngresoBase", ["ingresobase", "ibc", "ingresobasecotizacion", "salario"],
+                TipoColumnaCargue.Texto, 20, EntraAlFlag: false, Descripcion: "Ingreso base de cotización"),
+        ],
+    };
+
+    /// <summary>
+    /// SOS (EPS Servicio Occidental de Salud): empleador, teléfono y dirección. Sin regla propia
+    /// (<c>ReglaGenerica</c>): <c>sp_ProcesarSOSAuxiliar</c> solo pasaba vacíos a NULL (NitEmpresa 0
+    /// incluido), creaba Titular y relaciones, calculaba el flag e insertaba. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.SOS</c> el 2026-09-24 (NitEmpresa bigint, RazonSocial
+    /// varchar(100), Telefono varchar(10), <b>Direccion varchar(70)</b> —en SOSAuxiliar era
+    /// <c>Dirección varchar(150)</c>—, FechaConsulta <c>date</c> NOT NULL; FK a Titular, sin
+    /// triggers; 226.946 filas / 226.878 titulares). El flag, como en el SP, mira las cuatro columnas.
+    /// Telefono se trata como <b>celular</b> (mismo criterio que NuevaEps, ADR-039 §4): la BaseMadre
+    /// lo expone como [Celular SOS] y alimenta el selector de celulares del Creador. De las 2.099
+    /// filas con dato, 1.372 (65 %) son 3xx de 10 dígitos; 625 son fijos de 7 dígitos sin indicativo
+    /// (SOS no trae departamento ni municipio para resolverlo) y 34 son fijos 60x: esos se anulan
+    /// con advertencia.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Sos = new()
+    {
+        Fuente          = "SOS",
+        Etiqueta        = "SOS (EPS)",
+        TablaDestino    = "dbo.SOS",
+        ColumnaFlag     = "EstadoEnSOS",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS SOS: empleador (NIT y razón social), celular y dirección.",
+        ColumnasDato =
+        [
+            new("NitEmpresa", ["nitempresa", "nit", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("RazonSocial", ["razonsocial", "empresa", "nombreempresa", "empleador"],
+                TipoColumnaCargue.Texto, 100, Descripcion: "Razón social del empleador"),
+            new("Telefono", ["telefono", "celular", "numerotelefono", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Direccion", ["direccion", "direcciondomicilio", "domicilio"],
+                TipoColumnaCargue.Texto, 70, Descripcion: "Dirección"),
+        ],
+    };
+
+    /// <summary>
+    /// Coosalud (EPS). Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarCoosaludAuxiliar</c>
+    /// anulaba teléfonos de largo distinto de 10 y correos de la lista negra, calculaba el flag e
+    /// insertaba solo lo nuevo: todo genérico (y más estricto en el motor). Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.Coosalud</c> el 2026-09-24 (todas las de texto varchar(50) salvo
+    /// Email 255, FechaNacimiento <c>date</c> NULL, FechaConsulta <c>date</c> NOT NULL; <b>sin FK a
+    /// Titular</b> pero el SP sí creaba Titular y Titular_Cartera, y el motor también; sin triggers;
+    /// 1.037.887 filas / 1.032.725 titulares). NumeroTelefono es celular (77.977 de las 77.983 filas
+    /// con dato son 3xx y la BaseMadre lo expone como [Celular Coosalud]). El flag, como en el SP,
+    /// mira teléfono y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Coosalud = new()
+    {
+        Fuente          = "Coosalud",
+        Etiqueta        = "Coosalud (EPS)",
+        TablaDestino    = "dbo.Coosalud",
+        ColumnaFlag     = "EstadoEnCoosalud",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS Coosalud: celular, email, afiliación y localización de origen.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("MunicipioOrigen", ["municipioorigen", "municipiodeorigen", "municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio de origen"),
+            new("DepartamentoOrigen", ["departamentoorigen", "departamentodeorigen", "departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento de origen"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Contributivo, subsidiado…"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Activo, retirado…"),
+            new("NivelSisben", ["nivelsisben", "sisben", "niveldesisben"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Nivel del Sisbén"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+        ],
+    };
+
+    /// <summary>
+    /// Savia Salud (EPS). Regla propia: celdas con varios números separados por coma se reparten
+    /// entre NumeroCelular y NumeroTelefono sin concatenar. Verificado contra <c>sys.columns</c> de
+    /// <c>dbo.SaviaSalud</c> el 2026-09-24: el flag se llama <b><c>Estado</c></b> (bit NULL), TitularID
+    /// y FechaConsulta son NULL-ables, FechaDeNacimiento <c>date</c>, <b>NumeroCelular varchar(100)</b>
+    /// (el SP guardaba ahí listas '3147630194,3148795401'), NumeroTelefono varchar(10); <b>no hay
+    /// columna de correo</b> aunque SaviaSaludAuxiliar sí la tenía; sin FK a Titular (el SP igual
+    /// creaba Titular y relaciones), sin triggers; 719.743 filas / 717.531 titulares. El flag mira
+    /// los dos teléfonos (el SP contaba también el correo, que no guarda).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue SaviaSalud = new()
+    {
+        Fuente          = "SaviaSalud",
+        Etiqueta        = "Savia Salud (EPS)",
+        TablaDestino    = "dbo.SaviaSalud",
+        ColumnaFlag     = "Estado",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS Savia Salud: celular, teléfono y afiliación. No guarda correo.",
+        ColumnasDato =
+        [
+            new("FechaDeNacimiento", ["fechadenacimiento", "fechanacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("EstadoDeAfiliacion", ["estadodeafiliacion", "estadoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Activo, retirado…"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Contributivo, subsidiado…"),
+            new("NumeroTelefono", ["numerotelefono", "telefono", "telefonofijo", "fijo"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x, 10 dígitos)"),
+            new("NumeroCelular", ["numerocelular", "celular", "telefonocelular", "movil"],
+                TipoColumnaCargue.Celular, 100, Descripcion: "Celular (10 dígitos, empieza en 3; si trae varios, se reparten)"),
+        ],
+    };
+
+    /// <summary>
+    /// MiVacuna (registro de vacunación). Sin regla propia (<c>ReglaGenerica</c>):
+    /// <c>sp_ProcesarMiVacunaAuxiliar</c> solo pasaba el celular '' o '0' a NULL, cruzaba la lista
+    /// negra de correos, calculaba el flag e insertaba: todo genérico. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.MiVacuna</c> el 2026-09-24 (FechaExpedicion <c>date</c>, Celular
+    /// varchar(10), Email varchar(255), EstadoEnMiVacuna y FechaConsulta NULL-ables; sin FK a
+    /// Titular —el SP igual creaba Titular y relaciones—, sin triggers; 36.985 filas, una por
+    /// titular). El flag, como en el SP, mira celular y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue MiVacuna = new()
+    {
+        Fuente          = "MiVacuna",
+        Etiqueta        = "MiVacuna",
+        TablaDestino    = "dbo.MiVacuna",
+        ColumnaFlag     = "EstadoEnMiVacuna",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Registro MiVacuna: celular, email y fecha de expedición del documento.",
+        ColumnasDato =
+        [
+            new("FechaExpedicion", ["fechaexpedicion", "fechadeexpedicion", "expedicion"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de expedición del documento"),
+            new("Celular", ["celular", "numerocelular", "telefono", "numerotelefono", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
+    [
+        Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
+        // Fase 2, grupo salud
+        Positiva, SaludTotal, Sos, Coosalud, SaviaSalud, MiVacuna,
+    ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)
