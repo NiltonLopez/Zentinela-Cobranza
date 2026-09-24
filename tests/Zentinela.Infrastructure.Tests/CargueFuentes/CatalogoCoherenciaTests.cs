@@ -191,4 +191,19 @@ public class CatalogoCoherenciaTests
         Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
         Assert.IsType<ReglaRgm>(CatalogoReglasFuente.Obtener(d.Fuente));
     }
+
+    [Fact]
+    public void TigoUne_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.TigoUne el 2026-09-24: NumeroTelefono varchar(10),
+        // Email varchar(255), FechaConsulta date, sin FK a Titular. Celular: [Celular TigoUne].
+        var d = CatalogoCargueFuentes.TigoUne;
+        Assert.Equal(("TigoUne", "dbo.TigoUne", "EstadoEnTigoUne", "FechaConsulta", TipoFechaSello.Date),
+                     (d.Fuente, d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NumeroTelefono:Celular:10", "Email:Email:255"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        var regla = Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        Assert.Equal("TigoUne", regla.Fuente);
+    }
 }

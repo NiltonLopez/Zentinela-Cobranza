@@ -388,7 +388,38 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga, Rgm];
+    /// <summary>
+    /// Tigo Une (operador). Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarTigoUneAuxiliar</c>
+    /// solo hacía lo genérico (lista negra de correos —con LIKE—, teléfono de 10 caracteres, flag).
+    /// Es una fuente DISTINTA de Tigo (<c>dbo.Tigo</c>): tabla, SP, columnas de la BaseMadre
+    /// ([Celular TigoUne]/[Email TigoUne]) y fila del Calificador propias; comparten solo la forma.
+    /// Verificado contra <c>sys.columns</c> de <c>dbo.TigoUne</c> el 2026-09-24: NumeroTelefono
+    /// varchar(10), Email varchar(255), FechaConsulta <c>date</c>; <b>sin FK a Titular</b> (el SP
+    /// igual creaba el Titular y la relación, y el motor también), sin triggers ni CHECK; heap con
+    /// IX_TigoUne_TitularID_FechaConsulta. NumeroTelefono es celular: la BaseMadre lo expone como
+    /// [Celular TigoUne] (42.581 de sus 42.585 números empiezan en 3). Una fila vigente por titular
+    /// (el SP deduplicaba el staging por titular).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue TigoUne = new()
+    {
+        Fuente          = "TigoUne",
+        Etiqueta        = "Tigo Une (operador)",
+        TablaDestino    = "dbo.TigoUne",
+        ColumnaFlag     = "EstadoEnTigoUne",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Celular y correo del operador Tigo Une.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "linea", "numerolinea"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga, Rgm, TigoUne];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

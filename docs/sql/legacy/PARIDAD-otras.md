@@ -15,6 +15,7 @@ solo se anota lo que cambia.
 |---|---|---:|---:|---:|---:|---|
 | Fosyga (+ B, C) | `sp_ProcesarFosygaAuxiliar` (2026-09-22) | 21 | 5 | 16 | 0 | Paridad OK: E1, E9, E10, E11, P2–P5, R, F |
 | RGM (+ B, C) | `sp_ProcesarRGMAuxiliar` (2026-04-13) | 22 | 5 | 17 | 0 | Paridad OK: E1, E9, E10, E11, P2, P3, P5, R, F y el defecto `LiderID = CarteraID` |
+| TigoUne (+ B) | `sp_ProcesarTigoUneAuxiliar` (2026-08-04) | 20 | 4 | 16 | 0 | Paridad OK: E1, E2, E8, E10, E11, P1–P3, P5, F |
 
 ## Método (diferencias con la Fase 1)
 
@@ -47,7 +48,7 @@ Lo que cambia respecto de la Fase 1:
 
 **Limpieza verificada** al final de cada escenario: el rango 999000003000..3999 queda con 0 filas en
 todas las tablas de `Harness.TablasDelRango`, la auditoría del usuario del grupo en 0 y el `COUNT(*)` de
-cada destino igual al inicial (Fosyga 2.140.272; RGM 1.663.543).
+cada destino igual al inicial (Fosyga 2.140.272; RGM 1.663.543; TigoUne 123.783).
 
 ## Fosyga
 
@@ -384,6 +385,154 @@ Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→
 PRINT: 2 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
 PRINT: 2 PERSONAS FUERON RELACIONADAS EN TITULAR CARTERA EN LA BASE DE DATOS
 ERROR 245 (línea 61): Error de conversión al convertir el valor varchar 'ABC' al tipo de datos int.
+```
+
+</details>
+
+## TigoUne
+
+**Tigo y TigoUne son fuentes distintas.** Tablas distintas (`dbo.Tigo` creada 2025-03-18, `dbo.TigoUne`
+creada 2026-08-03), columnas distintas en la BaseMadre (`[Celular Tigo]`/`[Email Tigo]` y
+`[Celular TigoUne]`/`[Email TigoUne]`), filas distintas en el Calificador, Rastreo y Consulta
+Integrada, y solo TigoUne tiene SP. Comparten la forma (NumeroTelefono, Email, flag, FechaConsulta) y
+`docs/schema.md` la llama "gemela". Los datos no se solapan mucho: de los 123.555 titulares de TigoUne,
+53.976 (44 %) también están en Tigo, y de sus 42.585 números solo 4.147 (10 %) aparecen en Tigo.
+
+**Definición** (`CatalogoCargueFuentes.TigoUne`, `sys.columns` de `dbo.TigoUne` el 2026-09-24):
+NumeroTelefono varchar(10) (**Celular**: la BaseMadre lo expone como `[Celular TigoUne]`; 42.581 de
+42.585 números empiezan en 3), Email varchar(255), EstadoEnTigoUne bit, FechaConsulta `date` NOT NULL.
+**Sin FK a `Titular`** (el SP igual creaba Titular y relación, y el motor también), sin triggers ni
+CHECK, heap con `IX_TigoUne_TitularID_FechaConsulta`. 123.783 filas, 123.555 titulares
+(`UnaPorTitular`, como el dedup del SP). Cargas del 2026-08-04 (5.192), 2026-09-15 (88.586) y
+2026-09-22 (30.005): **se carga activamente**. Clave = las 2 columnas; flag = teléfono o email.
+
+**Regla**: `ReglaGenerica`. El SP solo hacía lo genérico: lista negra de correos (con `LIKE`, no se
+copia), teléfono de largo distinto de 10 → NULL (el motor exige además que empiece en 3), flag e
+`INSERT` de las combinaciones nuevas.
+
+**Conclusión: paridad OK.** 18 casos + 2 de fragilidad (20): 4 idénticos y 16 diferencias, todas
+explicadas; 0 predicciones fallidas en la corrida final. En la primera corrida falló la predicción de
+**U13** (email `''` de un import CSV): se había predicho "=" y el SP guarda `''`, no NULL (solo su flag
+lo trataba como vacío). Era un error de la predicción, no del motor: se corrigió a "≠ P2". En
+`dbo.TigoUne` hay 27.166 filas de la carga del 2026-09-15 con `''` en teléfono o email.
+
+Detalles:
+
+- **U08 (E8).** Contenido idéntico: el `INSERT` del SP es un anti-join (`ISNULL(x,'') = ISNULL(y,'')`),
+  así que no insertaba nada y **tampoco refrescaba la fecha**: la fila quedaba con la fecha vieja aunque
+  el proveedor la acabara de confirmar. El motor refresca `FechaConsulta`.
+- **U15 (=).** Este SP no deduplicaba el destino: un duplicado ajeno queda igual en los dos lados.
+- **U03 (E2), U05 y U07 (P1).** `LIKE` en la lista negra; `'5551234567'` y el fijo `6012345678`
+  pasaban porque el SP solo miraba el largo. (El aviso del motor para `'5551234567'` dice "número fijo
+  en la columna de celular": ver hallazgo H2.)
+- **U16, U17 (P1).** Email en minúsculas y recortado: en `dbo.TigoUne` hay correos con espacio o
+  tabulador inicial (`' lucia1018@hotmail.com'`).
+- **TigoUne-B (F).** Una fila sin nombre hace fallar el `INSERT` a `Titular` entero (error 515). Como
+  TigoUne no tiene FK a Titular, el SP **sí** inserta las dos filas en `TigoUne`: quedan huérfanas, sin
+  Titular, y en la BD real las relaciones fallan por `FK_TitularCartera_Titular`. El motor excluye la
+  fila sin nombre y carga la otra con su Titular.
+- El `PRINT` final del SP dice `'PERSONAS INGRESADAS EN TIGOUНЕ'` con **Н y Е cirílicas** (U+041D,
+  U+0415): se ve bien, pero sale `TIGOU??` en una consola que no es UTF-8. El respaldo lo conserva tal cual.
+
+#### Escenario TigoUne
+
+Columnas del destino: `NumeroTelefono · Email · EstadoEnTigoUne · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| U01 | Titular nuevo; nombre con tilde; celular y email | 3046676738 · ingrid@gmail.com · 1 · HOY | 3046676738 · ingrid@gmail.com · 1 · HOY | Íngrid Muñoz / INGRID MUÑOZ | L1/C29 / L1/C29 | difiere: titular | ≠ E1 nombre limpio |
+| U02 | Documento inválido (4 dígitos) | 3001234568 · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | ≠ P3 documento inválido |
+| U03 | Email que solo cae por LIKE ('juana@gmail.com' contiene 'a@gmail.com') | 3001110803 · ∅ · 1 · HOY | 3001110803 · juana@gmail.com · 1 · HOY | JUANA LIKE / JUANA LIKE | L1/C29 / L1/C29 | difiere: destino | ≠ E2 lista negra exacta vs LIKE |
+| U04 | Email exacto en ListaNegraCorreos ('no@gmail.com') | 3001110804 · ∅ · 1 · HOY | 3001110804 · ∅ · 1 · HOY | ANA NEGRA / ANA NEGRA | L1/C29 / L1/C29 | igual | = |
+| U05 | Teléfono de 10 dígitos que no empieza en 3 ni 6 ('5551234567') | 5551234567 · ∅ · 1 · HOY | ∅ · ∅ · 0 · HOY | TEL RARO / TEL RARO | L1/C29 / L1/C29 | difiere: destino | ≠ P1 celular = 10 dígitos que empiezan en 3 (el SP solo miraba el largo) |
+| U06 | Teléfono de 7 dígitos, sin email | ∅ · ∅ · 0 · HOY | ∅ · ∅ · 0 · HOY | SIETE DIGITOS / SIETE DIGITOS | L1/C29 / L1/C29 | igual | = |
+| U07 | Fijo 60x en NumeroTelefono | 6012345678 · fijo@gmail.com · 1 · HOY | ∅ · fijo@gmail.com · 1 · HOY | FIJO TIGOUNE / FIJO TIGOUNE | L1/C29 / L1/C29 | difiere: destino | ≠ P1 NumeroTelefono es celular ([Celular TigoUne]) |
+| U08 | Existente, contenido idéntico | 3001110808 · existe@gmail.com · 1 · viejo 2026-01-15 | 3001110808 · existe@gmail.com · 1 · HOY | TIGOUNE EXISTENTE / TIGOUNE EXISTENTE | L1/C29 / L1/C29 | difiere: destino | ≠ E8 el nuevo refresca la fecha (el SP no insertaba ni refrescaba) |
+| U09 | Existente; celular distinto | 3001110809 · ∅ · 1 · viejo 2026-01-15<br>3002220809 · ∅ · 1 · HOY | 3001110809 · ∅ · 1 · viejo 2026-01-15<br>3002220809 · ∅ · 1 · HOY | CAMBIA CELULAR / CAMBIA CELULAR | L1/C29 / L1/C29 | igual | = |
+| U10 | Vacía vieja en destino; ahora trae datos | 3001110810 · ∅ · 1 · HOY<br>∅ · ∅ · 0 · viejo 2026-01-15 | 3001110810 · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (el SP no purgaba) |
+| U11 | Datos en destino; el archivo trae fila vacía | 3001110811 · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · 0 · HOY | 3001110811 · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | ≠ P5 la vacía no entra (el SP la insertaba) |
+| U12 | Titular repetido; la 2ª fila tiene más datos | 3001110812 · ∅ · 1 · HOY | 3001110812 · rep@gmail.com · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | ? SP conserva una fila arbitraria (ORDER BY TitularID); nuevo la más completa |
+| U13 | Email '' (import CSV) con celular | 3001110813 · '' · 1 · HOY | 3001110813 · ∅ · 1 · HOY | EMAIL VACIO / EMAIL VACIO | L1/C29 / L1/C29 | difiere: destino | ≠ P2 el SP guarda '' y no NULL (solo el flag lo trataba como vacío) |
+| U14 | Par Líder/Cartera inactivo | 3001110814 · ∅ · 1 · HOY | 3001110814 · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | ≠ E10 sin relación con par inactivo |
+| U15 | Titular AJENO al archivo con duplicado exacto en destino | 3001110815 · ∅ · 1 · viejo 2026-01-15<br>3001110815 · ∅ · 1 · viejo 2026-01-15 | 3001110815 · ∅ · 1 · viejo 2026-01-15<br>3001110815 · ∅ · 1 · viejo 2026-01-15 | AJENO TIGOUNE / AJENO TIGOUNE | — / — | igual | = (este SP no deduplicaba el destino) |
+| U16 | Email con mayúsculas 'Juan.Perez@Gmail.com' | ∅ · Juan.Perez@Gmail.com · 1 · HOY | ∅ · juan.perez@gmail.com · 1 · HOY | EMAIL MAYUS / EMAIL MAYUS | L1/C29 / L1/C29 | difiere: destino | ≠ P1 email en minúsculas |
+| U17 | Email con espacio inicial ' lucia1018@hotmail.com' (así hay filas en dbo.TigoUne) | 3001110817 · ' lucia1018@hotmail.com' · 1 · HOY | 3001110817 · lucia1018@hotmail.com · 1 · HOY | EMAIL ESPACIO / EMAIL ESPACIO | L1/C29 / L1/C29 | difiere: destino | ≠ P1 email recortado |
+| U18 | Titular existente con nombre mojibake en BD; archivo 'Piña Ruiz' | 3001110818 · ∅ · 1 · HOY | 3001110818 · ∅ · 1 · HOY | PIÃ‘A RUIZ / PIÑA RUIZ | L1/C29 / L1/C29 | difiere: titular | ≠ E1 nombre reparado |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 18, excluidas 1, duplicadas 1, expansión +0, candidatas 16, insertadas 14, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 11, nombres reparados 1, relaciones nuevas 15.
+Carga (ejecución 308): insertadas 14, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 11, nombres reparados 1, relaciones 15.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×2: NumeroTelefono: número fijo en la columna de celular, anulado
+- aviso ×1: Email: email en lista negra anulado
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: NumeroTelefono: celular inválido anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×15: Relaciones titular-cartera nuevas
+- info ×11: Titulares nuevos que se crearán
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.TigoUne
+- info ×1: Nombres de titular rotos en BD que se repararán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; TigoUne 123783→123783; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 12 PERSONAS FUERON INGRESADAS EN TITULAR
+PRINT: 17 PERSONAS RELACIONADAS CON LA CARTERA
+PRINT: 1 DUPLICADOS ELIMINADOS EN LA TABLA AUXILIAR
+PRINT: 2 CORREOS LIMPIADOS
+PRINT: 17 NUMEROS LIMPIADOS POR LONGITUD INCORRECTA
+PRINT: 17 REGISTROS ACTUALIZADOS
+PRINT: 16 PERSONAS INGRESADAS EN TIGOU??
+```
+
+</details>
+
+#### Escenario TigoUne-B
+
+Columnas del destino: `NumeroTelefono · Email · EstadoEnTigoUne · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| UB1 | Titular nuevo SIN nombre | 3001110841 · ∅ · 1 · HOY | — | — / — | L1/C29 / — | difiere: destino, relación | ≠ el nuevo lo excluye; el SP inserta en TigoUne una fila sin Titular (F) |
+| UB2 | Titular nuevo normal en el mismo archivo | 3001110842 · ∅ · 1 · HOY | 3001110842 · ∅ · 1 · HOY | — / TITULAR NORMAL | L1/C29 / L1/C29 | difiere: titular | ≠ F: víctima del fallo de UB1 (sin Titular en el SP) |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 2, excluidas 1, duplicadas 0, expansión +0, candidatas 1, insertadas 1, refrescadas 0, vacías descartadas 0, vacías a purgar 0, titulares nuevos 1, nombres reparados 0, relaciones nuevas 1.
+Carga (ejecución 310): insertadas 1, refrescadas 0, vacías descartadas 0, purgadas 0, titulares nuevos 1, nombres reparados 0, relaciones 1.
+- error ×1: Titular nuevo sin nombre en el archivo
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Relaciones titular-cartera nuevas
+- info ×1: Titulares nuevos que se crearán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; TigoUne 123783→123783; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+ERROR 515 (línea 7): No se puede insertar el valor NULL en la columna 'Nombre', tabla 'tempdb.dbo.#Titular'. La columna no admite valores NULL. Error de INSERT.
+PRINT: Se terminó la instrucción.
+PRINT: 0 PERSONAS FUERON INGRESADAS EN TITULAR
+PRINT: 2 PERSONAS RELACIONADAS CON LA CARTERA
+PRINT: 0 DUPLICADOS ELIMINADOS EN LA TABLA AUXILIAR
+PRINT: 0 CORREOS LIMPIADOS
+PRINT: 2 NUMEROS LIMPIADOS POR LONGITUD INCORRECTA
+PRINT: 2 REGISTROS ACTUALIZADOS
+PRINT: 2 PERSONAS INGRESADAS EN TIGOU??
+AVISO: 2 relaciones violarían FK_TitularCartera_Titular (en la BD real el INSERT de Titular_Cartera habría fallado entero)
 ```
 
 </details>

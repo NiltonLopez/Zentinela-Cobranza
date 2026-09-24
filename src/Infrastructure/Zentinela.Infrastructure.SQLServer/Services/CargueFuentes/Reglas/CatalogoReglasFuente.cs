@@ -21,6 +21,10 @@ internal static class CatalogoReglasFuente
         // ── Fase 2 · grupo "otras" ──
         [CatalogoCargueFuentes.Fosyga.Fuente]    = new ReglaFosyga(),
         [CatalogoCargueFuentes.Rgm.Fuente]       = new ReglaRgm(),
+        // TigoUne: sp_ProcesarTigoUneAuxiliar solo hacía lo genérico (Titular, relaciones, dedup
+        // por titular, lista negra de correos —con LIKE, no se copia—, teléfono de 10, flag,
+        // INSERT de lo nuevo). Ver el <summary> de CatalogoCargueFuentes.TigoUne.
+        [CatalogoCargueFuentes.TigoUne.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.TigoUne.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);
