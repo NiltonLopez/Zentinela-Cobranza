@@ -14,6 +14,7 @@ nuevo (`CargueFuentesMotor` + `Regla<Fuente>`). Corrida del **2026-09-24** contr
 | SaludTotal | 19 | 5 | 14 | 0 | Paridad OK (E1, E9–E11, P1, P2, P4, P5) |
 | SOS (+ SOS-B) | 16 | 4 | 12 | 0 | Paridad OK (E1, E9–E11, P1–P3, P5, F) |
 | Coosalud | 16 | 4 | 12 | 0 | Paridad OK (E1, E2, E8, E10, E11, P1, P3–P5) |
+| SaviaSalud (+ SaviaSalud-B) | 18 | 3 | 15 | 0 | Paridad OK (E1, E8, E10, E11, P1, P3–P6, R, F) |
 
 "Sin explicar" = diferencia que no está en la leyenda (decisiones de ADR-039 o del plan) ni en el
 comentario de la regla. Una diferencia sin explicar es un bug: se corrige y se vuelve a correr.
@@ -443,6 +444,131 @@ PRINT: 2 CORREOS LIMPIADOS
 PRINT: 15 NUMEROS LIMPIADOS POR LONGITUD INCORRECTA
 PRINT: 15 REGISTROS ACTUALIZADOS
 PRINT: 13 PERSONAS INGRESADAS EN COOSALUD
+```
+</details>
+
+## SaviaSalud
+
+**Conclusión: paridad OK con 15 diferencias explicadas (13 + 2 de SaviaSalud-B), 0 sin
+explicar.** Hay 3 casos idénticos: la lista con un fragmento inválido (SV05: los dos quitan
+`12345` y guardan el celular bueno), el titular con solo un correo vetado (SV07, Estado 0 en los
+dos) y el titular ajeno con duplicados, que ninguno toca (SV14).
+
+Detalles:
+
+- **SV03, SV04, SV09 (R).** Los pasos 5 y 6 del SP parten por coma y vuelven a unir con coma:
+  `NumeroCelular = '3147630194,3148795401'`, que la BaseMadre entrega entera como
+  `[Celular SaviaSalud]`. `ReglaSaviaSalud` reparte sin concatenar: primer celular en
+  `NumeroCelular`, el teléfono propio (o el siguiente de la lista) en `NumeroTelefono`, el resto
+  se descarta con aviso. Un fijo que llega solo en `NumeroCelular` pasa a `NumeroTelefono`.
+- **SV06 (P6).** `dbo.SaviaSalud` **no tiene columna de correo**, pero el SP calculaba `Estado`
+  contando el correo de la Auxiliar: `Estado = 1` sin ningún dato guardado. En la tabla real hay
+  2.051 filas así. El motor informa el Email del archivo como "columna que no se usa".
+- **SV08 (P1).** El filtro `LEN = 10` dejaba pasar texto: `COPACABANA` se guardaba como teléfono
+  (en la tabla real hay municipios truncados en `NumeroTelefono`, de un import corrido).
+- **SV10, SV11 (E8, P4).** Igual que Coosalud: el SP inserta "solo lo nuevo" con clave
+  teléfono/celular/tipo y `ISNULL(x, '')`, así que no refresca la fecha del contenido repetido y
+  descarta un cambio de régimen.
+- **SV12, SV13 (P5).** Sin purga ni descarte de vacías en el SP.
+- **SaviaSalud-B (F).** `SaviaSaludAuxiliar.EstadoAfiliacion` es `varchar(70)` y el destino,
+  `varchar(50)` (lo mismo `TipoAfiliado`): un valor de 60 caracteres hace fallar el `INSERT` del
+  paso 8 **para todo el archivo**. El motor trunca con advertencia y sigue.
+
+
+#### Escenario SaviaSalud
+
+Columnas del destino: `FechaDeNacimiento · TipoAfiliado · EstadoDeAfiliacion · Regimen · NumeroTelefono · NumeroCelular · Estado · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| SV01 | Titular nuevo; nombre con tilde; celular, teléfono, email y afiliación | 1970-07-07 · COTIZANTE · ACTIVO · CONTRIBUTIVO · 6045551234 · 3001234567 · 1 · HOY | 1970-07-07 · COTIZANTE · ACTIVO · CONTRIBUTIVO · 6045551234 · 3001234567 · 1 · HOY | Inés Peña / INES PEÑA | L1/C29 / L1/C29 | difiere: titular | E1 solo el nombre |
+| SV02 | Documento inválido (4 dígitos) | ∅ · ∅ · ∅ · ∅ · ∅ · 3001234568 · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | P3 documento inválido |
+| SV03 | Dos celulares en la celda de NumeroCelular, teléfono vacío | ∅ · ∅ · ∅ · ∅ · ∅ · 3147630194,3148795401 · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 3148795401 · 3147630194 · 1 · HOY | DOS CELULARES / DOS CELULARES | L1/C29 / L1/C29 | difiere: destino | R se reparten entre las dos columnas (el SP guardaba la lista con coma) |
+| SV04 | Dos celulares en la celda + teléfono propio | ∅ · ∅ · ∅ · ∅ · 6045551235 · 3147630195,3148795402 · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 6045551235 · 3147630195 · 1 · HOY | TRES NUMEROS / TRES NUMEROS | L1/C29 / L1/C29 | difiere: destino | R el segundo celular se descarta con aviso (el SP guardaba la lista con coma) |
+| SV05 | Lista con un fragmento inválido ('3147630196,12345') | ∅ · ∅ · ∅ · ∅ · ∅ · 3147630196 · 1 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · 3147630196 · 1 · HOY | FRAGMENTO MALO / FRAGMENTO MALO | L1/C29 / L1/C29 | igual | = |
+| SV06 | Solo email (el destino no tiene columna de correo) | ∅ · ∅ · ∅ · SUBSIDIADO · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · SUBSIDIADO · ∅ · ∅ · 0 · HOY | SOLO CORREO / SOLO CORREO | L1/C29 / L1/C29 | difiere: destino | P6 el SP marcaba Estado 1 por un correo que no guarda |
+| SV07 | Solo email vetado ('no@gmail.com') | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | SOLO CORREO VETADO / SOLO CORREO VETADO | L1/C29 / L1/C29 | igual | = |
+| SV08 | Texto 'COPACABANA' en NumeroTelefono, único dato | ∅ · ∅ · ∅ · ∅ · COPACABANA · ∅ · 1 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | TEXTO EN TELEFONO / TEXTO EN TELEFONO | L1/C29 / L1/C29 | difiere: destino | P1 teléfono de 10 dígitos (el filtro LEN = 10 del SP lo dejaba pasar) |
+| SV09 | Fijo 60x solo en NumeroCelular | ∅ · ∅ · ∅ · ∅ · ∅ · 6045551236 · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 6045551236 · ∅ · 1 · HOY | FIJO EN CELULAR / FIJO EN CELULAR | L1/C29 / L1/C29 | difiere: destino | R pasa a NumeroTelefono (el SP lo dejaba como celular) |
+| SV10 | Titular existente, contenido idéntico en destino | ∅ · COTIZANTE · ∅ · SUBSIDIADO · ∅ · 3001110810 · 1 · viejo 2026-01-15 | ∅ · COTIZANTE · ∅ · SUBSIDIADO · ∅ · 3001110810 · 1 · HOY | SAVIA EXISTENTE / SAVIA EXISTENTE | L1/C29 / L1/C29 | difiere: destino | E8 el SP no refresca la fecha (inserta solo lo nuevo) |
+| SV11 | Existente; solo cambia Regimen | ∅ · ∅ · ∅ · SUBSIDIADO · ∅ · 3001110811 · 1 · viejo 2026-01-15 | ∅ · ∅ · ∅ · CONTRIBUTIVO · ∅ · 3001110811 · 1 · HOY<br>∅ · ∅ · ∅ · SUBSIDIADO · ∅ · 3001110811 · 1 · viejo 2026-01-15 | CAMBIA REGIMEN / CAMBIA REGIMEN | L1/C29 / L1/C29 | difiere: destino | P4 clave completa (la clave del SP es teléfono, celular y tipo: descarta el régimen nuevo) |
+| SV12 | Vacía vieja en destino; ahora trae celular | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110812 · 1 · HOY<br>∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110812 · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | P5 el SP de SaviaSalud no purgaba vacías |
+| SV13 | Datos en destino; el archivo trae fila sin teléfonos (solo tipo) | ∅ · BENEFICIARIO · ∅ · ∅ · ∅ · ∅ · 0 · HOY<br>∅ · ∅ · ∅ · ∅ · ∅ · 3001110813 · 1 · viejo 2026-01-15 | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110813 · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | P5 el SP inserta la vacía |
+| SV14 | Titular AJENO al archivo con duplicado exacto en destino | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110814 · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · ∅ · ∅ · 3001110814 · 1 · viejo 2026-01-15 | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110814 · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · ∅ · ∅ · 3001110814 · 1 · viejo 2026-01-15 | AJENO AL ARCHIVO / AJENO AL ARCHIVO | — / — | igual | = |
+| SV15 | Titular repetido; la 2ª fila tiene más datos | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110815 · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 3001110816 · 3001110815 · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | E11 el SP conserva una fila arbitraria (ORDER BY TitularID); el nuevo, la más completa |
+| SV16 | Par Líder/Cartera inactivo | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110817 · 1 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110817 · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | E10 sin relación con par inactivo |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 16, excluidas 1, duplicadas 1, expansión +0, candidatas 14, insertadas 12, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 10, nombres reparados 0, relaciones nuevas 13.
+Carga (ejecución 306): insertadas 12, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 10, nombres reparados 0, relaciones 13.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: NumeroCelular: número de la lista que no es un teléfono válido, descartado
+- aviso ×1: NumeroTelefono: teléfono inválido anulado
+- aviso ×1: Teléfono adicional de la lista descartado (SaviaSalud guarda un celular y un teléfono; no se concatenan)
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×13: Relaciones titular-cartera nuevas
+- info ×10: Titulares nuevos que se crearán
+- info ×1: Columna del archivo que no se usa: Email
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.SaviaSalud
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; SaviaSalud 719743→719743; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 11 PERSONAS FUERON INGRESADAS EN TITULAR
+PRINT: 15 PERSONAS RELACIONADAS CON LA CARTERA
+PRINT: 1 DUPLICADOS ELIMINADOS EN LA TABLA AUXILIAR
+PRINT: 1 CORREOS LIMPIADOS
+PRINT: 11 FRAGMENTOS INVALIDOS ELIMINADOS DE NUMEROS
+PRINT: 0 NUMEROS LIMPIADOS POR LONGITUD INCORRECTA
+PRINT: 15 REGISTROS ACTUALIZADOS
+PRINT: 13 PERSONAS INGRESADAS EN SAVIASALUD
+```
+</details>
+
+#### Escenario SaviaSalud-B
+
+Columnas del destino: `FechaDeNacimiento · TipoAfiliado · EstadoDeAfiliacion · Regimen · NumeroTelefono · NumeroCelular · Estado · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| SVB1 | EstadoAfiliacion de 60 caracteres | — | ∅ · ∅ · ACTIVO XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX · ∅ · ∅ · 3001110841 · 1 · HOY | ESTADO LARGO / ESTADO LARGO | L1/C29 / L1/C29 | difiere: destino | F el INSERT del SP falla para todo el archivo; el motor trunca a 50 |
+| SVB2 | Titular normal en el mismo archivo | — | ∅ · ∅ · ∅ · ∅ · ∅ · 3001110842 · 1 · HOY | TITULAR NORMAL / TITULAR NORMAL | L1/C29 / L1/C29 | difiere: destino | F víctima del fallo de SVB1 (sin fila en SaviaSalud) |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 2, excluidas 0, duplicadas 0, expansión +0, candidatas 2, insertadas 2, refrescadas 0, vacías descartadas 0, vacías a purgar 0, titulares nuevos 2, nombres reparados 0, relaciones nuevas 2.
+Carga (ejecución 309): insertadas 2, refrescadas 0, vacías descartadas 0, purgadas 0, titulares nuevos 2, nombres reparados 0, relaciones 2.
+- aviso ×1: EstadoDeAfiliacion: valor truncado a 50 caracteres
+- info ×2: Relaciones titular-cartera nuevas
+- info ×2: Titulares nuevos que se crearán
+- info ×1: Columna del archivo que no se usa: Email
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; SaviaSalud 719743→719743; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 2 PERSONAS FUERON INGRESADAS EN TITULAR
+PRINT: 2 PERSONAS RELACIONADAS CON LA CARTERA
+PRINT: 0 DUPLICADOS ELIMINADOS EN LA TABLA AUXILIAR
+PRINT: 0 CORREOS LIMPIADOS
+PRINT: 2 FRAGMENTOS INVALIDOS ELIMINADOS DE NUMEROS
+PRINT: 0 NUMEROS LIMPIADOS POR LONGITUD INCORRECTA
+PRINT: 2 REGISTROS ACTUALIZADOS
+ERROR 2628 (línea 114): Los datos binarios o de la cadena se truncan en la columna "EstadoDeAfiliacion" de la tabla "tempdb.dbo.#Dest_______________________________________________________________________________________________________________000000000F3F". Valor truncado: " dý½Î..2.......P0LÍ..W¸.Ï´..à1LÍ..P/.Í..É".
+PRINT: Se terminó la instrucción.
+PRINT: 0 PERSONAS INGRESADAS EN SAVIASALUD
 ```
 </details>
 

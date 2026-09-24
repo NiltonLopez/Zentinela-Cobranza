@@ -98,4 +98,22 @@ public class CatalogoCoherenciaSaludTests
         Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
         SinAliasRepetidos(d);
     }
+
+    [Fact]
+    public void SaviaSalud_coincide_con_el_destino_real()
+    {
+        var d = CatalogoCargueFuentes.SaviaSalud;
+        // El flag se llama Estado (no EstadoEnSaviaSalud) y el destino no tiene columna de correo.
+        Assert.Equal(("dbo.SaviaSalud", "Estado", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["FechaDeNacimiento:Fecha:0:sinflag", "TipoAfiliado:Texto:50:sinflag", "EstadoDeAfiliacion:Texto:50:sinflag",
+             "Regimen:Texto:70:sinflag", "NumeroTelefono:Telefono:10", "NumeroCelular:Celular:100"],
+            Firma(d));
+        Assert.DoesNotContain(d.ColumnasDato, c => c.Tipo == TipoColumnaCargue.Email);
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaSaviaSalud>(CatalogoReglasFuente.Obtener(d.Fuente));
+        SinAliasRepetidos(d);
+    }
 }

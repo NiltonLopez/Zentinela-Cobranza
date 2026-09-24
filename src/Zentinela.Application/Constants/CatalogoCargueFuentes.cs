@@ -481,11 +481,48 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// Savia Salud (EPS). Regla propia: celdas con varios números separados por coma se reparten
+    /// entre NumeroCelular y NumeroTelefono sin concatenar. Verificado contra <c>sys.columns</c> de
+    /// <c>dbo.SaviaSalud</c> el 2026-09-24: el flag se llama <b><c>Estado</c></b> (bit NULL), TitularID
+    /// y FechaConsulta son NULL-ables, FechaDeNacimiento <c>date</c>, <b>NumeroCelular varchar(100)</b>
+    /// (el SP guardaba ahí listas '3147630194,3148795401'), NumeroTelefono varchar(10); <b>no hay
+    /// columna de correo</b> aunque SaviaSaludAuxiliar sí la tenía; sin FK a Titular (el SP igual
+    /// creaba Titular y relaciones), sin triggers; 719.743 filas / 717.531 titulares. El flag mira
+    /// los dos teléfonos (el SP contaba también el correo, que no guarda).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue SaviaSalud = new()
+    {
+        Fuente          = "SaviaSalud",
+        Etiqueta        = "Savia Salud (EPS)",
+        TablaDestino    = "dbo.SaviaSalud",
+        ColumnaFlag     = "Estado",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS Savia Salud: celular, teléfono y afiliación. No guarda correo.",
+        ColumnasDato =
+        [
+            new("FechaDeNacimiento", ["fechadenacimiento", "fechanacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("EstadoDeAfiliacion", ["estadodeafiliacion", "estadoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Activo, retirado…"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Contributivo, subsidiado…"),
+            new("NumeroTelefono", ["numerotelefono", "telefono", "telefonofijo", "fijo"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x, 10 dígitos)"),
+            new("NumeroCelular", ["numerocelular", "celular", "telefonocelular", "movil"],
+                TipoColumnaCargue.Celular, 100, Descripcion: "Celular (10 dígitos, empieza en 3; si trae varios, se reparten)"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
         // Fase 2, grupo salud
-        Positiva, SaludTotal, Sos, Coosalud,
+        Positiva, SaludTotal, Sos, Coosalud, SaviaSalud,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>

@@ -33,6 +33,7 @@ internal static class CatalogoReglasFuente
         // lista negra (con LIKE), calculaba el flag e insertaba solo lo nuevo (clave recortada con
         // ISNULL(x, '')): todo genérico en el motor, con validación exacta y clave completa.
         [CatalogoCargueFuentes.Coosalud.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.Coosalud.Fuente),
+        [CatalogoCargueFuentes.SaviaSalud.Fuente] = new ReglaSaviaSalud(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

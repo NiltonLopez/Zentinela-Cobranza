@@ -51,6 +51,7 @@ internal sealed class Harness
         ("SaludTotal",      "TitularID BETWEEN @d AND @h"),
         ("SOS",             "TitularID BETWEEN @d AND @h"),
         ("Coosalud",        "TitularID BETWEEN @d AND @h"),
+        ("SaviaSalud",      "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
