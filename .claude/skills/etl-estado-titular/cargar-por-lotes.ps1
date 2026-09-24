@@ -96,11 +96,28 @@ function Clave([string]$nombre) {
 $todos = Get-ChildItem -LiteralPath $Carpeta -File | Where-Object { $_.Extension -in '.csv', '.xlsx' }
 if (-not $todos) { Fallar "No hay archivos en $Carpeta" 1 }
 
+# El peso que importa es el del .xlsx, que es lo que el Foreach carga. Pero los .xlsx
+# son intermedios: el ultimo paso del paquete los borra, y corre AUNQUE el paquete falle.
+# O sea que lo normal es empezar una corrida sin ninguno, y pesar solo por xlsx daba
+# CERO para todas las carteras: los 19 grupos entraban en un unico lote y se reproducia
+# exactamente el fallo por memoria que esto viene a evitar.
+#
+# Cuando no hay xlsx se estima desde el CSV. El factor sale de medir la conversion real
+# del 2026-09-23: Bertal 66,2->37,6 MB (0,57), Delmar_Cast 225->101,4 (0,45),
+# mercadeos_propia 184->87,9 (0,48), Lumen_Propia 81,8->42,7 (0,52), grupo_ceiba
+# 71,7->28,9 (0,40). Se toma 0,55, el extremo alto del rango: pasarse de grande es
+# reventar por memoria, pasarse de chico solo cuesta un lote mas.
+$FactorCsvAXlsx = 0.55
+
 $grupos = $todos | Group-Object { Clave $_.Name } | ForEach-Object {
+    $xlsx = ($_.Group | Where-Object Extension -eq '.xlsx' | Measure-Object Length -Sum).Sum
+    $csv  = ($_.Group | Where-Object Extension -eq '.csv'  | Measure-Object Length -Sum).Sum
+    $bytes = if ($xlsx -gt 0) { $xlsx } else { $csv * $FactorCsvAXlsx }
     [pscustomobject]@{
         Clave    = $_.Name
         Archivos = $_.Group
-        PesoMB   = [math]::Round((($_.Group | Where-Object Extension -eq '.xlsx' | Measure-Object Length -Sum).Sum) / 1MB, 1)
+        PesoMB   = [math]::Round($bytes / 1MB, 1)
+        Estimado = ($xlsx -le 0)
     }
 } | Sort-Object PesoMB -Descending
 
@@ -116,7 +133,7 @@ if ($actual.Count -gt 0) { $lotes += ,@($actual) }
 
 Write-Output "Carpeta      : $Carpeta"
 Write-Output "Carteras     : $($grupos.Count)   Archivos: $($todos.Count)"
-Write-Output "Tope por lote: $TamanoLoteMB MB de xlsx"
+Write-Output ("Tope por lote: {0} MB de xlsx{1}" -f $TamanoLoteMB, $(if ($grupos | Where-Object Estimado) { "  (pesos estimados desde el CSV: todavia no hay xlsx)" } else { "" }))
 Write-Output "Lotes         : $($lotes.Count)"
 Write-Output ''
 for ($i = 0; $i -lt $lotes.Count; $i++) {
@@ -218,6 +235,15 @@ FROM DBCallCenter.dbo.EtlEstadoTitular_Ejecucion ORDER BY EjecucionID DESC;
         }
         Write-Output ''
     }
+}
+catch {
+    # Un lote que se cae NO debe llevarse los que faltan: se registra y se sigue.
+    # La corrida anterior murio en el lote 1 y se llevo los otros cuatro sin dejar
+    # rastro de por que.
+    Write-Output ''
+    Write-Output "[$(Ahora)] ERROR en el lote $($i + 1): $($_.Exception.Message)"
+    Write-Output "[$(Ahora)] Los archivos se devuelven a su lugar. Retomar con:  -Ejecutar -DesdeLote $($i + 1)"
+    $resumen += [pscustomobject]@{ Lote = $i + 1; Carteras = '-'; Filas = 0; Estado = 'ERROR' }
 }
 finally {
     # Pase lo que pase, la carpeta queda entera.
