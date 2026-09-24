@@ -222,15 +222,71 @@ salidas, en orden de preferencia:
 
 ### Los 64 bits
 
-El `/X86` en el paso del trabajo es la causa de fondo de los fallos por memoria. Pero **quitarlo a
-secas rompe el paquete**: usa `Microsoft.ACE.OLEDB.16.0` y en 64 bits ese servidor solo tiene
-registrado el 12.0. Orden correcto:
+El `/X86` es la causa de fondo de los fallos por memoria: el proceso muere con `0x8007000E`
+teniendo 7,5 GB de RAM libre, porque 32 bits no direcciona más de 2 GB. Pero **quitarlo no
+alcanza**, y el camino tiene una trampa que ya costó una corrida fallida.
 
-1. Instalar el *Access Database Engine 2016 redistributable de 64 bits*.
-2. Confirmar: `EXEC master.dbo.sp_enum_oledb_providers` debe listar el 16.0.
-3. Recién entonces quitar ` /X86` del comando del paso.
+**Lo que se intentó y NO funcionó (2026-09-23).** El paquete pide `Microsoft.ACE.OLEDB.16.0` y en
+64 bits el servidor solo tiene el 12.0. Como la cadena de conexión es un parámetro del catálogo,
+parecía resoluble sin tocar nada:
 
-Nunca hacer el 3 sin el 1 y el 2.
+```sql
+EXEC catalog.set_object_parameter_value @object_type = 30, ... @parameter_value = '...12.0...';
+```
+
+Se aplicó bien (`value_set = 1`, y `catalog.execution_parameter_values` confirma que la ejecución
+**recibió** el 12.0). Y aun así falló pidiendo el 16.0.
+
+**Por qué:** el proveedor está **hardcodeado en el código C# de `Tarea Script -> Config Excel`**,
+que reconstruye la cadena en cada vuelta del Foreach y pisa el parámetro:
+
+```csharp
+connMgr.ConnectionString = "Provider=Microsoft.ACE.OLEDB.16.0;Data Source=" ...
+```
+
+Editar ese texto en el `.dtsx` tampoco sirve: SSIS ejecuta el binario compilado embebido, no el
+código fuente.
+
+**Dos detalles operativos del intento, por si se repite:**
+
+- `catalog.set_object_parameter_value` recibe `sql_variant`, que **no admite `nvarchar(max)`**. Hay
+  que pasar `NVARCHAR(4000)` o falla con "Conflicto de tipos de operandos".
+- Las escrituras del catálogo **exigen autenticación de Windows**. Con `sa` dan "Inicie la
+  operación con una cuenta que use autenticación integrada". Sale por un paso T-SQL de un trabajo
+  del Agente, que corre como `NT SERVICE\SQLSERVERAGENT`.
+
+**Las salidas que quedan, en orden de preferencia:**
+
+1. **Editar el Script Task en SSDT** (16.0 → 12.0) y de paso arreglar el `Lookup`. Sin riesgo: el
+   12.0 ya está en 64 bits. Resuelve las dos deudas de una vez.
+2. **Instalar el Access Database Engine 2016 de 64 bits** con `/quiet` (el servidor tiene Office
+   Click-to-Run **x86** y el instalador se niega sin ese modificador). Riesgo real: ese Office es
+   de donde sale el ACE 16.0 de 32 bits que el ETL usa hoy; si la instalación le desordena la
+   registración, se pierde también la vía de 32 bits.
+3. **Quedarse en 32 bits y cargar por lotes** (abajo). Cero riesgo, funciona hoy.
+
+Si se prueba el 64 bits, hacerlo con el ` /X86` listo para restaurar. Ancla segura para volver a
+insertarlo: `REPLACE(command, '/CALLERINFO', '/X86 /CALLERINFO')`, verificando que el largo suba
+exactamente 5 caracteres.
+
+### Cargar por lotes
+
+```bash
+powershell -NoProfile -File .claude/skills/etl-estado-titular/cargar-por-lotes.ps1 -SoloVer
+powershell -NoProfile -File .claude/skills/etl-estado-titular/cargar-por-lotes.ps1 -Ejecutar
+```
+
+Parte el universo en lotes que entren en el techo de 2 GB y los publica de a uno. **Solo es
+posible desde ADR-038**: con el `TRUNCATE` viejo cada lote borraba al anterior; con el reemplazo
+acotado, cada uno reemplaza únicamente sus carteras.
+
+Agrupa por cartera para no partir una entre dos lotes — se publicaría incompleta. Una cartera más
+pesada que el tope va sola. Si algo falla, el `finally` devuelve todos los archivos a su lugar.
+
+En cada lote el paquete **termina en rojo**, y es lo esperado: la compuerta de carteras aborta el
+paso 4 porque un lote trae menos carteras que el universo. El script publica después, a mano, con
+`@MinimoCarteras` al valor real del lote. Lo que decide si el lote sirve es el staging, no el
+estado del paquete.
 
 ---
 
