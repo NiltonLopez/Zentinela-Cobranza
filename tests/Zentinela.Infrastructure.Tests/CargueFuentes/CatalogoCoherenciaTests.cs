@@ -155,4 +155,25 @@ public class CatalogoCoherenciaTests
         Assert.Equal(CardinalidadCargue.VariasPorTitular, d.Cardinalidad);
         Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaListaNegraTelefonos);
     }
+
+    // ── Fase 2 · grupo "otras" ──────────────────────────────────────────────
+
+    [Fact]
+    public void Fosyga_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.Fosyga el 2026-09-24: EPS varchar(120), Departamento
+        // varchar(70), fechas date, FK a Titular. Flag = Estado, EPS o Régimen (paso 5 del SP).
+        var d = CatalogoCargueFuentes.Fosyga;
+        Assert.Equal(("dbo.Fosyga", "EstadoEnFosyga", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["Estado:Texto:30", "EPS:Texto:120", "Regimen:Texto:30",
+             "FechaAfiliacionEfectiva:Fecha:0:sinflag", "FechaFinalizacionAfiliacion:Fecha:0:sinflag",
+             "TipoAfiliado:Texto:50:sinflag", "Departamento:Texto:70:sinflag", "Municipio:Texto:50:sinflag"],
+            Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.True(d.ColumnasDato.All(c => c.EntraAClave));
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaFosyga>(CatalogoReglasFuente.Obtener(d.Fuente));
+    }
 }

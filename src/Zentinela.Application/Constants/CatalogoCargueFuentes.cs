@@ -315,7 +315,48 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro];
+    // ── Fase 2 · grupo "otras" ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Fosyga (ADRES / BDUA: afiliación a salud). Regla propia (<c>ReglaFosyga</c>): Estado
+    /// 'AFILIADO FALLECIDO' → TipoAfiliado 'FALLECIDO', como el SP. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.Fosyga</c> el 2026-09-24: EPS varchar(120) (en FosygaAuxiliar
+    /// era varchar(200): un nombre de EPS largo tumbaba el INSERT entero del SP), Departamento
+    /// varchar(70), fechas y FechaConsulta <c>date</c>; FK a Titular, sin triggers; heap con
+    /// IX_Fosyga_TitularID_Fecha. El flag, como en el SP, solo mira Estado, EPS y Régimen.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Fosyga = new()
+    {
+        Fuente          = "Fosyga",
+        Etiqueta        = "Fosyga (ADRES)",
+        TablaDestino    = "dbo.Fosyga",
+        ColumnaFlag     = "EstadoEnFosyga",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliación a salud según ADRES: estado, EPS, régimen, fechas, tipo de afiliado y localización.",
+        ColumnasDato =
+        [
+            new("Estado", ["estado", "estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 30, Descripcion: "Activo, retirado, afiliado fallecido…"),
+            new("EPS", ["eps", "entidad", "nombreentidad", "nombreeps", "entidadpromotora"],
+                TipoColumnaCargue.Texto, 120, Descripcion: "EPS (entidad) a la que está afiliado"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 30, Descripcion: "Contributivo, subsidiado…"),
+            new("FechaAfiliacionEfectiva", ["fechaafiliacionefectiva", "fechadeafiliacionefectiva", "fechaafiliacion"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de afiliación efectiva"),
+            new("FechaFinalizacionAfiliacion", ["fechafinalizacionafiliacion", "fechadefinalizaciondeafiliacion", "fechafinalizacion", "fechafinafiliacion"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de finalización (31/12/2999 = vigente)"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario, cabeza de familia…"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Departamento"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Fosyga];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

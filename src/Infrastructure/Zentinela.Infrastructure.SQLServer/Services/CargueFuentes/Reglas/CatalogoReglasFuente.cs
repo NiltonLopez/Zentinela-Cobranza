@@ -18,6 +18,8 @@ internal static class CatalogoReglasFuente
         [CatalogoCargueFuentes.NuevaEps.Fuente]  = new ReglaGenerica(CatalogoCargueFuentes.NuevaEps.Fuente),
         [CatalogoCargueFuentes.Simit.Fuente]     = new ReglaSimit(),
         [CatalogoCargueFuentes.DatosClaro.Fuente] = new ReglaDatosClaro(),
+        // ── Fase 2 · grupo "otras" ──
+        [CatalogoCargueFuentes.Fosyga.Fuente]    = new ReglaFosyga(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);
