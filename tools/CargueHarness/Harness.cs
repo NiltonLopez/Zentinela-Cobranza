@@ -47,6 +47,7 @@ internal sealed class Harness
         ("NuevaEps",        "TRY_CAST(TitularID AS bigint) BETWEEN @d AND @h"),
         ("SIMIT",           "TitularID BETWEEN @d AND @h"),
         ("DatosClaro",      "TitularID BETWEEN @d AND @h"),
+        ("Positiva",        "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];

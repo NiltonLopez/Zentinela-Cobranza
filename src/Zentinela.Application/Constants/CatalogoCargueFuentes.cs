@@ -315,7 +315,50 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro];
+    // ── Fase 2, grupo salud ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Positiva (ARL). Regla propia: un fijo que llega en la columna de celular pasa al fijo
+    /// (sin concatenar). Verificado contra <c>sys.columns</c> de <c>dbo.Positiva</c> el
+    /// 2026-09-24: NumeroTelefonoFijo es <b>varchar(30)</b> (el SP concatenaba "fijo, celular"
+    /// ahí; 522 filas legacy lo tienen; el motor guarda un solo fijo de 10 dígitos),
+    /// FechaNacimiento <c>date</c> NULL, FechaConsulta <c>date</c> NOT NULL, FK a Titular, sin
+    /// triggers; 2.213.891 filas / 1.967.407 titulares. El flag, como en el SP, solo mira celular,
+    /// fijo y email (FechaNacimiento, Departamento y Municipio no).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Positiva = new()
+    {
+        Fuente          = "Positiva",
+        Etiqueta        = "Positiva (ARL)",
+        TablaDestino    = "dbo.Positiva",
+        ColumnaFlag     = "EstadoEnPositiva",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados ARL Positiva: celular, fijo, email y localización.",
+        ColumnasDato =
+        [
+            new("NumeroTelefonoCelular", ["numerotelefonocelular", "celular", "numerocelular", "telefonocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("NumeroTelefonoFijo", ["numerotelefonofijo", "fijo", "telefonofijo", "numerofijo"],
+                TipoColumnaCargue.Fijo, 30, Descripcion: "Fijo (10 dígitos, empieza en 6)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 100, Descripcion: "Correo electrónico"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
+    [
+        Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
+        // Fase 2, grupo salud
+        Positiva,
+    ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

@@ -50,7 +50,7 @@ internal static class Grupos
     // ── salud: 999000001000..999000001999 ──
     public static readonly GrupoHarness Salud = new("salud", 999000001000, 999000001999, "harness-cargue-salud",
     [
-        // new("MiFuente", "MiFuente", CasoMiFuente.Correr),      // Bloque(0): 1000-1099
+        new("Positiva",   "Positiva",   CasoPositiva.Correr),     // Bloque(0): 1000-1099
     ]);
 
     // ── empresas: 999000002000..999000002999 ──
