@@ -15,6 +15,8 @@ nuevo (`CargueFuentesMotor` + `Regla<Fuente>`). Corrida del **2026-09-24** contr
 | SOS (+ SOS-B) | 16 | 4 | 12 | 0 | Paridad OK (E1, E9–E11, P1–P3, P5, F) |
 | Coosalud | 16 | 4 | 12 | 0 | Paridad OK (E1, E2, E8, E10, E11, P1, P3–P5) |
 | SaviaSalud (+ SaviaSalud-B) | 18 | 3 | 15 | 0 | Paridad OK (E1, E8, E10, E11, P1, P3–P6, R, F) |
+| MiVacuna | 14 | 4 | 10 | 0 | Paridad OK (E1, E2, E9–E11, P1, P3, P4, P6) |
+| **Total** | **106** | **24** | **82** | **0** | **Ninguna diferencia sin explicar; ninguna pérdida de datos atribuible al motor** |
 
 "Sin explicar" = diferencia que no está en la leyenda (decisiones de ADR-039 o del plan) ni en el
 comentario de la regla. Una diferencia sin explicar es un bug: se corrige y se vuelve a correr.
@@ -572,6 +574,128 @@ PRINT: 0 PERSONAS INGRESADAS EN SAVIASALUD
 ```
 </details>
 
+## MiVacuna
+
+**Conclusión: paridad OK con 10 diferencias explicadas, 0 sin explicar.** Sin regla propia
+(`ReglaGenerica`). Hay 4 casos idénticos: celular `'0'` → NULL (MV03), contenido idéntico (MV07)
+y los dos de vacías (MV09, MV10): la purga del paso 10 de este SP usa la condición correcta
+(`OR`), así que en el titular del archivo coincide con la política del motor.
+
+Detalles:
+
+- **MV01, MV04, MV05 (E2, P6).** Lista negra con `LIKE` y correo anulado a `''`: `sofia@gmail.com`
+  y `juana@gmail.com` caen por contener `a@gmail.com`, y un titular cuyo único dato era un correo
+  vetado queda con `EstadoEnMiVacuna = 1` y `Email = ''` (hay 1.118 filas legacy con `Email = ''`).
+- **MV08 (P4).** Dedup del paso 9 sobre toda la tabla con clave titular/celular/email: un cambio
+  de `FechaExpedicion` borra la fila anterior.
+- **MV11 (E9).** Los pasos 9 y 10 corren sobre toda la tabla: deduplican y purgan la vacía de un
+  titular que no venía en el archivo.
+- **MV13 (E10).** El SP relacionaba con `INNER JOIN Lider_Cartera ON LiderID` solamente: bastaba
+  que el líder tuviera **alguna** cartera; no miraba el par ni `Activo`.
+
+
+#### Escenario MiVacuna
+
+Columnas del destino: `FechaExpedicion · Celular · Email · EstadoEnMiVacuna · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| MV01 | Titular nuevo; nombre con tilde; los tres campos | 2005-06-01 · 3001234567 · '' · 1 · HOY | 2005-06-01 · 3001234567 · sofia@gmail.com · 1 · HOY | Sofía Ordóñez / SOFIA ORDOÑEZ | L1/C29 / L1/C29 | difiere: destino, titular | E1 nombre + E2 LIKE ('sofia@gmail.com' contiene la entrada 'a@gmail.com') |
+| MV02 | Documento inválido (4 dígitos) | ∅ · 3001234568 · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | P3 documento inválido |
+| MV03 | Celular '0' + FechaExpedicion | 2010-01-01 · ∅ · ∅ · 0 · HOY | 2010-01-01 · ∅ · ∅ · 0 · HOY | CELULAR CERO / CELULAR CERO | L1/C29 / L1/C29 | igual | = |
+| MV04 | Solo email vetado ('no@gmail.com') | ∅ · ∅ · '' · 1 · HOY | ∅ · ∅ · ∅ · 0 · HOY | SOLO CORREO VETADO / SOLO CORREO VETADO | L1/C29 / L1/C29 | difiere: destino | E2 + P6 el correo vetado queda NULL; el '' del SP contaba como dato (flag 1 sin datos) |
+| MV05 | Celular + email que solo cae por LIKE ('juana@gmail.com') | ∅ · 3001110855 · '' · 1 · HOY | ∅ · 3001110855 · juana@gmail.com · 1 · HOY | JUANA LIKE / JUANA LIKE | L1/C29 / L1/C29 | difiere: destino | E2 LIKE |
+| MV06 | Fijo 60x en la columna de celular + email | ∅ · 6015551234 · mv6@gmail.com · 1 · HOY | ∅ · ∅ · mv6@gmail.com · 1 · HOY | FIJO EN CELULAR / FIJO EN CELULAR | L1/C29 / L1/C29 | difiere: destino | P1 celular 3xx (el SP guardaba el fijo) |
+| MV07 | Titular existente, contenido idéntico en destino | 2005-06-01 · 3001110857 · mv7@gmail.com · 1 · HOY | 2005-06-01 · 3001110857 · mv7@gmail.com · 1 · HOY | MIVACUNA EXISTENTE / MIVACUNA EXISTENTE | L1/C29 / L1/C29 | igual | = |
+| MV08 | Existente; solo cambia FechaExpedicion | 2006-06-01 · 3001110858 · ∅ · 1 · HOY | 2005-06-01 · 3001110858 · ∅ · 1 · viejo 2026-01-15<br>2006-06-01 · 3001110858 · ∅ · 1 · HOY | CAMBIA EXPEDICION / CAMBIA EXPEDICION | L1/C29 / L1/C29 | difiere: destino | P4 clave completa (el SP borraba la fila vieja) |
+| MV09 | Vacía vieja en destino; ahora trae celular | ∅ · 3001110859 · ∅ · 1 · HOY | ∅ · 3001110859 · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | igual | = |
+| MV10 | Datos en destino; el archivo trae fila vacía | ∅ · 3001110860 · ∅ · 1 · viejo 2026-01-15 | ∅ · 3001110860 · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | igual | = |
+| MV11 | Titular AJENO al archivo con duplicado exacto + vacía en destino | ∅ · 3001110861 · ∅ · 1 · viejo 2026-01-15 | ∅ · 3001110861 · ∅ · 1 · viejo 2026-01-15<br>∅ · 3001110861 · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | AJENO AL ARCHIVO / AJENO AL ARCHIVO | — / — | difiere: destino | E9 sin limpiezas globales (el SP deduplica y purga vacías de toda la tabla) |
+| MV12 | Titular repetido; la 2ª fila tiene más datos | ∅ · 3001110862 · ∅ · 1 · HOY | ∅ · 3001110862 · rep12@gmail.com · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | E11 el SP conserva una fila arbitraria; el nuevo, la más completa |
+| MV13 | Par Líder/Cartera inactivo | ∅ · 3001110863 · ∅ · 1 · HOY | ∅ · 3001110863 · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | E10 sin relación con par inactivo (el SP solo exigía que el líder existiera en Lider_Cartera) |
+| MV14 | Email con mayúsculas | ∅ · 3001110864 · Carlos.Ruiz@Gmail.com · 1 · HOY | ∅ · 3001110864 · carlos.ruiz@gmail.com · 1 · HOY | EMAIL MAYUSCULAS / EMAIL MAYUSCULAS | L1/C29 / L1/C29 | difiere: destino | P1 email en minúsculas |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 14, excluidas 1, duplicadas 1, expansión +0, candidatas 12, insertadas 10, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 8, nombres reparados 0, relaciones nuevas 11.
+Carga (ejecución 346): insertadas 10, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 8, nombres reparados 0, relaciones 11.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Celular: número fijo en la columna de celular, anulado
+- aviso ×1: Email: email en lista negra anulado
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×11: Relaciones titular-cartera nuevas
+- info ×8: Titulares nuevos que se crearán
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.MiVacuna
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; MiVacuna 36985→36985; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 9 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 13 PERSONAS FUERON RELACIONADAS EN TITULAR_CARTERA
+PRINT: 13 PERSONAS FUERON INGRESADAS A MIVACUNA
+PRINT: 3 DUPLICADOS ELIMINADOS EN MIVACUNA
+```
+</details>
+
 ## Hallazgos
 
-Se completan al cerrar el grupo (ver el reporte de cada fuente arriba).
+Ninguna diferencia sin explicar. Lo que sigue son observaciones para el cierre del grupo; ninguna
+bloquea el cargue.
+
+### S1: la primera recarga crea una fila de historial donde el legacy guardó `''` o `'0'`
+
+El motor guarda NULL donde los SP dejaban `''` o `'0'`, y la igualdad de contenido
+(`EXISTS … INTERSECT …`) distingue `''` de NULL. En la primera recarga de un titular cuya fila
+legacy tiene `''`/`'0'`, el mismo dato no "refresca": entra una fila nueva (sin pérdida; las vistas
+toman la más reciente, que es la limpia). Volumen legacy medido el 2026-09-24:
+
+| Tabla | `Email = ''` | Teléfono `''`/`'0'` |
+|---|---:|---:|
+| Positiva | 140.758 | 30.056 (`NumeroTelefonoCelular = '0'`) |
+| Coosalud | 32.698 | 0 |
+| MiVacuna | 1.118 | 0 |
+| SaludTotal | — | 14 |
+| SOS | — | 6 |
+| SaviaSalud | — | 0 |
+
+Si se quiere evitar esa fila de más, un script de normalización del legacy (`''`/`'0'` → NULL,
+como el de placas de SIMIT) antes de la primera carga. Decisión pendiente del coordinador.
+
+### S2: datos legacy que el motor ya no produciría (no se tocan)
+
+- Positiva: 522 filas con dos fijos concatenados en `NumeroTelefonoFijo` (`'6071236176, 6076981919'`).
+- SaviaSalud: 161 filas con listas en `NumeroCelular`, 175 con un fijo en `NumeroCelular`,
+  2.051 con `Estado = 1` y sin teléfonos, y municipios truncados en `NumeroTelefono`
+  (`COPACABANA`, `LA ESTRELL`…).
+- SOS: 625 fijos de 7 dígitos y 34 fijos 60x en `Telefono` (que la BaseMadre expone como celular).
+
+Como en la Fase 1, el motor solo decide sobre lo que carga.
+
+### S3: `TelefonoColombiano.Normalizar` no tolera el `.0` que dice tolerar
+
+Fuera del alcance del grupo (helper compartido, no se modificó). Su comentario dice que tolera el
+sufijo `".0"` de Excel, pero cuenta los dígitos después de quitar separadores: `'3001234567.0'`
+tiene 11 y se anula. En XLSX no ocurre (`ArchivoTabular.CeldaATexto` convierte las celdas
+numéricas a entero); sí en un CSV exportado con decimales (pandas, por ejemplo). Afecta a toda
+columna Celular/Fijo/Telefono de todas las fuentes.
+
+### S4: decisiones de definición que no vienen del SP
+
+- **SOS.Telefono, SaludTotal.NumeroTelefono, Coosalud.NumeroTelefono y MiVacuna.Celular son
+  `Celular`**, con el criterio de NuevaEps (ADR-039 §4): la BaseMadre los expone como
+  `[Celular <Fuente>]` y alimentan el selector de celulares. En SaludTotal, Coosalud y MiVacuna
+  la tabla real ya es ≥ 99,9 % 3xx; en SOS no (65 %), y los fijos se anulan con advertencia.
+- **SaviaSalud.NumeroTelefono es `Telefono`** (celular o fijo): la BaseMadre no lo expone.
+- **Coosalud, SaviaSalud y MiVacuna crean `Titular` y `Titular_Cartera`** aunque su destino no
+  tenga FK a Titular, porque sus SP lo hacían.
+- **Positiva, columnas intercambiadas** y **SaviaSalud, reparto de listas y fijo en
+  NumeroCelular**: van un paso más allá que "no concatenar" para no perder el número que el SP
+  sí conservaba (concatenado). Documentado en cada regla.

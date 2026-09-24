@@ -116,4 +116,34 @@ public class CatalogoCoherenciaSaludTests
         Assert.IsType<ReglaSaviaSalud>(CatalogoReglasFuente.Obtener(d.Fuente));
         SinAliasRepetidos(d);
     }
+
+    [Fact]
+    public void MiVacuna_coincide_con_el_destino_real()
+    {
+        var d = CatalogoCargueFuentes.MiVacuna;
+        Assert.Equal(("dbo.MiVacuna", "EstadoEnMiVacuna", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["FechaExpedicion:Fecha:0:sinflag", "Celular:Celular:10", "Email:Email:255"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        SinAliasRepetidos(d);
+    }
+
+    [Fact]
+    public void Todas_las_fuentes_del_grupo_salud_estan_habilitadas_y_en_fase_2()
+    {
+        DefinicionFuenteCargue[] salud =
+        [
+            CatalogoCargueFuentes.Positiva, CatalogoCargueFuentes.SaludTotal, CatalogoCargueFuentes.Sos,
+            CatalogoCargueFuentes.Coosalud, CatalogoCargueFuentes.SaviaSalud, CatalogoCargueFuentes.MiVacuna,
+        ];
+        foreach (var d in salud)
+        {
+            Assert.Contains(d, CatalogoCargueFuentes.Todas);
+            Assert.True(d.Habilitada, d.Fuente);
+            Assert.Equal(2, d.FaseIntegracion);
+            Assert.Same(d, CatalogoCargueFuentes.Buscar(d.Fuente));
+        }
+    }
 }

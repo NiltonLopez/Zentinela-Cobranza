@@ -518,11 +518,41 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// MiVacuna (registro de vacunación). Sin regla propia (<c>ReglaGenerica</c>):
+    /// <c>sp_ProcesarMiVacunaAuxiliar</c> solo pasaba el celular '' o '0' a NULL, cruzaba la lista
+    /// negra de correos, calculaba el flag e insertaba: todo genérico. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.MiVacuna</c> el 2026-09-24 (FechaExpedicion <c>date</c>, Celular
+    /// varchar(10), Email varchar(255), EstadoEnMiVacuna y FechaConsulta NULL-ables; sin FK a
+    /// Titular —el SP igual creaba Titular y relaciones—, sin triggers; 36.985 filas, una por
+    /// titular). El flag, como en el SP, mira celular y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue MiVacuna = new()
+    {
+        Fuente          = "MiVacuna",
+        Etiqueta        = "MiVacuna",
+        TablaDestino    = "dbo.MiVacuna",
+        ColumnaFlag     = "EstadoEnMiVacuna",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Registro MiVacuna: celular, email y fecha de expedición del documento.",
+        ColumnasDato =
+        [
+            new("FechaExpedicion", ["fechaexpedicion", "fechadeexpedicion", "expedicion"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de expedición del documento"),
+            new("Celular", ["celular", "numerocelular", "telefono", "numerotelefono", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
         // Fase 2, grupo salud
-        Positiva, SaludTotal, Sos, Coosalud, SaviaSalud,
+        Positiva, SaludTotal, Sos, Coosalud, SaviaSalud, MiVacuna,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>

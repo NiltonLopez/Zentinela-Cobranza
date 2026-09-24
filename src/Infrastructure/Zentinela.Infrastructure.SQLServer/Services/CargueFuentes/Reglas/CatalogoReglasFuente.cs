@@ -34,6 +34,10 @@ internal static class CatalogoReglasFuente
         // ISNULL(x, '')): todo genérico en el motor, con validación exacta y clave completa.
         [CatalogoCargueFuentes.Coosalud.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.Coosalud.Fuente),
         [CatalogoCargueFuentes.SaviaSalud.Fuente] = new ReglaSaviaSalud(),
+        // MiVacuna: sp_ProcesarMiVacunaAuxiliar solo pasaba el celular '' o '0' a NULL, cruzaba la
+        // lista negra de correos (con LIKE, anulando a ''), calculaba el flag e insertaba: todo
+        // genérico en el motor, con igualdad exacta y NULL.
+        [CatalogoCargueFuentes.MiVacuna.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.MiVacuna.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);
