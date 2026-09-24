@@ -67,6 +67,13 @@ public enum TipoEnteroSql
 /// <param name="EsNit">Solo <see cref="TipoColumnaCargue.Entero"/>: la columna es un NIT, así que
 /// un 'NIT-DV' ('900123456-7') se guarda sin el dígito de verificación (aviso informativo) en vez
 /// de anularse por no numérico.</param>
+/// <param name="FlagDesdeArchivo">Solo en <see cref="DefinicionFuenteCargue.ColumnasArchivoExtra"/>:
+/// la celda NO se guarda en el destino, solo alimenta <c>EstadoEn&lt;Fuente&gt;</c>. Un valor de
+/// "encontrado" ('1', 'SI', 'ENCONTRADO'…) enciende el flag aunque ninguna columna de dato tenga
+/// valor (Compensados: "encontrado sin EPS ni período"); vacío o marca de no encontrado ('0', 'NO',
+/// 'NO SE ENCUENTRA'…) no lo enciende; cualquier otro valor, aviso y no lo enciende (catálogo en
+/// <c>FlagEnArchivo</c>, Infrastructure). Con una columna así el flag entra a la clave de contenido
+/// (<see cref="DefinicionFuenteCargue.TieneFlagDesdeArchivo"/>).</param>
 public sealed record ColumnaFuenteCargue(
     string Nombre,
     string[] Alias,
@@ -78,7 +85,8 @@ public sealed record ColumnaFuenteCargue(
     string Descripcion = "",
     bool DesdeArchivo = true,
     TipoEnteroSql EnteroSql = TipoEnteroSql.BigInt,
-    bool EsNit = false);
+    bool EsNit = false,
+    bool FlagDesdeArchivo = false);
 
 /// <summary>
 /// Todo lo que el motor genérico de cargue necesita saber de una fuente. El motor no tiene
@@ -129,6 +137,15 @@ public sealed record DefinicionFuenteCargue
     public bool AplicaPoliticaVacias { get; init; } = true;
     /// <summary>Columnas que el archivo trae pero no van al destino tal cual (SIMIT Placa1..15).</summary>
     public IReadOnlyList<ColumnaFuenteCargue> ColumnasArchivoExtra { get; init; } = [];
+
+    /// <summary>
+    /// Alguna columna extra alimenta el flag desde el archivo (<see cref="ColumnaFuenteCargue.FlagDesdeArchivo"/>).
+    /// Entonces el flag deja de ser función de las columnas de dato y entra a la clave de contenido
+    /// (<c>GeneradorSqlCargue.MismoContenido</c>): "encontrado sin datos" (flag 1) y "no encontrado"
+    /// (flag 0) tienen el mismo contenido (todo NULL), y sin el flag en la clave la primera solo
+    /// refrescaría la fecha de la segunda, que después borraría la purga de vacías.
+    /// </summary>
+    public bool TieneFlagDesdeArchivo => ColumnasArchivoExtra.Any(c => c.FlagDesdeArchivo);
     public bool Habilitada { get; init; } = true;
     public string Notas { get; init; } = "";
     public int FaseIntegracion { get; init; } = 1;
@@ -910,15 +927,16 @@ public static class CatalogoCargueFuentes
     /// (<c>ReglaCompensados</c>): la marca del proveedor 'NO SE ENCUENTRA' no es un dato.
     /// Verificado contra <c>sys.columns</c> de <c>dbo.Compensados</c> el 2026-09-24: EPS varchar(50),
     /// UltimoPeriodoCompensado <c>date</c>, TipoAfiliado varchar(50), <b>EstadoEnCompensados int</b>
-    /// NOT NULL (no bit: el motor escribe 0/1), FechaConsulta date; FK a Titular, índice
-    /// (TitularID, FechaConsulta DESC), sin triggers.
+    /// NOT NULL (no bit: el motor escribe 0/1; el esquema no se cambia), FechaConsulta date; FK a
+    /// Titular, índice (TitularID, FechaConsulta DESC), sin triggers.
     ///
-    /// <b>El flag NO viene del archivo</b> (no hizo falta la extensión <c>FlagDesdeArchivo</c> prevista
-    /// en el plan): <c>sp_ProcesarCompensadosAuxiliar</c> recalculaba <c>Estado</c> como
-    /// "Estado, EPS o UltimoPeriodoCompensado no nulos", así que la columna Estado del archivo solo
-    /// servía para dar flag 1 a una fila sin ningún dato (2.315 filas así hoy). Aquí el flag es EPS o
-    /// período, lo que se guarda; la columna Estado del archivo se informa como "no se usa".
-    /// TipoAfiliado no entra al flag, como en el SP.
+    /// <b>Flag</b> = EPS o período con valor, <b>o</b> la columna <c>Estado</c> del archivo dice
+    /// "encontrado" (<see cref="ColumnaFuenteCargue.FlagDesdeArchivo"/>; opcional: si el archivo no la
+    /// trae, solo EPS o período). El usuario confirmó el 2026-09-24 que Estado significa "encontrado
+    /// en Compensados aunque sin datos" (H2 de PARIDAD-empresas.md). <c>sp_ProcesarCompensadosAuxiliar</c>
+    /// daba 1 con CUALQUIER Estado no nulo, incluso 0 (2.315 filas legacy con flag 1 y sin datos, todas
+    /// de junio en adelante); aquí '0', 'NO' o 'NO SE ENCUENTRA' no lo encienden. Estado no se guarda
+    /// (el destino no tiene esa columna). TipoAfiliado no entra al flag, como en el SP.
     /// </summary>
     public static readonly DefinicionFuenteCargue Compensados = new()
     {
@@ -929,7 +947,7 @@ public static class CatalogoCargueFuentes
         ColumnaFecha    = "FechaConsulta",
         TipoFecha       = TipoFechaSello.Date,
         FaseIntegracion = 2,
-        Notas           = "EPS, último período compensado y tipo de afiliado del titular. El Estado del archivo no se usa: el flag sale de EPS y período.",
+        Notas           = "EPS, último período compensado y tipo de afiliado del titular. El flag sale de EPS, período o el Estado del archivo (encontrado aunque no traiga datos).",
         ColumnasDato =
         [
             new("EPS", ["eps", "nombreeps", "entidad", "administradora"],
@@ -938,6 +956,13 @@ public static class CatalogoCargueFuentes
                 TipoColumnaCargue.Fecha, Descripcion: "Último período compensado (fecha; '2026-08' = 1 de agosto)"),
             new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
                 TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario, adicional"),
+        ],
+        ColumnasArchivoExtra =
+        [
+            // No se guarda: solo enciende EstadoEnCompensados ("encontrado sin datos").
+            new("Estado", ["estado", "estadoencompensados", "estadocompensados", "encontrado"],
+                TipoColumnaCargue.Texto, 50, FlagDesdeArchivo: true,
+                Descripcion: "Opcional. 1/SI = encontrado en Compensados aunque no traiga EPS ni período; 0/NO/'NO SE ENCUENTRA' = no encontrado. No se guarda"),
         ],
     };
 

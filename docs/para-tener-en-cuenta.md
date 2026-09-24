@@ -79,9 +79,10 @@ Las 22 fuentes de localización ya se cargan por el módulo. Lo nuevo de la Fase
 - **RUES tiene sello con hora.** `RUES.FechaConsulta` es `datetime` (la única): el sello va truncado al
   segundo. Quien compare esa columna con una fecha debe usar rangos o convertir.
 - **ARLSura ≠ Sura.** Dos fuentes, dos tablas; el flag de las dos se llama `EstadoEnSura`.
-- **Compensados: la columna Estado del archivo no se usa** (el flag sale de EPS y período). Si Estado
-  significa "encontrado sin datos", hace falta la extensión `FlagDesdeArchivo`: decisión pendiente (H2 de
-  `PARIDAD-empresas.md`; afecta 2.315 de 366.072 filas).
+- **Compensados: el Estado del archivo es "encontrado sin datos"** (confirmado por el usuario, H2 de
+  `PARIDAD-empresas.md`). `EstadoEnCompensados = 1` con EPS o período, **o** con Estado `1`/`SI`/`ENCONTRADO`;
+  `0`, `NO` o 'NO SE ENCUENTRA' no lo encienden (el SP viejo sí, con cualquier valor). Estado no se guarda.
+  Por eso en Compensados puede haber filas con flag 1 y todo NULL: son legítimas, no vacías.
 - **Columna `Entero` contra destino `int`** (H1 de `PARIDAD-otras.md`): `#Carga` la lleva como `bigint` y un
   número enorme haría fallar el cargue entero (con rollback, sin decir la fila). Hoy solo `RGM.Modelo`, que
   `ReglaRgm` valida como año.

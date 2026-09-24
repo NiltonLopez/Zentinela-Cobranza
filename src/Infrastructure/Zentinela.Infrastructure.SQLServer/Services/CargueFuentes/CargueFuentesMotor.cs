@@ -347,6 +347,7 @@ internal sealed class CargueFuentesMotor
         // ── 6. Cruces (solo lectura sobre las tablas reales) ────────────────
         progreso.Report(new(FaseCargueJob.Cruces, esc.DedupFin, "Cruzando con Titular"));
         candidatas = await CruzarTitularesAsync(candidatas, def, prep, conn, ct);
+        InformarFlagSoloPorArchivo(candidatas, ctx);
 
         var titularesVivos = candidatas.Select(f => f.TitularID).ToHashSet();
         relaciones.RemoveWhere(r => !titularesVivos.Contains(r.TitularID));
@@ -561,6 +562,7 @@ internal sealed class CargueFuentesMotor
         // Tipado genérico (antes de la regla).
         for (var i = 0; i < def.ColumnasDato.Count; i++)
             fila.Datos[i] = Tipar(def.ColumnasDato[i], Celda(cruda, mapa.Datos[i]), ctx);
+        LeerFlagDesdeArchivo(fila, ctx);
 
         regla.Transformar(fila, ctx);
 
@@ -821,14 +823,55 @@ internal sealed class CargueFuentesMotor
         }
     }
 
-    /// <summary>EstadoEn&lt;Fuente&gt; = alguna columna que entra al flag tiene valor, ya limpia.</summary>
-    private static void CalcularFlag(FilaCargue fila, DefinicionFuenteCargue def)
+    /// <summary>
+    /// Columnas extra <c>FlagDesdeArchivo</c> (Compensados: Estado): la primera que dice "encontrado"
+    /// queda en <see cref="FilaCargue.FlagDesdeColumnaArchivo"/>. Un valor que no es ni "sí" ni "no"
+    /// no enciende el flag y se avisa (catálogo cerrado en <see cref="FlagEnArchivo"/>). Si el
+    /// archivo no trae la columna, la celda es null y no cambia nada.
+    /// </summary>
+    internal static void LeerFlagDesdeArchivo(FilaCargue fila, ContextoCargue ctx)
+    {
+        var extras = ctx.Definicion.ColumnasArchivoExtra;
+        for (var i = 0; i < extras.Count && i < fila.Extra.Length; i++)
+        {
+            if (!extras[i].FlagDesdeArchivo) continue;
+            switch (FlagEnArchivo.Leer(fila.Extra[i]))
+            {
+                case FlagEnArchivo.Lectura.Encontrado:
+                    fila.FlagDesdeColumnaArchivo ??= extras[i].Nombre;
+                    break;
+                case FlagEnArchivo.Lectura.NoReconocido:
+                    ctx.Advertir($"{extras[i].Nombre}: valor no reconocido (se espera 1/SI o 0/NO): no marca la fila como encontrada",
+                                 fila.Extra[i]!.Trim());
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// EstadoEn&lt;Fuente&gt; = alguna columna que entra al flag tiene valor, ya limpia, o una columna
+    /// <c>FlagDesdeArchivo</c> dijo "encontrado" (<see cref="LeerFlagDesdeArchivo"/>).
+    /// </summary>
+    internal static void CalcularFlag(FilaCargue fila, DefinicionFuenteCargue def)
     {
         if (def.ColumnaFlag is null) return;
-        var flag = false;
-        for (var i = 0; i < def.ColumnasDato.Count && !flag; i++)
-            flag = def.ColumnasDato[i].EntraAlFlag && fila.Datos[i] is not null;
-        fila.Flag = flag;
+        var porDatos = false;
+        for (var i = 0; i < def.ColumnasDato.Count && !porDatos; i++)
+            porDatos = def.ColumnasDato[i].EntraAlFlag && fila.Datos[i] is not null;
+        fila.Flag = porDatos || fila.FlagDesdeColumnaArchivo is not null;
+        fila.FlagSoloPorArchivo = fila.Flag && !porDatos;
+    }
+
+    /// <summary>
+    /// Info agrupada de las candidatas (ya deduplicadas y cruzadas: se cuenta lo que entra, una vez)
+    /// cuyo flag está en 1 solo por la columna del archivo. No es un problema del archivo: es la
+    /// fila "encontrado sin datos", que NO es vacía para la política de vacías (esa mira el flag).
+    /// </summary>
+    internal static void InformarFlagSoloPorArchivo(IEnumerable<FilaCargue> candidatas, ContextoCargue ctx)
+    {
+        if (ctx.Definicion.ColumnaFlag is null || !ctx.Definicion.TieneFlagDesdeArchivo) return;
+        foreach (var g in candidatas.Where(f => f.FlagSoloPorArchivo).GroupBy(f => f.FlagDesdeColumnaArchivo))
+            ctx.Informar($"{g.Key}: encontrado sin datos ({ctx.Definicion.ColumnaFlag} = 1 solo por la columna del archivo)", g.Count());
     }
 
     // ── 4b. Lista negra de teléfonos ────────────────────────────────────────
@@ -899,7 +942,7 @@ internal sealed class CargueFuentesMotor
 
     // ── 5. Dedup ────────────────────────────────────────────────────────────
 
-    private static List<FilaCargue> Deduplicar(
+    internal static List<FilaCargue> Deduplicar(
         List<FilaCargue> filas, DefinicionFuenteCargue def, ContextoCargue ctx, out int duplicadas)
     {
         var resultado = new List<FilaCargue>(filas.Count);
@@ -911,8 +954,13 @@ internal sealed class CargueFuentesMotor
             {
                 if (!grupo.Skip(1).Any()) { resultado.Add(grupo.First()); continue; }
 
-                // La más completa; a igualdad, la última del archivo (la más reciente del proveedor).
-                var conservada = grupo.OrderByDescending(f => f.DatosNoNulos).ThenByDescending(f => f.Linea).First();
+                // La más completa; a igualdad, la que tiene el flag ("encontrado sin datos" gana a
+                // "no encontrado", Compensados) y después la última del archivo (la más reciente del
+                // proveedor). Con el flag calculado solo de los datos el desempate por flag casi nunca
+                // decide: solo entre filas con igual cantidad de datos donde unos entran al flag y otros no.
+                var conservada = grupo.OrderByDescending(f => f.DatosNoNulos)
+                                      .ThenByDescending(f => f.Flag)
+                                      .ThenByDescending(f => f.Linea).First();
                 if (conservada.Nombre is null && grupo.FirstOrDefault(f => f.Nombre is not null) is { } conNombre)
                 {
                     conservada.Nombre = conNombre.Nombre;

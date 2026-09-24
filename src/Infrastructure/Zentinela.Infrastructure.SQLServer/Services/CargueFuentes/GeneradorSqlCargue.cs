@@ -93,6 +93,12 @@ internal static class GeneradorSqlCargue
             throw new InvalidOperationException($"La fuente {d.Fuente} no tiene columnas de dato.");
         if (!d.ColumnasDato.Any(c => c.EntraAClave))
             throw new InvalidOperationException($"La fuente {d.Fuente} no tiene columnas en la clave de contenido.");
+        // FlagDesdeArchivo: solo en las extra (una columna de dato se guarda; esta no) y con flag.
+        if (d.ColumnasDato.Any(c => c.FlagDesdeArchivo))
+            throw new InvalidOperationException(
+                $"La fuente {d.Fuente}: FlagDesdeArchivo solo aplica a ColumnasArchivoExtra (no se guarda en el destino).");
+        if (d.TieneFlagDesdeArchivo && d.ColumnaFlag is null)
+            throw new InvalidOperationException($"La fuente {d.Fuente} tiene FlagDesdeArchivo pero no ColumnaFlag.");
 
         var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var c in d.ColumnasDato)
@@ -127,8 +133,26 @@ internal static class GeneradorSqlCargue
             : $"{destino}.{ColumnaTitular(d)} = {carga}.TitularID";
 
     /// <summary>Igualdad NULL-safe de la clave de contenido entre destino (s) y #Carga (c).</summary>
-    public static string MismoContenido(DefinicionFuenteCargue d, string destino, string carga) =>
-        $"EXISTS (SELECT {Lista(Clave(d), destino)} INTERSECT SELECT {Lista(Clave(d), carga)})";
+    /// <remarks>
+    /// Con una columna <c>FlagDesdeArchivo</c> (Compensados: Estado) el flag también entra a la clave:
+    /// deja de ser función de los datos, y "encontrado sin datos" (1) y "no encontrado" (0) tienen el
+    /// mismo contenido (todo NULL). Sin el flag, la fila 1 solo refrescaría la fecha de la 0 del
+    /// destino y la purga de vacías la borraría después: el titular quedaría sin fila. Se compara como
+    /// int (el destino de Compensados es <c>int</c>, #Carga <c>bit</c>). El hash de reversión NO lleva
+    /// el flag: tras una carga un titular no conserva filas de flag 0 junto a la de flag 1 (se purgan
+    /// en la misma transacción), así que (titular, hash, sello) sigue identificando la fila.
+    /// </remarks>
+    public static string MismoContenido(DefinicionFuenteCargue d, string destino, string carga)
+    {
+        var s = Lista(Clave(d), destino);
+        var c = Lista(Clave(d), carga);
+        if (d.TieneFlagDesdeArchivo && d.ColumnaFlag is not null)
+        {
+            s += $", CONVERT(int, {destino}.{Id(d.ColumnaFlag)})";
+            c += $", CONVERT(int, {carga}.{Id(d.ColumnaFlag)})";
+        }
+        return $"EXISTS (SELECT {s} INTERSECT SELECT {c})";
+    }
 
     /// <summary>SHA-256 de las columnas de dato de una fila del destino (deleted / inserted).</summary>
     public static string HashContenido(DefinicionFuenteCargue d, string pseudo)

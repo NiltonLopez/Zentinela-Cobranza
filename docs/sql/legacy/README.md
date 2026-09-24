@@ -163,8 +163,8 @@ inactivos, y fila a fila donde el SP perdía el archivo entero por un valor (F).
 - Otras (`PARIDAD-otras.md`): **H1** columna `Entero` → `bigint` contra destino `int`; H2 texto del aviso
   para `'555…'`; H3 `IX_Runt_TitularID_Fecha` no existe (corregido en `schema.md`); **H4** carga fallida en
   `FosygaAuxiliar` y Fosyga cargado a mano esta semana; H5 lista blanca de reversión (resuelto).
-- Empresas (`PARIDAD-empresas.md`): H1 reversión de RUES y CamaraEmpresa (resuelto); **H2** columna Estado
-  de Compensados (¿`FlagDesdeArchivo`?); H3 `EstadoAfiliacion` de PositivaEmpresas con basura del PDF;
+- Empresas (`PARIDAD-empresas.md`): H1 reversión de RUES y CamaraEmpresa (resuelto); H2 columna Estado
+  de Compensados (resuelto: `FlagDesdeArchivo`); H3 `EstadoAfiliacion` de PositivaEmpresas con basura del PDF;
   **H4** 'NIT-DV' en columnas NIT enteras se anula; H5 `schema.md` de Compensados y RUES (resuelto); H6 la
   cifra de 67.826 correos de Cámara (corregida en ADR-039: es una medición sobre `dbo.Camara`, su SP no
   cruzaba la lista negra).

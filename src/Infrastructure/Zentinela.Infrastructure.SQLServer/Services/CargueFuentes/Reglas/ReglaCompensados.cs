@@ -16,13 +16,17 @@ namespace Zentinela.Infrastructure.SQLServer.Services.CargueFuentes.Reglas;
 /// advertencia en EPS y TipoAfiliado: no es un tipo de afiliado, y el Calificador cuenta como
 /// "encontrado en Compensados" toda fila con TipoAfiliado no vacío.
 ///
+/// Flag (paso 4 del SP): <c>Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND
+/// UltimoPeriodoCompensado IS NULL THEN 0 ELSE 1</c>. El usuario confirmó (2026-09-24, H2 de
+/// PARIDAD-empresas.md) que el Estado del archivo SÍ significa "encontrado en Compensados aunque sin
+/// datos": es la columna extra <c>Estado</c> con <c>FlagDesdeArchivo</c> de la definición, y el
+/// motor la resuelve de forma genérica (<see cref="FlagEnArchivo"/>, <c>CargueFuentesMotor.CalcularFlag</c>).
+/// Esta regla no la toca. Estado no se guarda (el destino no tiene la columna) y es opcional.
+///
 /// Defectos del SP que NO se copian:
 /// <list type="bullet">
-/// <item>Flag: <c>Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND UltimoPeriodoCompensado IS NULL
-///   THEN 0 ELSE 1</c>. El Estado que traía el archivo (cualquier valor, incluso 0) daba flag 1 a una
-///   fila sin ningún dato (2.315 filas hoy). El motor calcula el flag con lo que se guarda (EPS o
-///   período) y la columna Estado del archivo se informa como "no se usa". Por eso NO hace falta la
-///   extensión <c>FlagDesdeArchivo</c> que preveía el plan: el SP no tomaba el flag del archivo.</item>
+/// <item>Flag 1 con CUALQUIER Estado no nulo, incluso 0 ("no encontrado"): aquí '0', 'NO' o
+///   'NO SE ENCUENTRA' no encienden el flag, y un valor desconocido se avisa y tampoco.</item>
 /// <item><c>INSERT INTO Compensados SELECT …</c> posicional (Estado → EstadoEnCompensados por posición).</item>
 /// <item>Dedup del paso 8 sobre TODA la tabla, con clave sin EstadoEnCompensados.</item>
 /// </list>
@@ -31,12 +35,6 @@ internal sealed class ReglaCompensados : IReglaFuente
 {
     private const string Eps = "EPS";
     private const string TipoAfiliado = "TipoAfiliado";
-
-    // Marcas de "no encontrado" del proveedor, normalizadas (ArchivoTabular.Normalizar: sin espacios ni tildes).
-    private static readonly HashSet<string> NoEncontrado = new(StringComparer.Ordinal)
-    {
-        "noseencuentra", "noencontrado", "noexiste", "noregistra", "sininformacion",
-    };
 
     public string Fuente => CatalogoCargueFuentes.Compensados.Fuente;
 
@@ -49,7 +47,8 @@ internal sealed class ReglaCompensados : IReglaFuente
     private static void AnularMarca(FilaCargue fila, string columna, ContextoCargue ctx)
     {
         var valor = ctx.GetTexto(fila, columna);
-        if (valor is null || !NoEncontrado.Contains(ArchivoTabular.Normalizar(valor))) return;
+        // Mismas marcas que "no encontrado" en la columna Estado (FlagEnArchivo).
+        if (valor is null || !FlagEnArchivo.MarcasNoEncontrado.Contains(ArchivoTabular.Normalizar(valor))) return;
         ctx.Set(fila, columna, null);
         ctx.Advertir($"{columna}: marca 'NO SE ENCUENTRA' del proveedor anulada (no es un dato)");
     }

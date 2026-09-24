@@ -189,6 +189,34 @@ public class GeneradorSqlCargueTests
     }
 
     [Fact]
+    public void Flag_desde_archivo_entra_a_la_clave_de_contenido()
+    {
+        // Compensados: "encontrado sin datos" (1) y "no encontrado" (0) tienen el mismo contenido.
+        var d = CatalogoCargueFuentes.Compensados;
+        var esperado = "EXISTS (SELECT s.[EPS], s.[UltimoPeriodoCompensado], s.[TipoAfiliado], "
+                     + "CONVERT(int, s.[EstadoEnCompensados]) INTERSECT SELECT c.[EPS], c.[UltimoPeriodoCompensado], "
+                     + "c.[TipoAfiliado], CONVERT(int, c.[EstadoEnCompensados]))";
+        Assert.Contains(esperado, GeneradorSqlCargue.MarcarImpacto(d));
+        Assert.Contains(esperado, GeneradorSqlCargue.Refrescar(d));
+        // El hash de reversión sigue siendo solo de las columnas de dato.
+        Assert.DoesNotContain("EstadoEnCompensados", GeneradorSqlCargue.HashContenido(d, "deleted"));
+        // Sin flag desde archivo, la clave no cambia (Sura).
+        Assert.DoesNotContain("EstadoEnSura]) INTERSECT", GeneradorSqlCargue.MarcarImpacto(Sura));
+    }
+
+    [Fact]
+    public void FlagDesdeArchivo_solo_en_extras_y_con_flag()
+    {
+        var estado = new ColumnaFuenteCargue("Estado", ["estado"], TipoColumnaCargue.Texto, 10, FlagDesdeArchivo: true);
+
+        Assert.Throws<InvalidOperationException>(() => GeneradorSqlCargue.ValidarDefinicion(
+            Sura with { ColumnasDato = [.. Sura.ColumnasDato, estado] }));
+        Assert.Throws<InvalidOperationException>(() => GeneradorSqlCargue.ValidarDefinicion(
+            Sura with { ColumnaFlag = null, ColumnasArchivoExtra = [estado] }));
+        GeneradorSqlCargue.ValidarDefinicion(Sura with { ColumnasArchivoExtra = [estado] });
+    }
+
+    [Fact]
     public void Entero_int_va_a_Carga_como_int()
     {
         // RGM.Modelo es int en el destino (H1 de PARIDAD-otras.md); los NIT siguen en bigint.

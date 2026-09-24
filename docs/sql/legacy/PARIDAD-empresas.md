@@ -18,7 +18,7 @@ Mismo método, misma herramienta y misma leyenda que la paridad de la Fase 1
 | CamaraEmpresa | 15 | 4 | 11 | 0 | Paridad OK (E9, E11, P1, P3, P5, P7, R); clave `NitEmpresa` |
 | PositivaEmpresas | 13 | 3 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P4, P5) |
 | ARLSura | 12 | 3 | 9 | 0 | Paridad OK (E9, E10, E11, P2, P3, P4, P5); sin tocar `dbo.Sura` |
-| Compensados (+ Compensados-B) | 16 | 4 | 12 | 0 | Paridad OK (E9, E10, E11, P2, P3, P5, R, F); flag sin `FlagDesdeArchivo` |
+| Compensados (+ Compensados-B) | 16 | 4 | 12 | 0 | Paridad OK (E9, E10, E11, P2, P3, P5, R, F). Después de la corrida: `FlagDesdeArchivo` para Estado (H2 resuelto; C03 pasa a igual) |
 | **Total** | **95** | **27** | **68** | **0** | **Sin pérdida ni corrupción de datos atribuible al motor nuevo.** |
 
 ## Método
@@ -418,14 +418,15 @@ afiliado nuevo (el SP y el motor tienen `TipoAfiliado` en la clave).
 
 Detalles:
 
-- **Sin `FlagDesdeArchivo` (C03, C04: R).** El plan suponía que Compensados traía el flag del archivo.
-  El SP no lo toma: recalcula `Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND
-  UltimoPeriodoCompensado IS NULL THEN 0 ELSE 1 END` y lo inserta por posición en
-  `EstadoEnCompensados`. El Estado del archivo solo servía para dar flag 1 a una fila **sin ningún
-  dato** (con cualquier valor, incluso 0): hoy hay 2.315 filas así, repartidas en 7 cargas de junio a
-  septiembre. El motor calcula el flag con lo que guarda (EPS o período) e informa la columna Estado
-  como "no se usa". Si Estado significara algo propio ("encontrado sin datos"), haría falta la
-  extensión: queda como decisión para el usuario (ver hallazgos, H2).
+- **Estado del archivo (C03, C04: R en la corrida; resuelto después, ver H2).** El SP recalcula
+  `Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND UltimoPeriodoCompensado IS NULL THEN 0 ELSE 1
+  END` y lo inserta por posición en `EstadoEnCompensados`: el Estado del archivo daba flag 1 a una fila
+  **sin ningún dato** (con cualquier valor, incluso 0). Hoy hay 2.315 filas así, repartidas en 7 cargas
+  de junio a septiembre. En la corrida el motor ignoraba Estado (C03 y C04 con flag 0). **Después de la
+  corrida** el usuario confirmó que Estado significa "encontrado sin datos" y el motor lo toma con
+  `FlagDesdeArchivo`: **C03 (Estado 1) da flag 1, igual que el SP**; C04 (Estado 0) sigue en 0, a
+  propósito (0 es "no encontrado"; el SP lo contaba como encontrado). Las tablas de abajo son la corrida
+  original; el comportamiento nuevo lo verifica el harness (`CasoCompensados`, pasos 1 a 6).
 - **C05 (R).** 'NO SE ENCUENTRA' en TipoAfiliado (594 filas hoy, todas con EPS y período vacíos) es
   la marca de "no encontrado" del proveedor. El SP la guardaba como tipo de afiliado y el Calificador
   cuenta como "encontrado en Compensados" toda fila con TipoAfiliado no vacío. El motor la anula.
@@ -531,12 +532,34 @@ propio script:
   (en `CargueFuenteReversion.TitularID` va el NIT como texto). El script necesita la columna clave por
   fuente.
 
-### H2 (decisión pendiente): la columna Estado del archivo de Compensados
+### H2 (resuelto): la columna Estado del archivo de Compensados
 
-Ver la sección Compensados. El motor la ignora y el flag refleja lo que se guarda. Si el usuario
-confirma que Estado significa "encontrado en Compensados" aunque no haya EPS ni período, entonces sí
-hace falta una extensión genérica tipo `FlagDesdeArchivo` (la columna del archivo entra al flag como
-dato). Hoy afectaría a 2.315 de 366.072 filas.
+**Resuelto (2026-09-24): el usuario confirmó que Estado SÍ significa "encontrado en Compensados aunque
+sin datos"** (quien creó la columna la creó mal: `EstadoEnCompensados` es `int NOT NULL` y no `bit`; el
+esquema NO se cambia, el motor sigue escribiendo 0/1).
+
+Rastro en la BD: `CompensadosAuxiliar.Estado` era `int` (el archivo traía un número; la Auxiliar está
+vacía y el SP sobrescribía Estado, así que los valores originales no quedaron). En `dbo.Compensados`
+las 2.315 filas con flag 1 sin EPS ni período son todas de cargas del 2026-06-03 en adelante; las 594
+'NO SE ENCUENTRA' (2026-05-28) tienen flag 0, o sea que venían con Estado NULL.
+
+Implementación genérica: `ColumnaFuenteCargue.FlagDesdeArchivo` en una columna de
+`ColumnasArchivoExtra` (no se guarda). Compensados declara `Estado` (opcional; alias `estado`,
+`estadoencompensados`, `estadocompensados`, `encontrado`). Flag = EPS o período con valor, **o** Estado
+"encontrado". Catálogo cerrado (`FlagEnArchivo`): encontrado = `1`, `SI`/`S`, `TRUE`/`VERDADERO`,
+`ENCONTRADO`, `COMPENSADO` (también `1.0`); no encontrado = vacío, `0`, `NO`/`N`, `FALSE`/`FALSO`,
+`NULL`, `N/A`, `NO COMPENSADO` y las marcas del proveedor (`NO SE ENCUENTRA`, `NO ENCONTRADO`,
+`NO EXISTE`, `NO REGISTRA`, `SIN INFORMACIÓN`); cualquier otro valor, aviso agrupado y no enciende.
+Info agrupada "Estado: encontrado sin datos" con las filas cuyo flag sale solo de Estado.
+
+- **Política de vacías:** mira el flag, así que "encontrado sin datos" NO es vacía: entra, y purga las
+  vacías viejas (flag 0) del titular. Un "no encontrado" de un titular con flag 1 es vacía descartada.
+- **Clave de contenido:** con `FlagDesdeArchivo` el flag entra a la clave (`MismoContenido`). Sin eso,
+  "encontrado sin datos" (1) y la vacía vieja (0) tienen el mismo contenido (todo NULL): se refrescaría
+  la fecha de la de flag 0 y la purga la borraría después, dejando al titular sin fila. El hash de
+  reversión sigue siendo de las columnas de dato: tras una carga no quedan filas de flag 0 junto a la de
+  flag 1 del mismo titular.
+- **Dedup en el archivo:** a igualdad de datos gana la fila con flag ("encontrado" sobre "no encontrado").
 
 ### H3 (observación): `EstadoAfiliacion` de PositivaEmpresas con basura del PDF
 

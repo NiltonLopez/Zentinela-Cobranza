@@ -39,6 +39,15 @@ internal sealed class FilaCargue
     /// <summary>EstadoEn&lt;Fuente&gt;.</summary>
     public bool Flag { get; set; }
 
+    /// <summary>
+    /// Columna <c>FlagDesdeArchivo</c> que dijo "encontrado" (Compensados: "Estado"); null si
+    /// ninguna. La fija el motor al limpiar la fila; <c>CalcularFlag</c> la suma a las de dato.
+    /// </summary>
+    public string? FlagDesdeColumnaArchivo { get; set; }
+
+    /// <summary>El flag está en 1 solo por <see cref="FlagDesdeColumnaArchivo"/>: "encontrado sin datos".</summary>
+    public bool FlagSoloPorArchivo { get; set; }
+
     /// <summary>Primer motivo de exclusión (orden fijo); null = la fila entra.</summary>
     public string? MotivoExclusion { get; set; }
 
@@ -58,5 +67,7 @@ internal sealed class FilaCargue
         Datos               = (object?[])Datos.Clone(),
         Extra               = (string?[])Extra.Clone(),
         Flag                = Flag,
+        FlagDesdeColumnaArchivo = FlagDesdeColumnaArchivo,
+        FlagSoloPorArchivo  = FlagSoloPorArchivo,
     };
 }

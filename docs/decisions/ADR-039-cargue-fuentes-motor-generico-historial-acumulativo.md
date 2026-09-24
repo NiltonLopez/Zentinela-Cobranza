@@ -82,7 +82,8 @@ regla chica que traduce su SP viejo.
 - **Clave de contenido = TODAS las columnas de dato** (`EntraAClave = true` por defecto). Los SP usaban
   una clave recortada (Cajacopi 3 columnas, MutualSer 4, NuevaEps 3): una fila con los mismos teléfonos
   y un Municipio nuevo se "deduplicaba" y el municipio nuevo se perdía en silencio. Con la clave
-  completa ese caso es una fila nueva de historial, que es justo lo que el modelo quiere.
+  completa ese caso es una fila nueva de historial, que es justo lo que el modelo quiere. Si el flag
+  viene en parte del archivo (`FlagDesdeArchivo`, Compensados) la clave lleva también el flag (Fase 2, 5).
 - **Política de vacías** (fuentes con flag): una fila con `EstadoEn<Fuente> = 0` no entra si el titular
   ya tiene datos (en el destino o en el mismo archivo), y las vacías viejas de un titular que ahora trae
   datos se purgan. Es la versión acotada del "DELETE Estado = 0" de los SP, que recorría toda la tabla.
@@ -199,10 +200,10 @@ La Fase 2 suma **16 fuentes** a las 6 de la Fase 1, en tres grupos que se trabaj
 |---|---|---|
 | salud | Positiva, SaludTotal, SOS, Coosalud, SaviaSalud, MiVacuna | `ReglaPositiva` (fijo que llega en el celular pasa al fijo, sin concatenar; columnas intercambiadas), `ReglaSaviaSalud` (celdas con varios números: primer celular en `NumeroCelular`, teléfono propio o el siguiente en `NumeroTelefono`, sin concatenar). El resto `ReglaGenerica` |
 | otras | Fosyga, RGM, TigoUne, Tigo | `ReglaFosyga` (Estado 'AFILIADO FALLECIDO' → TipoAfiliado 'FALLECIDO'), `ReglaRgm` (modelo = año plausible, porque el destino es `int`). TigoUne y Tigo `ReglaGenerica` |
-| empresas | RUES, Camara, CamaraEmpresa, PositivaEmpresas, ARLSura, Compensados | `ReglaCamara` (indicativo al fijo de 7 dígitos, textos de relleno del formulario), `ReglaCamaraEmpresa` (quita el DV de 'NIT-DV' + indicativo), `ReglaCompensados` ('NO SE ENCUENTRA' no es un dato). El resto `ReglaGenerica` |
+| empresas | RUES, Camara, CamaraEmpresa, PositivaEmpresas, ARLSura, Compensados | `ReglaCamara` (indicativo al fijo de 7 dígitos, textos de relleno del formulario), `ReglaCamaraEmpresa` (quita el DV de 'NIT-DV' + indicativo), `ReglaCompensados` ('NO SE ENCUENTRA' no es un dato); el Estado del archivo ("encontrado sin datos") lo toma el motor con `FlagDesdeArchivo`. El resto `ReglaGenerica` |
 
 Todas las definiciones se verificaron contra `sys.columns` del destino el 2026-09-24 (tipos, largos, FK,
-triggers, índices). El motor no cambió de forma; hicieron falta cuatro extensiones **genéricas**, ninguna
+triggers, índices). El motor no cambió de forma; hicieron falta cinco extensiones **genéricas** (la quinta, al resolver H2), ninguna
 con nombre de fuente:
 
 1. **`ColumnaClaveTitular`** (`DefinicionFuenteCargue`, con `AliasClaveTitular`, `DescripcionClaveTitular`,
@@ -231,13 +232,21 @@ con nombre de fuente:
    redondear) tampoco cambia de día a las 23:59:59.9. El script de reversión compara ese sello como
    `datetime`, nunca convertido a `date`.
 
-**`FlagDesdeArchivo` no hizo falta.** El plan suponía que Compensados traía el flag en el archivo. El SP no
-lo toma: recalcula `Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND UltimoPeriodoCompensado IS NULL
-THEN 0 ELSE 1 END` y lo inserta por posición en `EstadoEnCompensados` (`int NOT NULL`, no `bit`). La columna
-Estado del archivo solo servía para dar flag 1 a una fila **sin ningún dato** (2.315 de 366.072 filas
-hoy). El motor calcula el flag con lo que guarda (EPS o período) y lista Estado como "columna que no se
-usa". Si el usuario confirma que Estado significa "encontrado en Compensados" aunque no haya EPS ni período,
-entonces sí hará falta la extensión (decisión pendiente, H2 de `PARIDAD-empresas.md`).
+5. **`FlagDesdeArchivo`** (`ColumnaFuenteCargue`, solo en `ColumnasArchivoExtra`; Compensados, 2026-09-24):
+   una columna del archivo que **no se guarda** y solo enciende `EstadoEn<Fuente>`. El SP de Compensados
+   recalculaba `Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND UltimoPeriodoCompensado IS NULL THEN
+   0 ELSE 1 END` (`EstadoEnCompensados` es `int NOT NULL`, no `bit`; el esquema no se cambia): el Estado del
+   archivo daba flag 1 a filas **sin ningún dato** (2.315 de 366.072 hoy, todas de junio en adelante). El
+   usuario confirmó que eso es lo que significa, "encontrado en Compensados aunque sin datos" (H2 de
+   `PARIDAD-empresas.md`, resuelto). Flag = EPS o período con valor **o** Estado "encontrado"; Estado es
+   opcional. Catálogo cerrado (`FlagEnArchivo`): `1`/`SI`/`ENCONTRADO`… enciende; vacío, `0`, `NO` y las
+   marcas del proveedor ('NO SE ENCUENTRA'…) no (el SP daba 1 incluso con 0); otro valor, aviso y no
+   enciende. Info agrupada "Estado: encontrado sin datos". Consecuencias en el motor: "encontrado sin
+   datos" **no es vacía** (la política mira el flag: entra y purga las vacías viejas del titular); **el
+   flag entra a la clave de contenido** (`MismoContenido`), porque sin él la fila de flag 1 (todo NULL)
+   solo refrescaría la fecha de la vacía vieja de flag 0 y la purga la borraría a continuación; el hash de
+   reversión sigue siendo de las columnas de dato; en el dedup del archivo, a igualdad de datos, gana la
+   fila con flag.
 
 **Runt queda fuera.** `dbo.Runt` y `dbo.RuntAuxiliar` tienen 0 filas desde que se crearon (2026-02-18), no
 hay `sp_ProcesarRuntAuxiliar` ni ningún objeto, trabajo o paquete que las escriba, y **nadie la lee**: no
@@ -369,7 +378,7 @@ Paridad caso por caso en `docs/sql/legacy/PARIDAD*.md`.
 | CamaraEmpresa | `'NIT-DV'` no cabía en `NitEmpresa bigint` (el import fallaba y el SP nunca veía la fila); indicativo por departamento exacto con tildes, y 7 dígitos guardados si no casaba; no validaba teléfono ni correo ni cruzaba la lista negra; dedup global |
 | PositivaEmpresas | `INSERT` posicional; dedup global por titular + NIT + empresa (un cambio de estado de afiliación borraba la fila vieja); razón social con saltos de línea del PDF (94.096 filas legacy; el motor los colapsa); NIT `0` guardado como dato con flag 1 |
 | ARLSura | `INSERT` posicional; dedup global por titular + NIT (un cambio de razón social borraba la fila vieja); NIT `0` como dato; el SP nombra la misma tabla con tres grafías (`ARLSura`, `ArlSura`, `ArlSuraAuxiliar`) |
-| Compensados | `INSERT` posicional; `UltimoPeriodoCompensado varchar(50)` convertido a `date` en el `INSERT` (un período que no es fecha, `'AGOSTO'`, tumbaba el archivo entero, error 241); marca del proveedor `'NO SE ENCUENTRA'` guardada como `TipoAfiliado` (594 filas, que el Calificador cuenta como "encontrado"); flag que daba 1 a filas sin datos por el Estado del archivo; dedup global |
+| Compensados | `INSERT` posicional; `UltimoPeriodoCompensado varchar(50)` convertido a `date` en el `INSERT` (un período que no es fecha, `'AGOSTO'`, tumbaba el archivo entero, error 241); marca del proveedor `'NO SE ENCUENTRA'` guardada como `TipoAfiliado` (594 filas, que el Calificador cuenta como "encontrado"); flag 1 con cualquier Estado no nulo del archivo, incluso 0 (el motor toma Estado con catálogo cerrado: 0 es "no encontrado"); dedup global |
 
 ## Consecuencias
 
@@ -377,9 +386,9 @@ Paridad caso por caso en `docs/sql/legacy/PARIDAD*.md`.
   advertencias e info agrupados y una muestra, y confirma. Límite de subida 120 MB; XLSX hasta 250.000
   filas (ClosedXML materializa el libro; por encima se pide CSV, que se lee por streaming sin tope).
 - Agregar una fuente es una definición + (a veces) una regla + tests: el front no cambia. Las 16 de la
-  Fase 2 lo confirmaron: solo hicieron falta las cuatro extensiones genéricas de "Fase 2"
+  Fase 2 lo confirmaron: solo hicieron falta las cinco extensiones genéricas de "Fase 2"
   (`ColumnaClaveTitular`, `NormalizarClave`, `ConsultarPrefijos` con `PrefijosDepartamento`, sello
-  `datetime`); `FlagDesdeArchivo` no. Procedimiento en `/agregar-fuente-datos`, paso 5f.
+  `datetime` y `FlagDesdeArchivo`). Procedimiento en `/agregar-fuente-datos`, paso 5f.
 - Todas las fuentes de localización se cargan por el módulo. Las 21 `<Fuente>Auxiliar` con SP y
   `TigoAuxiliar` quedan sin uso. Respaldo íntegro en `docs/sql/legacy/` y DROP con guardas en
   `docs/sql/migrations/2026-09-25_drop_auxiliares_fase1.sql` (6) y `2026-09-26_drop_auxiliares_fase2.sql`
