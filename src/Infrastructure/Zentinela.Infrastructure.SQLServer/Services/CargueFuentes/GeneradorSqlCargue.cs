@@ -280,11 +280,17 @@ internal static class GeneradorSqlCargue
 
     // ── Escritura (dentro de la transacción; parámetros @Sello y @EjecucionID) ─
 
-    /// <summary>Selecciona el sello del servidor SQL (no del servidor de la API).</summary>
+    /// <summary>
+    /// Selecciona el sello del servidor SQL (no del servidor de la API). Con destino
+    /// <c>datetime</c> (RUES) el sello se TRUNCA al segundo: <c>CargueFuenteEjecucion.SelloFechaConsulta</c>
+    /// y <c>CargueFuenteReversion.FechaAnterior</c> son <c>datetime2(0)</c>, y un <c>GETDATE()</c> con
+    /// milisegundos no se podría volver a ubicar en el destino para revertir (se guardaría redondeado:
+    /// 09:43:49.920 → 09:43:50). Truncar (estilo 120, sin redondeo) tampoco cambia de día a las 23:59:59.9.
+    /// </summary>
     public static string LeerSello(DefinicionFuenteCargue d) =>
         d.TipoFecha == TipoFechaSello.Date
             ? "SELECT CAST(GETDATE() AS date);"
-            : "SELECT GETDATE();";
+            : "SELECT CONVERT(datetime, CONVERT(char(19), GETDATE(), 120), 120);";
 
     /// <summary>1. Titulares nuevos. MAX(Nombre) rompe empates entre filas del mismo titular.</summary>
     public const string InsertarTitulares = """

@@ -315,7 +315,43 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro];
+    // ── Fase 2 — grupo empresas ─────────────────────────────────────────────
+
+    /// <summary>
+    /// RUES (registro mercantil del titular). Sin regla propia (<c>ReglaGenerica</c>):
+    /// <c>sp_ProcesarRUESAuxiliar</c> solo creaba Titular/relaciones, calculaba el flag e
+    /// insertaba. Verificado contra <c>sys.columns</c> de <c>dbo.RUES</c> el 2026-09-24:
+    /// <b>FechaConsulta es <c>datetime</c></b> (la única de las fuentes con sello con hora: el SP
+    /// guardaba <c>GETDATE()</c> y 799.156 de sus 873.188 filas tienen hora) → sello
+    /// <see cref="TipoFechaSello.DateTime"/>; FK a Titular, índice (TitularID, FechaConsulta DESC),
+    /// sin triggers. El flag, como en el SP, mira matrícula, estado y actividad; NombreEmpresa no
+    /// (el SP lo dejaba fuera y en la tabla no hay ninguna fila con solo NombreEmpresa).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Rues = new()
+    {
+        Fuente          = "RUES",
+        Etiqueta        = "RUES (registro mercantil)",
+        TablaDestino    = "dbo.RUES",
+        ColumnaFlag     = "EstadoEnRUES",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.DateTime,
+        FaseIntegracion = 2,
+        Notas           = "Matrícula mercantil del titular: número, estado, actividad económica y nombre de la empresa.",
+        ColumnasDato =
+        [
+            new("NumeroMatricula", ["numeromatricula", "matricula", "numerodematricula", "nomatricula", "matriculamercantil"],
+                TipoColumnaCargue.Entero, Descripcion: "Número de matrícula mercantil"),
+            new("EstadoEmpresa", ["estadoempresa", "estadomatricula", "estadodelamatricula", "estado"],
+                TipoColumnaCargue.Texto, 20, Descripcion: "Activa, cancelada, inactiva…"),
+            new("ActividadEconomica", ["actividadeconomica", "actividad", "descripcionactividad"],
+                TipoColumnaCargue.Texto, 250, Descripcion: "Actividad económica registrada"),
+            new("NombreEmpresa", ["nombreempresa", "empresa", "nombredelaempresa", "nombreestablecimiento"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Nombre de la empresa o establecimiento"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
+        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

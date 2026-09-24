@@ -18,6 +18,10 @@ internal static class CatalogoReglasFuente
         [CatalogoCargueFuentes.NuevaEps.Fuente]  = new ReglaGenerica(CatalogoCargueFuentes.NuevaEps.Fuente),
         [CatalogoCargueFuentes.Simit.Fuente]     = new ReglaSimit(),
         [CatalogoCargueFuentes.DatosClaro.Fuente] = new ReglaDatosClaro(),
+        // ── Fase 2 — grupo empresas ──
+        // RUES: sp_ProcesarRUESAuxiliar no limpiaba nada (Titular, relaciones, flag e INSERT: todo
+        // genérico). Lo propio (sello datetime) es de la definición.
+        [CatalogoCargueFuentes.Rues.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Rues.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

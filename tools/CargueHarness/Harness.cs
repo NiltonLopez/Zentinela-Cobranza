@@ -48,6 +48,7 @@ internal sealed class Harness
         ("SIMIT",           "TitularID BETWEEN @d AND @h"),
         ("DatosClaro",      "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
+        ("RUES",            "TitularID BETWEEN @d AND @h"),
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 
