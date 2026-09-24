@@ -58,7 +58,7 @@ export function DesgloseChips({ chips, desglose, abiertosAlInicio = [] }: {
 
 const idPanel = (clave: ChipCargue) => `desglose-cargue-${clave}`;
 
-// Mismo aspecto que ChipConteo (compartidos.tsx), pero como <button>: foco, teclado y aria-expanded.
+// Mismo aspecto que ChipConteo de Cargue de Reportes, pero como <button>: foco, teclado y aria-expanded.
 function ChipDesplegable({ chip, abierto, desplegable, onAlternar }: {
   chip: ChipDef; abierto: boolean; desplegable: boolean; onAlternar: () => void;
 }) {
@@ -77,6 +77,7 @@ function ChipDesplegable({ chip, abierto, desplegable, onAlternar }: {
         border: `0.5px solid ${border}`, borderRadius: 8, padding: '12px 18px',
         cursor: desplegable ? 'pointer' : 'default', userSelect: 'none',
         boxShadow: abiertoVisible ? `inset 0 0 0 1px ${border}` : 'none',
+        transition: 'box-shadow 0.15s, transform 0.05s',
         font: 'inherit', textAlign: 'left', color: 'inherit', maxWidth: '100%',
       }}
     >
@@ -97,23 +98,37 @@ function ChipDesplegable({ chip, abierto, desplegable, onAlternar }: {
   );
 }
 
+// Mismo diseño que el panel de errores de Cargue de Reportes (el que abre su chip rojo): los
+// colores del chip, una franja con el número grande y debajo los grupos con su subtítulo.
 function PanelDesglose({ chip, grupos }: { chip: ChipDef; grupos: GrupoDesglose[] }) {
   const unidad = chip.unidad === undefined ? (['fila', 'filas'] as [string, string]) : chip.unidad;
+  const { bg, border, colorNum, colorLabel } = chip.paleta;
   return (
     <section
       id={idPanel(chip.clave)}
       aria-label={`De qué se componen las ${num(chip.numero)} ${chip.label}`}
-      style={{
-        background: 'var(--z-bg-card)', border: `1px solid ${chip.paleta.border}`, borderRadius: 8,
-        padding: '12px 16px', minWidth: 0,
-      }}
+      style={{ background: bg, border: `1px solid ${border}`, borderRadius: 8, overflow: 'hidden', minWidth: 0 }}
     >
-      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: chip.paleta.colorLabel }}>
-        {num(chip.numero)} {chip.label} — de qué se compone
-      </p>
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {grupos.map((g, i) => <FilaGrupo key={`${g.titulo}-${i}`} grupo={g} unidad={unidad} />)}
-      </ul>
+      <div style={{
+        padding: '14px 18px', borderBottom: `1px solid ${border}`,
+        display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: 24, fontWeight: 700, color: colorNum, lineHeight: 1 }}>{num(chip.numero)}</span>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: colorLabel, minWidth: 0, overflowWrap: 'anywhere' }}>
+          {chip.label}
+        </p>
+      </div>
+      <div style={{ padding: '12px 18px' }}>
+        <p style={{
+          margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: colorLabel,
+          textTransform: 'uppercase', letterSpacing: '0.04em',
+        }}>
+          De qué se compone ({grupos.length})
+        </p>
+        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {grupos.map((g, i) => <FilaGrupo key={`${g.titulo}-${i}`} grupo={g} unidad={unidad} />)}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -157,7 +172,8 @@ function FilaGrupo({ grupo, unidad }: { grupo: GrupoDesglose; unidad: [string, s
       )}
       {abierto && (
         <div style={{
-          margin: '4px 0 2px 18px', padding: '6px 10px', background: t.bg,
+          // Como los ejemplos de ListaAgrupada: caja blanca con el borde del tono.
+          margin: '4px 0 2px 18px', padding: '6px 10px', background: 'var(--z-bg-card)',
           border: `0.5px solid ${t.borde}`, borderRadius: 6, minWidth: 0,
         }}>
           {grupo.ejemplos.map((ej, k) => (

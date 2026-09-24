@@ -7,7 +7,9 @@
 // antes las listas). "Información" sigue como lista: no es el desglose de ningún número.
 import type { CargueJob, PreviewCargue as Preview } from '../../../types/cargueFuentes';
 import { Aviso } from '../../../components/Aviso';
-import { TH, TD, ListaAgrupada, btnPrimario, btnSecundario, cajaError } from '../historico-virtualidad/compartidos';
+import {
+  TH, TD, ListaAgrupada, btnPrimario, btnSecundario, cajaError, filaEncabezado, franjaTabla, tarjetaTabla,
+} from '../historico-virtualidad/compartidos';
 import { DesgloseChips, type ChipDef } from './DesgloseChips';
 import { PALETAS, fechaLegible, num } from './formato';
 
@@ -113,14 +115,15 @@ export function PreviewCargue({ job, onConfirmar, onDescartar, confirmando, desc
 function MuestraFilas({ preview }: { preview: Preview }) {
   if (preview.columnasMuestra.length === 0 || preview.muestra.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>
+    // Misma tarjeta de la muestra de Cargue de Reportes: franja de título y encabezado sobre fondo de página.
+    <div style={tarjetaTabla}>
+      <p style={franjaTabla}>
         Muestra — primeras {num(preview.muestra.length)} filas ya limpias de {num(preview.candidatas)} candidatas
       </p>
-      <div style={{ overflow: 'auto', maxHeight: 360, border: '1px solid var(--z-border)', borderRadius: 8 }}>
+      <div style={{ overflow: 'auto', maxHeight: 360 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ position: 'sticky', top: 0, background: 'var(--z-bg-card)', zIndex: 1 }}>
-            <tr>{preview.columnasMuestra.map(c => <th key={c} style={TH}>{c}</th>)}</tr>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+            <tr style={filaEncabezado}>{preview.columnasMuestra.map(c => <th key={c} style={TH}>{c}</th>)}</tr>
           </thead>
           <tbody>
             {preview.muestra.map((fila, i) => (

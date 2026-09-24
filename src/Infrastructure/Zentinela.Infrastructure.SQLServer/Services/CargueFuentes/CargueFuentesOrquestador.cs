@@ -165,7 +165,8 @@ internal sealed class CargueFuentesOrquestador : ICargueFuentesService
 
     public async Task<IReadOnlyList<CargueJobResumenDto>> ListarAsync(CancellationToken ct)
     {
-        var enMemoria = _store.Listar();
+        // Las corridas del harness de pruebas no son cargues de nadie: no se listan (ver UsuariosPruebaCargue).
+        var enMemoria = _store.Listar().Where(j => !UsuariosPruebaCargue.EsDePrueba(j.Usuario)).ToList();
         var resumen = enMemoria.Select(j => j.Resumen()).ToList();
         var porJob = resumen.ToDictionary(r => r.JobId!.Value);
 
@@ -182,10 +183,15 @@ internal sealed class CargueFuentesOrquestador : ICargueFuentesService
                        Insertadas, Refrescadas, Error
                   FROM dbo.CargueFuenteEjecucion
                  WHERE FechaInicio >= DATEADD(hour, -@Horas, SYSDATETIME())
+                   AND Usuario NOT LIKE @PatronHarness
                  ORDER BY EjecucionID DESC;
                 """, conn))
             {
                 cmd.Parameters.Add("@Horas", SqlDbType.Int).Value = Math.Max(1, _opciones.RetencionHoras);
+                // Se filtra en SQL (no después) para que las filas del harness no gasten el TOP ni
+                // entren como "huérfanas" al UPDATE de abajo mientras el harness sigue corriendo.
+                // El prefijo no trae comodines de LIKE ('%', '_', '['), así que va tal cual.
+                cmd.Parameters.Add("@PatronHarness", SqlDbType.VarChar, 100).Value = UsuariosPruebaCargue.Prefijo + "%";
                 await using var rd = await cmd.ExecuteReaderAsync(ct);
                 while (await rd.ReadAsync(ct))
                 {

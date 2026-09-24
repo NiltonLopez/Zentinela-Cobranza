@@ -9,7 +9,7 @@ import { CargandoSpiral } from '../../components/CargandoSpiral';
 import { ZDropdown } from '../../components/ZDropdown';
 import { Aviso } from '../../components/Aviso';
 import { BarraProgreso } from '../../components/BarraProgreso';
-import { DropZone, btnSecundario, cajaError } from './historico-virtualidad/compartidos';
+import { DropZone, btnSecundario, cajaError, etiquetaPaso, tarjeta } from './historico-virtualidad/compartidos';
 import { ListaCargues } from './cargue-fuentes/ListaCargues';
 import { ColumnasEsperadas } from './cargue-fuentes/ColumnasEsperadas';
 import { PanelJob } from './cargue-fuentes/PanelJob';
@@ -30,11 +30,6 @@ function guardarJob(id: string | null) {
     else sessionStorage.removeItem(CLAVE_JOB_CARGUE);
   } catch { /* sessionStorage no disponible: solo se pierde el "retomar al volver" */ }
 }
-
-const etiquetaPaso: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase',
-  letterSpacing: '0.04em', margin: 0,
-};
 
 const extension = (nombre: string) => {
   const i = nombre.lastIndexOf('.');
@@ -165,16 +160,18 @@ export function CargueFuentesDatosPage() {
   const retomar     = (id: string) => { setError(''); setAviso(''); fijarJob(id); };
   const nuevoCargue = () => { setError(''); fijarJob(null); };
 
+  // Sin leyenda de columnas: las esperadas se ven en su propio panel, debajo del paso 2.
+  // La clave técnica (p. ej. "NuevaEps") también sirve para buscar.
   const opciones = fuentes.map(f => ({
     value: f.fuente,
     label: f.habilitada ? f.etiqueta : `${f.etiqueta} (próximamente)`,
-    sublabel: 'Columnas: ' + f.columnasEsperadas.map(c => c.nombre).join(', '),
+    textoBusqueda: f.fuente,
   }));
 
   const btnChico: React.CSSProperties = { ...btnSecundario, padding: '4px 10px', marginLeft: 8 };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1000 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 960, minWidth: 0 }}>
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
@@ -219,51 +216,57 @@ export function CargueFuentesDatosPage() {
           {fuentesQ.isLoading && <CargandoSpiral mensaje="Cargando fuentes…" />}
           {fuentesQ.isError && <div style={cajaError}>No se pudo cargar el catálogo de fuentes.</div>}
 
+          {/* Pasos dentro de una tarjeta, como en Cargue de Reportes */}
           {fuentes.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <p style={etiquetaPaso}>Paso 1 — Elige la fuente</p>
-              <ZDropdown<string>
-                options={opciones}
-                value={fuente?.fuente ?? ''}
-                // Las fuentes aún no integradas se ven, pero no se pueden elegir.
-                onChange={v => { if (fuentes.find(f => f.fuente === v)?.habilitada) { setFuenteSel(v); setError(''); } }}
-                disabled={mutValidar.isPending}
-                style={{ minWidth: 280 }}
-              />
-              {!fuente && (
-                <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>Todavía no hay fuentes habilitadas para cargar.</p>
-              )}
-            </div>
-          )}
-
-          {fuente && (
-            <>
+            <div style={tarjeta}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <p style={etiquetaPaso}>Paso 2 — Sube el archivo</p>
-                <DropZone
-                  archivoNombre={archivo?.name ?? ''}
-                  archivoKB={(archivo?.size ?? 0) / 1024}
-                  inputRef={inputRef}
-                  onClick={() => inputRef.current?.click()}
-                  onChange={seleccionar}
-                  onQuitar={limpiarArchivo}
+                <p style={etiquetaPaso}>Paso 1 — Elige la fuente</p>
+                <ZDropdown<string>
+                  buscable
+                  ariaLabel="Fuente de datos"
+                  options={opciones}
+                  value={fuente?.fuente ?? ''}
+                  // Las fuentes aún no integradas se ven, pero no se pueden elegir.
+                  onChange={v => { if (fuentes.find(f => f.fuente === v)?.habilitada) { setFuenteSel(v); setError(''); } }}
                   disabled={mutValidar.isPending}
-                  accept={fuente.extensionesAceptadas.join(',') || '.csv,.xlsx'}
-                  textoVacio={
-                    `Haz clic para seleccionar un archivo ${fuente.extensionesAceptadas.join(' o ')}. ` +
-                    `Un XLSX admite hasta ${num(fuente.limiteFilasXlsx)} filas; para archivos grandes usa CSV (más rápido y sin ese límite).`
-                  }
+                  background="var(--z-bg-page)"
+                  style={{ minWidth: 280 }}
                 />
-                {mutValidar.isPending && (
-                  <BarraProgreso
-                    porcentaje={subida}
-                    etiqueta={subida < 100 ? 'Subiendo el archivo' : 'Archivo subido — iniciando la validación'}
-                  />
+                {!fuente && (
+                  <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>Todavía no hay fuentes habilitadas para cargar.</p>
                 )}
               </div>
 
-              <ColumnasEsperadas fuente={fuente} />
-            </>
+            {fuente && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <p style={etiquetaPaso}>Paso 2 — Sube el archivo</p>
+                  <DropZone
+                    archivoNombre={archivo?.name ?? ''}
+                    archivoKB={(archivo?.size ?? 0) / 1024}
+                    inputRef={inputRef}
+                    onClick={() => inputRef.current?.click()}
+                    onChange={seleccionar}
+                    onQuitar={limpiarArchivo}
+                    disabled={mutValidar.isPending}
+                    accept={fuente.extensionesAceptadas.join(',') || '.csv,.xlsx'}
+                    textoVacio={
+                      `Haz clic para seleccionar un archivo ${fuente.extensionesAceptadas.join(' o ')}. ` +
+                      `Un XLSX admite hasta ${num(fuente.limiteFilasXlsx)} filas; para archivos grandes usa CSV (más rápido y sin ese límite).`
+                    }
+                  />
+                  {mutValidar.isPending && (
+                    <BarraProgreso
+                      porcentaje={subida}
+                      etiqueta={subida < 100 ? 'Subiendo el archivo' : 'Archivo subido — iniciando la validación'}
+                    />
+                  )}
+                </div>
+
+                <ColumnasEsperadas fuente={fuente} />
+              </>
+            )}
+            </div>
           )}
         </>
       )}

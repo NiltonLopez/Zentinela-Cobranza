@@ -4,7 +4,7 @@
 import type { CargueJob, FaseCargueJob, ResultadoCargue } from '../../../types/cargueFuentes';
 import { Aviso } from '../../../components/Aviso';
 import { BarraProgreso } from '../../../components/BarraProgreso';
-import { btnSecundario, cajaError } from '../historico-virtualidad/compartidos';
+import { btnSecundario, cajaError, tarjeta } from '../historico-virtualidad/compartidos';
 import { PreviewCargue } from './PreviewCargue';
 import { DesgloseChips, type ChipDef } from './DesgloseChips';
 import { PALETAS, duracionLegible, fechaLegible, tamanoLegible } from './formato';
@@ -35,13 +35,11 @@ export function PanelJob({ job, pendiente, onConfirmar, onCancelar, onDescartar,
 }) {
   const enProceso = job.estado === 'Validando' || job.estado === 'Cargando';
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--z-bg-card)',
-      border: '1px solid var(--z-border)', borderRadius: 8, padding: 20,
-    }}>
+    // Misma tarjeta que agrupa los pasos (y que usa Cargue de Reportes).
+    <div style={{ ...tarjeta, gap: 16, minWidth: 0 }}>
       {/* Qué cargue es */}
       <div>
-        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0, overflowWrap: 'anywhere' }}>
           {job.etiqueta} — {job.nombreArchivo}
         </p>
         <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: '2px 0 0' }}>

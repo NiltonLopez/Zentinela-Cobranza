@@ -2,17 +2,17 @@
 // archivo para que el auxiliar sepa qué encabezados debe traer (se reconocen por nombre o
 // alias, sin importar mayúsculas, tildes ni el orden).
 import type { FuenteCargue } from '../../../types/cargueFuentes';
-import { TH, TD } from '../historico-virtualidad/compartidos';
+import { TH, TD, etiquetaPaso, filaEncabezado, tarjetaTabla } from '../historico-virtualidad/compartidos';
 
 export function ColumnasEsperadas({ fuente }: { fuente: FuenteCargue }) {
   const obligatorias = fuente.columnasEsperadas.filter(c => c.obligatoria).length;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div>
-        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
+        <p style={etiquetaPaso}>
           Columnas esperadas — {fuente.etiqueta}
         </p>
-        <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: '2px 0 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: '6px 0 0', lineHeight: 1.5 }}>
           {obligatorias} obligatoria{obligatorias !== 1 ? 's' : ''} de {fuente.columnasEsperadas.length}.
           Se identifican por el encabezado o cualquiera de sus alias, sin importar mayúsculas,
           tildes ni el orden; las columnas adicionales se ignoran. Destino: <code>{fuente.tablaDestino}</code>.
@@ -21,10 +21,10 @@ export function ColumnasEsperadas({ fuente }: { fuente: FuenteCargue }) {
           <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: '4px 0 0', lineHeight: 1.5 }}>{fuente.notas}</p>
         )}
       </div>
-      <div style={{ overflowX: 'auto', border: '1px solid var(--z-border)', borderRadius: 8 }}>
+      <div style={{ ...tarjetaTabla, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr>
+            <tr style={filaEncabezado}>
               <th style={TH}>Columna</th>
               <th style={TH}>Tipo</th>
               <th style={TH}>Obligatoria</th>

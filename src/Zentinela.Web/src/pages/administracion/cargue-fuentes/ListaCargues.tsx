@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { listarJobs } from '../../../api/cargueFuentesApi';
 import type { CargueJobResumen } from '../../../types/cargueFuentes';
-import { TH, TD } from '../historico-virtualidad/compartidos';
+import { TH, TD, filaEncabezado, franjaTabla, tarjetaTabla } from '../historico-virtualidad/compartidos';
 import { fechaLegible, num } from './formato';
 
 type Badge = { label: string; color: string; bg: string; borde: string };
@@ -55,24 +55,26 @@ export function ListaCargues({ jobActual, onRetomar }: {
     refetchInterval: 10_000,
   });
 
+  // Misma tarjeta de tabla de Cargue de Reportes: franja de título y encabezado sobre fondo de página.
+  const mensaje: React.CSSProperties = { fontSize: 12, margin: 0, padding: '10px 16px' };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>
-        Cargues en curso y recientes <span style={{ fontWeight: 400, color: 'var(--z-text-muted)' }}>(últimas 48 horas)</span>
+    <div style={tarjetaTabla}>
+      <p style={franjaTabla}>
+        <strong style={{ fontWeight: 600, color: 'var(--z-text-primary)' }}>Cargues en curso y recientes</strong> — últimas 48 horas
       </p>
 
       {isError && (
-        <p style={{ fontSize: 12, color: '#dc2626', margin: 0 }}>No se pudo consultar la lista de cargues.</p>
+        <p style={{ ...mensaje, color: '#dc2626' }}>No se pudo consultar la lista de cargues.</p>
       )}
       {!isLoading && !isError && cargues.length === 0 && (
-        <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0 }}>No hay cargues en las últimas 48 horas.</p>
+        <p style={{ ...mensaje, color: 'var(--z-text-muted)' }}>No hay cargues en las últimas 48 horas.</p>
       )}
 
       {cargues.length > 0 && (
-        <div style={{ overflow: 'auto', maxHeight: 280, border: '1px solid var(--z-border)', borderRadius: 8 }}>
+        <div style={{ overflow: 'auto', maxHeight: 280 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead style={{ position: 'sticky', top: 0, background: 'var(--z-bg-card)', zIndex: 1 }}>
-              <tr>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+              <tr style={filaEncabezado}>
                 <th style={TH}>Fuente</th>
                 <th style={TH}>Usuario</th>
                 <th style={TH}>Archivo</th>

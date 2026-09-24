@@ -23,6 +23,32 @@ export const TD: React.CSSProperties = {
   whiteSpace: 'nowrap', color: 'var(--z-text-primary)',
 };
 
+// ── Contenedores (los de CargueReportesPage) ────────────────────────────────
+
+/** Tarjeta que agrupa los pasos de un cargue (o el panel de un proceso en curso). */
+export const tarjeta: React.CSSProperties = {
+  background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)',
+  borderRadius: 8, padding: 24, display: 'flex', flexDirection: 'column', gap: 20,
+};
+
+/** Etiqueta de paso numerado: "Paso 1 — …". */
+export const etiquetaPaso: React.CSSProperties = {
+  fontSize: 11, fontWeight: 600, color: 'var(--z-text-muted)', textTransform: 'uppercase',
+  letterSpacing: '0.04em', margin: 0,
+};
+
+/** Tabla con su propia tarjeta: franja de título arriba y encabezado sobre fondo de página. */
+export const tarjetaTabla: React.CSSProperties = {
+  background: 'var(--z-bg-card)', border: '0.5px solid var(--z-border)', borderRadius: 8, overflow: 'hidden',
+};
+
+export const franjaTabla: React.CSSProperties = {
+  padding: '10px 16px', fontSize: 12, color: 'var(--z-text-muted)',
+  borderBottom: '0.5px solid var(--z-border)', margin: 0,
+};
+
+export const filaEncabezado: React.CSSProperties = { background: 'var(--z-bg-page)' };
+
 // ── Botones y cajas ─────────────────────────────────────────────────────────
 
 export const btnPrimario = (habilitado: boolean): React.CSSProperties => ({
