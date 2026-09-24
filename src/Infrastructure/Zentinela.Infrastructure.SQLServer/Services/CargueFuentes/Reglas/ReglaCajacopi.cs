@@ -62,7 +62,7 @@ internal sealed class ReglaCajacopi : IReglaFuente
             if (digitos.Contains("11111", StringComparison.Ordinal))
             {
                 ctx.Set(fila, Fijo, null);
-                ctx.Advertir($"{Fijo}: fijo de relleno ('11111') anulado");
+                ctx.Advertir($"{Fijo}: fijo de relleno ('11111') anulado", fijo);
             }
             else if (digitos.Length == 7)
             {
@@ -70,7 +70,7 @@ internal sealed class ReglaCajacopi : IReglaFuente
                 if (prefijo is null)
                 {
                     ctx.Set(fila, Fijo, null);
-                    ctx.Advertir($"{Fijo}: fijo de 7 dígitos sin prefijo resoluble por departamento/municipio, anulado");
+                    ctx.Advertir($"{Fijo}: fijo de 7 dígitos sin prefijo resoluble por departamento/municipio, anulado", fijo);
                 }
                 else
                 {
@@ -84,7 +84,7 @@ internal sealed class ReglaCajacopi : IReglaFuente
         if (email is not null && string.Concat(email.Where(c => !char.IsWhiteSpace(c))).Contains("NOTIEN", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Set(fila, Email, null);
-            ctx.Advertir($"{Email}: 'NO TIENE' anulado");
+            ctx.Advertir($"{Email}: 'NO TIENE' anulado", email);
         }
     }
 

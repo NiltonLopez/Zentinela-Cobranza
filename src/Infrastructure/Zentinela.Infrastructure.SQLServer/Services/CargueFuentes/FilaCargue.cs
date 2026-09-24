@@ -24,6 +24,9 @@ internal sealed class FilaCargue
     public int? CarteraID { get; set; }
     public int? LiderID { get; set; }
 
+    /// <summary>Por qué la fila no tiene relación (par inactivo, cartera no encontrada…); null = no traía cartera/líder o sí la tiene.</summary>
+    public string? MotivoSinRelacion { get; set; }
+
     /// <summary>Valores por columna de dato: string | long | DateOnly | null.</summary>
     public required object?[] Datos { get; init; }
 
@@ -48,6 +51,7 @@ internal sealed class FilaCargue
         NombreIrrecuperable = NombreIrrecuperable,
         CarteraID           = CarteraID,
         LiderID             = LiderID,
+        MotivoSinRelacion   = MotivoSinRelacion,
         Datos               = (object?[])Datos.Clone(),
         Extra               = (string?[])Extra.Clone(),
         Flag                = Flag,

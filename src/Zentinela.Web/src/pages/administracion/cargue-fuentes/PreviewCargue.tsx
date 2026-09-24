@@ -1,19 +1,39 @@
-// Vista previa de un cargue validado (estado PreviewListo): conteos, errores/advertencias
-// agrupados sobre TODO el archivo, muestra de filas ya limpias y los botones para
-// confirmar o descartar. Nada se ha escrito todavía en la base de datos.
+// Vista previa de un cargue validado (estado PreviewListo): chips de conteo desplegables
+// (cada uno muestra de qué se compone, con filas de ejemplo, sobre TODO el archivo), muestra
+// de filas ya limpias y los botones para confirmar o descartar. Nada se ha escrito todavía.
+//
+// Las excluidas y las advertencias ya no van en listas aparte: son los chips "excluidas" y
+// "advertencias", con los mismos grupos más ejemplos, y arrancan abiertos (como se veían
+// antes las listas). "Información" sigue como lista: no es el desglose de ningún número.
 import type { CargueJob, PreviewCargue as Preview } from '../../../types/cargueFuentes';
 import { Aviso } from '../../../components/Aviso';
-import {
-  TH, TD, ChipConteo, ListaAgrupada, btnPrimario, btnSecundario, cajaError,
-} from '../historico-virtualidad/compartidos';
-import { fechaLegible, num } from './formato';
+import { TH, TD, ListaAgrupada, btnPrimario, btnSecundario, cajaError } from '../historico-virtualidad/compartidos';
+import { DesgloseChips, type ChipDef } from './DesgloseChips';
+import { PALETAS, fechaLegible, num } from './formato';
 
-// Paletas de chip (mismas que usan los hermanos de Administración).
-const VERDE = { bg: '#f0fdf4', border: '#86efac', colorNum: '#16a34a', colorLabel: '#15803d' };
-const AZUL  = { bg: '#eff6ff', border: '#93c5fd', colorNum: '#1d4ed8', colorLabel: '#1e40af' };
-const ROJO  = { bg: '#fef2f2', border: '#fca5a5', colorNum: '#dc2626', colorLabel: '#b91c1c' };
-const AMBAR = { bg: '#fffbeb', border: '#fbbf24', colorNum: '#d97706', colorLabel: '#92400e' };
-const GRIS  = { bg: 'var(--z-bg-page)', border: 'var(--z-border)', colorNum: 'var(--z-text-primary)', colorLabel: 'var(--z-text-muted)' };
+function chipsDelPreview(p: Preview, totalAdvertencias: number): ChipDef[] {
+  const nombres = p.nombresReparados + p.nombresIrrecuperables;
+  const chips: (ChipDef | false)[] = [
+    { clave: 'Leidas',            numero: p.totalLeidas,         label: 'filas leídas',         paleta: PALETAS.gris },
+    { clave: 'Excluidas',         numero: p.excluidas,           label: 'excluidas',            paleta: p.excluidas > 0 ? PALETAS.rojo : PALETAS.gris },
+    p.duplicadasEnArchivo > 0 &&
+    { clave: 'Duplicadas',        numero: p.duplicadasEnArchivo, label: 'repetidas en el archivo', paleta: PALETAS.gris },
+    { clave: 'Insertadas',        numero: p.insertadas,          label: 'se insertarán',        paleta: PALETAS.verde },
+    { clave: 'Refrescadas',       numero: p.refrescadas,         label: 'se refrescarán',       paleta: PALETAS.azul },
+    { clave: 'VaciasDescartadas', numero: p.descartadasVacias,   label: 'vacías descartadas',   paleta: PALETAS.gris },
+    p.vaciasQuePurgara > 0 &&
+    { clave: 'VaciasPurgadas',    numero: p.vaciasQuePurgara,    label: 'vacías que se purgarán', paleta: PALETAS.gris },
+    { clave: 'TitularesNuevos',   numero: p.titularesNuevos,     label: 'titulares nuevos',     paleta: PALETAS.azul, unidad: ['titular', 'titulares'] },
+    { clave: 'NombresReparados',  numero: nombres,
+      label: p.nombresIrrecuperables > 0 ? 'nombres reparados / irrecuperables' : 'nombres reparados', paleta: PALETAS.azul, unidad: null },
+    { clave: 'RelacionesNuevas',  numero: p.relacionesNuevas,    label: 'relaciones nuevas',    paleta: PALETAS.azul, unidad: ['relación', 'relaciones'] },
+    p.filasSinCarteraLider > 0 &&
+    { clave: 'SinCarteraLider',   numero: p.filasSinCarteraLider, label: 'sin cartera/líder',   paleta: PALETAS.gris },
+    { clave: 'Advertencias',      numero: totalAdvertencias,     label: 'advertencias',
+      paleta: totalAdvertencias > 0 ? PALETAS.ambar : PALETAS.gris, unidad: ['aviso', 'avisos'] },
+  ];
+  return chips.filter((c): c is ChipDef => c !== false);
+}
 
 export function PreviewCargue({ job, onConfirmar, onDescartar, confirmando, descartando }: {
   job: CargueJob;
@@ -40,27 +60,21 @@ export function PreviewCargue({ job, onConfirmar, onDescartar, confirmando, desc
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <ChipConteo numero={p.totalLeidas}       label="filas leídas"        {...GRIS} />
-        <ChipConteo numero={p.excluidas}         label="excluidas"           {...(p.excluidas > 0 ? ROJO : GRIS)} />
-        <ChipConteo numero={p.insertadas}        label="se insertarán"       {...VERDE} />
-        <ChipConteo numero={p.refrescadas}       label="se refrescarán"      {...AZUL} />
-        <ChipConteo numero={p.descartadasVacias} label="vacías descartadas"  {...GRIS} />
-        <ChipConteo numero={p.titularesNuevos}   label="titulares nuevos"    {...AZUL} />
-        <ChipConteo numero={p.nombresReparados}  label="nombres reparados"   {...AZUL} />
-        <ChipConteo numero={p.relacionesNuevas}  label="relaciones nuevas"   {...AZUL} />
-        <ChipConteo numero={totalAdvertencias}   label="advertencias"        {...(totalAdvertencias > 0 ? AMBAR : GRIS)} />
-      </div>
+      <DesgloseChips
+        key={job.jobId}
+        chips={chipsDelPreview(p, totalAdvertencias)}
+        desglose={p.desglose}
+        abiertosAlInicio={['Excluidas', 'Advertencias']}
+      />
 
       <p style={{ fontSize: 12, color: 'var(--z-text-muted)', margin: 0, lineHeight: 1.6 }}>
-        Candidatas: <strong>{num(p.candidatas)}</strong>
-        {' · '}Repetidas en el archivo: <strong>{num(p.duplicadasEnArchivo)}</strong>
-        {' · '}Filas vacías que se purgarán de la tabla: <strong>{num(p.vaciasQuePurgara)}</strong>
-        {p.filasSinCarteraLider > 0 && <>{' · '}Sin cartera/líder: <strong>{num(p.filasSinCarteraLider)}</strong></>}
+        Toca un chip para ver de qué se compone y filas de ejemplo.
+        {' '}Candidatas: <strong>{num(p.candidatas)}</strong>
+        {p.agregadasPorExpansion > 0 && (
+          <> (incluye <strong>{num(p.agregadasPorExpansion)}</strong> filas agregadas al expandir, una por placa)</>
+        )}
       </p>
 
-      <ListaAgrupada titulo="Errores — estas filas no se cargarán" items={p.errores} tono="error" />
-      <ListaAgrupada titulo="Advertencias — se cargan con ajustes" items={p.advertencias} tono="aviso" />
       <ListaAgrupada titulo="Información" items={p.info} tono="info" />
 
       {p.columnasOpcionalesFaltantes.length > 0 && (

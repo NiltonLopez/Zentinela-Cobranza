@@ -146,12 +146,14 @@ internal sealed class CargueFuentesMotor
                 VaciasPurgadas     = escritura.VaciasPurgadas,
                 TitularesNuevos    = escritura.TitularesNuevos,
                 NombresReparados   = escritura.NombresReparados,
+                NombresIrrecuperables = prep.NombresIrrecuperables,
                 RelacionesNuevas   = escritura.RelacionesNuevas,
                 Advertencias       = prep.Ctx.TotalAdvertencias,
                 Mensaje = (simular ? "Simulación (se revirtió, sin cambios): " : $"Cargue de {t.Definicion.Etiqueta} completado: ")
                           + $"{escritura.Insertadas.ToString("N0", Co)} insertadas, "
                           + $"{escritura.Refrescadas.ToString("N0", Co)} refrescadas.",
             };
+            resultado.Desglose = prep.Ctx.Desglose.ParaResultado(resultado);   // desglose (DesgloseCargue.cs)
 
             if (!simular)
             {
@@ -313,6 +315,7 @@ internal sealed class CargueFuentesMotor
                 continue;
             }
             prep.AgregadasPorExpansion += expandidas.Count - 1;
+            ctx.Desglose.Expansion(fila, expandidas.Count);
             foreach (var f in expandidas)
             {
                 CalcularFlag(f, def);
@@ -351,6 +354,7 @@ internal sealed class CargueFuentesMotor
         {
             var conRelacion = relaciones.Select(r => r.TitularID).ToHashSet();
             prep.FilasSinCarteraLider = candidatas.Count(f => !conRelacion.Contains(f.TitularID));
+            ctx.Desglose.SinRelacion(candidatas.Where(f => !conRelacion.Contains(f.TitularID)));
         }
 
         progreso.Report(new(FaseCargueJob.Cruces, esc.DedupFin + (esc.CrucesFin - esc.DedupFin) / 3, "Subiendo filas a la tabla de trabajo"));
@@ -358,6 +362,7 @@ internal sealed class CargueFuentesMotor
         await BulkAsync(conn, "#Carga", TablaCarga(def, candidatas), ct);
         await BulkAsync(conn, "#Relaciones", TablaRelaciones(relaciones), ct);
         prep.Candidatas = candidatas.Count;
+        ctx.Desglose.Candidatas(candidatas);
         candidatas = null!;
 
         if (def.CreaTitularCartera)
@@ -380,6 +385,10 @@ internal sealed class CargueFuentesMotor
 
         var sello = await EscalarAsync(conn, null, GeneradorSqlCargue.LeerSello(def), ct);
         prep.SelloPrevisto = DateOnly.FromDateTime((DateTime)sello!);
+
+        // Ejemplos del desglose que dependen de la BD: TOP (10) por grupo sobre #Carga / #Relaciones.
+        await ctx.Desglose.ConsultarBdAsync(conn, prep.Refrescadas, prep.DescartadasVacias, prep.VaciasQuePurgara,
+                                            prep.RelacionesNuevas, TimeoutSegundos, ct);
 
         ctx.Informar("Titulares nuevos que se crearán", prep.TitularesNuevos);
         ctx.Informar("Nombres de titular rotos en BD que se repararán", prep.NombresReparados);
@@ -513,21 +522,25 @@ internal sealed class CargueFuentesMotor
     {
         var def = ctx.Definicion;
 
+        ctx.EnFila(linea, null);
         if (cruda.All(string.IsNullOrWhiteSpace))
         {
-            ctx.ExcluirCruda("Fila vacía");
+            ctx.ExcluirCruda("Fila vacía", linea);
             return null;
         }
         if (cruda.Length < anchoEncabezado)
         {
-            ctx.ExcluirCruda("La fila tiene menos columnas que el encabezado (fila corrida)");
+            ctx.ExcluirCruda("La fila tiene menos columnas que el encabezado (fila corrida)", linea,
+                $"{DesgloseCargue.Valor(Celda(cruda, mapa.TitularID))} · {cruda.Length} de {anchoEncabezado} columnas");
             return null;
         }
         if (!TryDocumento(Celda(cruda, mapa.TitularID), out var titularId))
         {
-            ctx.ExcluirCruda("Documento inválido o vacío (se esperan de 5 a 15 dígitos)");
+            ctx.ExcluirCruda("Documento inválido o vacío (se esperan de 5 a 15 dígitos)", linea,
+                $"documento {DesgloseCargue.Valor(Celda(cruda, mapa.TitularID))}");
             return null;
         }
+        ctx.EnFila(linea, titularId);
 
         var fila = new FilaCargue
         {
@@ -565,9 +578,9 @@ internal sealed class CargueFuentesMotor
         fila.Nombre = n.Nombre.Length == 0 ? null : n.Nombre;
         fila.NombreReparado = n.Reparado;
         fila.NombreIrrecuperable = n.Irrecuperable;
-        if (n.Reparado) ctx.Advertir("Nombre con mojibake reparado (p. ej. 'Ã‘' → 'Ñ')");
-        if (n.Irrecuperable) ctx.Advertir("Nombre con caracteres irrecuperables ('?'): no se usa para reparar Titular");
-        if (n.Truncado) ctx.Advertir($"Nombre: truncado a {NormalizadorTitular.LargoMaximo} caracteres");
+        if (n.Reparado) ctx.Advertir("Nombre con mojibake reparado (p. ej. 'Ã‘' → 'Ñ')", $"{bruto?.Trim()} → {n.Nombre}");
+        if (n.Irrecuperable) ctx.Advertir("Nombre con caracteres irrecuperables ('?'): no se usa para reparar Titular", n.Nombre);
+        if (n.Truncado) ctx.Advertir($"Nombre: truncado a {NormalizadorTitular.LargoMaximo} caracteres", bruto?.Trim());
     }
 
     private static string? Celda(string[] cruda, int indice) =>
@@ -610,9 +623,10 @@ internal sealed class CargueFuentesMotor
         var hayCartera = carteraId is not null || cartera is not null;
         var hayLider   = liderId is not null || lider is not null;
 
+        // ctx.SinRelacion = advertencia + motivo en la fila (desglose del chip "sin cartera/líder").
         if (!hayCartera && !hayLider) return;   // opcionales: sin advertencia
-        if (!hayLider)   { ctx.Advertir("Cartera sin líder: la fila entra sin relación"); return; }
-        if (!hayCartera) { ctx.Advertir("Líder sin cartera: la fila entra sin relación"); return; }
+        if (!hayLider)   { ctx.SinRelacion(fila, "Cartera sin líder: la fila entra sin relación", carteraId ?? cartera); return; }
+        if (!hayCartera) { ctx.SinRelacion(fila, "Líder sin cartera: la fila entra sin relación", liderId ?? lider); return; }
 
         var indices = ctx.Indices!;
         int idCartera, idLider;
@@ -620,22 +634,22 @@ internal sealed class CargueFuentesMotor
         if (carteraId is not null)
         {
             if (!int.TryParse(QuitarSufijoDecimal(carteraId), NumberStyles.None, CultureInfo.InvariantCulture, out idCartera))
-            { ctx.Advertir("CarteraID no numérico: la fila entra sin relación"); return; }
+            { ctx.SinRelacion(fila, "CarteraID no numérico: la fila entra sin relación", carteraId); return; }
         }
         else if (indices.CarteraPorNombre.TryGetValue(ArchivoTabular.Normalizar(cartera!), out var c)) idCartera = c.ID;
-        else { ctx.Advertir($"Cartera '{cartera}' no encontrada (o inactiva): la fila entra sin relación"); return; }
+        else { ctx.SinRelacion(fila, $"Cartera '{cartera}' no encontrada (o inactiva): la fila entra sin relación"); return; }
 
         if (liderId is not null)
         {
             if (!int.TryParse(QuitarSufijoDecimal(liderId), NumberStyles.None, CultureInfo.InvariantCulture, out idLider))
-            { ctx.Advertir("LiderID no numérico: la fila entra sin relación"); return; }
+            { ctx.SinRelacion(fila, "LiderID no numérico: la fila entra sin relación", liderId); return; }
         }
         else if (indices.LiderPorNombre.TryGetValue(ArchivoTabular.Normalizar(lider!), out var l)) idLider = l.ID;
-        else { ctx.Advertir($"Líder '{lider}' no encontrado: la fila entra sin relación"); return; }
+        else { ctx.SinRelacion(fila, $"Líder '{lider}' no encontrado: la fila entra sin relación"); return; }
 
         if (!indices.ParesActivos.Contains((idLider, idCartera)))
         {
-            ctx.Advertir($"Líder {idLider} y cartera {idCartera} no son un par activo de Lider_Cartera: la fila entra sin relación");
+            ctx.SinRelacion(fila, $"Líder {idLider} y cartera {idCartera} no son un par activo de Lider_Cartera: la fila entra sin relación");
             return;
         }
         fila.CarteraID = idCartera;
@@ -655,7 +669,7 @@ internal sealed class CargueFuentesMotor
                 {
                     // Nunca dejar que SQL lance "String or binary data would be truncated" a
                     // mitad de un millón de filas: se trunca aquí y se avisa.
-                    ctx.Advertir($"{col.Nombre}: valor truncado a {col.Largo} caracteres");
+                    ctx.Advertir($"{col.Nombre}: valor truncado a {col.Largo} caracteres", texto);
                     return texto[..col.Largo].TrimEnd();
                 }
                 return texto;
@@ -664,13 +678,13 @@ internal sealed class CargueFuentesMotor
                 var numero = QuitarSufijoDecimal(texto).Replace(".", "").Replace(",", "").Replace(" ", "");
                 if (numero.All(char.IsDigit) && long.TryParse(numero, NumberStyles.None, CultureInfo.InvariantCulture, out var n))
                     return n == 0 ? null : n;
-                ctx.Advertir($"{col.Nombre}: valor no numérico anulado");
+                ctx.Advertir($"{col.Nombre}: valor no numérico anulado", texto);
                 return null;
 
             case TipoColumnaCargue.Fecha:
                 if (ArchivoTabular.TryParseFecha(texto, out var fecha))
                     return fecha.Year <= 1900 ? null : fecha;   // 1900-01-01 es el "vacío" de Excel
-                ctx.Advertir($"{col.Nombre}: fecha no reconocida anulada");
+                ctx.Advertir($"{col.Nombre}: fecha no reconocida anulada", texto);
                 return null;
 
             default:
@@ -691,7 +705,7 @@ internal sealed class CargueFuentesMotor
                 if (celular is null)
                     ctx.Advertir(TelefonoColombiano.Normalizar(texto).Numero is not null
                         ? $"{col.Nombre}: número fijo en la columna de celular, anulado"
-                        : $"{col.Nombre}: celular inválido anulado");
+                        : $"{col.Nombre}: celular inválido anulado", texto);
                 return celular;
             }
             case TipoColumnaCargue.Fijo:
@@ -700,7 +714,7 @@ internal sealed class CargueFuentesMotor
                 if (fijo is null)
                     ctx.Advertir(TelefonoColombiano.Normalizar(texto).EsCelular
                         ? $"{col.Nombre}: celular en la columna de fijo, anulado"
-                        : $"{col.Nombre}: fijo inválido anulado");
+                        : $"{col.Nombre}: fijo inválido anulado", texto);
                 return fijo;
             }
             case TipoColumnaCargue.Telefono:
@@ -708,7 +722,7 @@ internal sealed class CargueFuentesMotor
                 // Celular (empieza en 3) o fijo (empieza en 6). Diez dígitos con otro inicio
                 // ('5551234567', '1234567890') no son un teléfono colombiano marcable.
                 var numero = TelefonoColombiano.NormalizarCelular(texto) ?? TelefonoColombiano.NormalizarFijo(texto);
-                if (numero is null) ctx.Advertir($"{col.Nombre}: teléfono inválido anulado");
+                if (numero is null) ctx.Advertir($"{col.Nombre}: teléfono inválido anulado", texto);
                 return numero;
             }
             case TipoColumnaCargue.Email:
@@ -719,18 +733,18 @@ internal sealed class CargueFuentesMotor
                 var email = EmailColombiano.Normalizar(texto, int.MaxValue);
                 if (email is null)
                 {
-                    ctx.Advertir($"{col.Nombre}: email con formato inválido anulado");
+                    ctx.Advertir($"{col.Nombre}: email con formato inválido anulado", texto);
                     return null;
                 }
                 if (email.Length > largo)
                 {
                     // Un correo truncado es un correo equivocado: se anula, no se recorta.
-                    ctx.Advertir($"{col.Nombre}: email de más de {largo} caracteres anulado (no cabe en la columna)");
+                    ctx.Advertir($"{col.Nombre}: email de más de {largo} caracteres anulado (no cabe en la columna)", email);
                     return null;
                 }
                 if (ctx.ListaNegraCorreos?.Contiene(email) == true)
                 {
-                    ctx.Advertir($"{col.Nombre}: email en lista negra anulado");
+                    ctx.Advertir($"{col.Nombre}: email en lista negra anulado", email);
                     return null;
                 }
                 return email;
@@ -743,12 +757,12 @@ internal sealed class CargueFuentesMotor
                 // PlacaVehiculo.EsValida. Mensaje fijo (sin el valor) para que agrupe.
                 if (!PlacaVehiculo.EsValida(placa))
                 {
-                    ctx.Advertir($"{col.Nombre}: valor que no es una placa anulado");
+                    ctx.Advertir($"{col.Nombre}: valor que no es una placa anulado", texto);
                     return null;
                 }
                 if (col.Largo > 0 && placa.Length > col.Largo)
                 {
-                    ctx.Advertir($"{col.Nombre}: placa de más de {col.Largo} caracteres anulada");
+                    ctx.Advertir($"{col.Nombre}: placa de más de {col.Largo} caracteres anulada", placa);
                     return null;
                 }
                 return placa;
@@ -818,7 +832,8 @@ internal sealed class CargueFuentesMotor
                 if (f.Datos[i] is string n && vetados.Contains(n))
                 {
                     f.Datos[i] = null;
-                    ctx.Advertir($"{c.Nombre}: teléfono en ListaNegraTelefonos anulado");
+                    ctx.EnFila(f.Linea, f.TitularID);
+                    ctx.Advertir($"{c.Nombre}: teléfono en ListaNegraTelefonos anulado", n);
                     tocada = true;
                 }
             }
@@ -858,8 +873,13 @@ internal sealed class CargueFuentesMotor
                 resultado.Add(conservada);
                 var descartadas = grupo.Count() - 1;
                 duplicadas += descartadas;
-                for (var i = 0; i < descartadas; i++)
-                    ctx.Advertir("Titular repetido en el archivo: se conserva la fila más completa");
+                ctx.Desglose.TitularRepetido(grupo.Key, descartadas + 1, conservada.Linea);
+                foreach (var d in grupo)
+                {
+                    if (ReferenceEquals(d, conservada)) continue;
+                    ctx.EnFila(d.Linea, d.TitularID);
+                    ctx.Advertir("Titular repetido en el archivo: se conserva la fila más completa", $"se conservó la fila {conservada.Linea}");
+                }
             }
             return resultado;
         }
@@ -872,7 +892,12 @@ internal sealed class CargueFuentesMotor
             var clave = f.TitularID.ToString(CultureInfo.InvariantCulture) + "\u001F"
                 + string.Join("\u001F", claves.Select(i => ValorATexto(f.Datos[i]) ?? "\u0000"));
             if (vistas.Add(clave)) resultado.Add(f);
-            else { duplicadas++; ctx.Informar("Fila repetida exacta en el archivo"); }
+            else
+            {
+                duplicadas++;
+                ctx.Informar("Fila repetida exacta en el archivo");
+                ctx.Desglose.FilaIdentica(f, () => string.Join(" · ", claves.Select(i => ValorATexto(f.Datos[i]) ?? "(vacío)")));
+            }
         }
         return resultado;
     }
@@ -906,8 +931,12 @@ internal sealed class CargueFuentesMotor
             // como hacía el SP, pero se avisa; el Calificador la ignora porque cruza por Titular_Cartera.
             foreach (var f in candidatas)
                 if (!enBD.ContainsKey(f.TitularID))
+                {
+                    prep.Ctx.EnFila(f.Linea, f.TitularID);
                     prep.Ctx.Advertir("Titular inexistente en Titular: la fila entra igual (esta fuente no crea titulares)");
+                }
             prep.NombresIrrecuperables = candidatas.Count(f => f.NombreIrrecuperable);
+            prep.Ctx.Desglose.Irrecuperables(candidatas);
             return candidatas;
         }
 
@@ -930,11 +959,14 @@ internal sealed class CargueFuentesMotor
                 prep.Excluidas++;
                 continue;
             }
-            if (!existe) nuevos.Add(f.TitularID);
+            if (!existe)
+            {
+                if (nuevos.Add(f.TitularID)) prep.Ctx.Desglose.TitularNuevo(f.TitularID, conNombre!.Nombre);
+            }
             else if (NormalizadorTitular.EstaRoto(nombreBD) && conNombre is { NombreIrrecuperable: false })
             {
                 f.ReparaNombreEnBD = true;
-                reparados.Add(f.TitularID);
+                if (reparados.Add(f.TitularID)) prep.Ctx.Desglose.NombreReparado(f.TitularID, nombreBD, conNombre.Nombre);
             }
             if (f.Nombre is null && conNombre is not null) f.Nombre = conNombre.Nombre;
             resultado.Add(f);
@@ -943,6 +975,7 @@ internal sealed class CargueFuentesMotor
         prep.TitularesNuevos = nuevos.Count;
         prep.NombresReparados = reparados.Count;
         prep.NombresIrrecuperables = resultado.Count(f => f.NombreIrrecuperable);
+        prep.Ctx.Desglose.Irrecuperables(resultado);
         return resultado;
     }
 
@@ -1013,7 +1046,7 @@ internal sealed class CargueFuentesMotor
             }
         }
 
-        return new PreviewCargueDto
+        var preview = new PreviewCargueDto
         {
             TotalLeidas           = prep.TotalLeidas,
             Excluidas             = prep.Excluidas,
@@ -1040,6 +1073,8 @@ internal sealed class CargueFuentesMotor
             HuellaArchivo   = prep.Huella,
             SelloPrevisto   = prep.SelloPrevisto,
         };
+        preview.Desglose = prep.Ctx.Desglose.ParaPreview(preview);   // verifica que cada chip cuadre
+        return preview;
     }
 
     private static string? ValorATexto(object? v) => v switch

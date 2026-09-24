@@ -40,3 +40,18 @@ export function duracionLegible(segundos: number): string {
 /** Tamaño de archivo: KB hasta 1 MB, luego MB con un decimal. */
 export const tamanoLegible = (kb: number) =>
   kb >= 1024 ? `${(kb / 1024).toLocaleString('es-CO', { maximumFractionDigits: 1 })} MB` : `${num(Math.round(kb))} KB`;
+
+// ── Paletas de chip ─────────────────────────────────────────────────────────
+// Las mismas que usan los hermanos de Administración (chips del preview) y la tarjeta verde
+// del resultado (mismo diseño que el resultado de CargueReportesPage).
+
+export interface PaletaChip { bg: string; border: string; colorNum: string; colorLabel: string }
+
+export const PALETAS = {
+  verde:     { bg: '#f0fdf4', border: '#86efac', colorNum: '#16a34a', colorLabel: '#15803d' },
+  azul:      { bg: '#eff6ff', border: '#93c5fd', colorNum: '#1d4ed8', colorLabel: '#1e40af' },
+  rojo:      { bg: '#fef2f2', border: '#fca5a5', colorNum: '#dc2626', colorLabel: '#b91c1c' },
+  ambar:     { bg: '#fffbeb', border: '#fbbf24', colorNum: '#d97706', colorLabel: '#92400e' },
+  gris:      { bg: 'var(--z-bg-page)', border: 'var(--z-border)', colorNum: 'var(--z-text-primary)', colorLabel: 'var(--z-text-muted)' },
+  resultado: { bg: '#dcfce7', border: '#86efac', colorNum: '#15803d', colorLabel: '#166534' },
+} satisfies Record<string, PaletaChip>;

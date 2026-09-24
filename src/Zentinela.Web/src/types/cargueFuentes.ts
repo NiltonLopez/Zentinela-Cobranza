@@ -46,6 +46,8 @@ export interface PreviewCargue {
   totalLeidas:           number;
   excluidas:             number;
   duplicadasEnArchivo:   number;
+  /** Filas destino de más que produjo la regla al expandir (SIMIT: una por placa). */
+  agregadasPorExpansion: number;
   candidatas:            number;
   insertadas:            number;
   refrescadas:           number;
@@ -66,6 +68,35 @@ export interface PreviewCargue {
   muestra:         (string | null)[][];
   huellaArchivo: string;
   selloPrevisto: string;
+  /** De qué se compone cada chip de conteo (un elemento por ChipCargue). */
+  desglose:      DesgloseChip[];
+}
+
+// ── Desglose de los chips (preview y resultado) ─────────────────────────────
+
+export type ChipCargue =
+  | 'Leidas' | 'Excluidas' | 'Duplicadas' | 'Insertadas' | 'Refrescadas' | 'VaciasDescartadas'
+  | 'VaciasPurgadas' | 'TitularesNuevos' | 'NombresReparados' | 'RelacionesNuevas' | 'SinCarteraLider'
+  | 'Advertencias';
+
+export type TonoDesglose = 'Error' | 'Aviso' | 'Info';
+
+/**
+ * Grupo dentro de un chip: título sin número de fila, cantidad exacta y hasta 10 ejemplos
+ * ("Fila 12 · 1234567 · valor"). La cantidad solo es negativa en "agregadas por expansión"
+ * del chip Leídas (filas destino de más que se restan).
+ */
+export interface GrupoDesglose {
+  titulo:   string;
+  cantidad: number;
+  tono:     TonoDesglose;
+  ejemplos: string[];
+}
+
+/** Composición de un chip: la suma de `cantidad` de sus grupos es el número del chip. */
+export interface DesgloseChip {
+  clave:  ChipCargue;
+  grupos: GrupoDesglose[];
 }
 
 // ── Resultado de la carga confirmada ────────────────────────────────────────
@@ -79,10 +110,14 @@ export interface ResultadoCargue {
   vaciasPurgadas:     number;
   titularesNuevos:    number;
   nombresReparados:   number;
+  /** Filas con el nombre dañado sin arreglo ('?'): entran, pero no reparan Titular. */
+  nombresIrrecuperables: number;
   relacionesNuevas:   number;
   advertencias:       number;
   mensaje:            string;
   duracionSegundos:   number;
+  /** Composición de cada métrica (conteos finales de la escritura). */
+  desglose:           DesgloseChip[];
 }
 
 // ── Job en segundo plano ────────────────────────────────────────────────────

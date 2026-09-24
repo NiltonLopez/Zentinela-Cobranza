@@ -181,6 +181,7 @@ internal static class CasoSura
             Check($"{paso}: candidatas = insertadas + refrescadas + vacías",
                 p.Candidatas == p.Insertadas + p.Refrescadas + p.DescartadasVacias,
                 $"{p.Candidatas} = {p.Insertadas} + {p.Refrescadas} + {p.DescartadasVacias}");
+            h.Desglose(paso, p);
         }
 
         void Mostrar(PreviewCargueDto p)
@@ -200,6 +201,7 @@ internal static class CasoSura
             Igual($"{paso}: auditoría cerrada en OK", "OK", estado);
             Igual($"{paso}: auditoría con las insertadas", r.Insertadas,
                 await Contar("SELECT ISNULL(Insertadas, -1) FROM dbo.CargueFuenteEjecucion WHERE EjecucionID = @e", ("@e", id)));
+            h.Desglose(paso, r);
             return (r, id);
         }
 
@@ -238,6 +240,41 @@ internal static class CasoSura
         Check("1: muestra con filas y columnas dinámicas", p1.Muestra.Count == 10 && p1.ColumnasMuestra.Contains("NumeroCelular"),
             $"filas={p1.Muestra.Count} columnas={string.Join(",", p1.ColumnasMuestra)}");
 
+        // ── 1c. Desglose de los chips (qué compone cada número, con ejemplos) ───
+        var d1 = p1.Desglose;
+        string Ej(ChipCargue chip, string grupo = "") => string.Join(" | ", Harness.Ejemplos(d1, chip, grupo));
+        Igual("1c: leídas = candidatas + excluidas + duplicadas (sin expansión)", 19,
+            Harness.EnGrupo(d1, ChipCargue.Leidas, "Candidatas") + Harness.EnGrupo(d1, ChipCargue.Leidas, "Excluidas")
+            + Harness.EnGrupo(d1, ChipCargue.Leidas, "Duplicadas"));
+        Check("1c: excluida por documento inválido con fila y valor", Ej(ChipCargue.Excluidas, "Documento inválido") == "Fila 3 · documento ABC123",
+            Ej(ChipCargue.Excluidas, "Documento inválido"));
+        Check("1c: excluida por titular nuevo sin nombre con su documento", Ej(ChipCargue.Excluidas, "sin nombre") == $"Fila 18 · {T(14)}",
+            Ej(ChipCargue.Excluidas, "sin nombre"));
+        Igual("1c: duplicadas = titular repetido", 2, Harness.EnGrupo(d1, ChipCargue.Duplicadas, "Titular repetido"));
+        Check("1c: ejemplo de repetido con la fila conservada", Ej(ChipCargue.Duplicadas).Contains($"{T(8)} × 2 filas (se conservó la fila 11)"),
+            Ej(ChipCargue.Duplicadas));
+        Igual("1c: insertadas = titular sin datos previos en Sura", 15, Harness.EnGrupo(d1, ChipCargue.Insertadas, "sin datos previos en Sura"));
+        Check("1c: ejemplo de insertada con documento, celular y email",
+            Harness.Ejemplos(d1, ChipCargue.Insertadas).FirstOrDefault() == $"{T(1)} · 3001234567 · juan.perez@gmail.com", Ej(ChipCargue.Insertadas));
+        Check("1c: titulares nuevos con documento y nombre (máx. 10 de 14)",
+            Harness.Ejemplos(d1, ChipCargue.TitularesNuevos).Count == 10 && Ej(ChipCargue.TitularesNuevos).Contains($"{T(2)} · MARIA GOMEZ"),
+            Ej(ChipCargue.TitularesNuevos));
+        Check("1c: nombre reparado con antes → después", Ej(ChipCargue.NombresReparados, "Reparado") == $"{T(15)} · {NombreRotoT15} → PIÑA RUIZ",
+            Ej(ChipCargue.NombresReparados, "Reparado"));
+        Check("1c: nombre irrecuperable con su valor", Ej(ChipCargue.NombresReparados, "Irrecuperable") == $"Fila 9 · {T(7)} · PI?A GOMEZ",
+            Ej(ChipCargue.NombresReparados, "Irrecuperable"));
+        Check("1c: relaciones agrupadas por 'Cartera — Líder'",
+            Harness.Chip(d1, ChipCargue.RelacionesNuevas).Grupos.All(g => g.Titulo.Contains(" — ")) && Ej(ChipCargue.RelacionesNuevas).Contains(T(11).ToString()),
+            string.Join(" | ", Harness.Chip(d1, ChipCargue.RelacionesNuevas).Grupos.Select(g => $"{g.Titulo} ({g.Cantidad})")));
+        Igual("1c: sin relación por par inactivo / inexistente", 2, Harness.EnGrupo(d1, ChipCargue.SinCarteraLider, "no son un par activo"));
+        Igual("1c: sin relación porque la fila no traía cartera ni líder", 11,
+            Harness.EnGrupo(d1, ChipCargue.SinCarteraLider, DesgloseCargue.TituloSinColumnasRelacion));
+        Check("1c: advertencia con fila, documento y valor anulado",
+            Ej(ChipCargue.Advertencias, "formato inválido") == $"Fila 7 · {T(5)} · correo-sin-arroba.com", Ej(ChipCargue.Advertencias, "formato inválido"));
+        Check("1c: todas las advertencias traen fila y documento",
+            Harness.Ejemplos(d1, ChipCargue.Advertencias).All(e => e.StartsWith("Fila ") && e.Contains(" · 9990000000")),
+            Ej(ChipCargue.Advertencias));
+
         // Mismo contenido en CSV (con ';' dentro de comillas en Empresa): mismos conteos.
         var pCsv = await NuevoMotor().ValidarAsync(Trabajo(archivoCsv), sinProgreso, CancellationToken.None);
         Check("1b: CSV con comillas da los mismos conteos que el XLSX",
@@ -254,6 +291,7 @@ internal static class CasoSura
         Igual("2: titulares nuevos simulados", 14, sim.TitularesNuevos);
         Igual("2: nombres reparados simulados", 1, sim.NombresReparados);
         Igual("2: relaciones simuladas", 2, sim.RelacionesNuevas);
+        h.Desglose("2", sim);
         Igual("2: Sura intacta tras rollback", suraAntes, await ContarSura());
         Igual("2: Titular del rango intacto (solo T15 sembrado)", 1, await EnRango("Titular", "NumeroDocumento"));
         Igual("2: Titular_Cartera del rango intacto", 0, await EnRango("Titular_Cartera", "TitularID"));
@@ -319,6 +357,10 @@ internal static class CasoSura
         var p5 = await NuevoMotor().ValidarAsync(Trabajo(archivoB), sinProgreso, CancellationToken.None);
         Igual("5: preview vacías que purgará", 1, p5.VaciasQuePurgara);
         Invariantes("5", p5);
+        Igual("5: desglose — insertada con contenido distinto al vigente (T10 tenía su vacía)", 1,
+            Harness.EnGrupo(p5.Desglose, ChipCargue.Insertadas, DesgloseCargue.TituloContenidoDistinto));
+        Igual("5: desglose — la vacía que se purgará es la de T10", T(10).ToString(),
+            string.Join(",", Harness.Ejemplos(p5.Desglose, ChipCargue.VaciasPurgadas)));
         var (r5, e5) = await CargaReal("5", archivoB, p5);
         Igual("5: insertadas", 1, r5.Insertadas);
         Igual("5: vacías purgadas", 1, r5.VaciasPurgadas);
@@ -332,6 +374,10 @@ internal static class CasoSura
         var p6 = await NuevoMotor().ValidarAsync(Trabajo(archivoA), sinProgreso, CancellationToken.None);
         Igual("6: preview vacías descartadas", 1, p6.DescartadasVacias);
         Invariantes("6", p6);
+        Igual("6: desglose — la vacía descartada es la de T10", T(10).ToString(),
+            string.Join(",", Harness.Ejemplos(p6.Desglose, ChipCargue.VaciasDescartadas)));
+        Igual("6: desglose — refrescadas = contenido idéntico al vigente", 14,
+            Harness.EnGrupo(p6.Desglose, ChipCargue.Refrescadas, "Contenido idéntico"));
         var suraAntes6 = await ContarSura();
         var (r6, _) = await CargaReal("6", archivoA, p6);
         Igual("6: insertadas", 0, r6.Insertadas);

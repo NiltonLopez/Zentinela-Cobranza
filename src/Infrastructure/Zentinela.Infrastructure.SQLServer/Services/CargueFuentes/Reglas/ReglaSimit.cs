@@ -55,7 +55,7 @@ internal sealed class ReglaSimit : IReglaFuente
             // columna (varchar(10)): lo que la cumple nunca rompe el INSERT.
             if (!PlacaVehiculo.EsValida(placa))
             {
-                ctx.Advertir(AvisoNoEsPlaca);
+                ctx.Advertir(AvisoNoEsPlaca, bruto?.Trim());
                 continue;
             }
             if (!placas.Contains(placa, StringComparer.Ordinal)) placas.Add(placa);

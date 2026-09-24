@@ -1,4 +1,5 @@
 using Zentinela.Application;
+using Zentinela.Application.DTOs.CargueFuentes;
 
 namespace CargueHarness;
 
@@ -71,6 +72,26 @@ internal static class CasoSimit
                     !p.ColumnasOpcionalesFaltantes.Contains("Placa") && p.ColumnasEncontradas.Contains("Placa1")
                     && p.ColumnasEncontradas.Contains("Placa15"),
                     $"encontradas={string.Join(",", p.ColumnasEncontradas)} opcionales={string.Join(",", p.ColumnasOpcionalesFaltantes)}");
+
+                // Desglose: la expansión resta en Leídas (13 candidatas + 1 excluida + 1 duplicada − 4 = 11).
+                var d = p.Desglose;
+                string Ej(ChipCargue chip, string grupo = "") => string.Join(" | ", Harness.Ejemplos(d, chip, grupo));
+                h.Igual("SIMIT 1c: leídas — agregadas por expansión en negativo", -4,
+                    Harness.EnGrupo(d, ChipCargue.Leidas, "agregadas al expandir"));
+                h.Igual("SIMIT 1c: leídas — ejemplos de expansión (T1 → 2, T2 → 3, T8 → 2)",
+                    $"Fila 2 · {T(1)} · 2 filas destino | Fila 3 · {T(2)} · 3 filas destino | Fila 12 · {T(8)} · 2 filas destino",
+                    Ej(ChipCargue.Leidas, "agregadas al expandir"));
+                h.Check("SIMIT 1c: duplicada = fila idéntica, con la placa", Ej(ChipCargue.Duplicadas, "Fila idéntica") == $"Fila 9 · {T(6)} · MNO012",
+                    Ej(ChipCargue.Duplicadas));
+                h.Igual("SIMIT 1c: vacía descartada = la de T5", T(5).ToString(), Ej(ChipCargue.VaciasDescartadas));
+                h.Igual("SIMIT 1c: insertadas = titular sin datos previos en SIMIT", 12,
+                    Harness.EnGrupo(d, ChipCargue.Insertadas, "sin datos previos en SIMIT"));
+                h.Check("SIMIT 1c: ejemplos de insertadas con la placa", Ej(ChipCargue.Insertadas).StartsWith($"{T(1)} · ABC123 | {T(1)} · XYZ789"),
+                    Ej(ChipCargue.Insertadas));
+                h.Check("SIMIT 1c: aviso 'no es una placa' con el valor descartado",
+                    Ej(ChipCargue.Advertencias, "no es una placa").Contains($"Fila 5 · {T(4)} · ABCDEFGHIJK")
+                    && Ej(ChipCargue.Advertencias, "no es una placa").Contains($"Fila 11 · {T(7)} · PAZ Y SALVO"),
+                    Ej(ChipCargue.Advertencias, "no es una placa"));
                 return Task.CompletedTask;
             },
             trasCargar: async (_, _) =>

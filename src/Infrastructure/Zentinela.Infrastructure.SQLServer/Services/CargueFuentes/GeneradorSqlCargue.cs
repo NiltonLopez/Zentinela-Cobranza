@@ -102,7 +102,7 @@ internal static class GeneradorSqlCargue
     /// Predicado de titular entre destino (s) y #Carga (c). Con TitularID texto en destino
     /// (NuevaEps) se convierte el lado de #Carga: la columna del destino queda sargable.
     /// </summary>
-    private static string MismoTitular(DefinicionFuenteCargue d, string destino, string carga) =>
+    public static string MismoTitular(DefinicionFuenteCargue d, string destino, string carga) =>
         d.TitularIdComoTexto
             ? $"{destino}.{Id(ColumnaTitularDestino)} = CONVERT(varchar(30), {carga}.TitularID)"
             : $"{destino}.{Id(ColumnaTitularDestino)} = {carga}.TitularID";
@@ -194,7 +194,7 @@ internal static class GeneradorSqlCargue
 
     // Relaciones nuevas: solo pares ACTIVOS en Lider_Cartera (EXISTS y no JOIN: si Lider_Cartera
     // tuviera el par repetido, el JOIN duplicaría filas y violaría la PK de Titular_Cartera).
-    private const string OrigenRelacionesNuevas = """
+    public const string OrigenRelacionesNuevas = """
           FROM #Relaciones r
          WHERE EXISTS (SELECT 1 FROM dbo.Lider_Cartera lc
                         WHERE lc.LiderID = r.LiderID AND lc.CarteraID = r.CarteraID AND lc.Activo = 1)

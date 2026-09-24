@@ -167,7 +167,58 @@ internal sealed class Harness
         Check($"{paso}: candidatas = insertadas + refrescadas + vacías",
             p.Candidatas == p.Insertadas + p.Refrescadas + p.DescartadasVacias,
             $"{p.Candidatas} = {p.Insertadas} + {p.Refrescadas} + {p.DescartadasVacias}");
+        Desglose(paso, p);
     }
+
+    // ── Desglose de los chips ───────────────────────────────────────────────
+
+    /// <summary>Coherencia del desglose del preview: todos los chips, sumas, tope de ejemplos, títulos sin fila.</summary>
+    public void Desglose(string paso, PreviewCargueDto p)
+    {
+        Igual($"{paso}: desglose con un chip por conteo", Enum.GetValues<ChipCargue>().Length, p.Desglose.Count);
+        RevisarDesglose(paso, p.Desglose, c => DesgloseCargue.NumeroDelChip(p, c));
+    }
+
+    /// <summary>Coherencia del desglose del resultado contra los conteos FINALES de la escritura.</summary>
+    public void Desglose(string paso, ResultadoCargueDto r)
+    {
+        Check($"{paso}: desglose del resultado con sus métricas",
+            r.Desglose.Select(c => c.Clave).SequenceEqual(DesgloseCargue.ChipsResultado),
+            string.Join(",", r.Desglose.Select(c => c.Clave)));
+        RevisarDesglose(paso, r.Desglose, c => DesgloseCargue.NumeroDelChip(r, c));
+    }
+
+    private void RevisarDesglose(string paso, List<DesgloseChipDto> chips, Func<ChipCargue, int> numero)
+    {
+        var incoherentes = DesgloseCargue.Incoherencias(chips, numero);
+        Check($"{paso}: desglose — cada chip suma su número", incoherentes.Count == 0, string.Join("; ", incoherentes));
+        var grupos = chips.SelectMany(c => c.Grupos).ToList();
+        Check($"{paso}: desglose — máx. {DesgloseCargue.MaxEjemplos} ejemplos por grupo",
+            grupos.All(g => g.Ejemplos.Count <= DesgloseCargue.MaxEjemplos));
+        // Todo grupo trae al menos un ejemplo y nunca más que su cantidad (un titular repetido
+        // 3 veces suma 2 con UN ejemplo). El grupo de ajuste no tiene filas propias.
+        bool EjemplosOk(GrupoDesgloseDto g) =>
+            g.Titulo == DesgloseCargue.TituloAjuste
+            || (g.Ejemplos.Count >= 1 && g.Ejemplos.Count <= Math.Min(Math.Abs(g.Cantidad), DesgloseCargue.MaxEjemplos));
+        Check($"{paso}: desglose — cada grupo con 1..min(|cantidad|, 10) ejemplos",
+            grupos.All(EjemplosOk),
+            string.Join(" | ", grupos.Where(g => !EjemplosOk(g)).Select(g => $"{g.Titulo}: {g.Cantidad} con {g.Ejemplos.Count} ejemplos")));
+        Check($"{paso}: desglose — títulos sin número de fila",
+            grupos.All(g => !System.Text.RegularExpressions.Regex.IsMatch(g.Titulo, @"(Fila|Línea|fila|línea) \d")));
+        Check($"{paso}: desglose — sin grupos en cero", grupos.All(g => g.Cantidad != 0));
+        Check($"{paso}: desglose — sin grupo de ajuste (nada cambió entre preparar y escribir)",
+            grupos.All(g => g.Titulo != DesgloseCargue.TituloAjuste));
+    }
+
+    public static DesgloseChipDto Chip(List<DesgloseChipDto> desglose, ChipCargue clave) => desglose.Single(c => c.Clave == clave);
+
+    /// <summary>Suma de los grupos del chip cuyo título contiene <paramref name="texto"/>.</summary>
+    public static int EnGrupo(List<DesgloseChipDto> desglose, ChipCargue clave, string texto) =>
+        Chip(desglose, clave).Grupos.Where(g => g.Titulo.Contains(texto, StringComparison.Ordinal)).Sum(g => g.Cantidad);
+
+    /// <summary>Ejemplos de los grupos del chip cuyo título contiene <paramref name="texto"/>.</summary>
+    public static List<string> Ejemplos(List<DesgloseChipDto> desglose, ChipCargue clave, string texto = "") =>
+        Chip(desglose, clave).Grupos.Where(g => g.Titulo.Contains(texto, StringComparison.Ordinal)).SelectMany(g => g.Ejemplos).ToList();
 
     public static void Mostrar(PreviewCargueDto p)
     {
@@ -249,6 +300,7 @@ internal sealed class Harness
         Console.WriteLine($"        {sim.Mensaje}");
         Igual($"{etiqueta} 2: insertadas simuladas", e.Insertadas, sim.Insertadas);
         Igual($"{etiqueta} 2: titulares nuevos simulados", e.TitularesNuevos, sim.TitularesNuevos);
+        Desglose($"{etiqueta} 2", sim);
         Igual($"{etiqueta} 2: {tabla} intacta tras rollback", destinoAntes, await ContarTabla(tabla));
         Igual($"{etiqueta} 2: Titular del rango intacto", titularesAntes, await EnRango("Titular", desde, hasta));
         Igual($"{etiqueta} 2: Titular_Cartera del rango intacto", 0, await EnRango("Titular_Cartera", desde, hasta));
@@ -257,6 +309,7 @@ internal sealed class Harness
         var (r3, e3) = await CargaReal(def, $"{etiqueta} 3", archivo, p1);
         Console.WriteLine($"        {r3.Mensaje} (ejecución {e3}, sello {r3.SelloFechaConsulta:yyyy-MM-dd})");
         Igual($"{etiqueta} 3: insertadas", e.Insertadas, r3.Insertadas);
+        Desglose($"{etiqueta} 3", r3);
         Igual($"{etiqueta} 3: {tabla} creció en las insertadas", destinoAntes + e.Insertadas, await ContarTabla(tabla));
         Igual($"{etiqueta} 3: {tabla} del rango = insertadas", e.Insertadas, await EnRango(tabla, desde, hasta));
         Igual($"{etiqueta} 3: titulares nuevos", e.TitularesNuevos, r3.TitularesNuevos);
@@ -270,12 +323,15 @@ internal sealed class Harness
         Igual($"{etiqueta} 4: preview refrescadas", e.Insertadas, p4.Refrescadas);
         Igual($"{etiqueta} 4: preview titulares nuevos", 0, p4.TitularesNuevos);
         Igual($"{etiqueta} 4: preview relaciones nuevas", 0, p4.RelacionesNuevas);
+        Igual($"{etiqueta} 4: desglose — refrescadas = contenido idéntico al vigente", e.Insertadas,
+            EnGrupo(p4.Desglose, ChipCargue.Refrescadas, "Contenido idéntico"));
         Invariantes($"{etiqueta} 4", p4, e.AgregadasPorExpansion);
         var antes4 = await ContarTabla(tabla);
         var (r4, e4) = await CargaReal(def, $"{etiqueta} 4", archivo, p4);
         Console.WriteLine($"        {r4.Mensaje} (ejecución {e4})");
         Igual($"{etiqueta} 4: insertadas", 0, r4.Insertadas);
         Igual($"{etiqueta} 4: refrescadas", e.Insertadas, r4.Refrescadas);
+        Desglose($"{etiqueta} 4", r4);
         Igual($"{etiqueta} 4: COUNT(*) de {tabla} igual antes y después", antes4, await ContarTabla(tabla));
         Check($"{etiqueta} 4: reversión 'U' con la fecha anterior",
             await Contar("SELECT COUNT(*) FROM dbo.CargueFuenteReversion WHERE EjecucionID = @e AND Accion = 'U' AND FechaAnterior IS NOT NULL",

@@ -6,7 +6,8 @@ import { Aviso } from '../../../components/Aviso';
 import { BarraProgreso } from '../../../components/BarraProgreso';
 import { btnSecundario, cajaError } from '../historico-virtualidad/compartidos';
 import { PreviewCargue } from './PreviewCargue';
-import { duracionLegible, fechaLegible, num, tamanoLegible } from './formato';
+import { DesgloseChips, type ChipDef } from './DesgloseChips';
+import { PALETAS, duracionLegible, fechaLegible, tamanoLegible } from './formato';
 
 // Nombre legible de cada fase del motor (el servidor manda el nombre técnico).
 const FASES: Record<FaseCargueJob, string> = {
@@ -101,17 +102,23 @@ function FinConError({ texto, onNuevo }: { texto: string; onNuevo: () => void })
   );
 }
 
-// Métrica dentro de la tarjeta verde (mismo diseño que el resultado de CargueReportesPage).
-function Metrica({ numero, label }: { numero: number; label: string }) {
-  return (
-    <div style={{
-      background: '#dcfce7', border: '0.5px solid #86efac', borderRadius: 8, padding: '12px 18px',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      <span style={{ fontSize: 22, fontWeight: 700, color: '#15803d' }}>{num(numero)}</span>
-      <span style={{ fontSize: 13, color: '#166534' }}>{label}</span>
-    </div>
-  );
+// Métricas del resultado: mismos chips desplegables del preview, con la paleta verde de la
+// tarjeta (mismo diseño que el resultado de CargueReportesPage). Los números son los conteos
+// FINALES de la escritura; los grupos y ejemplos, los de la preparación que corrió al confirmar.
+function chipsDelResultado(r: ResultadoCargue): ChipDef[] {
+  const verde = PALETAS.resultado;
+  const irrecuperables = r.nombresIrrecuperables ?? 0;
+  return [
+    { clave: 'Insertadas',        numero: r.insertadas,        label: 'insertadas',         paleta: verde },
+    { clave: 'Refrescadas',       numero: r.refrescadas,       label: 'refrescadas',        paleta: verde },
+    { clave: 'VaciasDescartadas', numero: r.descartadasVacias, label: 'vacías descartadas', paleta: verde },
+    { clave: 'VaciasPurgadas',    numero: r.vaciasPurgadas,    label: 'vacías purgadas',    paleta: verde },
+    { clave: 'TitularesNuevos',   numero: r.titularesNuevos,   label: 'titulares nuevos',   paleta: verde, unidad: ['titular', 'titulares'] },
+    { clave: 'NombresReparados',  numero: r.nombresReparados + irrecuperables,
+      label: irrecuperables > 0 ? 'nombres reparados / irrecuperables' : 'nombres reparados', paleta: verde, unidad: null },
+    { clave: 'RelacionesNuevas',  numero: r.relacionesNuevas,  label: 'relaciones nuevas',  paleta: verde, unidad: ['relación', 'relaciones'] },
+    { clave: 'Advertencias',      numero: r.advertencias,      label: 'advertencias',       paleta: verde, unidad: ['aviso', 'avisos'] },
+  ];
 }
 
 function TarjetaResultado({ resultado: r, onNuevo }: { resultado: ResultadoCargue; onNuevo: () => void }) {
@@ -121,16 +128,7 @@ function TarjetaResultado({ resultado: r, onNuevo }: { resultado: ResultadoCargu
       display: 'flex', flexDirection: 'column', gap: 16,
     }}>
       <p style={{ fontSize: 15, fontWeight: 600, color: '#15803d', margin: 0 }}>Cargue completado</p>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Metrica numero={r.insertadas}        label="insertadas" />
-        <Metrica numero={r.refrescadas}       label="refrescadas" />
-        <Metrica numero={r.descartadasVacias} label="vacías descartadas" />
-        <Metrica numero={r.vaciasPurgadas}    label="vacías purgadas" />
-        <Metrica numero={r.titularesNuevos}   label="titulares nuevos" />
-        <Metrica numero={r.nombresReparados}  label="nombres reparados" />
-        <Metrica numero={r.relacionesNuevas}  label="relaciones nuevas" />
-        <Metrica numero={r.advertencias}      label="advertencias" />
-      </div>
+      <DesgloseChips key={r.ejecucionID} chips={chipsDelResultado(r)} desglose={r.desglose} />
       {r.mensaje && <p style={{ fontSize: 13, color: '#166534', margin: 0 }}>{r.mensaje}</p>}
       <p style={{ fontSize: 12, color: '#166534', margin: 0, lineHeight: 1.6 }}>
         Ejecución <strong>#{r.ejecucionID}</strong> · duración {duracionLegible(r.duracionSegundos)} · fecha de

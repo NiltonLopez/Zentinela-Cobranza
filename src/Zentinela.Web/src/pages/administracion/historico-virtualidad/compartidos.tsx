@@ -121,7 +121,7 @@ export function DropZone({
 
 // Paleta por tono. 'error' conserva EXACTAMENTE los colores que siempre tuvo
 // ListaErroresAgrupados (la usan otras páginas); 'aviso' e 'info' son sus variantes.
-const TONOS: Record<'error' | 'aviso' | 'info', { bg: string; borde: string; texto: string }> = {
+export const TONOS: Record<'error' | 'aviso' | 'info', { bg: string; borde: string; texto: string }> = {
   error: { bg: '#fef2f2',           borde: '#fca5a5',        texto: '#b91c1c' },
   aviso: { bg: '#fffbeb',           borde: '#fcd34d',        texto: '#d97706' },
   info:  { bg: 'var(--z-bg-page)',  borde: 'var(--z-border)', texto: '#64748b' },

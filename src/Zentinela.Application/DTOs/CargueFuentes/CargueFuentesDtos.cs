@@ -70,6 +70,9 @@ public class PreviewCargueDto
 
     public string   HuellaArchivo { get; set; } = string.Empty;
     public DateOnly SelloPrevisto { get; set; }
+
+    /// <summary>De qué se compone cada chip de conteo (grupos con hasta 10 ejemplos). Ver <see cref="DesgloseChipDto"/>.</summary>
+    public List<DesgloseChipDto> Desglose { get; set; } = [];
 }
 
 /// <summary>Lo que efectivamente escribió la confirmación.</summary>
@@ -83,10 +86,49 @@ public class ResultadoCargueDto
     public int      VaciasPurgadas     { get; set; }
     public int      TitularesNuevos    { get; set; }
     public int      NombresReparados   { get; set; }
+    /// <summary>Filas con el nombre dañado sin arreglo ('?'): entran, pero no reparan Titular.</summary>
+    public int      NombresIrrecuperables { get; set; }
     public int      RelacionesNuevas   { get; set; }
     public int      Advertencias       { get; set; }
     public string   Mensaje            { get; set; } = string.Empty;
     public double   DuracionSegundos   { get; set; }
+
+    /// <summary>De qué se compone cada métrica: conteos finales de la escritura, ejemplos de la preparación.</summary>
+    public List<DesgloseChipDto> Desglose { get; set; } = [];
+}
+
+/// <summary>Chip de conteo del preview / resultado que se puede desplegar.</summary>
+public enum ChipCargue
+{
+    Leidas, Excluidas, Duplicadas, Insertadas, Refrescadas, VaciasDescartadas, VaciasPurgadas,
+    TitularesNuevos, NombresReparados, RelacionesNuevas, SinCarteraLider, Advertencias,
+}
+
+/// <summary>Tono de un grupo del desglose (los mismos de las listas agrupadas del front).</summary>
+public enum TonoDesglose { Error, Aviso, Info }
+
+/// <summary>
+/// Un grupo dentro de un chip: título SIN número de fila, cantidad EXACTA (aunque los
+/// ejemplos se corten) y hasta 10 ejemplos ("Fila 12 · 1234567 · valor"). La cantidad solo
+/// es negativa en "Agregadas por expansión" del chip Leídas: esas filas destino de más se
+/// restan para volver a las filas del archivo.
+/// </summary>
+public class GrupoDesgloseDto
+{
+    public string       Titulo   { get; set; } = string.Empty;
+    public int          Cantidad { get; set; }
+    public TonoDesglose Tono     { get; set; }
+    public List<string> Ejemplos { get; set; } = [];
+}
+
+/// <summary>
+/// Composición de un chip. Invariante (la verifica el motor): la suma de <c>Cantidad</c> de
+/// sus grupos es el número que muestra el chip (ver <c>DesgloseCargue.NumeroDelChip</c>).
+/// </summary>
+public class DesgloseChipDto
+{
+    public ChipCargue             Clave  { get; set; }
+    public List<GrupoDesgloseDto> Grupos { get; set; } = [];
 }
 
 /// <summary>Foto de un trabajo (lo que devuelve el polling).</summary>
