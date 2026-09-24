@@ -510,8 +510,44 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// Compensados (BDUA: EPS y último período compensado del titular). Regla propia
+    /// (<c>ReglaCompensados</c>): la marca del proveedor 'NO SE ENCUENTRA' no es un dato.
+    /// Verificado contra <c>sys.columns</c> de <c>dbo.Compensados</c> el 2026-09-24: EPS varchar(50),
+    /// UltimoPeriodoCompensado <c>date</c>, TipoAfiliado varchar(50), <b>EstadoEnCompensados int</b>
+    /// NOT NULL (no bit: el motor escribe 0/1), FechaConsulta date; FK a Titular, índice
+    /// (TitularID, FechaConsulta DESC), sin triggers.
+    ///
+    /// <b>El flag NO viene del archivo</b> (no hizo falta la extensión <c>FlagDesdeArchivo</c> prevista
+    /// en el plan): <c>sp_ProcesarCompensadosAuxiliar</c> recalculaba <c>Estado</c> como
+    /// "Estado, EPS o UltimoPeriodoCompensado no nulos", así que la columna Estado del archivo solo
+    /// servía para dar flag 1 a una fila sin ningún dato (2.315 filas así hoy). Aquí el flag es EPS o
+    /// período, lo que se guarda; la columna Estado del archivo se informa como "no se usa".
+    /// TipoAfiliado no entra al flag, como en el SP.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Compensados = new()
+    {
+        Fuente          = "Compensados",
+        Etiqueta        = "Compensados (BDUA)",
+        TablaDestino    = "dbo.Compensados",
+        ColumnaFlag     = "EstadoEnCompensados",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "EPS, último período compensado y tipo de afiliado del titular. El Estado del archivo no se usa: el flag sale de EPS y período.",
+        ColumnasDato =
+        [
+            new("EPS", ["eps", "nombreeps", "entidad", "administradora"],
+                TipoColumnaCargue.Texto, 50, Descripcion: "EPS"),
+            new("UltimoPeriodoCompensado", ["ultimoperiodocompensado", "periodocompensado", "ultimoperiodo", "periodo"],
+                TipoColumnaCargue.Fecha, Descripcion: "Último período compensado (fecha; '2026-08' = 1 de agosto)"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario, adicional"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
-        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara, CamaraEmpresa, PositivaEmpresas, ArlSura];
+        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara, CamaraEmpresa, PositivaEmpresas, ArlSura, Compensados];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

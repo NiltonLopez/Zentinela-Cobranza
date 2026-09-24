@@ -125,6 +125,18 @@ public class CatalogoCoherenciaEmpresasTests
     }
 
     [Fact]
+    public void Compensados_coincide_con_el_destino_real()
+    {
+        // dbo.Compensados: EPS varchar(50), UltimoPeriodoCompensado date, TipoAfiliado varchar(50),
+        // EstadoEnCompensados INT NOT NULL (el #Carga lo lleva como bit; el INSERT lo convierte a 0/1).
+        var d = CatalogoCargueFuentes.Compensados;
+        Assert.Equal(("dbo.Compensados", "EstadoEnCompensados", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["EPS:Texto:50", "UltimoPeriodoCompensado:Fecha:0", "TipoAfiliado:Texto:50:sinflag"], Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && d.ClaveEsTitular && d.AplicaPoliticaVacias);
+    }
+
+    [Fact]
     public void Prefijos_suman_PrefijosDepartamento_como_filas_solo_departamento()
     {
         var sql = GeneradorSqlCargue.ConsultarPrefijos;

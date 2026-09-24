@@ -61,6 +61,7 @@ internal static class Grupos
         new("CamaraEmpresa",    "CamaraEmpresa",    CasoCamaraEmpresa.Correr),     // Bloque(2): 2200-2299 (NitEmpresa)
         new("PositivaEmpresas", "PositivaEmpresas", CasoPositivaEmpresas.Correr),  // Bloque(3): 2300-2399
         new("ARLSura",          "ARLSura",          CasoArlSura.Correr),           // Bloque(4): 2400-2499 (≠ Sura, la EPS)
+        new("Compensados",      "Compensados",      CasoCompensados.Correr),       // Bloque(5): 2500-2599
     ]);
 
     // ── otras: 999000003000..999000003999 ──

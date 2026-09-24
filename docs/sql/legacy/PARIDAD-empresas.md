@@ -18,6 +18,8 @@ Mismo método, misma herramienta y misma leyenda que la paridad de la Fase 1
 | CamaraEmpresa | 15 | 4 | 11 | 0 | Paridad OK (E9, E11, P1, P3, P5, P7, R); clave `NitEmpresa` |
 | PositivaEmpresas | 13 | 3 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P4, P5) |
 | ARLSura | 12 | 3 | 9 | 0 | Paridad OK (E9, E10, E11, P2, P3, P4, P5); sin tocar `dbo.Sura` |
+| Compensados (+ Compensados-B) | 16 | 4 | 12 | 0 | Paridad OK (E9, E10, E11, P2, P3, P5, R, F); flag sin `FlagDesdeArchivo` |
+| **Total** | **95** | **27** | **68** | **0** | **Sin pérdida ni corrupción de datos atribuible al motor nuevo.** |
 
 ## Método
 
@@ -406,3 +408,158 @@ PRINT: 11 PERSONAS FUERON RELACIONADAS EN #Titular_Cartera LA BASE DE DATOS
 PRINT: 11 PERSONAS FUERON INGRESADAS A SURA
 PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
 ```
+
+## Compensados
+
+**Conclusión: paridad OK — 16 casos (Compensados + Compensados-B), 4 iguales, 12 diferencias explicadas (E9, E10, E11, P2, P3, P5, R, F), 0 sin explicar.**
+Iguales: titular nuevo completo, período `dd/MM/yyyy` (el SP lo convertía con el login en español,
+dmy; el motor con `TryParseFecha` dd/MM: 2026-08-01 en los dos), contenido idéntico y tipo de
+afiliado nuevo (el SP y el motor tienen `TipoAfiliado` en la clave).
+
+Detalles:
+
+- **Sin `FlagDesdeArchivo` (C03, C04: R).** El plan suponía que Compensados traía el flag del archivo.
+  El SP no lo toma: recalcula `Estado = CASE WHEN Estado IS NULL AND EPS IS NULL AND
+  UltimoPeriodoCompensado IS NULL THEN 0 ELSE 1 END` y lo inserta por posición en
+  `EstadoEnCompensados`. El Estado del archivo solo servía para dar flag 1 a una fila **sin ningún
+  dato** (con cualquier valor, incluso 0): hoy hay 2.315 filas así, repartidas en 7 cargas de junio a
+  septiembre. El motor calcula el flag con lo que guarda (EPS o período) e informa la columna Estado
+  como "no se usa". Si Estado significara algo propio ("encontrado sin datos"), haría falta la
+  extensión: queda como decisión para el usuario (ver hallazgos, H2).
+- **C05 (R).** 'NO SE ENCUENTRA' en TipoAfiliado (594 filas hoy, todas con EPS y período vacíos) es
+  la marca de "no encontrado" del proveedor. El SP la guardaba como tipo de afiliado y el Calificador
+  cuenta como "encontrado en Compensados" toda fila con TipoAfiliado no vacío. El motor la anula.
+- **Compensados-B (F).** `CompensadosAuxiliar.UltimoPeriodoCompensado` es `varchar(50)` y el SP lo
+  convierte a `date` en el INSERT final: un solo período que no es fecha ('AGOSTO') hace fallar el
+  INSERT (error 241) para **todo** el archivo, y CB2, una fila correcta, no se guarda. El motor anula
+  ese período con aviso y sigue fila a fila.
+- **`EstadoEnCompensados` es `int`** (el esquema documentado dice `Estado int`, desactualizado). El
+  motor escribe 0/1 desde el `bit` de `#Carga`; el harness verifica que no aparece otro valor.
+
+#### Escenario Compensados
+
+
+Columnas del destino: `EPS · UltimoPeriodoCompensado · TipoAfiliado · EstadoEnCompensados · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Predicción |
+|---|---|---|---|---|---|---|---|
+| C01 | Titular nuevo, EPS + período + tipo + Estado 1 | Nueva Eps · 2026-08-01 · COTIZANTE · 1 · HOY | Nueva Eps · 2026-08-01 · COTIZANTE · 1 · HOY | COMPENSADO COMPLETO / COMPENSADO COMPLETO | L1/C29 / L1/C29 | igual | = |
+| C02 | Documento inválido (4 dígitos) | Famisanar · ∅ · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | ≠ P3 documento inválido |
+| C03 | Solo Estado = 1 en el archivo (sin EPS, período ni tipo) | ∅ · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · 0 · HOY | SOLO ESTADO UNO / SOLO ESTADO UNO | L1/C29 / L1/C29 | difiere: destino | ≠ R flag del archivo: el SP daba flag 1 sin ningún dato; el nuevo, 0 |
+| C04 | Solo Estado = 0 en el archivo | ∅ · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · 0 · HOY | SOLO ESTADO CERO / SOLO ESTADO CERO | L1/C29 / L1/C29 | difiere: destino | ≠ R flag del archivo: el SP daba flag 1 (Estado 0 no es NULL); el nuevo, 0 |
+| C05 | TipoAfiliado 'NO SE ENCUENTRA' | ∅ · ∅ · NO SE ENCUENTRA · 0 · HOY | ∅ · ∅ · ∅ · 0 · HOY | NO ENCONTRADO / NO ENCONTRADO | L1/C29 / L1/C29 | difiere: destino | ≠ R marca del proveedor anulada (los dos con flag 0) |
+| C06 | Período '01/08/2026' (dd/MM) | Sanitas · 2026-08-01 · BENEFICIARIO · 1 · HOY | Sanitas · 2026-08-01 · BENEFICIARIO · 1 · HOY | PERIODO DMY / PERIODO DMY | L1/C29 / L1/C29 | igual | = (2026-08-01 en los dos: login dmy y TryParseFecha dd/MM) |
+| C07 | Titular existente, contenido idéntico | Salud Total · 2026-07-01 · COTIZANTE · 1 · HOY | Salud Total · 2026-07-01 · COTIZANTE · 1 · HOY | CARLOS EXISTENTE / CARLOS EXISTENTE | L1/C29 / L1/C29 | igual | = (refresco vs insert + dedup) |
+| C08 | Mismo EPS y período, tipo nuevo | Coomeva · 2026-06-01 · BENEFICIARIO · 1 · HOY<br>Coomeva · 2026-06-01 · COTIZANTE · 1 · viejo 2026-01-15 | Coomeva · 2026-06-01 · BENEFICIARIO · 1 · HOY<br>Coomeva · 2026-06-01 · COTIZANTE · 1 · viejo 2026-01-15 | TIPO CAMBIA / TIPO CAMBIA | L1/C29 / L1/C29 | igual | = (TipoAfiliado está en la clave del SP y del nuevo) |
+| C09 | Vacía vieja; ahora trae datos | Medimas · ∅ · ∅ · 1 · HOY<br>∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | Medimas · ∅ · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (purga) |
+| C10 | Datos en destino; el archivo trae fila vacía | Coosalud · ∅ · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · 0 · HOY | Coosalud · ∅ · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (no inserta la vacía) |
+| C11 | Titular AJENO con duplicado exacto en destino | Mutual Ser · ∅ · ∅ · 1 · viejo 2026-01-15 | Mutual Ser · ∅ · ∅ · 1 · viejo 2026-01-15<br>Mutual Ser · ∅ · ∅ · 1 · viejo 2026-01-15 | AJENO / AJENO | — / — | difiere: destino | ≠ E9 sin limpiezas globales |
+| C12 | Titular repetido; la 2ª fila tiene más datos | Compensar · ∅ · ∅ · 1 · HOY | Compensar · 2026-07-01 · COTIZANTE · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | ? SP fila arbitraria; nuevo la más completa (E11) |
+| C13 | Par Líder/Cartera inactivo | Savia Salud · ∅ · ∅ · 1 · HOY | Savia Salud · ∅ · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | ≠ E10 sin relación con par inactivo |
+| C14 | EPS con espacios de sobra ('  Sanitas  ') | '  Sanitas  ' · ∅ · ∅ · 1 · HOY | Sanitas · ∅ · ∅ · 1 · HOY | ESPACIOS / ESPACIOS | L1/C29 / L1/C29 | difiere: destino | ≠ P2 limpieza de texto (trim) |
+
+Lado nuevo:
+
+```
+Preview: leídas 14, excluidas 1, duplicadas 1, expansión +0, candidatas 12, insertadas 10, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 8, nombres reparados 0, relaciones nuevas 11.
+Carga (ejecución 355): insertadas 10, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 8, nombres reparados 0, relaciones 11.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: TipoAfiliado: marca 'NO SE ENCUENTRA' del proveedor anulada (no es un dato)
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×11: Relaciones titular-cartera nuevas
+- info ×8: Titulares nuevos que se crearán
+- info ×1: Columna del archivo que no se usa: Estado
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.Compensados
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; Compensados 366072→366072; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+Lado viejo (mensajes del batch):
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 9 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 13 PERSONAS FUERON RELACIONADAS EN #Titular CARTERA EN LA BASE DE DATOS
+PRINT: 2 DUPLICADOS FUERON ELIMINADOS DE #Dest
+```
+
+#### Escenario Compensados-B
+
+
+Columnas del destino: `EPS · UltimoPeriodoCompensado · TipoAfiliado · EstadoEnCompensados · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Predicción |
+|---|---|---|---|---|---|---|---|
+| CB1 | Período 'AGOSTO' (texto) | — | Sanitas · ∅ · COTIZANTE · 1 · HOY | PERIODO TEXTO / PERIODO TEXTO | L1/C29 / L1/C29 | difiere: destino | ≠ F el INSERT del SP falla entero; nuevo anula el período y guarda la EPS |
+| CB2 | Fila normal en el mismo archivo | — | Nueva Eps · 2026-08-01 · COTIZANTE · 1 · HOY | INOCENTE / INOCENTE | L1/C29 / L1/C29 | difiere: destino | ≠ F víctima del fallo del INSERT (el SP no guarda nada) |
+
+Lado nuevo:
+
+```
+Preview: leídas 2, excluidas 0, duplicadas 0, expansión +0, candidatas 2, insertadas 2, refrescadas 0, vacías descartadas 0, vacías a purgar 0, titulares nuevos 2, nombres reparados 0, relaciones nuevas 2.
+Carga (ejecución 356): insertadas 2, refrescadas 0, vacías descartadas 0, purgadas 0, titulares nuevos 2, nombres reparados 0, relaciones 2.
+- aviso ×1: UltimoPeriodoCompensado: fecha no reconocida anulada
+- info ×2: Relaciones titular-cartera nuevas
+- info ×2: Titulares nuevos que se crearán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; Compensados 366072→366072; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+Lado viejo (mensajes del batch):
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 2 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 2 PERSONAS FUERON RELACIONADAS EN #Titular CARTERA EN LA BASE DE DATOS
+ERROR 241 (línea 60): Error al convertir una cadena de caracteres en fecha y/u hora.
+```
+
+## Hallazgos
+
+### H1 (acción del coordinador): `docs/sql/revertir_cargue_fuente.sql` no conoce las fuentes de este grupo
+
+El script de reversión tiene una lista blanca (`@Fuentes` + `@Columnas`, en el orden de
+`ColumnasDato`). Este grupo no toca `docs/` fuera de `legacy/`, así que falta agregar RUES, Camara,
+CamaraEmpresa, PositivaEmpresas, ARLSura y Compensados. Además, dos de ellas necesitan cambios en el
+propio script:
+
+- **RUES (sello `datetime`).** El script hace `@SelloDT datetime2(0)` y `@Sello date =
+  CONVERT(date, @SelloDT)`, y compara `FechaConsulta = @Sello`: para RUES no encontraría ninguna fila.
+  Con destino `datetime` debe comparar contra `CONVERT(datetime, e.SelloFechaConsulta)` (exacto, porque
+  el motor ya trunca el sello al segundo; verificado en el harness: las 8 filas de la carga casan).
+- **CamaraEmpresa (clave `NitEmpresa`).** Las filas se ubican por `NitEmpresa`, no por `TitularID`
+  (en `CargueFuenteReversion.TitularID` va el NIT como texto). El script necesita la columna clave por
+  fuente.
+
+### H2 (decisión pendiente): la columna Estado del archivo de Compensados
+
+Ver la sección Compensados. El motor la ignora y el flag refleja lo que se guarda. Si el usuario
+confirma que Estado significa "encontrado en Compensados" aunque no haya EPS ni período, entonces sí
+hace falta una extensión genérica tipo `FlagDesdeArchivo` (la columna del archivo entra al flag como
+dato). Hoy afectaría a 2.315 de 366.072 filas.
+
+### H3 (observación): `EstadoAfiliacion` de PositivaEmpresas con basura del PDF
+
+160 filas tienen fragmentos de texto ('RCIO', 'Tipo y Numero de Documento'…) o 'NO' en
+`EstadoAfiliacion`. El motor lo guarda como texto libre, igual que el SP y que `EstadoAfiliacion` de
+Sura y NuevaEps. Validarlo contra un catálogo cerrado (Activa/Activo/Inactiva/Inactivo/Retirado) es
+una decisión aparte: no se implementó para no anular en silencio un estado nuevo legítimo.
+
+### H4 (observación): NIT con dígito de verificación en columnas `Entero`
+
+En CamaraEmpresa la clave 'NIT-DV' pierde el DV (regla propia). En las columnas de dato `NIT`
+(Sura, PositivaEmpresas, ARLSura, tipo `Entero`) un 'NIT-DV' se anula con la advertencia genérica
+"valor no numérico anulado": no se pierde en silencio, pero se pierde. Si los archivos de esos
+proveedores traen DV, conviene un tipo `Nit` genérico.
+
+### H5: `docs/schema.md` desactualizado para dos tablas del grupo
+
+- `dbo.Compensados`: documenta `Estado int NULL`; la columna real es `EstadoEnCompensados int NOT NULL`.
+- `dbo.RUES`: la fecha de sello es `datetime` (no `date`) — conviene dejarlo explícito, es la única.
+
+### H6: el SP de Cámara no validaba ni cruzaba la lista negra de correos
+
+ADR-039 menciona que "en Cámara" la lista negra con `LIKE` anuló 67.826 correos. El
+`sp_ProcesarCamaraAuxiliar` vivo **no** cruza `ListaNegraCorreos` (ni valida el email): ese `LIKE`
+debió venir de otro proceso. Sin impacto en el motor (aplica la lista exacta a toda columna Email),
+pero la frase del ADR no describe a este SP.
