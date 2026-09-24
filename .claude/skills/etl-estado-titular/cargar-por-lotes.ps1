@@ -83,6 +83,23 @@ function Escalar([string]$texto, [int]$timeout = 300) {
     } finally { $cn.Close() }
 }
 
+function EjecucionesActivas {
+    [int](Escalar "SELECT COUNT(*) FROM SSISDB.catalog.executions WHERE project_name='ETL_UltimoEstadoTitular' AND status IN (1,2,5,8) AND start_time > DATEADD(DAY,-1,SYSDATETIMEOFFSET())" 60)
+}
+
+# Espera a que no haya ningun paquete del ETL vivo. Mover archivos o lanzar mientras
+# uno corre lo contamina: ve los Excel de otro lote. El filtro de 1 dia descarta
+# ejecuciones "creadas" que nunca arrancaron y quedaron colgadas en el catalogo.
+function EsperarSinEjecucionActiva([int]$Minutos) {
+    $hasta = (Get-Date).AddMinutes($Minutos)
+    $avise = $false
+    while ((EjecucionesActivas) -gt 0) {
+        if ((Get-Date) -gt $hasta) { throw "Hay un paquete del ETL corriendo desde hace mas de $Minutos min. No se lanza nada encima." }
+        if (-not $avise) { Write-Output "[$(Ahora)] hay un paquete del ETL corriendo; espero a que termine antes de seguir..."; $avise = $true }
+        Start-Sleep -Seconds 20
+    }
+}
+
 function Clave([string]$nombre) {
     $s = [IO.Path]::GetFileNameWithoutExtension($nombre)
     if ($s.StartsWith($Prefijo, [StringComparison]::OrdinalIgnoreCase)) { $s = $s.Substring($Prefijo.Length) }
@@ -154,6 +171,7 @@ $espera = Join-Path $Carpeta '_lote_en_espera'
 if (-not (Test-Path $espera)) { New-Item -ItemType Directory -Path $espera | Out-Null }
 
 $resumen = @()
+$huboError = $false
 
 # Si una corrida anterior se corto despues de cargar pero antes de publicar, lo
 # que quedo en el staging todavia sirve: el paquete lo va a borrar en el paso 1
@@ -191,6 +209,11 @@ try {
         # nunca: se acumulaban, y como el Foreach enumera ReporteClientes\*.xlsx*, cada lote
         # volvia a procesar los mismos archivos alfabeticamente primeros hasta reventar por
         # memoria. Los lotes 5 y 6 del 24-sep cargaron exactamente lo mismo por esto.
+        # PRIMERO esperar a que no haya un paquete vivo, DESPUES tocar archivos: mover un
+        # Excel que un paquete tiene abierto falla ("el archivo esta siendo utilizado"), y
+        # moverlo si lo esta por leer lo deja cargando un lote a medias.
+        EsperarSinEjecucionActiva -Minutos 30
+
         $clavesLote = @($lote | ForEach-Object Clave)
         $presentes = Get-ChildItem -LiteralPath $Carpeta -File | Where-Object { $_.Extension -in '.csv', '.xlsx' }
         foreach ($a in $presentes) {
@@ -199,12 +222,32 @@ try {
             }
         }
 
-        # Lanzar y esperar
+        # ── Lanzar y esperar ────────────────────────────────────────────────
+        #
+        # 1. Nunca lanzar sobre un paquete que sigue corriendo: veria archivos de otro
+        #    lote y sp_start_job ademas fallaria con "el trabajo ya se esta ejecutando".
+        EsperarSinEjecucionActiva -Minutos 30
+
+        # 2. Anotar la ultima ejecucion ANTES de lanzar, y esperar a que aparezca una
+        #    MAS NUEVA. Antes se esperaban 15 s fijos y se tomaba "la ultima": el 24-sep
+        #    el trabajo tardo 23 s en crear la ejecucion SSIS, el script leyo la del lote
+        #    anterior (ya fallida), creyo que este habia terminado y paso al siguiente con
+        #    el paquete real todavia corriendo y los Excel abiertos.
+        $ultimaAntes = [int](Escalar "SELECT ISNULL(MAX(execution_id),0) FROM SSISDB.catalog.executions WHERE project_name='ETL_UltimoEstadoTitular'" 60)
         [void](Escalar "EXEC msdb.dbo.sp_start_job @job_name = N'Ejecutar_ETL_UltimoEstadoTitular'" 60)
-        Start-Sleep -Seconds 15
-        $ej = [int](Escalar "SELECT TOP 1 execution_id FROM SSISDB.catalog.executions WHERE project_name='ETL_UltimoEstadoTitular' ORDER BY execution_id DESC" 60)
+
+        $ej = 0
+        $limiteAlta = (Get-Date).AddMinutes(3)
+        while ($ej -eq 0 -and (Get-Date) -lt $limiteAlta) {
+            Start-Sleep -Seconds 5
+            $ej = [int](Escalar "SELECT ISNULL(MAX(execution_id),0) FROM SSISDB.catalog.executions WHERE project_name='ETL_UltimoEstadoTitular' AND execution_id > $ultimaAntes" 60)
+        }
+        if ($ej -eq 0) { throw "El trabajo no creo ninguna ejecucion SSIS en 3 minutos. Revisar el Agente antes de reintentar." }
         Write-Output "[$(Ahora)] ejecucion SSIS $ej lanzada"
 
+        # 3. Esperar a que ESA ejecucion termine. Si se pasa del tiempo se ABORTA la
+        #    corrida entera en vez de seguir: seguir con el paquete vivo es exactamente
+        #    lo que ensucio la corrida del 24-sep.
         $limite = (Get-Date).AddMinutes($MinutosPorLote)
         do {
             Start-Sleep -Seconds 30
@@ -212,6 +255,10 @@ try {
             $filas = [int](Escalar "SELECT COUNT(*) FROM DBCallCenter.dbo.Staging_UltimoEstadoTitular" 120)
             Write-Output ("[{0}] status={1}  staging={2:N0}" -f (Ahora), $st, $filas)
         } while ($st -in @(1,2,5,8) -and (Get-Date) -lt $limite)
+
+        if ($st -in @(1,2,5,8)) {
+            throw "La ejecucion $ej sigue corriendo despues de $MinutosPorLote min. NO relanzar hasta que termine."
+        }
 
         # El paquete termina en rojo porque la compuerta aborta el paso 4. Lo que
         # decide si el lote sirve es lo que quedo en el staging, no el status.
@@ -273,21 +320,38 @@ FROM DBCallCenter.dbo.EtlEstadoTitular_Ejecucion ORDER BY EjecucionID DESC;
     }
 }
 catch {
-    # Un lote que se cae NO debe llevarse los que faltan: se registra y se sigue.
-    # La corrida anterior murio en el lote 1 y se llevo los otros cuatro sin dejar
-    # rastro de por que.
+    # Un error ABORTA la corrida (el try envuelve todo el bucle). Es a proposito, y es lo
+    # contrario de lo que decia una version anterior de este comentario ("se registra y
+    # se sigue"): seguir con el paquete de un lote todavia vivo es exactamente lo que
+    # ensucio la corrida del 24-sep. Se deja constancia del motivo y de donde retomar.
+    $huboError = $true
     Write-Output ''
     Write-Output "[$(Ahora)] ERROR en el lote $($i + 1): $($_.Exception.Message)"
-    Write-Output "[$(Ahora)] Los archivos se devuelven a su lugar. Retomar con:  -Ejecutar -DesdeLote $($i + 1)"
+    Write-Output "[$(Ahora)] Corrida abortada. Retomar con:  -Ejecutar -DesdeLote $($i + 1)"
     $resumen += [pscustomobject]@{ Lote = $i + 1; Carteras = '-'; Filas = 0; Estado = 'ERROR' }
 }
 finally {
-    # Pase lo que pase, la carpeta queda entera.
+    # Antes de devolver nada, esperar a que no quede un paquete vivo: devolver los
+    # archivos con un paquete corriendo le mete los Excel de todos los lotes. Eso paso
+    # el 24-sep (la ejecucion 11247 termino cargando BERTAL en el lote de Delmar_Cast).
+    try { EsperarSinEjecucionActiva -Minutos 30 }
+    catch { Write-Output "[$(Ahora)] ATENCION: $($_.Exception.Message) Los archivos se devuelven igual; no relanzar hasta que ese paquete termine." }
+
+    # Pase lo que pase, la carpeta queda entera. Cada archivo en su propio try: un
+    # archivo bloqueado no puede cortar la devolucion de los demas (el 24-sep un Move-Item
+    # fallido mato el script aca y dejo la corrida sin cierre), y el que no vuelva se
+    # nombra, porque faltaria en la proxima corrida sin que nadie lo note.
     if (Test-Path $espera) {
+        $noVolvieron = @()
         Get-ChildItem -LiteralPath $espera -File | ForEach-Object {
-            Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Carpeta $_.Name) -Force
+            try { Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Carpeta $_.Name) -Force -ErrorAction Stop }
+            catch { $noVolvieron += $_.TargetObject }
         }
-        Remove-Item -LiteralPath $espera -Force -ErrorAction SilentlyContinue
+        if ($noVolvieron.Count -gt 0) {
+            Write-Output "[$(Ahora)] ATENCION: $($noVolvieron.Count) archivo(s) quedaron en _lote_en_espera y hay que devolverlos a mano antes de la proxima corrida."
+        } else {
+            Remove-Item -LiteralPath $espera -Force -ErrorAction SilentlyContinue
+        }
     }
 
     # Los .xlsx que quedaron son DATOS DE HOY y envenenan la corrida de mañana: el
@@ -304,13 +368,20 @@ finally {
     }
 }
 
-# ── Historico, una sola vez ─────────────────────────────────────────────────
-Write-Output "[$(Ahora)] ===== HISTORICO ====="
-try {
-    [void](Escalar "EXEC DBCallCenter.dbo.sp_Insertar_HistoricoEstadoTitular @Origen = 'Lote'" 3600)
-    Write-Output "[$(Ahora)] historico actualizado y staging liberado."
-} catch {
-    Write-Output "[$(Ahora)] el historico fallo: $($_.Exception.Message)"
+# ── Historico, una sola vez, y solo si la corrida termino entera ─────────────
+# Si abortó, NO se corre: ese paso vacia el staging al final, y el lote que quedo
+# cargado sin publicar se perderia. Se retoma con -DesdeLote y el historico corre
+# cuando la corrida si termine.
+if ($huboError) {
+    Write-Output "[$(Ahora)] Historico NO ejecutado porque la corrida aborto. Correra al retomar y terminar."
+} else {
+    Write-Output "[$(Ahora)] ===== HISTORICO ====="
+    try {
+        [void](Escalar "EXEC DBCallCenter.dbo.sp_Insertar_HistoricoEstadoTitular @Origen = 'Lote'" 3600)
+        Write-Output "[$(Ahora)] historico actualizado y staging liberado."
+    } catch {
+        Write-Output "[$(Ahora)] el historico fallo: $($_.Exception.Message)"
+    }
 }
 
 Write-Output ''
