@@ -14,6 +14,7 @@ Mismo método, misma herramienta y misma leyenda que la paridad de la Fase 1
 | Fuente | Casos | Iguales | Diferencias | Sin explicar | Conclusión |
 |---|---:|---:|---:|---:|---|
 | RUES | 16 | 6 | 10 | 0 | Paridad OK (E1, E9, E10, E11, P2, P3, P5; sello P6) |
+| Camara | 23 | 7 | 16 | 0 | Paridad OK (E1, E9, E10, E11, P1, P3, P4, P5, P7, R) |
 
 ## Método
 
@@ -115,4 +116,90 @@ Lado viejo (mensajes del batch):
 PRINT: 10 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
 PRINT: 15 PERSONAS FUERON RELACIONADAS EN #Titular CARTERA EN LA BASE DE DATOS
 PRINT: 2 DUPLICADOS FUERON ELIMINADOS DE #Dest
+```
+
+## Camara
+
+**Conclusión: paridad OK — 23 casos, 7 iguales, 16 diferencias explicadas (E1, E9, E10, E11, P1, P3, P4, P5, P7, R), 0 sin explicar.**
+Iguales: titular nuevo completo, fijo de 7 con 'ANTIOQUIA' (604) y con 'NORTE DE SANTANDER'
+(607: el SP lo sacaba de `PrefijosDepartamento`; el motor también, porque `ConsultarPrefijos` suma
+esa tabla a `PrefijoMunicipio`, que lo escribe 'N. DE SANTANDER'), número de 7 dígitos que empieza
+en 3 (los dos lo prefijan), `maria@hotmail.com` (el SP de Cámara no cruzaba la lista negra; el motor
+la cruza exacta y no la bloquea), contenido idéntico y email nuevo (conviven dos filas).
+
+Detalles:
+
+- **El SP de Cámara no validaba nada de contacto (P1).** Ni forma del teléfono, ni del email, ni
+  `ListaNegraCorreos` (K08, K09, K11, K12). Hoy `dbo.Camara` tiene 33 emails sin `@…`, 13.037 con
+  mayúsculas y 4.082 teléfonos que no son celular 3xx ni fijo 6xx de 10 dígitos (3.189 de ellos, de 7 dígitos).
+- **K05/K07 (P7).** El SP casaba `UPPER(Departamento)` exacto contra `PrefijosDepartamento` (con
+  tildes, collation sensible a acentos): 'BOGOTA D.C.' sin tilde o un departamento del exterior
+  dejaban el número de 7 dígitos guardado (hoy hay 3.189 así). El motor prefija sin tildes y, si no
+  resuelve, anula con advertencia.
+- **K06 (R).** 'Seleccione un departamento' (227 filas hoy) y 'Cargando...' (15) son textos del
+  formulario del proveedor: el motor los anula y por eso el fijo queda sin indicativo y el flag en 0.
+- **K15 (P4).** El SP deduplicaba por titular + teléfono + email: una mudanza (municipio nuevo)
+  borraba la fila vieja. El motor guarda las dos (historial).
+
+#### Escenario Camara
+
+
+Columnas del destino: `NumeroTelefono · Email · Municipio · Departamento · EstadoEnCamara · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Predicción |
+|---|---|---|---|---|---|---|---|
+| K01 | Titular nuevo, celular + email + localización | 3001234567 · camara1@gmail.com · MEDELLIN · ANTIOQUIA · 1 · HOY | 3001234567 · camara1@gmail.com · MEDELLIN · ANTIOQUIA · 1 · HOY | CAMARA COMPLETO / CAMARA COMPLETO | L1/C29 / L1/C29 | igual | = |
+| K02 | Documento inválido (4 dígitos) | 3001234568 · ∅ · ∅ · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | ≠ P3 documento inválido: el nuevo excluye la fila |
+| K03 | Fijo de 7 + 'ANTIOQUIA' | 6042345678 · ∅ · ∅ · ANTIOQUIA · 1 · HOY | 6042345678 · ∅ · ∅ · ANTIOQUIA · 1 · HOY | FIJO ANTIOQUIA / FIJO ANTIOQUIA | L1/C29 / L1/C29 | igual | = (604 en los dos) |
+| K04 | Fijo de 7 + 'NORTE DE SANTANDER' | 6072345679 · ∅ · ∅ · NORTE DE SANTANDER · 1 · HOY | 6072345679 · ∅ · ∅ · NORTE DE SANTANDER · 1 · HOY | FIJO NORTE / FIJO NORTE | L1/C29 / L1/C29 | igual | = (607 en los dos; PrefijoMunicipio lo escribe 'N. DE SANTANDER') |
+| K05 | Fijo de 7 + 'BOGOTA D.C.' sin tilde | 2345670 · ∅ · ∅ · BOGOTA D.C. · 1 · HOY | 6012345670 · ∅ · ∅ · BOGOTA D.C. · 1 · HOY | FIJO BOGOTA / FIJO BOGOTA | L1/C29 / L1/C29 | difiere: destino | ≠ P7 prefijo sin tildes (el SP no casaba con 'BOGOTÁ D.C.' y guardaba 7 dígitos) |
+| K06 | Fijo de 7 + 'Seleccione un departamento' | 2345671 · ∅ · ∅ · Seleccione un departamento · 1 · HOY | ∅ · ∅ · ∅ · ∅ · 0 · HOY | RELLENO / RELLENO | L1/C29 / L1/C29 | difiere: destino | ≠ R relleno del formulario anulado + P7 fijo sin prefijo anulado (flag 0; el SP guardaba ambos y flag 1) |
+| K07 | Fijo de 7 + departamento del exterior ('HESSE') | 2345672 · ∅ · ∅ · HESSE · 1 · HOY | ∅ · ∅ · ∅ · HESSE · 0 · HOY | EXTERIOR / EXTERIOR | L1/C29 / L1/C29 | difiere: destino | ≠ P7 fijo sin prefijo anulado (el SP guardaba 7 dígitos) |
+| K08 | Email 'NO TIENE' + celular | 3001234569 · NO TIENE · ∅ · ∅ · 1 · HOY | 3001234569 · ∅ · ∅ · ∅ · 1 · HOY | NO TIENE / NO TIENE | L1/C29 / L1/C29 | difiere: destino | ≠ P1 email con formato inválido anulado |
+| K09 | Email en mayúsculas | ∅ · JUAN.CAMARA@GMAIL.COM · ∅ · ∅ · 1 · HOY | ∅ · juan.camara@gmail.com · ∅ · ∅ · 1 · HOY | MAYUSCULAS / MAYUSCULAS | L1/C29 / L1/C29 | difiere: destino | ≠ P1 email en minúsculas |
+| K10 | Email 'maria@hotmail.com' (contiene la entrada 'a@hotmail.com') | ∅ · maria@hotmail.com · ∅ · ∅ · 1 · HOY | ∅ · maria@hotmail.com · ∅ · ∅ · 1 · HOY | MARIA / MARIA | L1/C29 / L1/C29 | igual | = (el SP no cruzaba la lista; el nuevo la cruza exacta) |
+| K11 | Email exacto en ListaNegraCorreos ('no@gmail.com') | 3001234560 · no@gmail.com · ∅ · ∅ · 1 · HOY | 3001234560 · ∅ · ∅ · ∅ · 1 · HOY | VETADO / VETADO | L1/C29 / L1/C29 | difiere: destino | ≠ P1 lista negra de correos (el SP de Cámara no cruzaba ListaNegraCorreos) |
+| K12 | Teléfono de 10 dígitos que no es celular ni fijo | 5551234567 · raro@gmail.com · ∅ · ∅ · 1 · HOY | ∅ · raro@gmail.com · ∅ · ∅ · 1 · HOY | RARO / RARO | L1/C29 / L1/C29 | difiere: destino | ≠ P1 teléfono validado |
+| K13 | Titular existente, contenido idéntico en destino | 3001110013 · carlos@gmail.com · CALI · VALLE DEL CAUCA · 1 · HOY | 3001110013 · carlos@gmail.com · CALI · VALLE DEL CAUCA · 1 · HOY | CARLOS EXISTENTE / CARLOS EXISTENTE | L1/C29 / L1/C29 | igual | = (SP: insert + dedup; nuevo: refresca) |
+| K14 | Titular existente, email nuevo | 3001110014 · diana.nueva@gmail.com · ∅ · ∅ · 1 · HOY<br>3001110014 · diana@gmail.com · ∅ · ∅ · 1 · viejo 2026-01-15 | 3001110014 · diana.nueva@gmail.com · ∅ · ∅ · 1 · HOY<br>3001110014 · diana@gmail.com · ∅ · ∅ · 1 · viejo 2026-01-15 | DIANA CAMBIA / DIANA CAMBIA | L1/C29 / L1/C29 | igual | = (conviven las dos filas) |
+| K15 | Mismo teléfono y email, municipio nuevo | 3001110015 · mudanza@gmail.com · ENVIGADO · ANTIOQUIA · 1 · HOY | 3001110015 · mudanza@gmail.com · BELLO · ANTIOQUIA · 1 · viejo 2026-01-15<br>3001110015 · mudanza@gmail.com · ENVIGADO · ANTIOQUIA · 1 · HOY | SE MUDO / SE MUDO | L1/C29 / L1/C29 | difiere: destino | ≠ P4 clave completa (el SP deduplicaba por titular+teléfono+email y borraba la fila vieja) |
+| K16 | Vacía vieja en destino; ahora trae datos | 3001110016 · ∅ · ∅ · ∅ · 1 · HOY<br>∅ · ∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | 3001110016 · ∅ · ∅ · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (purga) |
+| K17 | Datos en destino; el archivo trae fila vacía (solo localización) | 3001110017 · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · CALI · ∅ · 0 · HOY | 3001110017 · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | ≠ P5 política de vacías (el nuevo no inserta la vacía) |
+| K18 | Titular AJENO con duplicado exacto en destino | 3001110018 · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | 3001110018 · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110018 · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | AJENO / AJENO | — / — | difiere: destino | ≠ E9 sin limpiezas globales |
+| K19 | Titular repetido; la 2ª fila tiene más datos | 3001110019 · ∅ · ∅ · ∅ · 1 · HOY | 3001110019 · repetido@gmail.com · ∅ · ∅ · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | ? SP fila arbitraria; nuevo la más completa (E11) |
+| K20 | Par Líder/Cartera inactivo | 3001110020 · ∅ · ∅ · ∅ · 1 · HOY | 3001110020 · ∅ · ∅ · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | ≠ E10 sin relación con par inactivo |
+| K21 | Nombre con tilde ('María Gómez') | 3001110021 · ∅ · ∅ · ∅ · 1 · HOY | 3001110021 · ∅ · ∅ · ∅ · 1 · HOY | María Gómez / MARIA GOMEZ | L1/C29 / L1/C29 | difiere: titular | ≠ E1 nombre limpio |
+| K22 | Número de 7 dígitos que empieza en 3 + 'ANTIOQUIA' | 6043123456 · ∅ · ∅ · ANTIOQUIA · 1 · HOY | 6043123456 · ∅ · ∅ · ANTIOQUIA · 1 · HOY | SIETE CON TRES / SIETE CON TRES | L1/C29 / L1/C29 | igual | = (los dos lo prefijan: 6043123456) |
+| K23 | Municipio '.' | 3001110023 · ∅ · . · CESAR · 1 · HOY | 3001110023 · ∅ · ∅ · CESAR · 1 · HOY | MUNICIPIO PUNTO / MUNICIPIO PUNTO | L1/C29 / L1/C29 | difiere: destino | ≠ R municipio sin letras anulado |
+
+Lado nuevo:
+
+```
+Preview: leídas 23, excluidas 1, duplicadas 1, expansión +0, candidatas 21, insertadas 19, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 16, nombres reparados 0, relaciones nuevas 20.
+Carga (ejecución 269): insertadas 19, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 16, nombres reparados 0, relaciones 20.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×2: NumeroTelefono: fijo de 7 dígitos sin prefijo resoluble por departamento/municipio, anulado
+- aviso ×1: Departamento: texto de relleno del formulario ('Seleccione…', 'Cargando…') anulado
+- aviso ×1: Email: email con formato inválido anulado
+- aviso ×1: Email: email en lista negra anulado
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: Municipio: valor sin letras anulado
+- aviso ×1: NumeroTelefono: teléfono inválido anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×20: Relaciones titular-cartera nuevas
+- info ×16: Titulares nuevos que se crearán
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.Camara
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; Camara 1860429→1860429; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+
+Lado viejo (mensajes del batch):
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 17 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 22 PERSONAS FUERON RELACIONADAS EN #Titular_Cartera LA BASE DE DATOS
+PRINT: 22 PERSONAS FUERON INGRESADAS A CÁMARA
+PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
 ```

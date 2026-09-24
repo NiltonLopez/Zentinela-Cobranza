@@ -44,6 +44,31 @@ public class CatalogoCoherenciaEmpresasTests
     }
 
     [Fact]
+    public void Camara_coincide_con_el_destino_real()
+    {
+        // dbo.Camara: NumeroTelefono varchar(10), Email varchar(255), Municipio varchar(50),
+        // Departamento varchar(70), EstadoEnCamara bit, FechaConsulta date.
+        var d = CatalogoCargueFuentes.Camara;
+        Assert.Equal(("dbo.Camara", "EstadoEnCamara", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["NumeroTelefono:Telefono:10", "Email:Email:255", "Municipio:Texto:50:sinflag", "Departamento:Texto:70:sinflag"],
+            Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaPrefijos);
+    }
+
+    [Fact]
+    public void Prefijos_suman_PrefijosDepartamento_como_filas_solo_departamento()
+    {
+        var sql = GeneradorSqlCargue.ConsultarPrefijos;
+        Assert.Contains("FROM dbo.PrefijoMunicipio", sql);
+        Assert.Contains("SELECT Departamento, NULL, CONVERT(varchar(3), Prefijo) FROM dbo.PrefijosDepartamento", sql);
+        Assert.Contains("UNION ALL", sql);
+    }
+
+    [Fact]
     public void Fuentes_de_la_fase_2_de_empresas_no_colisionan_con_las_demas()
     {
         // Claves de ruta y etiquetas únicas sin importar mayúsculas (Sura y ARLSura: ver ADR-039).

@@ -22,6 +22,7 @@ internal static class CatalogoReglasFuente
         // RUES: sp_ProcesarRUESAuxiliar no limpiaba nada (Titular, relaciones, flag e INSERT: todo
         // genérico). Lo propio (sello datetime) es de la definición.
         [CatalogoCargueFuentes.Rues.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Rues.Fuente),
+        [CatalogoCargueFuentes.Camara.Fuente]    = new ReglaCamara(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

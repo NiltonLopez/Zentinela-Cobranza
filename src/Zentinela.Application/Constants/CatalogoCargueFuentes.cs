@@ -350,8 +350,40 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// Cámara de Comercio (datos de contacto del titular como comerciante). Regla propia
+    /// (<c>ReglaCamara</c>): indicativo a los fijos de 7 dígitos y textos de relleno del formulario
+    /// en Departamento. Verificado contra <c>sys.columns</c> de <c>dbo.Camara</c> el 2026-09-24:
+    /// NumeroTelefono varchar(10) (mezcla celulares 3xx y fijos 60x → tipo <c>Telefono</c>),
+    /// Email varchar(255), Municipio varchar(50), <b>Departamento varchar(70)</b>, FechaConsulta
+    /// <c>date</c>; FK a Titular, índice (TitularID, FechaConsulta DESC), sin triggers. El flag,
+    /// como en el SP, solo mira teléfono y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Camara = new()
+    {
+        Fuente          = "Camara",
+        Etiqueta        = "Cámara de Comercio (personas)",
+        TablaDestino    = "dbo.Camara",
+        ColumnaFlag     = "EstadoEnCamara",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Teléfono (celular o fijo; el fijo de 7 dígitos recibe indicativo), email y localización del comerciante.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "telefonofijo", "fijo"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x; fijo de 7 dígitos → indicativo)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio (resuelve el indicativo del fijo)"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Departamento (resuelve el indicativo del fijo)"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
-        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues];
+        [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro, Rues, Camara];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

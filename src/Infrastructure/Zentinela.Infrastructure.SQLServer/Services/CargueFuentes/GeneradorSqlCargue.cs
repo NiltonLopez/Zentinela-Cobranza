@@ -180,6 +180,21 @@ internal static class GeneradorSqlCargue
         """;
 
     /// <summary>
+    /// Indicativos de fijo para <c>PrefijosFijo.Cargar</c> (reglas con <c>NecesitaPrefijos</c>).
+    /// <c>PrefijoMunicipio</c> da (departamento, municipio, prefijo); <c>PrefijosDepartamento</c>
+    /// (la tabla que usaban los SP de Cámara) entra como filas solo-departamento con el MISMO
+    /// prefijo (verificado 2026-09-24: los 33 departamentos comunes coinciden), y aporta los nombres
+    /// que PrefijoMunicipio escribe distinto ('NORTE DE SANTANDER' vs 'N. DE SANTANDER', 'ARCHIPIÉLAGO
+    /// DE SAN ANDRÉS…' vs 'SAN ANDRES'). Si algún día difirieran, <c>PrefijosFijo</c> ve dos prefijos
+    /// para el departamento y no resuelve (no adivina).
+    /// </summary>
+    public const string ConsultarPrefijos = """
+        SELECT Departamento, Municipio, Prefijo FROM dbo.PrefijoMunicipio
+        UNION ALL
+        SELECT Departamento, NULL, CONVERT(varchar(3), Prefijo) FROM dbo.PrefijosDepartamento;
+        """;
+
+    /// <summary>
     /// Existencia y nombre actual de cada titular del archivo. El "nombre roto" se decide en
     /// C# (<c>NormalizadorTitular.EstaRoto</c>), NUNCA con <c>LIKE '%Ã%'</c>: con collation
     /// insensible a acentos, 'Ã' matchea cualquier 'A'.

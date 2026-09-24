@@ -489,7 +489,7 @@ internal sealed class CargueFuentesMotor
         if (t.Regla.NecesitaPrefijos)
         {
             var filas = new List<(string, string, string)>();
-            await using (var cmd = Comando(conn, null, "SELECT Departamento, Municipio, Prefijo FROM dbo.PrefijoMunicipio;"))
+            await using (var cmd = Comando(conn, null, GeneradorSqlCargue.ConsultarPrefijos))
             await using (var rd = await cmd.ExecuteReaderAsync(ct))
                 while (await rd.ReadAsync(ct))
                     filas.Add((rd.IsDBNull(0) ? "" : rd.GetString(0), rd.IsDBNull(1) ? "" : rd.GetString(1),

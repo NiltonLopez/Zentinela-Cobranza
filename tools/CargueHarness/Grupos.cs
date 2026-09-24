@@ -57,6 +57,7 @@ internal static class Grupos
     public static readonly GrupoHarness Empresas = new("empresas", 999000002000, 999000002999, "harness-cargue-empresas",
     [
         new("RUES",             "RUES",             CasoRues.Correr),              // Bloque(0): 2000-2099
+        new("Camara",           "Camara",           CasoCamara.Correr),            // Bloque(1): 2100-2199
     ]);
 
     // ── otras: 999000003000..999000003999 ──

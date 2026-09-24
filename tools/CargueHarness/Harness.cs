@@ -49,6 +49,7 @@ internal sealed class Harness
         ("DatosClaro",      "TitularID BETWEEN @d AND @h"),
         // ← fuentes nuevas aquí
         ("RUES",            "TitularID BETWEEN @d AND @h"),
+        ("Camara",          "TitularID BETWEEN @d AND @h"),
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 
