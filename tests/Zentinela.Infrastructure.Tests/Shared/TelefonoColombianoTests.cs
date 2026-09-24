@@ -27,4 +27,29 @@ public class TelefonoColombianoTests
     {
         Assert.Equal(esperado, TelefonoColombiano.NormalizarFijo(entrada));
     }
+
+    // S3 (PARIDAD-salud.md): la parte decimal nula de un CSV exportado por Excel o pandas.
+    [Theory]
+    [InlineData("3001234567.0", "3001234567")]         // pandas
+    [InlineData("3001234567.00", "3001234567")]
+    [InlineData("3001234567,0", "3001234567")]         // Excel es-CO
+    [InlineData("3001234567,00", "3001234567")]
+    [InlineData("3.001.234.567,00", "3001234567")]     // Excel es-CO con miles
+    [InlineData("573001234567.0", "3001234567")]       // indicativo + decimal
+    [InlineData("300.123.45.67", "3001234567")]        // formato con puntos: no es decimal
+    [InlineData("300123456.0", null)]                  // 9 dígitos: el .0 no cuenta como décimo
+    [InlineData("300123456.7", null)]                  // decimal real: no es un teléfono
+    [InlineData("3001234567.5", null)]
+    [InlineData("3001234567.0.0", null)]               // UNA sola parte decimal
+    [InlineData("5,73001E+11", null)]                  // Excel en General con 12 dígitos: con pérdida
+    public void NormalizarCelular_con_parte_decimal(string entrada, string? esperado)
+    {
+        Assert.Equal(esperado, TelefonoColombiano.NormalizarCelular(entrada));
+    }
+
+    [Fact]
+    public void NormalizarFijo_con_parte_decimal_de_excel()
+    {
+        Assert.Equal("6041234567", TelefonoColombiano.NormalizarFijo("6041234567,00"));
+    }
 }

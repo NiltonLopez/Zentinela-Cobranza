@@ -590,21 +590,19 @@ internal sealed class CargueFuentesMotor
     private static string? Celda(string[] cruda, int indice) =>
         indice >= 0 && indice < cruda.Length ? cruda[indice] : null;
 
-    /// <summary>Documento: solo dígitos (se toleran puntos y el ".0" de Excel), 5 a 15 sin ceros a la izquierda.</summary>
-    private static bool TryDocumento(string? bruto, out long documento)
+    /// <summary>
+    /// Documento: solo dígitos (se toleran separadores de miles y UNA parte decimal nula de Excel o
+    /// pandas: '1.234.567', '1234567.0', '1234567,00'), 5 a 15 sin ceros a la izquierda. Un decimal
+    /// real ('1234567.5') se rechaza: juntar sus dígitos daría otro documento.
+    /// </summary>
+    internal static bool TryDocumento(string? bruto, out long documento)
     {
         documento = 0;
         if (string.IsNullOrWhiteSpace(bruto)) return false;
-        var t = QuitarSufijoDecimal(bruto);
-        if (t.Any(char.IsLetter)) return false;
+        var t = NumeroEnTexto.QuitarDecimalNulo(bruto);
+        if (t.Any(char.IsLetter) || NumeroEnTexto.TieneDecimales(t)) return false;
         var digitos = new string(t.Where(char.IsDigit).ToArray()).TrimStart('0');
         return digitos.Length is >= 5 and <= 15 && long.TryParse(digitos, NumberStyles.None, CultureInfo.InvariantCulture, out documento);
-    }
-
-    private static string QuitarSufijoDecimal(string s)
-    {
-        var t = s.Trim();
-        return t.EndsWith(".0", StringComparison.Ordinal) ? t[..^2] : t;
     }
 
     /// <summary>
@@ -637,7 +635,7 @@ internal sealed class CargueFuentesMotor
 
         if (carteraId is not null)
         {
-            if (!int.TryParse(QuitarSufijoDecimal(carteraId), NumberStyles.None, CultureInfo.InvariantCulture, out idCartera))
+            if (!int.TryParse(NumeroEnTexto.QuitarDecimalNulo(carteraId), NumberStyles.None, CultureInfo.InvariantCulture, out idCartera))
             { ctx.SinRelacion(fila, "CarteraID no numérico: la fila entra sin relación", carteraId); return; }
         }
         else if (indices.CarteraPorNombre.TryGetValue(ArchivoTabular.Normalizar(cartera!), out var c)) idCartera = c.ID;
@@ -645,7 +643,7 @@ internal sealed class CargueFuentesMotor
 
         if (liderId is not null)
         {
-            if (!int.TryParse(QuitarSufijoDecimal(liderId), NumberStyles.None, CultureInfo.InvariantCulture, out idLider))
+            if (!int.TryParse(NumeroEnTexto.QuitarDecimalNulo(liderId), NumberStyles.None, CultureInfo.InvariantCulture, out idLider))
             { ctx.SinRelacion(fila, "LiderID no numérico: la fila entra sin relación", liderId); return; }
         }
         else if (indices.LiderPorNombre.TryGetValue(ArchivoTabular.Normalizar(lider!), out var l)) idLider = l.ID;
@@ -679,11 +677,7 @@ internal sealed class CargueFuentesMotor
                 return texto;
 
             case TipoColumnaCargue.Entero:
-                var numero = QuitarSufijoDecimal(texto).Replace(".", "").Replace(",", "").Replace(" ", "");
-                if (numero.All(char.IsDigit) && long.TryParse(numero, NumberStyles.None, CultureInfo.InvariantCulture, out var n))
-                    return n == 0 ? null : n;
-                ctx.Advertir($"{col.Nombre}: valor no numérico anulado", texto);
-                return null;
+                return TiparEntero(col, texto, ctx);
 
             case TipoColumnaCargue.Fecha:
                 if (ArchivoTabular.TryParseFecha(texto, out var fecha))
@@ -696,6 +690,55 @@ internal sealed class CargueFuentesMotor
         }
     }
 
+    /// <summary>
+    /// Entero de una columna de dato (siempre <c>long</c> en <c>FilaCargue.Datos</c>; las reglas lo
+    /// leen así). En orden:
+    /// <list type="number">
+    /// <item>NIT (<c>EsNit</c>): 'NIT-DV' pierde el DV, con aviso informativo (mismo helper que la
+    ///   clave de CamaraEmpresa).</item>
+    /// <item>UNA parte decimal nula de Excel o pandas ('2021.0', '900123456,00') se quita; un
+    ///   decimal real ('2021.5') se anula: quitarle el separador daría otro número.</item>
+    /// <item>Separadores de miles y espacios fuera; lo que no sea dígito → "no numérico".</item>
+    /// <item>0 es el vacío convencional → NULL.</item>
+    /// <item>Lo que no cabe en el tipo SQL del destino (<c>EnteroSql</c>: int o bigint) se anula
+    ///   aquí: en el INSERT haría fallar el cargue ENTERO por desbordamiento, sin decir qué fila.</item>
+    /// </list>
+    /// </summary>
+    internal static object? TiparEntero(ColumnaFuenteCargue col, string texto, ContextoCargue ctx)
+    {
+        var t = texto;
+        var dvQuitado = false;
+        if (col.EsNit) t = NitColombiano.QuitarDigitoVerificacion(t, out dvQuitado)!;
+
+        t = NumeroEnTexto.QuitarDecimalNulo(t);
+        if (NumeroEnTexto.TieneDecimales(t))
+        {
+            ctx.Advertir($"{col.Nombre}: valor con decimales anulado", texto);
+            return null;
+        }
+
+        var numero = t.Replace(".", "").Replace(",", "").Replace(" ", "");
+        if (numero.Length == 0 || !numero.All(char.IsAsciiDigit))
+        {
+            ctx.Advertir($"{col.Nombre}: valor no numérico anulado", texto);
+            return null;
+        }
+        if (numero.TrimStart('0').Length == 0) return null;   // '0', '000': vacío
+
+        var maximo = col.EnteroSql == TipoEnteroSql.Int ? int.MaxValue : long.MaxValue;
+        if (!long.TryParse(numero, NumberStyles.None, CultureInfo.InvariantCulture, out var n) || n > maximo)
+        {
+            // Mensaje fijo por columna (agrupa); el valor va de ejemplo.
+            ctx.Advertir($"{col.Nombre}: número fuera del rango de la columna ({TipoSqlEntero(col.EnteroSql)}) anulado", texto);
+            return null;
+        }
+
+        if (dvQuitado) ctx.Informar($"{col.Nombre}: dígito de verificación quitado");
+        return n;
+    }
+
+    private static string TipoSqlEntero(TipoEnteroSql tipo) => tipo == TipoEnteroSql.Int ? "int" : "bigint";
+
     /// <summary>Validación fuerte de teléfonos, correos y placas; lo inválido se anula con advertencia.</summary>
     internal static object? ValidarContacto(ColumnaFuenteCargue col, object? valor, ContextoCargue ctx)
     {
@@ -706,8 +749,10 @@ internal sealed class CargueFuentesMotor
             case TipoColumnaCargue.Celular:
             {
                 var celular = TelefonoColombiano.NormalizarCelular(texto);
+                // "Fijo" solo si de verdad lo es (empieza en 6); diez dígitos con otro inicio
+                // ('5551234567') no son un teléfono colombiano: celular inválido, no fijo.
                 if (celular is null)
-                    ctx.Advertir(TelefonoColombiano.Normalizar(texto).Numero is not null
+                    ctx.Advertir(TelefonoColombiano.NormalizarFijo(texto) is not null
                         ? $"{col.Nombre}: número fijo en la columna de celular, anulado"
                         : $"{col.Nombre}: celular inválido anulado", texto);
                 return celular;

@@ -68,7 +68,8 @@ internal static class GeneradorSqlCargue
 
     public static string TipoSql(ColumnaFuenteCargue c) => c.Tipo switch
     {
-        TipoColumnaCargue.Entero => "bigint",
+        // El tipo del destino: el motor ya anuló lo que no cabe (CargueFuentesMotor.TiparEntero).
+        TipoColumnaCargue.Entero => c.EnteroSql == TipoEnteroSql.Int ? "int" : "bigint",
         TipoColumnaCargue.Fecha  => "date",
         _ when c.Largo > 0       => $"varchar({c.Largo}) COLLATE DATABASE_DEFAULT",
         _ => throw new InvalidOperationException($"La columna '{c.Nombre}' ({c.Tipo}) necesita Largo > 0."),
@@ -98,6 +99,9 @@ internal static class GeneradorSqlCargue
         {
             Id(c.Nombre);
             TipoSql(c);
+            if (c.Tipo != TipoColumnaCargue.Entero && (c.EsNit || c.EnteroSql != TipoEnteroSql.BigInt))
+                throw new InvalidOperationException(
+                    $"Columna '{c.Nombre}' de la fuente {d.Fuente}: EsNit y EnteroSql solo aplican a columnas Entero.");
             if (ColumnasReservadas.Contains(c.Nombre) || !vistos.Add(c.Nombre)
                 || c.Nombre.Equals(d.ColumnaFlag, StringComparison.OrdinalIgnoreCase)
                 || c.Nombre.Equals(d.ColumnaClaveTitular, StringComparison.OrdinalIgnoreCase)

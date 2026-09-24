@@ -44,11 +44,12 @@ internal static class CasoTigoUne
             trasValidar: p =>
             {
                 h.Igual("TigoUne 1: error documento inválido", 1, Harness.Error(p, "Documento inválido"));
-                // T3 (6012345678) y T4 (5551234567). El motor rotula "número fijo" a todo número de 10
-                // dígitos que no es celular, aunque no empiece en 6 (TelefonoColombiano.Normalizar): el
-                // dato se anula igual; solo el texto del aviso es impreciso para T4.
-                h.Igual("TigoUne 1: aviso fijo en la columna de celular (T3 y T4)", 2,
+                // T3 (6012345678) es un fijo; T4 (5551234567) no es ni celular ni fijo: "celular
+                // inválido" (H2 de PARIDAD-otras.md; antes los dos se rotulaban "número fijo").
+                h.Igual("TigoUne 1: aviso fijo en la columna de celular (solo T3)", 1,
                     Harness.Aviso(p, "NumeroTelefono: número fijo en la columna de celular"));
+                h.Igual("TigoUne 1: aviso celular inválido (T4: 10 dígitos que no empiezan en 3 ni en 6)", 1,
+                    Harness.Aviso(p, "NumeroTelefono: celular inválido anulado"));
                 h.Igual("TigoUne 1: aviso email en lista negra (solo el exacto)", 1, Harness.Aviso(p, "Email: email en lista negra anulado"));
                 h.Check("TigoUne 1: 'Linea' y 'Correo' resuelven las dos columnas",
                     p.ColumnasEncontradas.Contains("NumeroTelefono") && p.ColumnasEncontradas.Contains("Email"),

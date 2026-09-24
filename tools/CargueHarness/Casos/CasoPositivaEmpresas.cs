@@ -7,7 +7,7 @@ namespace CargueHarness;
 /// <summary>
 /// PositivaEmpresas (grupo empresas, Bloque(3) = 999000002300..399): empleador por NIT y
 /// razón social; razón social partida en líneas (PDF) colapsada a una; NIT con puntos; NIT '0'
-/// → NULL; solo EstadoAfiliacion → flag 0; relación con par activo.
+/// → NULL; 'NIT-DV' → NIT sin el DV; solo EstadoAfiliacion → flag 0; relación con par activo.
 /// </summary>
 internal static class CasoPositivaEmpresas
 {
@@ -53,7 +53,10 @@ internal static class CasoPositivaEmpresas
             trasValidar: p =>
             {
                 h.Igual("PositivaEmpresas 1: error documento inválido", 1, Harness.Error(p, "Documento inválido"));
-                h.Igual("PositivaEmpresas 1: aviso NIT no numérico (con DV)", 1, Harness.Aviso(p, "NIT: valor no numérico anulado"));
+                // H4 de PARIDAD-empresas.md: 'NIT-DV' pierde el DV (informativo), ya no se anula.
+                h.Igual("PositivaEmpresas 1: sin aviso NIT no numérico", 0, Harness.Aviso(p, "NIT: valor no numérico anulado"));
+                h.Igual("PositivaEmpresas 1: info NIT con DV (T5)", 1,
+                    p.Info.Where(i => i.Mensaje == "NIT: dígito de verificación quitado").Sum(i => i.Cantidad));
                 h.Igual("PositivaEmpresas 1: aviso empresa truncada a 230", 1, Harness.Aviso(p, "Empresa: valor truncado a 230"));
                 h.Igual("PositivaEmpresas 1: aviso titular repetido", 1, Harness.Aviso(p, "repetido"));
                 return Task.CompletedTask;
@@ -64,7 +67,7 @@ internal static class CasoPositivaEmpresas
                 h.Igual("PositivaEmpresas 3: razón social en dos líneas → una (T2)", "900691735|COMERCIALIZADORA ANDINA FRIO SAS|Activa|1", await Fila4(2));
                 h.Igual("PositivaEmpresas 3: NIT con puntos (T3)", "899999034|SERVICIO NACIONAL DE APRENDIZAJE SENA||1", await Fila4(3));
                 h.Igual("PositivaEmpresas 3: NIT '0' → NULL, solo estado → flag 0 (T4)", "||Retirado|0", await Fila4(4));
-                h.Igual("PositivaEmpresas 3: NIT con DV anulado, la empresa da el flag (T5)", "|ACME SAS||1", await Fila4(5));
+                h.Igual("PositivaEmpresas 3: NIT con DV guardado sin el DV (T5)", "900123456|ACME SAS||1", await Fila4(5));
                 h.Igual("PositivaEmpresas 3: empresa truncada a 230 (T6)", 230,
                     await h.Contar("SELECT LEN(Empresa) FROM dbo.PositivaEmpresas WHERE TitularID = @t", ("@t", T(6))));
                 h.Igual("PositivaEmpresas 3: repetido conserva la fila más completa (T7)", "800111222|REPETIDA SAS|Inactiva|1", await Fila4(7));

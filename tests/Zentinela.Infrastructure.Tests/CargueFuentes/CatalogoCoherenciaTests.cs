@@ -225,6 +225,41 @@ public class CatalogoCoherenciaTests
     }
 
     [Fact]
+    public void Enteros_int_son_los_que_el_destino_real_tiene_como_int()
+    {
+        // sys.columns de las 22 tablas destino (2026-09-24): de las columnas de dato Entero, solo
+        // RGM.Modelo es int; NIT/NitEmpresa y RUES.NumeroMatricula son bigint (H1 de PARIDAD-otras.md).
+        var enteros = CatalogoCargueFuentes.Todas
+            .SelectMany(d => d.ColumnasDato.Where(c => c.Tipo == TipoColumnaCargue.Entero)
+                                           .Select(c => $"{d.Fuente}.{c.Nombre}:{c.EnteroSql}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            ["ARLSura.NIT:BigInt", "PositivaEmpresas.NIT:BigInt", "RGM.Modelo:Int", "RUES.NumeroMatricula:BigInt",
+             "SOS.NitEmpresa:BigInt", "SaludTotal.NIT:BigInt", "Sura.NIT:BigInt"],
+            enteros);
+    }
+
+    [Fact]
+    public void Columnas_de_dato_nit_aceptan_nit_con_dv()
+    {
+        // H4 de PARIDAD-empresas.md: toda columna de dato con el NIT del empleador. La clave
+        // NitEmpresa de CamaraEmpresa no es columna de dato: la resuelve su regla con el mismo helper.
+        var nits = CatalogoCargueFuentes.Todas
+            .SelectMany(d => d.ColumnasDato.Where(c => c.EsNit).Select(c => $"{d.Fuente}.{c.Nombre}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["ARLSura.NIT", "PositivaEmpresas.NIT", "SOS.NitEmpresa", "SaludTotal.NIT", "Sura.NIT"], nits);
+        Assert.All(CatalogoCargueFuentes.Todas.SelectMany(d => d.ColumnasDato).Where(c => c.EsNit),
+                   c => Assert.Equal(TipoColumnaCargue.Entero, c.Tipo));
+        // Ninguna columna Entero con "nit" en el nombre quedó sin marcar.
+        Assert.DoesNotContain(CatalogoCargueFuentes.Todas.SelectMany(d => d.ColumnasDato),
+            c => c.Tipo == TipoColumnaCargue.Entero && !c.EsNit && c.Nombre.Contains("nit", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Runt_no_esta_en_el_catalogo()
     {
         // dbo.Runt y RuntAuxiliar están vacías y nada en la BD ni en el código las consume

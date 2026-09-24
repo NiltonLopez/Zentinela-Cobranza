@@ -12,10 +12,10 @@ namespace Zentinela.Infrastructure.SQLServer.Services.CargueFuentes.Reglas;
 ///
 /// Lo único que agrega esta regla es la validación del <b>Modelo</b> (<see cref="Transformar"/>):
 /// un año entre <see cref="ModeloMinimo"/> y el año actual + <see cref="MargenAnios"/>; lo demás se
-/// anula con una advertencia agrupada. Dos razones: la columna destino es <c>int</c> y #Carga lo
-/// lleva como bigint, así que un número enorme haría fallar el INSERT de TODO el cargue por
-/// desbordamiento (el motor no conoce el rango de la columna); y un modelo como 2323 (hay uno en
-/// dbo.RGM) no es un dato de localización. Rango real en dbo.RGM (2026-09-24): 1991..2026 más ese
+/// anula con una advertencia agrupada: un modelo como 2323 (hay uno en dbo.RGM) no es un dato de
+/// localización. El desbordamiento de la columna destino (<c>int</c>) ya no depende de esta regla:
+/// la definición declara <c>EnteroSql = Int</c> y el motor anula antes lo que no cabe en int, con
+/// su propia advertencia. Rango real en dbo.RGM (2026-09-24): 1991..2026 más ese
 /// 2323. El margen de 2 años cubre los modelos del año siguiente que se venden desde mitad de año.
 ///
 /// Defectos del SP que NO se copian:

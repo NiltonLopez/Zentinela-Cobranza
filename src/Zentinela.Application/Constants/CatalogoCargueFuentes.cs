@@ -13,7 +13,10 @@ public enum TipoColumnaCargue
     Telefono,
     /// <summary>Correo: forma mínima + lista negra por igualdad exacta.</summary>
     Email,
-    /// <summary>Número entero (bigint).</summary>
+    /// <summary>
+    /// Número entero: bigint salvo que la columna declare otro <see cref="TipoEnteroSql"/>. Lo que no
+    /// cabe en el tipo del destino se anula con advertencia antes de escribir.
+    /// </summary>
     Entero,
     /// <summary>Fecha (date).</summary>
     Fecha,
@@ -34,6 +37,19 @@ public enum CardinalidadCargue
 public enum TipoFechaSello { Date, DateTime }
 
 /// <summary>
+/// Tipo SQL de una columna <see cref="TipoColumnaCargue.Entero"/> en el DESTINO (y en #Carga).
+/// Decide el máximo aceptado: un número que no cabe haría fallar el INSERT de TODO el archivo
+/// por desbordamiento, así que el motor lo anula por fila con advertencia agrupada.
+/// </summary>
+public enum TipoEnteroSql
+{
+    /// <summary>bigint (hasta 9.223.372.036.854.775.807).</summary>
+    BigInt,
+    /// <summary>int (hasta 2.147.483.647).</summary>
+    Int,
+}
+
+/// <summary>
 /// Columna de dato de una fuente. <paramref name="Nombre"/> es el nombre EXACTO de la columna
 /// en la tabla destino: se usa como identificador SQL, por eso solo puede venir de este
 /// catálogo (código), jamás del archivo ni del usuario.
@@ -46,6 +62,11 @@ public enum TipoFechaSello { Date, DateTime }
 /// <param name="DesdeArchivo">false = la columna no se lee del archivo: la produce la regla
 /// (SIMIT: <c>Placa</c> sale de Placa1..15 en <c>Expandir</c>). No se busca, no se pide y no se
 /// lista como faltante.</param>
+/// <param name="EnteroSql">Solo <see cref="TipoColumnaCargue.Entero"/>: tipo SQL del destino
+/// (verificado con <c>sys.columns</c>). Lo que no cabe se anula con advertencia.</param>
+/// <param name="EsNit">Solo <see cref="TipoColumnaCargue.Entero"/>: la columna es un NIT, así que
+/// un 'NIT-DV' ('900123456-7') se guarda sin el dígito de verificación (aviso informativo) en vez
+/// de anularse por no numérico.</param>
 public sealed record ColumnaFuenteCargue(
     string Nombre,
     string[] Alias,
@@ -55,7 +76,9 @@ public sealed record ColumnaFuenteCargue(
     bool EntraAlFlag = true,
     bool EntraAClave = true,
     string Descripcion = "",
-    bool DesdeArchivo = true);
+    bool DesdeArchivo = true,
+    TipoEnteroSql EnteroSql = TipoEnteroSql.BigInt,
+    bool EsNit = false);
 
 /// <summary>
 /// Todo lo que el motor genérico de cargue necesita saber de una fuente. El motor no tiene
@@ -161,7 +184,7 @@ public static class CatalogoCargueFuentes
             new("Email", ["email", "correo", "correoelectronico", "mail"],
                 TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
             new("NIT", ["nit", "nitempresa", "nitempleador"],
-                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+                TipoColumnaCargue.Entero, EsNit: true, Descripcion: "NIT de la empresa empleadora ('NIT-DV' se acepta: se quita el DV)"),
             new("Empresa", ["empresa", "nombreempresa", "empleador"],
                 TipoColumnaCargue.Texto, 100, Descripcion: "Empresa empleadora"),
             new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
@@ -410,7 +433,7 @@ public static class CatalogoCargueFuentes
             new("Ciudad", ["ciudad", "municipio"],
                 TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Ciudad"),
             new("NIT", ["nit", "nitempresa", "nitempleador"],
-                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+                TipoColumnaCargue.Entero, EsNit: true, Descripcion: "NIT de la empresa empleadora ('NIT-DV' se acepta: se quita el DV)"),
             new("Empresa", ["empresa", "nombreempresa", "empleador"],
                 TipoColumnaCargue.Texto, 100, EntraAlFlag: false, Descripcion: "Empresa empleadora"),
             new("Cargo", ["cargo"],
@@ -449,7 +472,7 @@ public static class CatalogoCargueFuentes
         ColumnasDato =
         [
             new("NitEmpresa", ["nitempresa", "nit", "nitempleador"],
-                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+                TipoColumnaCargue.Entero, EsNit: true, Descripcion: "NIT de la empresa empleadora ('NIT-DV' se acepta: se quita el DV)"),
             new("RazonSocial", ["razonsocial", "empresa", "nombreempresa", "empleador"],
                 TipoColumnaCargue.Texto, 100, Descripcion: "Razón social del empleador"),
             new("Telefono", ["telefono", "celular", "numerotelefono", "numerocelular", "movil"],
@@ -637,7 +660,7 @@ public static class CatalogoCargueFuentes
             new("Marca", ["marca", "marcavehiculo"],
                 TipoColumnaCargue.Texto, 50, Descripcion: "Marca del vehículo"),
             new("Modelo", ["modelo", "modelovehiculo", "anomodelo"],
-                TipoColumnaCargue.Entero, Descripcion: "Año del modelo (se anula si no es un año plausible)"),
+                TipoColumnaCargue.Entero, EnteroSql: TipoEnteroSql.Int, Descripcion: "Año del modelo (se anula si no es un año plausible)"),
             new("Placa", ["placa", "placavehiculo", "numeroplaca"],
                 TipoColumnaCargue.Placa, 50, Descripcion: "Placa (sin espacios ni guiones; lo que no es placa se anula)"),
         ],
@@ -843,7 +866,7 @@ public static class CatalogoCargueFuentes
         ColumnasDato =
         [
             new("NIT", ["nit", "nitempresa", "nitempleador"],
-                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+                TipoColumnaCargue.Entero, EsNit: true, Descripcion: "NIT de la empresa empleadora ('NIT-DV' se acepta: se quita el DV)"),
             new("Empresa", ["empresa", "nombreempresa", "empleador", "razonsocialempresa"],
                 TipoColumnaCargue.Texto, 230, Descripcion: "Empresa empleadora"),
             new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion", "estado"],
@@ -876,7 +899,7 @@ public static class CatalogoCargueFuentes
         ColumnasDato =
         [
             new("NIT", ["nit", "nitempresa", "nitempleador"],
-                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+                TipoColumnaCargue.Entero, EsNit: true, Descripcion: "NIT de la empresa empleadora ('NIT-DV' se acepta: se quita el DV)"),
             new("Empresa", ["empresa", "nombreempresa", "empleador", "razonsocialempresa"],
                 TipoColumnaCargue.Texto, 100, Descripcion: "Empresa empleadora"),
         ],

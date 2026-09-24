@@ -4,7 +4,8 @@ namespace CargueHarness;
 
 /// <summary>
 /// Tigo (grupo otras, Bloque(3)): sin SP legacy (no hay paridad posible), definición por analogía
-/// con TigoUne. Se carga desde CSV (';', UTF-8) para cubrir esa ruta. Verifica que todo lo que entra
+/// con TigoUne. Se carga desde CSV (';', UTF-8) para cubrir esa ruta, incluida la parte decimal nula
+/// que pandas y Excel le pegan a los números ('.0', ',00'). Verifica que todo lo que entra
 /// cumple el CHECK chk_Telefono de dbo.Tigo y la FK a Titular (titulares nuevos creados antes).
 /// </summary>
 internal static class CasoTigo
@@ -28,6 +29,9 @@ internal static class CasoTigo
             Fila(T(6).ToString(), "REPETIDO", "3001110006"),
             Fila(T(6).ToString(), "REPETIDO", "3001110006", "rep@gmail.com"),
             Fila("99", "DOCUMENTO MALO", "3001110007"),
+            // S3: parte decimal nula de un CSV exportado por pandas ('.0') o por Excel es-CO (',00').
+            Fila($"{T(7)}.0", "CSV PANDAS", "3001110017.0", "pandas@gmail.com"),
+            Fila($"{T(8)},00", "CSV EXCEL", "3.001.110.018,00"),
         };
         var archivo = h.EscribirCsv("tigo.csv", encabezado, filas);
 
@@ -36,7 +40,7 @@ internal static class CasoTigo
             ("@t", T(n)));
 
         await h.FlujoEstandar("Tigo", def, archivo,
-            new Harness.Esperado(Leidas: 8, Excluidas: 1, Duplicadas: 1, Candidatas: 6, Insertadas: 6, TitularesNuevos: 6),
+            new Harness.Esperado(Leidas: 10, Excluidas: 1, Duplicadas: 1, Candidatas: 8, Insertadas: 8, TitularesNuevos: 8),
             b + 1, b + 99,
             trasValidar: p =>
             {
@@ -53,6 +57,8 @@ internal static class CasoTigo
                 h.Igual("Tigo 3: fijo anulado → vacía, EstadoEnTigo = 0 (T4)", "||0", await Leer(4));
                 h.Igual("Tigo 3: sin datos → EstadoEnTigo = 0 (T5)", "||0", await Leer(5));
                 h.Igual("Tigo 3: repetido conserva la fila más completa (T6)", "3001110006|rep@gmail.com|1", await Leer(6));
+                h.Igual("Tigo 3: '.0' de pandas en documento y celular (T7)", "3001110017|pandas@gmail.com|1", await Leer(7));
+                h.Igual("Tigo 3: ',00' de Excel es-CO en documento y celular (T8)", "3001110018||1", await Leer(8));
                 h.Igual("Tigo 3: todo teléfono cargado es celular de 10 (chk_Telefono)", 0, await h.Contar("""
                     SELECT COUNT(*) FROM dbo.Tigo
                      WHERE TitularID BETWEEN @d AND @h AND NumeroTelefono IS NOT NULL

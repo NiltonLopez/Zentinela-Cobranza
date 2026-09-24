@@ -16,14 +16,21 @@ internal static class TelefonoColombiano
     /// Limpia y valida un número. Devuelve los 10 dígitos y si es celular, o
     /// <c>(null, false)</c> si no es un teléfono válido.
     ///
-    /// Tolera: separadores y espacios, sufijo ".0" de Excel, e indicativo de país
-    /// (57 / +57 / 0057) delante de un celular.
+    /// Tolera: separadores y espacios, UNA parte decimal nula (".0", ".00", ",0", ",00") de un CSV
+    /// exportado por Excel o pandas (ver <see cref="NumeroEnTexto"/>), e indicativo de país
+    /// (57 / +57 / 0057) delante de un celular. Un decimal real ('300123456.7') no es un teléfono:
+    /// contar solo sus dígitos lo convertiría en otro número.
     /// </summary>
     public static (string? Numero, bool EsCelular) Normalizar(string? bruto)
     {
         if (string.IsNullOrWhiteSpace(bruto)) return (null, false);
 
-        var digitos = new string(bruto.Where(char.IsDigit).ToArray());
+        // Antes de contar dígitos: con el ".0" contado, '3001234567.0' tendría 11 y se anularía,
+        // y '300123456.0' (9 dígitos) pasaría por un celular de 10.
+        var texto = NumeroEnTexto.QuitarDecimalNulo(bruto);
+        if (NumeroEnTexto.TieneDecimales(texto)) return (null, false);
+
+        var digitos = new string(texto.Where(char.IsDigit).ToArray());
         if (digitos.Length == 0) return (null, false);
 
         // Indicativo de país delante de un celular: 57 + 3XXXXXXXXX (12 dígitos),

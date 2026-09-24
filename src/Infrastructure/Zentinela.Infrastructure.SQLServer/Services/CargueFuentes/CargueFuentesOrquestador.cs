@@ -89,7 +89,7 @@ internal sealed class CargueFuentesOrquestador : ICargueFuentesService
         {
             Nombre      = c.Nombre,
             Alias       = c.Alias,
-            Tipo        = c.Tipo.ToString(),
+            Tipo        = c.EsNit ? "NIT" : c.Tipo.ToString(),   // NIT: acepta 'NIT-DV'
             Obligatoria = c.Obligatoria,
             Descripcion = c.Descripcion,
         }));

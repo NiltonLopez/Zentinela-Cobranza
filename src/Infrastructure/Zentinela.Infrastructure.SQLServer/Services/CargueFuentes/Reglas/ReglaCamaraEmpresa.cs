@@ -1,5 +1,5 @@
-using System.Text.RegularExpressions;
 using Zentinela.Application;
+using Zentinela.Infrastructure.SQLServer.Services.Shared;
 
 namespace Zentinela.Infrastructure.SQLServer.Services.CargueFuentes.Reglas;
 
@@ -39,20 +39,16 @@ internal sealed class ReglaCamaraEmpresa : IReglaFuente
     private static readonly int ExtraDepartamento = IndiceExtra("Departamento");
     private static readonly int ExtraMunicipio = IndiceExtra("Municipio");
 
-    // NIT con dígito de verificación separado por guion: dígitos (con puntos o espacios) - un dígito.
-    private static readonly Regex NitConDv = new(@"^\s*(\d[\d.\s]*?)\s*-\s*\d\s*$", RegexOptions.Compiled);
-
     public string Fuente => CatalogoCargueFuentes.CamaraEmpresa.Fuente;
 
     public bool NecesitaPrefijos => true;
 
+    /// <summary>La clave es un NIT: mismo helper que las columnas de dato NIT (<c>EsNit</c>) del motor.</summary>
     public string? NormalizarClave(string? bruto, ContextoCargue ctx)
     {
-        if (bruto is null) return null;
-        var m = NitConDv.Match(bruto);
-        if (!m.Success) return bruto;
-        ctx.Informar("NitEmpresa con dígito de verificación ('NIT-DV'): se guardó el NIT sin el DV");
-        return m.Groups[1].Value;
+        var nit = NitColombiano.QuitarDigitoVerificacion(bruto, out var quitado);
+        if (quitado) ctx.Informar("NitEmpresa con dígito de verificación ('NIT-DV'): se guardó el NIT sin el DV");
+        return nit;
     }
 
     public void Transformar(FilaCargue fila, ContextoCargue ctx)

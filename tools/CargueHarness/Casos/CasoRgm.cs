@@ -39,6 +39,8 @@ internal static class CasoRgm
             Fila(T(7).ToString(), "DOS VEHICULOS", "NISSAN", "2017", "IPR367", conPar: true),
             Fila(T(7).ToString(), "DOS VEHICULOS", "NISSAN", "2018", "IPR432", conPar: true),
             Fila(T(8).ToString(), "SOLO MODELO", modelo: "2020"),
+            // H1: no cabe en int (RGM.Modelo): antes haría fallar el INSERT de todo el archivo.
+            Fila(T(9).ToString(), "MODELO ENORME", "HONDA", "99999999999"),
             Fila("12AB", "DOCUMENTO MALO", "KIA"),
         };
         var archivo = h.EscribirXlsx("rgm.xlsx", encabezado, filas);
@@ -48,7 +50,7 @@ internal static class CasoRgm
             ("@t", T(n)));
 
         await h.FlujoEstandar("RGM", def, archivo,
-            new Harness.Esperado(Leidas: 10, Excluidas: 1, Duplicadas: 1, Candidatas: 8, Insertadas: 8, TitularesNuevos: 8,
+            new Harness.Esperado(Leidas: 11, Excluidas: 1, Duplicadas: 1, Candidatas: 9, Insertadas: 9, TitularesNuevos: 9,
                                  Relaciones: 2),
             b + 1, b + 99,
             trasValidar: p =>
@@ -57,6 +59,8 @@ internal static class CasoRgm
                 h.Igual("RGM 1: aviso placa que no es placa", 1, Harness.Aviso(p, "Placa: valor que no es una placa anulado"));
                 h.Igual("RGM 1: aviso modelo implausible (2323)", 1, Harness.Aviso(p, ReglaRgm.AvisoModelo));
                 h.Igual("RGM 1: aviso modelo no numérico (ABC)", 1, Harness.Aviso(p, "Modelo: valor no numérico anulado"));
+                h.Igual("RGM 1: aviso modelo fuera del rango de int (T9)", 1,
+                    Harness.Aviso(p, "Modelo: número fuera del rango de la columna (int) anulado"));
                 h.Igual("RGM 1: aviso titular repetido", 1, Harness.Aviso(p, "Titular repetido"));
                 return Task.CompletedTask;
             },
@@ -76,6 +80,7 @@ internal static class CasoRgm
                 h.Igual("RGM 3: modelo '2021.0' de Excel → 2021 (T6)", "YAMAHA|2021|LZB10H|1", await Leer(6));
                 h.Igual("RGM 3: repetido igual de completo → el último del archivo (T7)", "NISSAN|2018|IPR432|1", await Leer(7));
                 h.Igual("RGM 3: solo modelo cuenta para el flag (T8)", "|2020||1", await Leer(8));
+                h.Igual("RGM 3: modelo que no cabe en int anulado, el cargue no falla (T9)", "HONDA|||1", await Leer(9));
             });
     }
 }

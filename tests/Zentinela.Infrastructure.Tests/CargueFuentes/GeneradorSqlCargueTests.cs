@@ -187,4 +187,26 @@ public class GeneradorSqlCargueTests
 
         Assert.Throws<InvalidOperationException>(() => GeneradorSqlCargue.ValidarDefinicion(mala));
     }
+
+    [Fact]
+    public void Entero_int_va_a_Carga_como_int()
+    {
+        // RGM.Modelo es int en el destino (H1 de PARIDAD-otras.md); los NIT siguen en bigint.
+        Assert.Contains("[Modelo] int NULL", GeneradorSqlCargue.CrearTablaCarga(CatalogoCargueFuentes.Rgm));
+        Assert.Contains("[NIT] bigint NULL", GeneradorSqlCargue.CrearTablaCarga(CatalogoCargueFuentes.ArlSura));
+    }
+
+    [Theory]
+    [InlineData(true, TipoEnteroSql.BigInt)]
+    [InlineData(false, TipoEnteroSql.Int)]
+    public void EsNit_y_EnteroSql_solo_en_columnas_Entero(bool esNit, TipoEnteroSql enteroSql)
+    {
+        var mala = Sura with
+        {
+            ColumnasDato = [.. Sura.ColumnasDato,
+                new ColumnaFuenteCargue("Otra", ["otra"], TipoColumnaCargue.Texto, 10, EnteroSql: enteroSql, EsNit: esNit)],
+        };
+
+        Assert.Throws<InvalidOperationException>(() => GeneradorSqlCargue.ValidarDefinicion(mala));
+    }
 }

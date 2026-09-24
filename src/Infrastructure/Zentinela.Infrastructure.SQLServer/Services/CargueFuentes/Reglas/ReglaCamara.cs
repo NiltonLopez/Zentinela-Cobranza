@@ -108,11 +108,11 @@ internal sealed class ReglaCamara : IReglaFuente
         return prefijo + digitos;
     }
 
-    /// <summary>Dígitos del número, sin el ".0" que deja Excel en celdas numéricas.</summary>
+    /// <summary>Dígitos del número, sin la parte decimal nula que deja Excel o pandas (<see cref="NumeroEnTexto"/>).</summary>
     private static string Digitos(string texto)
     {
         var t = texto.Trim();
-        if (t.EndsWith(".0", StringComparison.Ordinal)) t = t[..^2];
+        t = NumeroEnTexto.QuitarDecimalNulo(t);   // ".0" / ",00" de Excel o pandas
         return string.Concat(t.Where(char.IsDigit));
     }
 }
