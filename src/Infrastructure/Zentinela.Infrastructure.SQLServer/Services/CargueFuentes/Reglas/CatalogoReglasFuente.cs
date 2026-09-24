@@ -29,6 +29,10 @@ internal static class CatalogoReglasFuente
         // Titular/relaciones, calculaba el flag e insertaba: todo genérico. Direccion > 70 (la
         // Auxiliar admitía 150) hacía fallar su INSERT entero; el motor la trunca con advertencia.
         [CatalogoCargueFuentes.Sos.Fuente]        = new ReglaGenerica(CatalogoCargueFuentes.Sos.Fuente),
+        // Coosalud: sp_ProcesarCoosaludAuxiliar anulaba teléfonos de largo ≠ 10 y correos de la
+        // lista negra (con LIKE), calculaba el flag e insertaba solo lo nuevo (clave recortada con
+        // ISNULL(x, '')): todo genérico en el motor, con validación exacta y clave completa.
+        [CatalogoCargueFuentes.Coosalud.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.Coosalud.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

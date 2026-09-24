@@ -13,6 +13,7 @@ nuevo (`CargueFuentesMotor` + `Regla<Fuente>`). Corrida del **2026-09-24** contr
 | Positiva | 23 | 4 | 19 | 0 | Paridad OK (E1, E2, E9–E11, P1–P6, R) |
 | SaludTotal | 19 | 5 | 14 | 0 | Paridad OK (E1, E9–E11, P1, P2, P4, P5) |
 | SOS (+ SOS-B) | 16 | 4 | 12 | 0 | Paridad OK (E1, E9–E11, P1–P3, P5, F) |
+| Coosalud | 16 | 4 | 12 | 0 | Paridad OK (E1, E2, E8, E10, E11, P1, P3–P5) |
 
 "Sin explicar" = diferencia que no está en la leyenda (decisiones de ADR-039 o del plan) ni en el
 comentario de la regla. Una diferencia sin explicar es un bug: se corrige y se vuelve a correr.
@@ -361,6 +362,87 @@ ERROR 2628 (línea 72): Los datos binarios o de la cadena se truncan en la colum
 PRINT: Se terminó la instrucción.
 PRINT: 0 PERSONAS FUERON INGRESADAS A #Dest
 PRINT: 0 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
+```
+</details>
+
+## Coosalud
+
+**Conclusión: paridad OK con 12 diferencias explicadas, 0 sin explicar.** Sin regla propia
+(`ReglaGenerica`). Este SP es de la generación más nueva (agosto de 2026): inserta con lista de
+columnas, solo lo nuevo y **sin limpiezas globales**. Hay 4 casos idénticos: celular de 9 dígitos
+anulado (CO03, el SP miraba el largo), correo exacto en la lista negra (CO06), cambio de
+`TipoAfiliado` (CO10, está en la clave del SP) y el titular ajeno con duplicados, que ninguno de
+los dos toca (CO13).
+
+Detalles:
+
+- **CO08 (E8).** El SP inserta "solo lo nuevo" y **no refresca la fecha** del contenido que ya
+  existe: la fila queda con su `FechaConsulta` vieja aunque el proveedor la haya vuelto a
+  confirmar. El motor la refresca.
+- **CO09 (P4).** La clave del SP es teléfono, email y tipo de afiliado (con `ISNULL(x, '')`): un
+  `MunicipioOrigen` nuevo con el mismo contacto **no se inserta** y se pierde. Con la clave
+  completa el motor lo guarda como historial.
+- **CO04, CO05, CO16 (P1).** El SP solo miraba el largo del teléfono (`300123456X` y el fijo
+  `6041234567` pasaban) y no normalizaba el correo.
+- **CO11, CO12 (P5).** Sin purga ni descarte de vacías en el SP.
+- El `PRINT` "NUMEROS LIMPIADOS POR LONGITUD INCORRECTA" del SP informa `@@ROWCOUNT` de un
+  `UPDATE` sin `WHERE`: cuenta todas las filas, no las limpiadas (cosmético).
+
+
+#### Escenario Coosalud
+
+Columnas del destino: `NumeroTelefono · Email · MunicipioOrigen · DepartamentoOrigen · Regimen · TipoAfiliado · EstadoAfiliacion · NivelSisben · FechaNacimiento · EstadoEnCoosalud · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| CO01 | Titular nuevo; nombre con tilde; todos los campos | 3001234567 · ramon@gmail.com · MONTERIA · CORDOBA · SUBSIDIADO · CABEZA DE FAMILIA · ACTIVO · 1 · 1975-03-02 · 1 · HOY | 3001234567 · ramon@gmail.com · MONTERIA · CORDOBA · SUBSIDIADO · CABEZA DE FAMILIA · ACTIVO · 1 · 1975-03-02 · 1 · HOY | Ramón Núñez / RAMON NUÑEZ | L1/C29 / L1/C29 | difiere: titular | E1 solo el nombre |
+| CO02 | Documento inválido (4 dígitos) | 3001234568 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | P3 documento inválido |
+| CO03 | Celular de 9 dígitos + email | ∅ · co3@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | ∅ · co3@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | CELULAR NUEVE / CELULAR NUEVE | L1/C29 / L1/C29 | igual | = |
+| CO04 | Celular de 10 caracteres con letra ('300123456X') + email | 300123456X · co4@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | ∅ · co4@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | CELULAR LETRA / CELULAR LETRA | L1/C29 / L1/C29 | difiere: destino | P1 celular solo dígitos (el SP solo miraba el largo) |
+| CO05 | Fijo 60x en la columna de celular, único dato | 6041234567 · ∅ · ∅ · SUCRE · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · SUCRE · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | FIJO EN CELULAR / FIJO EN CELULAR | L1/C29 / L1/C29 | difiere: destino | P1 celular 3xx (el SP lo guardaba con flag 1) |
+| CO06 | Celular + email exacto en ListaNegraCorreos ('no@gmail.com') | 3001110756 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110756 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | CORREO VETADO / CORREO VETADO | L1/C29 / L1/C29 | igual | = |
+| CO07 | Email que solo cae por LIKE ('juana@gmail.com' contiene 'a@gmail.com') | 3001110757 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110757 · juana@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | JUANA LIKE / JUANA LIKE | L1/C29 / L1/C29 | difiere: destino | E2 LIKE |
+| CO08 | Titular existente, contenido idéntico en destino | 3001110758 · co8@gmail.com · ∅ · ∅ · ∅ · COTIZANTE · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | 3001110758 · co8@gmail.com · ∅ · ∅ · ∅ · COTIZANTE · ∅ · ∅ · ∅ · 1 · HOY | COOSALUD EXISTENTE / COOSALUD EXISTENTE | L1/C29 / L1/C29 | difiere: destino | E8 el SP no refresca la fecha (inserta solo lo nuevo) |
+| CO09 | Existente; solo cambia MunicipioOrigen | 3001110759 · ∅ · MONTERIA · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | 3001110759 · ∅ · CERETE · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY<br>3001110759 · ∅ · MONTERIA · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | CAMBIA MUNICIPIO / CAMBIA MUNICIPIO | L1/C29 / L1/C29 | difiere: destino | P4 clave completa (la clave del SP es teléfono, email y tipo: descarta el municipio nuevo) |
+| CO10 | Existente; cambia TipoAfiliado (está en la clave del SP) | 3001110760 · ∅ · ∅ · ∅ · ∅ · BENEFICIARIO · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110760 · ∅ · ∅ · ∅ · ∅ · COTIZANTE · ∅ · ∅ · ∅ · 1 · HOY | 3001110760 · ∅ · ∅ · ∅ · ∅ · BENEFICIARIO · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110760 · ∅ · ∅ · ∅ · ∅ · COTIZANTE · ∅ · ∅ · ∅ · 1 · HOY | CAMBIA TIPO / CAMBIA TIPO | L1/C29 / L1/C29 | igual | = |
+| CO11 | Vacía vieja en destino; ahora trae celular | 3001110761 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY<br>∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | 3001110761 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | P5 el SP de Coosalud no purgaba vacías |
+| CO12 | Datos en destino; el archivo trae fila sin contacto (solo municipio) | 3001110762 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · LORICA · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | 3001110762 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | P5 el SP inserta la vacía |
+| CO13 | Titular AJENO al archivo con duplicado exacto en destino | 3001110763 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110763 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | 3001110763 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110763 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | AJENO AL ARCHIVO / AJENO AL ARCHIVO | — / — | igual | = |
+| CO14 | Titular repetido; la 2ª fila tiene más datos | 3001110764 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110764 · rep14@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | E11 el SP conserva una fila arbitraria (ORDER BY TitularID); el nuevo, la más completa |
+| CO15 | Par Líder/Cartera inactivo | 3001110765 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110765 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | E10 sin relación con par inactivo |
+| CO16 | Email con mayúsculas | 3001110766 · Maria.Lopez@Gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110766 · maria.lopez@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | MARIA MAYUSCULAS / MARIA MAYUSCULAS | L1/C29 / L1/C29 | difiere: destino | P1 email en minúsculas |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 16, excluidas 1, duplicadas 1, expansión +0, candidatas 14, insertadas 12, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 9, nombres reparados 0, relaciones nuevas 13.
+Carga (ejecución 288): insertadas 12, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 9, nombres reparados 0, relaciones 13.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×2: NumeroTelefono: celular inválido anulado
+- aviso ×1: Email: email en lista negra anulado
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: NumeroTelefono: número fijo en la columna de celular, anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×13: Relaciones titular-cartera nuevas
+- info ×9: Titulares nuevos que se crearán
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.Coosalud
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; Coosalud 1037887→1037887; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 10 PERSONAS FUERON INGRESADAS EN TITULAR
+PRINT: 15 PERSONAS RELACIONADAS CON LA CARTERA
+PRINT: 1 DUPLICADOS ELIMINADOS EN LA TABLA AUXILIAR
+PRINT: 2 CORREOS LIMPIADOS
+PRINT: 15 NUMEROS LIMPIADOS POR LONGITUD INCORRECTA
+PRINT: 15 REGISTROS ACTUALIZADOS
+PRINT: 13 PERSONAS INGRESADAS EN COOSALUD
 ```
 </details>
 

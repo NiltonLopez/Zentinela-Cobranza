@@ -437,11 +437,55 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// Coosalud (EPS). Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarCoosaludAuxiliar</c>
+    /// anulaba teléfonos de largo distinto de 10 y correos de la lista negra, calculaba el flag e
+    /// insertaba solo lo nuevo: todo genérico (y más estricto en el motor). Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.Coosalud</c> el 2026-09-24 (todas las de texto varchar(50) salvo
+    /// Email 255, FechaNacimiento <c>date</c> NULL, FechaConsulta <c>date</c> NOT NULL; <b>sin FK a
+    /// Titular</b> pero el SP sí creaba Titular y Titular_Cartera, y el motor también; sin triggers;
+    /// 1.037.887 filas / 1.032.725 titulares). NumeroTelefono es celular (77.977 de las 77.983 filas
+    /// con dato son 3xx y la BaseMadre lo expone como [Celular Coosalud]). El flag, como en el SP,
+    /// mira teléfono y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Coosalud = new()
+    {
+        Fuente          = "Coosalud",
+        Etiqueta        = "Coosalud (EPS)",
+        TablaDestino    = "dbo.Coosalud",
+        ColumnaFlag     = "EstadoEnCoosalud",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS Coosalud: celular, email, afiliación y localización de origen.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("MunicipioOrigen", ["municipioorigen", "municipiodeorigen", "municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio de origen"),
+            new("DepartamentoOrigen", ["departamentoorigen", "departamentodeorigen", "departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento de origen"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Contributivo, subsidiado…"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Activo, retirado…"),
+            new("NivelSisben", ["nivelsisben", "sisben", "niveldesisben"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Nivel del Sisbén"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
         // Fase 2, grupo salud
-        Positiva, SaludTotal, Sos,
+        Positiva, SaludTotal, Sos, Coosalud,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>

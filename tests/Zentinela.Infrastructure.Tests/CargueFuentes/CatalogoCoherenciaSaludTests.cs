@@ -80,4 +80,22 @@ public class CatalogoCoherenciaSaludTests
         Assert.Contains("razonsocial", d.ColumnasDato.Single(c => c.Nombre == "RazonSocial").Alias);
         Assert.Contains("razonsocial", CatalogoCargueFuentes.AliasNombre);
     }
+
+    [Fact]
+    public void Coosalud_coincide_con_el_destino_real()
+    {
+        var d = CatalogoCargueFuentes.Coosalud;
+        Assert.Equal(("dbo.Coosalud", "EstadoEnCoosalud", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["NumeroTelefono:Celular:10", "Email:Email:255", "MunicipioOrigen:Texto:50:sinflag",
+             "DepartamentoOrigen:Texto:50:sinflag", "Regimen:Texto:50:sinflag", "TipoAfiliado:Texto:50:sinflag",
+             "EstadoAfiliacion:Texto:50:sinflag", "NivelSisben:Texto:50:sinflag", "FechaNacimiento:Fecha:0:sinflag"],
+            Firma(d));
+        // Sin FK a Titular en el destino, pero el SP creaba Titular y relaciones: el motor también.
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        SinAliasRepetidos(d);
+    }
 }

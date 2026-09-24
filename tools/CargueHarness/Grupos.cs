@@ -53,6 +53,7 @@ internal static class Grupos
         new("Positiva",   "Positiva",   CasoPositiva.Correr),     // Bloque(0): 1000-1099
         new("SaludTotal", "SaludTotal", CasoSaludTotal.Correr),   // Bloque(1): 1100-1199
         new("SOS",        "SOS",        CasoSos.Correr),          // Bloque(2): 1200-1299
+        new("Coosalud",   "Coosalud",   CasoCoosalud.Correr),     // Bloque(3): 1300-1399
     ]);
 
     // ── empresas: 999000002000..999000002999 ──
