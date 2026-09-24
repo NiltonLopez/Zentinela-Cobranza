@@ -437,6 +437,7 @@ try
 
     // ── Fuentes de la etapa D (cada una en su sub-rango) ────────────────────
     await CasoCajacopi.Correr(h);
+    await CasoMutualSer.Correr(h);
 }
 catch (Exception ex)
 {

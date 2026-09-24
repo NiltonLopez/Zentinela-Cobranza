@@ -95,4 +95,20 @@ public class CatalogoCoherenciaTests
         Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
         Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaPrefijos);
     }
+
+    [Fact]
+    public void MutualSer_coincide_con_el_destino_real()
+    {
+        // Verificado con sys.columns de dbo.MutualSer el 2026-09-23.
+        var d = CatalogoCargueFuentes.MutualSer;
+        Assert.Equal(("dbo.MutualSer", "EstadoEnMutualSer", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(
+            ["NumeroTelefonoCelular:Celular:10", "NumeroTelefonoCelular2:Celular:10", "NumeroTelefonoFijo:Fijo:10",
+             "Email:Email:255", "Regimen:Texto:30:sinflag", "TipoAfiliado:Texto:50:sinflag",
+             "Departamento:Texto:50:sinflag", "Municipio:Texto:50:sinflag"],
+            Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+    }
 }

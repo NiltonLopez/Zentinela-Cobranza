@@ -39,11 +39,12 @@ internal sealed class Harness
         ("Titular_Cartera", "TitularID BETWEEN @d AND @h"),
         ("Sura",            "TitularID BETWEEN @d AND @h"),
         ("Cajacopi",        "TitularID BETWEEN @d AND @h"),
+        ("MutualSer",       "TitularID BETWEEN @d AND @h"),
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 
     /// <summary>Tablas destino cuyo COUNT(*) debe quedar igual al terminar.</summary>
-    public static readonly string[] TablasDestino = ["Sura", "Cajacopi"];
+    public static readonly string[] TablasDestino = ["Sura", "Cajacopi", "MutualSer"];
 
     public Harness(string cs, string carpeta)
     {

@@ -181,7 +181,43 @@ public static class CatalogoCargueFuentes
         ],
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi];
+    /// <summary>
+    /// MutualSer (EPS). Regla propia: reubicar teléfonos entre celular, celular 2 y fijo.
+    /// Verificado contra <c>sys.columns</c> de <c>dbo.MutualSer</c> el 2026-09-23 (FechaConsulta
+    /// <c>date</c>; sin FK ni triggers). El flag, como en el SP legacy, solo mira teléfonos y email:
+    /// régimen, tipo de afiliado y localización no son datos de contacto.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue MutualSer = new()
+    {
+        Fuente       = "MutualSer",
+        Etiqueta     = "MutualSer (EPS)",
+        TablaDestino = "dbo.MutualSer",
+        ColumnaFlag  = "EstadoEnMutualSer",
+        ColumnaFecha = "FechaConsulta",
+        TipoFecha    = TipoFechaSello.Date,
+        Notas        = "Afiliados MutualSer: dos celulares, fijo, email, régimen y localización.",
+        ColumnasDato =
+        [
+            new("NumeroTelefonoCelular", ["numerotelefonocelular", "celular", "celular1", "numerocelular", "telefonocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("NumeroTelefonoCelular2", ["numerotelefonocelular2", "celular2", "numerocelular2", "telefonocelular2", "movil2"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Segundo celular"),
+            new("NumeroTelefonoFijo", ["numerotelefonofijo", "fijo", "telefonofijo", "numerofijo"],
+                TipoColumnaCargue.Fijo, 10, Descripcion: "Fijo (10 dígitos, empieza en 60)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("Regimen", ["regimen", "tiporegimen"],
+                TipoColumnaCargue.Texto, 30, EntraAlFlag: false, Descripcion: "Contributivo, subsidiado…"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Departamento"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)
