@@ -37,6 +37,8 @@ param(
     [string]$Prefijo       = 'Reporte Clientes de ',
     [int]$TamanoLoteMB     = 80,     # medido: ~138 MB de xlsx ya reventaba
     [int]$MinutosPorLote   = 25,
+    [int]$DesdeLote        = 1,      # retomar sin repetir los ya publicados
+    [switch]$PublicarStagingPrimero, # publica lo que ya haya en el staging y sigue
     [switch]$Ejecutar,               # sin esto solo muestra el plan
     [switch]$SoloVer,
     [string]$CadenaConexion
@@ -64,7 +66,11 @@ function Sql([string]$texto, [int]$timeout = 300) {
         $t = New-Object System.Data.DataTable
         $rd = $cmd.ExecuteReader()
         if (-not $rd.IsClosed) { $t.Load($rd) }
-        return $t
+        # La coma es imprescindible: al devolver un DataTable, PowerShell lo
+        # DESENROLLA y entrega las filas sueltas, con lo que $resultado.Rows
+        # queda nulo y el que llama revienta con "no se puede indizar en una
+        # matriz nula". El operador coma lo envuelve y lo devuelve entero.
+        return ,$t
     } finally { $cn.Close() }
 }
 
@@ -130,8 +136,29 @@ if (-not (Test-Path $espera)) { New-Item -ItemType Directory -Path $espera | Out
 
 $resumen = @()
 
+# Si una corrida anterior se corto despues de cargar pero antes de publicar, lo
+# que quedo en el staging todavia sirve: el paquete lo va a borrar en el paso 1
+# de la proxima vuelta, asi que hay que publicarlo AHORA o se pierde.
+if ($PublicarStagingPrimero) {
+    $prev = Sql "SELECT COUNT(*) AS filas, COUNT(DISTINCT CarteraID) AS carteras FROM DBCallCenter.dbo.Staging_UltimoEstadoTitular" 120
+    $pf = [int]$prev.Rows[0].filas; $pc = [int]$prev.Rows[0].carteras
+    if ($pf -gt 0) {
+        Write-Output "[$(Ahora)] publicando lo que quedo en el staging: $pf filas, $pc cartera(s)"
+        $r = Sql @"
+EXEC DBCallCenter.dbo.sp_Insertar_UltimoEstadoTitular
+     @MinimoCarteras = $pc, @ToleranciaFilasPct = 100, @Origen = 'Lote';
+SELECT TOP 1 Resultado FROM DBCallCenter.dbo.EtlEstadoTitular_Ejecucion ORDER BY EjecucionID DESC;
+"@ 900
+        $res = if ($r.Rows.Count) { [string]$r.Rows[0].Resultado } else { '?' }
+        Write-Output "[$(Ahora)] staging previo -> $res"
+        $resumen += [pscustomobject]@{ Lote = 'previo'; Carteras = "$pc cartera(s)"; Filas = $pf; Estado = $res }
+    }
+    else { Write-Output "[$(Ahora)] el staging estaba vacio, no habia nada que publicar." }
+    Write-Output ''
+}
+
 try {
-    for ($i = 0; $i -lt $lotes.Count; $i++) {
+    for ($i = $DesdeLote - 1; $i -lt $lotes.Count; $i++) {
         $n = $i + 1
         $lote = $lotes[$i]
         $claves = ($lote | ForEach-Object Clave)
