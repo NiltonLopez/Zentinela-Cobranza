@@ -77,6 +77,28 @@ public sealed record DefinicionFuenteCargue
     public TipoFechaSello TipoFecha { get; init; } = TipoFechaSello.Date;
     /// <summary>El destino guarda el TitularID como varchar (NuevaEps).</summary>
     public bool TitularIdComoTexto { get; init; }
+
+    /// <summary>
+    /// Columna del destino que identifica la fila y contra la que se refresca, inserta y purga
+    /// (Fase 2). "TitularID" en todas salvo CamaraEmpresa, que no tiene TitularID: guarda el NIT
+    /// de la empresa en <c>NitEmpresa</c>. Una clave que no es TitularID no es un titular: la
+    /// fuente no crea Titular ni Titular_Cartera ni se cruza con dbo.Titular (lo exige
+    /// <c>GeneradorSqlCargue.ValidarDefinicion</c>). Se valida con la misma regla que un documento
+    /// (5 a 15 dígitos) y se escribe en <c>CargueFuenteReversion.TitularID</c> como texto.
+    /// </summary>
+    public string ColumnaClaveTitular { get; init; } = "TitularID";
+
+    /// <summary>Encabezados de la clave en el archivo; null = <see cref="CatalogoCargueFuentes.AliasTitularId"/>.</summary>
+    public string[]? AliasClaveTitular { get; init; }
+
+    /// <summary>Texto del panel de columnas esperadas para la clave.</summary>
+    public string DescripcionClaveTitular { get; init; } = "Documento del titular (5 a 15 dígitos)";
+
+    /// <summary>La clave es el documento de un titular de dbo.Titular (todas menos CamaraEmpresa).</summary>
+    public bool ClaveEsTitular => string.Equals(ColumnaClaveTitular, "TitularID", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Alias efectivos de la clave en el archivo.</summary>
+    public string[] AliasDeClave => AliasClaveTitular ?? CatalogoCargueFuentes.AliasTitularId;
     public bool CreaTitular { get; init; } = true;
     public bool CreaTitularCartera { get; init; } = true;
     public CardinalidadCargue Cardinalidad { get; init; } = CardinalidadCargue.UnaPorTitular;
@@ -687,6 +709,215 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    // ── Fase 2 — grupo empresas ─────────────────────────────────────────────
+
+    /// <summary>
+    /// RUES (registro mercantil del titular). Sin regla propia (<c>ReglaGenerica</c>):
+    /// <c>sp_ProcesarRUESAuxiliar</c> solo creaba Titular/relaciones, calculaba el flag e
+    /// insertaba. Verificado contra <c>sys.columns</c> de <c>dbo.RUES</c> el 2026-09-24:
+    /// <b>FechaConsulta es <c>datetime</c></b> (la única de las fuentes con sello con hora: el SP
+    /// guardaba <c>GETDATE()</c> y 799.156 de sus 873.188 filas tienen hora) → sello
+    /// <see cref="TipoFechaSello.DateTime"/>; FK a Titular, índice (TitularID, FechaConsulta DESC),
+    /// sin triggers. El flag, como en el SP, mira matrícula, estado y actividad; NombreEmpresa no
+    /// (el SP lo dejaba fuera y en la tabla no hay ninguna fila con solo NombreEmpresa).
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Rues = new()
+    {
+        Fuente          = "RUES",
+        Etiqueta        = "RUES (registro mercantil)",
+        TablaDestino    = "dbo.RUES",
+        ColumnaFlag     = "EstadoEnRUES",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.DateTime,
+        FaseIntegracion = 2,
+        Notas           = "Matrícula mercantil del titular: número, estado, actividad económica y nombre de la empresa.",
+        ColumnasDato =
+        [
+            new("NumeroMatricula", ["numeromatricula", "matricula", "numerodematricula", "nomatricula", "matriculamercantil"],
+                TipoColumnaCargue.Entero, Descripcion: "Número de matrícula mercantil"),
+            new("EstadoEmpresa", ["estadoempresa", "estadomatricula", "estadodelamatricula", "estado"],
+                TipoColumnaCargue.Texto, 20, Descripcion: "Activa, cancelada, inactiva…"),
+            new("ActividadEconomica", ["actividadeconomica", "actividad", "descripcionactividad"],
+                TipoColumnaCargue.Texto, 250, Descripcion: "Actividad económica registrada"),
+            new("NombreEmpresa", ["nombreempresa", "empresa", "nombredelaempresa", "nombreestablecimiento"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Nombre de la empresa o establecimiento"),
+        ],
+    };
+
+    /// <summary>
+    /// Cámara de Comercio (datos de contacto del titular como comerciante). Regla propia
+    /// (<c>ReglaCamara</c>): indicativo a los fijos de 7 dígitos y textos de relleno del formulario
+    /// en Departamento. Verificado contra <c>sys.columns</c> de <c>dbo.Camara</c> el 2026-09-24:
+    /// NumeroTelefono varchar(10) (mezcla celulares 3xx y fijos 60x → tipo <c>Telefono</c>),
+    /// Email varchar(255), Municipio varchar(50), <b>Departamento varchar(70)</b>, FechaConsulta
+    /// <c>date</c>; FK a Titular, índice (TitularID, FechaConsulta DESC), sin triggers. El flag,
+    /// como en el SP, solo mira teléfono y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Camara = new()
+    {
+        Fuente          = "Camara",
+        Etiqueta        = "Cámara de Comercio (personas)",
+        TablaDestino    = "dbo.Camara",
+        ColumnaFlag     = "EstadoEnCamara",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Teléfono (celular o fijo; el fijo de 7 dígitos recibe indicativo), email y localización del comerciante.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "telefonofijo", "fijo"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x; fijo de 7 dígitos → indicativo)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("Municipio", ["municipio", "ciudad"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Municipio (resuelve el indicativo del fijo)"),
+            new("Departamento", ["departamento", "depto", "dpto"],
+                TipoColumnaCargue.Texto, 70, EntraAlFlag: false, Descripcion: "Departamento (resuelve el indicativo del fijo)"),
+        ],
+    };
+
+    /// <summary>
+    /// Cámara de Comercio (empresas): teléfono y email de la EMPRESA, identificada por su NIT.
+    /// Primera fuente cuya clave no es TitularID (<see cref="DefinicionFuenteCargue.ColumnaClaveTitular"/>
+    /// = NitEmpresa): no crea Titular ni relaciones (su SP tampoco) y se cruza con ARLSura por NIT
+    /// (<c>vw_DatosCamaraEmpresa</c>: <c>ARLSura.NIT = CamaraEmpresa.NitEmpresa</c>). Regla propia
+    /// (<c>ReglaCamaraEmpresa</c>): quita el dígito de verificación de 'NIT-DV' e indicativo a los
+    /// fijos de 7 dígitos por el Departamento del archivo, que no se guarda. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.CamaraEmpresa</c> el 2026-09-24: NitEmpresa bigint NULL,
+    /// NumeroTelefono varchar(10), Email varchar(255), EstadoEnCamara bit, FechaConsulta date;
+    /// heap sin índices, sin FK ni triggers. El flag, como en el SP, mira teléfono y email.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue CamaraEmpresa = new()
+    {
+        Fuente                  = "CamaraEmpresa",
+        Etiqueta                = "Cámara de Comercio (empresas)",
+        TablaDestino            = "dbo.CamaraEmpresa",
+        ColumnaFlag             = "EstadoEnCamara",
+        ColumnaFecha            = "FechaConsulta",
+        TipoFecha               = TipoFechaSello.Date,
+        ColumnaClaveTitular     = "NitEmpresa",
+        AliasClaveTitular       = ["nitempresa", "nit", "nitdelaempresa", "numeronit"],
+        DescripcionClaveTitular = "NIT de la empresa sin dígito de verificación (5 a 15 dígitos; 'NIT-DV' se acepta y se le quita el DV)",
+        CreaTitular             = false,
+        CreaTitularCartera      = false,
+        FaseIntegracion         = 2,
+        Notas                   = "Teléfono y email de empresas por NIT (no crea titulares). El fijo de 7 dígitos recibe indicativo por el departamento.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "telefonofijo", "fijo"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x; fijo de 7 dígitos → indicativo)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+        ],
+        // No se guardan: solo resuelven el indicativo del fijo de 7 dígitos (CamaraEmpresaAuxiliar
+        // tenía Departamento varchar(60); Municipio no estaba y aquí es opcional).
+        ColumnasArchivoExtra =
+        [
+            new("Departamento", ["departamento", "depto", "dpto"], TipoColumnaCargue.Texto, 60,
+                Descripcion: "Departamento (solo resuelve el indicativo del fijo; no se guarda)"),
+            new("Municipio", ["municipio", "ciudad"], TipoColumnaCargue.Texto, 50,
+                Descripcion: "Municipio (opcional; solo resuelve el indicativo del fijo; no se guarda)"),
+        ],
+    };
+
+    /// <summary>
+    /// Positiva ARL, empleador del titular (NIT y razón social). Sin regla propia
+    /// (<c>ReglaGenerica</c>): <c>sp_ProcesarPositivaEmpresasAuxiliar</c> solo creaba Titular y
+    /// relaciones, calculaba el flag e insertaba. Verificado contra <c>sys.columns</c> de
+    /// <c>dbo.PositivaEmpresas</c> el 2026-09-24: NIT bigint, Empresa varchar(230),
+    /// EstadoAfiliacion varchar(30), EstadoEnPositivaEmpresa bit, FechaConsulta date; FK a Titular,
+    /// índice (TitularID, FechaConsulta), sin triggers. El flag, como en el SP, mira NIT y Empresa.
+    /// Las razones sociales llegan partidas en varias líneas (texto de un PDF): el motor colapsa
+    /// los saltos de línea a un espacio.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue PositivaEmpresas = new()
+    {
+        Fuente          = "PositivaEmpresas",
+        Etiqueta        = "Positiva ARL (empleador)",
+        TablaDestino    = "dbo.PositivaEmpresas",
+        ColumnaFlag     = "EstadoEnPositivaEmpresa",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Empleador del titular según Positiva ARL: NIT, razón social y estado de la afiliación.",
+        ColumnasDato =
+        [
+            new("NIT", ["nit", "nitempresa", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("Empresa", ["empresa", "nombreempresa", "empleador", "razonsocialempresa"],
+                TipoColumnaCargue.Texto, 230, Descripcion: "Empresa empleadora"),
+            new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion", "estado"],
+                TipoColumnaCargue.Texto, 30, EntraAlFlag: false, Descripcion: "Activa, inactiva, retirado…"),
+        ],
+    };
+
+    /// <summary>
+    /// ARL Sura: empleador del titular (NIT y empresa). Fuente DISTINTA de <see cref="Sura"/> (la
+    /// EPS): otra tabla (<c>dbo.ARLSura</c>), otra clave de ruta ("ARLSura" ≠ "Sura", el catálogo
+    /// compara por igualdad, nunca por prefijo) y otra etiqueta; en la BaseMadre sus alias son
+    /// <c>[NIT ARL Sura]</c>/<c>[Empresa ARL Sura]</c> desde la integración de Sura (2026-09-02). Su
+    /// flag se llama igual que el de la EPS (<c>EstadoEnSura</c>), pero es otra columna de otra tabla.
+    /// Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarArlSuraAuxiliar</c> solo creaba Titular
+    /// y relaciones, calculaba el flag e insertaba. Verificado contra <c>sys.columns</c> de
+    /// <c>dbo.ARLSura</c> el 2026-09-24: NIT bigint, Empresa varchar(100), EstadoEnSura bit,
+    /// FechaConsulta date; FK a Titular, índice (TitularID, FechaConsulta DESC), sin triggers;
+    /// 1.565.455 filas. El flag, como en el SP, mira NIT y Empresa.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue ArlSura = new()
+    {
+        Fuente          = "ARLSura",
+        Etiqueta        = "ARL Sura (empleador)",
+        TablaDestino    = "dbo.ARLSura",
+        ColumnaFlag     = "EstadoEnSura",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Empleador del titular según ARL Sura (no es la EPS Sura): NIT y empresa.",
+        ColumnasDato =
+        [
+            new("NIT", ["nit", "nitempresa", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("Empresa", ["empresa", "nombreempresa", "empleador", "razonsocialempresa"],
+                TipoColumnaCargue.Texto, 100, Descripcion: "Empresa empleadora"),
+        ],
+    };
+
+    /// <summary>
+    /// Compensados (BDUA: EPS y último período compensado del titular). Regla propia
+    /// (<c>ReglaCompensados</c>): la marca del proveedor 'NO SE ENCUENTRA' no es un dato.
+    /// Verificado contra <c>sys.columns</c> de <c>dbo.Compensados</c> el 2026-09-24: EPS varchar(50),
+    /// UltimoPeriodoCompensado <c>date</c>, TipoAfiliado varchar(50), <b>EstadoEnCompensados int</b>
+    /// NOT NULL (no bit: el motor escribe 0/1), FechaConsulta date; FK a Titular, índice
+    /// (TitularID, FechaConsulta DESC), sin triggers.
+    ///
+    /// <b>El flag NO viene del archivo</b> (no hizo falta la extensión <c>FlagDesdeArchivo</c> prevista
+    /// en el plan): <c>sp_ProcesarCompensadosAuxiliar</c> recalculaba <c>Estado</c> como
+    /// "Estado, EPS o UltimoPeriodoCompensado no nulos", así que la columna Estado del archivo solo
+    /// servía para dar flag 1 a una fila sin ningún dato (2.315 filas así hoy). Aquí el flag es EPS o
+    /// período, lo que se guarda; la columna Estado del archivo se informa como "no se usa".
+    /// TipoAfiliado no entra al flag, como en el SP.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue Compensados = new()
+    {
+        Fuente          = "Compensados",
+        Etiqueta        = "Compensados (BDUA)",
+        TablaDestino    = "dbo.Compensados",
+        ColumnaFlag     = "EstadoEnCompensados",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "EPS, último período compensado y tipo de afiliado del titular. El Estado del archivo no se usa: el flag sale de EPS y período.",
+        ColumnasDato =
+        [
+            new("EPS", ["eps", "nombreeps", "entidad", "administradora"],
+                TipoColumnaCargue.Texto, 50, Descripcion: "EPS"),
+            new("UltimoPeriodoCompensado", ["ultimoperiodocompensado", "periodocompensado", "ultimoperiodo", "periodo"],
+                TipoColumnaCargue.Fecha, Descripcion: "Último período compensado (fecha; '2026-08' = 1 de agosto)"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario, adicional"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
@@ -694,6 +925,8 @@ public static class CatalogoCargueFuentes
         Positiva, SaludTotal, Sos, Coosalud, SaviaSalud, MiVacuna,
         // Fase 2, grupo otras
         Fosyga, Rgm, TigoUne, Tigo,
+        // Fase 2, grupo empresas
+        Rues, Camara, CamaraEmpresa, PositivaEmpresas, ArlSura, Compensados,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>

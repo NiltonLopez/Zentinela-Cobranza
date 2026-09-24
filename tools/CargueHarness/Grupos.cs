@@ -61,6 +61,12 @@ internal static class Grupos
     // ── empresas: 999000002000..999000002999 ──
     public static readonly GrupoHarness Empresas = new("empresas", 999000002000, 999000002999, "harness-cargue-empresas",
     [
+        new("RUES",             "RUES",             CasoRues.Correr),              // Bloque(0): 2000-2099
+        new("Camara",           "Camara",           CasoCamara.Correr),            // Bloque(1): 2100-2199
+        new("CamaraEmpresa",    "CamaraEmpresa",    CasoCamaraEmpresa.Correr),     // Bloque(2): 2200-2299 (NitEmpresa)
+        new("PositivaEmpresas", "PositivaEmpresas", CasoPositivaEmpresas.Correr),  // Bloque(3): 2300-2399
+        new("ARLSura",          "ARLSura",          CasoArlSura.Correr),           // Bloque(4): 2400-2499 (≠ Sura, la EPS)
+        new("Compensados",      "Compensados",      CasoCompensados.Correr),       // Bloque(5): 2500-2599
     ]);
 
     // ── otras: 999000003000..999000003999 ──

@@ -121,7 +121,9 @@ public class GeneradorSqlCargueTests
     public void Sello_sale_del_servidor_SQL_segun_tipo_de_destino()
     {
         Assert.Equal("SELECT CAST(GETDATE() AS date);", GeneradorSqlCargue.LeerSello(Sura));
-        Assert.Equal("SELECT GETDATE();", GeneradorSqlCargue.LeerSello(Sura with { TipoFecha = TipoFechaSello.DateTime }));
+        // datetime: truncado al segundo, porque la auditoría (SelloFechaConsulta, FechaAnterior) es datetime2(0).
+        Assert.Equal("SELECT CONVERT(datetime, CONVERT(char(19), GETDATE(), 120), 120);",
+                     GeneradorSqlCargue.LeerSello(Sura with { TipoFecha = TipoFechaSello.DateTime }));
     }
 
     [Fact]

@@ -428,7 +428,8 @@ internal sealed class CargueFuentesMotor
 
         var mapa = new MapaColumnas
         {
-            TitularID = Comun(CatalogoCargueFuentes.AliasTitularId),
+            // La clave de la fila: TitularID, o la columna propia de la fuente (CamaraEmpresa: NitEmpresa).
+            TitularID = Comun(def.AliasDeClave),
             Nombre    = def.CreaTitular ? Comun(CatalogoCargueFuentes.AliasNombre) : -1,
             CarteraID = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasCarteraId) : -1,
             Cartera   = def.CreaTitularCartera ? Comun(CatalogoCargueFuentes.AliasCartera) : -1,
@@ -449,7 +450,7 @@ internal sealed class CargueFuentesMotor
             else opcionales.Add(nombre);
         }
 
-        Anotar("TitularID", mapa.TitularID, true);
+        Anotar(def.ColumnaClaveTitular, mapa.TitularID, true);
         if (def.CreaTitular) Anotar("Nombre", mapa.Nombre, true);
         if (def.CreaTitularCartera)
         {
@@ -498,7 +499,7 @@ internal sealed class CargueFuentesMotor
         if (t.Regla.NecesitaPrefijos)
         {
             var filas = new List<(string, string, string)>();
-            await using (var cmd = Comando(conn, null, "SELECT Departamento, Municipio, Prefijo FROM dbo.PrefijoMunicipio;"))
+            await using (var cmd = Comando(conn, null, GeneradorSqlCargue.ConsultarPrefijos))
             await using (var rd = await cmd.ExecuteReaderAsync(ct))
                 while (await rd.ReadAsync(ct))
                     filas.Add((rd.IsDBNull(0) ? "" : rd.GetString(0), rd.IsDBNull(1) ? "" : rd.GetString(1),
@@ -534,10 +535,13 @@ internal sealed class CargueFuentesMotor
                 $"{DesgloseCargue.Valor(Celda(cruda, mapa.TitularID))} · {cruda.Length} de {anchoEncabezado} columnas");
             return null;
         }
-        if (!TryDocumento(Celda(cruda, mapa.TitularID), out var titularId))
+        if (!TryDocumento(regla.NormalizarClave(Celda(cruda, mapa.TitularID), ctx), out var titularId))
         {
-            ctx.ExcluirCruda("Documento inválido o vacío (se esperan de 5 a 15 dígitos)", linea,
-                $"documento {DesgloseCargue.Valor(Celda(cruda, mapa.TitularID))}");
+            ctx.ExcluirCruda(def.ClaveEsTitular
+                    ? "Documento inválido o vacío (se esperan de 5 a 15 dígitos)"
+                    : $"{def.ColumnaClaveTitular} inválido o vacío (se esperan de 5 a 15 dígitos)",
+                linea,
+                $"{(def.ClaveEsTitular ? "documento" : def.ColumnaClaveTitular)} {DesgloseCargue.Valor(Celda(cruda, mapa.TitularID))}");
             return null;
         }
         ctx.EnFila(linea, titularId);
@@ -912,6 +916,10 @@ internal sealed class CargueFuentesMotor
         List<FilaCargue> candidatas, DefinicionFuenteCargue def, Preparacion prep, SqlConnection conn, CancellationToken ct)
     {
         await EjecutarAsync(conn, null, GeneradorSqlCargue.CrearTablasApoyo, ct);
+
+        // Clave que no es un titular (CamaraEmpresa: NIT de la empresa): no hay nada que cruzar
+        // con dbo.Titular (ni titulares nuevos, ni nombres, ni aviso de "titular inexistente").
+        if (!def.ClaveEsTitular) return candidatas;
 
         var ids = candidatas.Select(f => f.TitularID).Distinct().ToList();
         var titulares = new DataTable();

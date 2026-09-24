@@ -23,8 +23,14 @@ namespace Zentinela.Infrastructure.SQLServer.Services.CargueFuentes;
 /// </summary>
 internal static class GeneradorSqlCargue
 {
-    /// <summary>Columna de titular en las tablas destino.</summary>
+    /// <summary>Columna de titular en las tablas destino (por defecto; ver <see cref="ColumnaTitular"/>).</summary>
     public const string ColumnaTitularDestino = "TitularID";
+
+    /// <summary>
+    /// Columna del destino que identifica la fila: <c>DefinicionFuenteCargue.ColumnaClaveTitular</c>
+    /// ("TitularID" salvo CamaraEmpresa, "NitEmpresa"). En #Carga la columna se llama siempre TitularID.
+    /// </summary>
+    public static string ColumnaTitular(DefinicionFuenteCargue d) => Id(d.ColumnaClaveTitular);
 
     /// <summary>Largo de <c>Titular.Nombre</c>.</summary>
     public const int LargoNombre = 70;
@@ -73,6 +79,14 @@ internal static class GeneradorSqlCargue
     {
         Tabla(d.TablaDestino);
         Id(d.ColumnaFecha);
+        Id(d.ColumnaClaveTitular);
+        // Una clave que no es TitularID (NIT de empresa) no es un titular: no hay Titular que crear
+        // ni relación titular-cartera posible (ColumnaClaveTitular, Fase 2).
+        if (!d.ClaveEsTitular && (d.CreaTitular || d.CreaTitularCartera))
+            throw new InvalidOperationException(
+                $"La fuente {d.Fuente} usa la clave {d.ColumnaClaveTitular}: no puede crear Titular ni Titular_Cartera.");
+        if (!d.ClaveEsTitular && d.TitularIdComoTexto)
+            throw new InvalidOperationException($"La fuente {d.Fuente}: TitularIdComoTexto solo aplica a la clave TitularID.");
         if (d.ColumnaFlag is not null) Id(d.ColumnaFlag);
         if (d.ColumnasDato.Count == 0)
             throw new InvalidOperationException($"La fuente {d.Fuente} no tiene columnas de dato.");
@@ -86,6 +100,7 @@ internal static class GeneradorSqlCargue
             TipoSql(c);
             if (ColumnasReservadas.Contains(c.Nombre) || !vistos.Add(c.Nombre)
                 || c.Nombre.Equals(d.ColumnaFlag, StringComparison.OrdinalIgnoreCase)
+                || c.Nombre.Equals(d.ColumnaClaveTitular, StringComparison.OrdinalIgnoreCase)
                 || c.Nombre.Equals(d.ColumnaFecha, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Columna '{c.Nombre}' repetida o reservada en la fuente {d.Fuente}.");
         }
@@ -104,8 +119,8 @@ internal static class GeneradorSqlCargue
     /// </summary>
     public static string MismoTitular(DefinicionFuenteCargue d, string destino, string carga) =>
         d.TitularIdComoTexto
-            ? $"{destino}.{Id(ColumnaTitularDestino)} = CONVERT(varchar(30), {carga}.TitularID)"
-            : $"{destino}.{Id(ColumnaTitularDestino)} = {carga}.TitularID";
+            ? $"{destino}.{ColumnaTitular(d)} = CONVERT(varchar(30), {carga}.TitularID)"
+            : $"{destino}.{ColumnaTitular(d)} = {carga}.TitularID";
 
     /// <summary>Igualdad NULL-safe de la clave de contenido entre destino (s) y #Carga (c).</summary>
     public static string MismoContenido(DefinicionFuenteCargue d, string destino, string carga) =>
@@ -177,6 +192,21 @@ internal static class GeneradorSqlCargue
           FROM #TelefonosArchivo t
          WHERE EXISTS (SELECT 1 FROM dbo.ListaNegraTelefonos ln WHERE ln.NumeroTelefono = t.NumeroTelefono)
         OPTION (HASH JOIN);
+        """;
+
+    /// <summary>
+    /// Indicativos de fijo para <c>PrefijosFijo.Cargar</c> (reglas con <c>NecesitaPrefijos</c>).
+    /// <c>PrefijoMunicipio</c> da (departamento, municipio, prefijo); <c>PrefijosDepartamento</c>
+    /// (la tabla que usaban los SP de Cámara) entra como filas solo-departamento con el MISMO
+    /// prefijo (verificado 2026-09-24: los 33 departamentos comunes coinciden), y aporta los nombres
+    /// que PrefijoMunicipio escribe distinto ('NORTE DE SANTANDER' vs 'N. DE SANTANDER', 'ARCHIPIÉLAGO
+    /// DE SAN ANDRÉS…' vs 'SAN ANDRES'). Si algún día difirieran, <c>PrefijosFijo</c> ve dos prefijos
+    /// para el departamento y no resuelve (no adivina).
+    /// </summary>
+    public const string ConsultarPrefijos = """
+        SELECT Departamento, Municipio, Prefijo FROM dbo.PrefijoMunicipio
+        UNION ALL
+        SELECT Departamento, NULL, CONVERT(varchar(3), Prefijo) FROM dbo.PrefijosDepartamento;
         """;
 
     /// <summary>
@@ -271,7 +301,7 @@ internal static class GeneradorSqlCargue
 
     public static List<string> ColumnasMuestra(DefinicionFuenteCargue d)
     {
-        var cols = new List<string> { "TitularID", "Nombre" };
+        var cols = new List<string> { d.ColumnaClaveTitular, "Nombre" };
         cols.AddRange(d.ColumnasDato.Select(c => c.Nombre));
         if (d.ColumnaFlag is not null) cols.Add(d.ColumnaFlag);
         cols.Add("Acción");
@@ -280,11 +310,17 @@ internal static class GeneradorSqlCargue
 
     // ── Escritura (dentro de la transacción; parámetros @Sello y @EjecucionID) ─
 
-    /// <summary>Selecciona el sello del servidor SQL (no del servidor de la API).</summary>
+    /// <summary>
+    /// Selecciona el sello del servidor SQL (no del servidor de la API). Con destino
+    /// <c>datetime</c> (RUES) el sello se TRUNCA al segundo: <c>CargueFuenteEjecucion.SelloFechaConsulta</c>
+    /// y <c>CargueFuenteReversion.FechaAnterior</c> son <c>datetime2(0)</c>, y un <c>GETDATE()</c> con
+    /// milisegundos no se podría volver a ubicar en el destino para revertir (se guardaría redondeado:
+    /// 09:43:49.920 → 09:43:50). Truncar (estilo 120, sin redondeo) tampoco cambia de día a las 23:59:59.9.
+    /// </summary>
     public static string LeerSello(DefinicionFuenteCargue d) =>
         d.TipoFecha == TipoFechaSello.Date
             ? "SELECT CAST(GETDATE() AS date);"
-            : "SELECT GETDATE();";
+            : "SELECT CONVERT(datetime, CONVERT(char(19), GETDATE(), 120), 120);";
 
     /// <summary>1. Titulares nuevos. MAX(Nombre) rompe empates entre filas del mismo titular.</summary>
     public const string InsertarTitulares = """
@@ -324,7 +360,7 @@ internal static class GeneradorSqlCargue
         var fecha = Id(d.ColumnaFecha);
         return $"""
             UPDATE s SET s.{fecha} = @Sello
-            OUTPUT @EjecucionID, CONVERT(varchar(30), deleted.{Id(ColumnaTitularDestino)}),
+            OUTPUT @EjecucionID, CONVERT(varchar(30), deleted.{ColumnaTitular(d)}),
                    {HashContenido(d, "deleted")}, 'U', deleted.{fecha}
               INTO {Reversion}
               FROM {Tabla(d.TablaDestino)} s
@@ -345,7 +381,7 @@ internal static class GeneradorSqlCargue
     /// <summary>6. Contenido nuevo → INSERT con lista de columnas.</summary>
     public static string Insertar(DefinicionFuenteCargue d)
     {
-        var destinoCols = new List<string> { Id(ColumnaTitularDestino) };
+        var destinoCols = new List<string> { ColumnaTitular(d) };
         var origenCols = new List<string>
         {
             d.TitularIdComoTexto ? "CONVERT(varchar(30), c.TitularID)" : "c.TitularID",
@@ -365,7 +401,7 @@ internal static class GeneradorSqlCargue
 
         return $"""
             INSERT INTO {Tabla(d.TablaDestino)} ({string.Join(", ", destinoCols)})
-            OUTPUT @EjecucionID, CONVERT(varchar(30), inserted.{Id(ColumnaTitularDestino)}),
+            OUTPUT @EjecucionID, CONVERT(varchar(30), inserted.{ColumnaTitular(d)}),
                    {HashContenido(d, "inserted")}, 'I', NULL
               INTO {Reversion}
             SELECT {string.Join(", ", origenCols)}
@@ -385,7 +421,7 @@ internal static class GeneradorSqlCargue
         var flag = Id(d.ColumnaFlag!);
         return $"""
             DELETE s
-            OUTPUT @EjecucionID, CONVERT(varchar(30), deleted.{Id(ColumnaTitularDestino)}), 0x00, 'D', deleted.{Id(d.ColumnaFecha)}
+            OUTPUT @EjecucionID, CONVERT(varchar(30), deleted.{ColumnaTitular(d)}), 0x00, 'D', deleted.{Id(d.ColumnaFecha)}
               INTO {Reversion}
               FROM {Tabla(d.TablaDestino)} s
              WHERE s.{flag} = 0

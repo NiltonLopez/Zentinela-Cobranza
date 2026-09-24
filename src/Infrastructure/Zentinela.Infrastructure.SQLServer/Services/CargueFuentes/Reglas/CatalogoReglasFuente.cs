@@ -48,6 +48,17 @@ internal static class CatalogoReglasFuente
         // Tigo: NO hay SP que traducir (la tabla se llenó a mano en 2025 y nadie la escribe desde
         // entonces). Misma forma que TigoUne → lo genérico basta. Ver CatalogoCargueFuentes.Tigo.
         [CatalogoCargueFuentes.Tigo.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Tigo.Fuente),
+        // ── Fase 2 — grupo empresas ──
+        // RUES: sp_ProcesarRUESAuxiliar no limpiaba nada (Titular, relaciones, flag e INSERT: todo
+        // genérico). Lo propio (sello datetime) es de la definición.
+        [CatalogoCargueFuentes.Rues.Fuente]      = new ReglaGenerica(CatalogoCargueFuentes.Rues.Fuente),
+        [CatalogoCargueFuentes.Camara.Fuente]    = new ReglaCamara(),
+        [CatalogoCargueFuentes.CamaraEmpresa.Fuente] = new ReglaCamaraEmpresa(),
+        // PositivaEmpresas: su SP no limpiaba nada (Titular, relaciones, flag NIT/Empresa, INSERT).
+        [CatalogoCargueFuentes.PositivaEmpresas.Fuente] = new ReglaGenerica(CatalogoCargueFuentes.PositivaEmpresas.Fuente),
+        // ARLSura (≠ Sura, la EPS): su SP no limpiaba nada (Titular, relaciones, flag NIT/Empresa, INSERT).
+        [CatalogoCargueFuentes.ArlSura.Fuente]   = new ReglaGenerica(CatalogoCargueFuentes.ArlSura.Fuente),
+        [CatalogoCargueFuentes.Compensados.Fuente] = new ReglaCompensados(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);
