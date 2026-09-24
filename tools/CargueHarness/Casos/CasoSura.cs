@@ -436,11 +436,19 @@ internal static class CasoSura
             (string?)await Escalar("SELECT Estado FROM dbo.CargueFuenteEjecucion WHERE EjecucionID = @e", ("@e", j7.Resultado!.EjecucionID)));
         Check("7: carpeta del job borrada al terminar",
             !Directory.Exists(Path.Combine(carpeta, "jobs", j7.JobId.ToString("N"))));
+        // La lista "Cargues en curso y recientes" oculta todo lo del harness (usuarios harness-cargue*,
+        // ver UsuariosPruebaCargue): ni el job en memoria ni sus ejecuciones en BD. El job sigue
+        // accesible por su id.
         var listaJobs = await orq.ListarAsync(CancellationToken.None);
-        Check("7: la lista muestra el job en memoria con su ejecución",
-            listaJobs.Any(r => r.JobId == j7.JobId && r.EnMemoria && r.EjecucionID == j7.Resultado.EjecucionID && r.Estado == "Completado"));
-        Check("7: la lista incluye las ejecuciones del harness registradas en BD",
-            listaJobs.Count(r => !r.EnMemoria && r.Usuario == UsuarioHarness && r.Estado == "Completado") >= 4);
+        Check("7: la lista NO muestra el job en memoria del harness",
+            !listaJobs.Any(r => r.JobId == j7.JobId));
+        var ejecucionesHarnessBD = await Contar(
+            "SELECT COUNT(*) FROM dbo.CargueFuenteEjecucion WHERE Usuario = @u AND Estado = 'OK'", ("@u", UsuarioHarness));
+        Check("7: la lista NO incluye ejecuciones de usuarios harness-cargue* (aunque las haya en BD)",
+            ejecucionesHarnessBD >= 4 && !listaJobs.Any(r => UsuariosPruebaCargue.EsDePrueba(r.Usuario)),
+            $"en BD={ejecucionesHarnessBD}, en la lista={listaJobs.Count(r => UsuariosPruebaCargue.EsDePrueba(r.Usuario))}");
+        Check("7: el job sigue accesible por Obtener(id)",
+            orq.Obtener(j7.JobId) is { Estado: EstadoCargueJob.Completado } oj7 && oj7.Resultado?.EjecucionID == j7.Resultado.EjecucionID);
 
         // Cancelar: si la validación ya terminó, cancelar el preview también deja Cancelado.
         var j8 = await Subir(archivoA);
