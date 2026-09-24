@@ -106,8 +106,9 @@ public class DesgloseCargueTests
     // ── Chips del preview ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Corrida sintética sin BD: 10 leídas, 2 excluidas, 2 duplicadas, una fila que se expande
-    /// en 3 (+2) → 8 candidatas. Insertar/refrescar/relaciones en 0 (salen de la BD).
+    /// Corrida sintética sin BD, 10 filas leídas: 2 excluidas (filas 3 y 4), un titular en 3
+    /// filas (7, 8, 9: 2 duplicadas, se conserva la 9), la fila 6 que se expande en 3 filas
+    /// destino (+2) y 4 filas normales → 8 candidatas. Insertar/refrescar/relaciones en 0.
     /// </summary>
     private static (ContextoCargue Ctx, PreviewCargueDto P) CorridaSintetica()
     {
@@ -115,9 +116,12 @@ public class DesgloseCargueTests
         var d = ctx.Desglose;
         ctx.ExcluirCruda("Fila vacía", 3);
         ctx.Excluir(FilaDe(ctx, 4, 1_111_111), "Titular nuevo sin nombre en el archivo");
-        d.TitularRepetido(2_222_222, 3, 9);
-        d.Expansion(FilaDe(ctx, 6, 3_333_333), 3);
-        var candidatas = Enumerable.Range(0, 8).Select(i => FilaDe(ctx, 10 + i, 4_000_000 + i)).ToList();
+        var repetidas = new[] { FilaDe(ctx, 7, 2_222_222), FilaDe(ctx, 8, 2_222_222), FilaDe(ctx, 9, 2_222_222) };
+        d.TitularRepetido(repetidas, repetidas[2]);
+        var expandidas = new List<FilaCargue> { FilaDe(ctx, 6, 3_333_333), FilaDe(ctx, 6, 3_333_333), FilaDe(ctx, 6, 3_333_333) };
+        d.Expansion(expandidas);
+        var candidatas = Enumerable.Range(0, 4).Select(i => FilaDe(ctx, 10 + i, 4_000_000 + i))
+            .Append(repetidas[2]).Concat(expandidas).ToList();
         candidatas[0].NombreIrrecuperable = true;
         candidatas[0].Nombre = "PI?A";
         d.Candidatas(candidatas);
@@ -151,18 +155,76 @@ public class DesgloseCargueTests
     }
 
     [Fact]
-    public void Leidas_resta_las_filas_agregadas_por_expansion()
+    public void Leidas_sin_grupos_negativos_con_expansion()
     {
         var (ctx, p) = CorridaSintetica();
 
         var leidas = ctx.Desglose.ParaPreview(p).Single(c => c.Clave == ChipCargue.Leidas);
 
         Assert.Equal(10, leidas.Grupos.Sum(g => g.Cantidad));
-        var expansion = Assert.Single(leidas.Grupos, g => g.Titulo == DesgloseCargue.TituloExpansion);
-        Assert.Equal(-2, expansion.Cantidad);
-        Assert.Equal("Fila 6 · 3333333 · 3 filas destino", Assert.Single(expansion.Ejemplos));
-        Assert.Equal("2222222 × 3 filas (se conservó la fila 9)",
-            Assert.Single(leidas.Grupos, g => g.Titulo == "Duplicadas en el archivo").Ejemplos.Single());
+        Assert.All(leidas.Grupos, g => Assert.True(g.Cantidad > 0));
+        Assert.Collection(leidas.Grupos,
+            g => { Assert.Equal(DesgloseCargue.TituloExcluidasLeidas, g.Titulo); Assert.Equal(2, g.Cantidad); },
+            g =>
+            {
+                Assert.Equal(DesgloseCargue.TituloDuplicadasLeidas, g.Titulo);
+                Assert.Equal(2, g.Cantidad);
+                Assert.Equal("2222222 × 3 filas (se conservó la fila 9)", g.Ejemplos.Single());
+            },
+            g =>
+            {
+                // candidatas (8) − agregadas por expansión (2); el título dice cuántas filas destino generan.
+                Assert.Equal("Pasaron a la carga (generan 8 filas destino, una por placa)", g.Titulo);
+                Assert.Equal(6, g.Cantidad);
+                Assert.Equal(6, g.Ejemplos.Count);   // una por fila del archivo: las agregadas no repiten la fila 6
+                Assert.Single(g.Ejemplos, e => e == "Fila 6 · 3333333");
+            });
+    }
+
+    [Fact]
+    public void Leidas_sin_expansion_no_menciona_filas_destino()
+    {
+        var ctx = Contexto(CatalogoCargueFuentes.Sura);
+        ctx.Desglose.Candidatas([FilaDe(ctx, 2, 1_234_567)]);
+        var p = new PreviewCargueDto { TotalLeidas = 1, Candidatas = 1, Advertencias = [] };
+
+        var leidas = ctx.Desglose.ParaPreview(p).Single(c => c.Clave == ChipCargue.Leidas);
+
+        Assert.Equal(DesgloseCargue.TituloPasaron, Assert.Single(leidas.Grupos).Titulo);
+    }
+
+    /// <summary>
+    /// El caso en que "candidatas − agregadas" sería negativo: una fila con 3 placas de un
+    /// titular nuevo sin nombre (sus 3 filas destino se excluyen en los cruces). La fila del
+    /// archivo cuenta UNA vez como excluida y ningún grupo queda negativo.
+    /// </summary>
+    [Fact]
+    public void Fila_expandida_y_luego_excluida_cuenta_una_vez()
+    {
+        var ctx = Contexto(CatalogoCargueFuentes.Simit);
+        var expandidas = new List<FilaCargue> { FilaDe(ctx, 2, 1_234_567), FilaDe(ctx, 2, 1_234_567), FilaDe(ctx, 2, 1_234_567) };
+        ctx.Desglose.Expansion(expandidas);
+        foreach (var f in expandidas) ctx.Excluir(f, "Titular nuevo sin nombre en el archivo");
+        ctx.Desglose.Candidatas([]);
+        var p = new PreviewCargueDto { TotalLeidas = 1, Excluidas = 3, AgregadasPorExpansion = 2, Advertencias = [] };
+
+        var chips = ctx.Desglose.ParaPreview(p);
+
+        var leidas = chips.Single(c => c.Clave == ChipCargue.Leidas);
+        Assert.Equal(1, Assert.Single(leidas.Grupos, g => g.Titulo == DesgloseCargue.TituloExcluidasLeidas).Cantidad);
+        Assert.Equal(3, chips.Single(c => c.Clave == ChipCargue.Excluidas).Grupos.Sum(g => g.Cantidad));   // el chip sigue en filas destino
+    }
+
+    [Fact]
+    public void Un_grupo_negativo_es_incoherente()
+    {
+        var chip = new DesgloseChipDto
+        {
+            Clave = ChipCargue.Leidas,
+            Grupos = [new() { Titulo = "a", Cantidad = 5 }, new() { Titulo = "b", Cantidad = -1 }],
+        };
+
+        Assert.Contains("negativa", Assert.Single(DesgloseCargue.Incoherencias([chip], _ => 4)));
     }
 
     [Fact]

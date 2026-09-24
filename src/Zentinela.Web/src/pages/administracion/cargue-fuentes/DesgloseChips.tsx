@@ -19,7 +19,7 @@ export interface ChipDef {
 
 const TONO: Record<TonoDesglose, keyof typeof TONOS> = { Error: 'error', Aviso: 'aviso', Info: 'info' };
 
-// Números con signo tipográfico: el grupo "agregadas por expansión" resta.
+// Números con signo tipográfico: solo el grupo de ajuste del resultado puede restar.
 const cantidad = (n: number) => (n < 0 ? `−${num(-n)}` : num(n));
 
 export function DesgloseChips({ chips, desglose, abiertosAlInicio = [] }: {

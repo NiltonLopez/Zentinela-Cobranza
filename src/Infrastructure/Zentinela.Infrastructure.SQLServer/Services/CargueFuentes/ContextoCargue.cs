@@ -94,6 +94,7 @@ internal sealed class ContextoCargue
     {
         if (fila.MotivoExclusion is not null) return;
         fila.MotivoExclusion = motivo;
+        if (fila.EsExpansion) Desglose.ExcluidaTrasExpandir();
         Desglose.Excluidas.Sumar(motivo, 1, fila.Linea, fila.TitularID, valor);
     }
 

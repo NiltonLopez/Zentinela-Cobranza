@@ -83,8 +83,8 @@ export type TonoDesglose = 'Error' | 'Aviso' | 'Info';
 
 /**
  * Grupo dentro de un chip: título sin número de fila, cantidad exacta y hasta 10 ejemplos
- * ("Fila 12 · 1234567 · valor"). La cantidad solo es negativa en "agregadas por expansión"
- * del chip Leídas (filas destino de más que se restan).
+ * ("Fila 12 · 1234567 · valor"). Nunca es negativa, salvo el grupo de ajuste del resultado
+ * (la base cambió entre la preparación y la escritura).
  */
 export interface GrupoDesglose {
   titulo:   string;

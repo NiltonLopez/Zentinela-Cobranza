@@ -109,9 +109,8 @@ public enum TonoDesglose { Error, Aviso, Info }
 
 /// <summary>
 /// Un grupo dentro de un chip: título SIN número de fila, cantidad EXACTA (aunque los
-/// ejemplos se corten) y hasta 10 ejemplos ("Fila 12 · 1234567 · valor"). La cantidad solo
-/// es negativa en "Agregadas por expansión" del chip Leídas: esas filas destino de más se
-/// restan para volver a las filas del archivo.
+/// ejemplos se corten) y hasta 10 ejemplos ("Fila 12 · 1234567 · valor"). Nunca es negativa,
+/// salvo el grupo de ajuste del resultado (la base cambió entre preparar y escribir).
 /// </summary>
 public class GrupoDesgloseDto
 {

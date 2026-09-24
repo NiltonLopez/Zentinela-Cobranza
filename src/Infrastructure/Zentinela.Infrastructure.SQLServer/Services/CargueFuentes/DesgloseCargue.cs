@@ -160,7 +160,17 @@ internal sealed class DesgloseCargue
     public AcumuladorGrupos Duplicadas { get; } = new(TonoDesglose.Aviso);
     public AcumuladorGrupos SinCarteraLider { get; } = new(TonoDesglose.Aviso);
     private readonly AcumuladorGrupos _candidatas = new(TonoDesglose.Info);
-    private readonly AcumuladorGrupos _expansion = new(TonoDesglose.Info);
+
+    // Expansión (SIMIT: una fila destino por placa). Las filas destino "de más" (la 2.ª, 3.ª…
+    // de una fila del archivo, FilaCargue.EsExpansion) se descuentan de su grupo en el chip
+    // Leídas: así cada fila del archivo cuenta UNA vez, por el destino de su primera fila.
+    private int _agregadas;
+    private int _agregadasExcluidas;
+    private int _agregadasDuplicadas;
+    private int _agregadasCandidatas;
+
+    /// <summary>La fila de más (<see cref="FilaCargue.EsExpansion"/>) se excluyó tras expandir.</summary>
+    public void ExcluidaTrasExpandir() => _agregadasExcluidas++;
     private readonly AcumuladorGrupos _titularesNuevos = new(TonoDesglose.Info);
     private readonly AcumuladorGrupos _nombres = new(TonoDesglose.Info);
     private readonly AcumuladorGrupos _insertadas = new(TonoDesglose.Info);
@@ -169,7 +179,9 @@ internal sealed class DesgloseCargue
     private readonly AcumuladorGrupos _purga = new(TonoDesglose.Info);
     private readonly AcumuladorGrupos _relaciones = new(TonoDesglose.Info);
 
-    public const string TituloExpansion = "Filas destino agregadas al expandir (p. ej. una por placa): se restan";
+    public const string TituloPasaron = "Pasaron a la carga";
+    public const string TituloExcluidasLeidas = "Excluidas";
+    public const string TituloDuplicadasLeidas = "Duplicadas en el archivo";
     private string TituloSinDatosPrevios => $"Titular sin datos previos en {_def.Etiqueta}";
     private string TituloVacia => $"Fila sin datos de un titular que sí tiene datos (en {_def.Etiqueta} o en otra fila del archivo)";
     private string TituloPurga => $"Fila vacía vieja en {_def.Etiqueta} de un titular que ahora trae datos";
@@ -195,32 +207,46 @@ internal sealed class DesgloseCargue
 
     // ── Alimentación desde el motor (C#) ────────────────────────────────────
 
-    /// <summary>Una fila del archivo produjo <paramref name="filasDestino"/> filas (SIMIT: una por placa).</summary>
-    public void Expansion(FilaCargue fila, int filasDestino)
+    /// <summary>
+    /// Una fila del archivo produjo <paramref name="filasDestino"/> filas (SIMIT: una por placa):
+    /// todas menos la primera se marcan como agregadas por la expansión.
+    /// </summary>
+    public void Expansion(IReadOnlyList<FilaCargue> filasDestino)
     {
-        if (filasDestino <= 1) return;
-        _expansion.Sumar(TituloExpansion, filasDestino - 1, fila.Linea, fila.TitularID,
-            $"{filasDestino.ToString(Inv)} filas destino");
+        for (var i = 1; i < filasDestino.Count; i++)
+        {
+            filasDestino[i].EsExpansion = true;
+            _agregadas++;
+        }
     }
 
-    /// <summary>UnaPorTitular: el titular vino en <paramref name="filas"/> filas y se conservó una.</summary>
-    public void TitularRepetido(long titularId, int filas, int lineaConservada) =>
-        Duplicadas.SumarConEjemplo(TituloTitularRepetido, filas - 1,
-            () => $"{titularId.ToString(Inv)} × {filas.ToString(Inv)} filas (se conservó la fila {lineaConservada.ToString(Inv)})");
+    /// <summary>UnaPorTitular: el titular vino en varias <paramref name="filas"/> y se conservó <paramref name="conservada"/>.</summary>
+    public void TitularRepetido(IReadOnlyCollection<FilaCargue> filas, FilaCargue conservada)
+    {
+        var titularId = conservada.TitularID;
+        _agregadasDuplicadas += filas.Count(f => f.EsExpansion && !ReferenceEquals(f, conservada));
+        Duplicadas.SumarConEjemplo(TituloTitularRepetido, filas.Count - 1,
+            () => $"{titularId.ToString(Inv)} × {filas.Count.ToString(Inv)} filas (se conservó la fila {conservada.Linea.ToString(Inv)})");
+    }
 
     /// <summary>VariasPorTitular: fila exactamente igual (titular + clave) a otra ya vista.</summary>
-    public void FilaIdentica(FilaCargue fila, Func<string> clave) =>
-        Duplicadas.SumarConEjemplo(TituloFilaIdentica, 1, () => Ejemplo(fila.Linea, fila.TitularID, clave()));
-
-    /// <summary>Las candidatas finales (tras cruces): se cuentan y se guardan las primeras como ejemplo.</summary>
-    public void Candidatas(IReadOnlyCollection<FilaCargue> candidatas)
+    public void FilaIdentica(FilaCargue fila, Func<string> clave)
     {
-        _candidatas.Sumar(TituloCandidatas, candidatas.Count);
-        foreach (var f in candidatas.Take(MaxEjemplos))
-            _candidatas.Sumar(TituloCandidatas, 0, f.Linea, f.TitularID);
+        if (fila.EsExpansion) _agregadasDuplicadas++;
+        Duplicadas.SumarConEjemplo(TituloFilaIdentica, 1, () => Ejemplo(fila.Linea, fila.TitularID, clave()));
     }
 
-    private string TituloCandidatas => $"Candidatas: pasan a compararse con {_def.Etiqueta}";
+    /// <summary>
+    /// Las candidatas finales (tras cruces). Los ejemplos son filas del ARCHIVO (se saltan las
+    /// agregadas por la expansión, que repetirían la misma fila).
+    /// </summary>
+    public void Candidatas(IReadOnlyCollection<FilaCargue> candidatas)
+    {
+        _candidatas.Sumar(TituloPasaron, candidatas.Count);
+        _agregadasCandidatas += candidatas.Count(f => f.EsExpansion);
+        foreach (var f in candidatas.Where(f => !f.EsExpansion).Take(MaxEjemplos))
+            _candidatas.Sumar(TituloPasaron, 0, f.Linea, f.TitularID);
+    }
 
     public void TitularNuevo(long titularId, string? nombre) =>
         _titularesNuevos.Sumar(TituloTitularNuevo, 1, 0, titularId, nombre);
@@ -469,8 +495,13 @@ internal sealed class DesgloseCargue
     };
 
     /// <summary>
-    /// Leídas = candidatas + excluidas + duplicadas − agregadas por expansión (invariante 1 del
-    /// motor). Las agregadas van con cantidad NEGATIVA: son filas destino, no del archivo.
+    /// Leídas en filas del ARCHIVO, con grupos que nunca son negativos: cada fila cuenta una vez,
+    /// por el destino de su primera fila destino (las agregadas por la expansión se descuentan
+    /// del grupo donde terminaron). Sin expansión es simplemente excluidas + duplicadas +
+    /// candidatas; con SIMIT, "Pasaron a la carga" = candidatas − agregadas y el título dice
+    /// cuántas filas destino generan (que es lo que cuentan "se insertarán" / "se refrescarán").
+    /// La suma = leídas porque cada agregada termina en exactamente uno de los tres destinos
+    /// (invariante 1 del motor).
     /// </summary>
     private List<GrupoDesgloseDto> GruposLeidas()
     {
@@ -479,10 +510,12 @@ internal sealed class DesgloseCargue
         {
             if (cantidad != 0) grupos.Add(new GrupoDesgloseDto { Titulo = titulo, Cantidad = cantidad, Tono = tono, Ejemplos = ejemplos });
         }
-        Agregar(TituloCandidatas, _candidatas.Total, TonoDesglose.Info, _candidatas.EjemplosMezclados());
-        Agregar("Excluidas: no se cargan", Excluidas.Total, TonoDesglose.Error, Excluidas.EjemplosMezclados());
-        Agregar("Duplicadas en el archivo", Duplicadas.Total, TonoDesglose.Aviso, Duplicadas.EjemplosMezclados());
-        Agregar(TituloExpansion, -_expansion.Total, TonoDesglose.Info, _expansion.EjemplosMezclados());
+        var pasaron = _agregadas > 0
+            ? $"{TituloPasaron} (generan {_candidatas.Total.ToString("N0", CultureInfo.GetCultureInfo("es-CO"))} filas destino, una por placa)"
+            : TituloPasaron;
+        Agregar(TituloExcluidasLeidas, Excluidas.Total - _agregadasExcluidas, TonoDesglose.Error, Excluidas.EjemplosMezclados());
+        Agregar(TituloDuplicadasLeidas, Duplicadas.Total - _agregadasDuplicadas, TonoDesglose.Aviso, Duplicadas.EjemplosMezclados());
+        Agregar(pasaron, _candidatas.Total - _agregadasCandidatas, TonoDesglose.Info, _candidatas.EjemplosMezclados());
         return grupos;
     }
 
@@ -533,10 +566,16 @@ internal sealed class DesgloseCargue
             chip.Grupos.Add(new GrupoDesgloseDto { Titulo = TituloAjuste, Cantidad = diferencia, Tono = TonoDesglose.Aviso });
     }
 
-    /// <summary>Chips cuya suma de grupos no es su número (vacío = todo cuadra).</summary>
+    /// <summary>
+    /// Chips cuya suma de grupos no es su número, o con un grupo negativo fuera del ajuste
+    /// (vacío = todo cuadra).
+    /// </summary>
     public static List<string> Incoherencias(IEnumerable<DesgloseChipDto> chips, Func<ChipCargue, int> numero) =>
-        chips.Select(c => (c.Clave, Suma: c.Grupos.Sum(g => g.Cantidad), Numero: numero(c.Clave)))
-             .Where(x => x.Suma != x.Numero)
-             .Select(x => $"{x.Clave}: grupos suman {x.Suma} y el chip dice {x.Numero}")
+        chips.Select(c => (c.Clave, Suma: c.Grupos.Sum(g => g.Cantidad), Numero: numero(c.Clave),
+                           Negativos: c.Grupos.Count(g => g.Cantidad < 0 && g.Titulo != TituloAjuste)))
+             .Where(x => x.Suma != x.Numero || x.Negativos > 0)
+             .Select(x => x.Negativos > 0
+                 ? $"{x.Clave}: {x.Negativos} grupo(s) con cantidad negativa"
+                 : $"{x.Clave}: grupos suman {x.Suma} y el chip dice {x.Numero}")
              .ToList();
 }

@@ -243,8 +243,8 @@ internal static class CasoSura
         // ── 1c. Desglose de los chips (qué compone cada número, con ejemplos) ───
         var d1 = p1.Desglose;
         string Ej(ChipCargue chip, string grupo = "") => string.Join(" | ", Harness.Ejemplos(d1, chip, grupo));
-        Igual("1c: leídas = candidatas + excluidas + duplicadas (sin expansión)", 19,
-            Harness.EnGrupo(d1, ChipCargue.Leidas, "Candidatas") + Harness.EnGrupo(d1, ChipCargue.Leidas, "Excluidas")
+        Igual("1c: leídas = pasaron a la carga + excluidas + duplicadas (sin expansión)", 19,
+            Harness.EnGrupo(d1, ChipCargue.Leidas, "Pasaron a la carga") + Harness.EnGrupo(d1, ChipCargue.Leidas, "Excluidas")
             + Harness.EnGrupo(d1, ChipCargue.Leidas, "Duplicadas"));
         Check("1c: excluida por documento inválido con fila y valor", Ej(ChipCargue.Excluidas, "Documento inválido") == "Fila 3 · documento ABC123",
             Ej(ChipCargue.Excluidas, "Documento inválido"));

@@ -205,7 +205,8 @@ internal sealed class Harness
             string.Join(" | ", grupos.Where(g => !EjemplosOk(g)).Select(g => $"{g.Titulo}: {g.Cantidad} con {g.Ejemplos.Count} ejemplos")));
         Check($"{paso}: desglose — títulos sin número de fila",
             grupos.All(g => !System.Text.RegularExpressions.Regex.IsMatch(g.Titulo, @"(Fila|Línea|fila|línea) \d")));
-        Check($"{paso}: desglose — sin grupos en cero", grupos.All(g => g.Cantidad != 0));
+        Check($"{paso}: desglose — sin grupos en cero ni negativos (salvo el ajuste)",
+            grupos.All(g => g.Cantidad > 0 || (g.Titulo == DesgloseCargue.TituloAjuste && g.Cantidad != 0)));
         Check($"{paso}: desglose — sin grupo de ajuste (nada cambió entre preparar y escribir)",
             grupos.All(g => g.Titulo != DesgloseCargue.TituloAjuste));
     }

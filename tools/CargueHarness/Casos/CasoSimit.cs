@@ -73,14 +73,18 @@ internal static class CasoSimit
                     && p.ColumnasEncontradas.Contains("Placa15"),
                     $"encontradas={string.Join(",", p.ColumnasEncontradas)} opcionales={string.Join(",", p.ColumnasOpcionalesFaltantes)}");
 
-                // Desglose: la expansión resta en Leídas (13 candidatas + 1 excluida + 1 duplicada − 4 = 11).
+                // Desglose: Leídas en filas del ARCHIVO, sin grupos negativos:
+                // 1 excluida + 1 duplicada + 9 que pasaron a la carga (= 13 candidatas − 4 agregadas) = 11.
                 var d = p.Desglose;
                 string Ej(ChipCargue chip, string grupo = "") => string.Join(" | ", Harness.Ejemplos(d, chip, grupo));
-                h.Igual("SIMIT 1c: leídas — agregadas por expansión en negativo", -4,
-                    Harness.EnGrupo(d, ChipCargue.Leidas, "agregadas al expandir"));
-                h.Igual("SIMIT 1c: leídas — ejemplos de expansión (T1 → 2, T2 → 3, T8 → 2)",
-                    $"Fila 2 · {T(1)} · 2 filas destino | Fila 3 · {T(2)} · 3 filas destino | Fila 12 · {T(8)} · 2 filas destino",
-                    Ej(ChipCargue.Leidas, "agregadas al expandir"));
+                var leidas = Harness.Chip(d, ChipCargue.Leidas).Grupos;
+                h.Igual("SIMIT 1c: leídas = excluidas / duplicadas / pasaron a la carga, sin negativos",
+                    $"Excluidas:1 | Duplicadas en el archivo:1 | Pasaron a la carga (generan 13 filas destino, una por placa):9",
+                    string.Join(" | ", leidas.Select(g => $"{g.Titulo}:{g.Cantidad}")));
+                h.Check("SIMIT 1c: 'pasaron a la carga' con una fila del archivo por ejemplo (sin repetir las expandidas)",
+                    Ej(ChipCargue.Leidas, "Pasaron a la carga").StartsWith($"Fila 2 · {T(1)} | Fila 3 · {T(2)} | Fila 4 · {T(3)}"),
+                    Ej(ChipCargue.Leidas, "Pasaron a la carga"));
+                h.Igual("SIMIT 1c: 'se insertarán' sigue contando filas destino", 12, Harness.Chip(d, ChipCargue.Insertadas).Grupos.Sum(g => g.Cantidad));
                 h.Check("SIMIT 1c: duplicada = fila idéntica, con la placa", Ej(ChipCargue.Duplicadas, "Fila idéntica") == $"Fila 9 · {T(6)} · MNO012",
                     Ej(ChipCargue.Duplicadas));
                 h.Igual("SIMIT 1c: vacía descartada = la de T5", T(5).ToString(), Ej(ChipCargue.VaciasDescartadas));

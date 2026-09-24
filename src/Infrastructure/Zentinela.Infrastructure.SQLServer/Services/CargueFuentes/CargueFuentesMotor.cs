@@ -315,7 +315,7 @@ internal sealed class CargueFuentesMotor
                 continue;
             }
             prep.AgregadasPorExpansion += expandidas.Count - 1;
-            ctx.Desglose.Expansion(fila, expandidas.Count);
+            ctx.Desglose.Expansion(expandidas);
             foreach (var f in expandidas)
             {
                 CalcularFlag(f, def);
@@ -873,7 +873,7 @@ internal sealed class CargueFuentesMotor
                 resultado.Add(conservada);
                 var descartadas = grupo.Count() - 1;
                 duplicadas += descartadas;
-                ctx.Desglose.TitularRepetido(grupo.Key, descartadas + 1, conservada.Linea);
+                ctx.Desglose.TitularRepetido(grupo.ToList(), conservada);
                 foreach (var d in grupo)
                 {
                     if (ReferenceEquals(d, conservada)) continue;

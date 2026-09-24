@@ -27,6 +27,9 @@ internal sealed class FilaCargue
     /// <summary>Por qué la fila no tiene relación (par inactivo, cartera no encontrada…); null = no traía cartera/líder o sí la tiene.</summary>
     public string? MotivoSinRelacion { get; set; }
 
+    /// <summary>Fila destino de más que agregó <c>IReglaFuente.Expandir</c> (la 2.ª, 3.ª… placa de una fila del archivo).</summary>
+    public bool EsExpansion { get; set; }
+
     /// <summary>Valores por columna de dato: string | long | DateOnly | null.</summary>
     public required object?[] Datos { get; init; }
 
