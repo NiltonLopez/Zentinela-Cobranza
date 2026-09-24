@@ -55,7 +55,7 @@ public class ReglaSimitTests
     {
         var (ctx, filas) = Expandir("ABCDEFGHIJK", "XYZ987");
         Assert.Equal("XYZ987", Placas(ctx, filas));
-        Assert.Equal(1, Avisos(ctx, "placa de más de 10 caracteres descartada"));
+        Assert.Equal(1, Avisos(ctx, ReglaSimit.AvisoNoEsPlaca));
     }
 
     [Fact]
@@ -63,7 +63,39 @@ public class ReglaSimitTests
     {
         var (ctx, filas) = Expandir("ABCDEFGHIJK");
         Assert.Equal("NULL", Placas(ctx, filas));
-        Assert.Equal(1, Avisos(ctx, "descartada"));
+        Assert.Equal(1, Avisos(ctx, "descartado"));
+    }
+
+    [Fact]
+    public void Placas_con_espacio_o_guion_son_la_forma_canonica()
+    {
+        var (ctx, filas) = Expandir("QUR 25", "smg 08b", "CKH-13", "CKH13");
+        Assert.Equal("QUR25,SMG08B,CKH13", Placas(ctx, filas));
+        Assert.Equal(0, ctx.TotalAdvertencias);
+    }
+
+    [Fact]
+    public void Marcas_de_texto_se_descartan_con_un_solo_aviso_agrupado()
+    {
+        // Marcas reales de dbo.SIMIT. "N/A" y "0" ya los anula LimpiarTexto (vacíos genéricos),
+        // así que no suman aviso; el resto sí, todos bajo el MISMO mensaje.
+        var (ctx, filas) = Expandir("PAZ Y SALVO", "ABC123", "NO CARGO", "SIN", "N/A", "XXXXXX", "99999", "0", "ABC12D");
+        Assert.Equal("ABC123,ABC12D", Placas(ctx, filas));
+        Assert.Equal(5, Avisos(ctx, ReglaSimit.AvisoNoEsPlaca));
+        Assert.Single(ctx.Advertencias());
+    }
+
+    [Fact]
+    public void Titular_con_solo_marcas_es_una_fila_sin_placa_y_estado_0()
+    {
+        var (ctx, filas) = Expandir("PAZ Y SALVO", "NO CARGO", "SIN", "N/A", "XXXXXX", "99999", "0");
+        var fila = Assert.Single(filas);
+        Assert.Equal("NULL", Placas(ctx, filas));
+        // EstadoEnSIMIT lo calcula el motor: 1 si alguna columna que entra al flag tiene valor.
+        // Sin placa no queda ninguna → 0, igual que un titular con 0 placas.
+        Assert.DoesNotContain(ctx.Definicion.ColumnasDato.Select((c, i) => (c, i)),
+            x => x.c.EntraAlFlag && fila.Datos[x.i] is not null);
+        Assert.Equal(5, Avisos(ctx, ReglaSimit.AvisoNoEsPlaca));   // "N/A" y "0" no suman
     }
 
     [Fact]

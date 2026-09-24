@@ -721,6 +721,13 @@ internal sealed class CargueFuentesMotor
             {
                 var placa = PlacaVehiculo.Normalizar(texto);
                 if (placa is null) return null;
+                // Marcas de texto ('PAZ Y SALVO', 'NO CARGO', 'SIN'...) no son placas: ver
+                // PlacaVehiculo.EsValida. Mensaje fijo (sin el valor) para que agrupe.
+                if (!PlacaVehiculo.EsValida(placa))
+                {
+                    ctx.Advertir($"{col.Nombre}: valor que no es una placa anulado");
+                    return null;
+                }
                 if (col.Largo > 0 && placa.Length > col.Largo)
                 {
                     ctx.Advertir($"{col.Nombre}: placa de más de {col.Largo} caracteres anulada");

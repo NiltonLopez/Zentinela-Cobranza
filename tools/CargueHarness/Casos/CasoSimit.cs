@@ -5,7 +5,8 @@ namespace CargueHarness;
 /// <summary>
 /// SIMIT (sub-rango 999000000400..499): 1 fila del archivo → N filas destino (una por placa
 /// distinta de Placa1..Placa15), 0 placas → 1 fila Placa NULL con EstadoEnSIMIT = 0, placa de
-/// más de 10 caracteres descartada, y la invariante leídas + expansión = excluidas + duplicadas
+/// más de 10 caracteres y marcas de texto ('PAZ Y SALVO', 'NO CARGO'...) descartadas con un solo
+/// aviso agrupado, espacio y guion quitados, y la invariante leídas + expansión = excluidas + duplicadas
 /// + candidatas.
 /// </summary>
 internal static class CasoSimit
@@ -41,6 +42,11 @@ internal static class CasoSimit
             Fila(T(6).ToString(), "REPETIDA EXACTA", (1, "MNO012")),
             Fila(T(6).ToString(), "REPETIDA EXACTA", (2, "mno012")),                                            // misma placa → duplicada
             Fila("ABC", "DOCUMENTO MALO", (1, "PQR345")),
+            // Marcas reales de dbo.SIMIT (el SP las guardaba como placa con EstadoEnSIMIT = 1).
+            // "N/A" y "0" ya son vacíos genéricos (LimpiarTexto): no suman aviso; las otras 5 sí.
+            Fila(T(7).ToString(), "SOLO MARCAS", (1, "PAZ Y SALVO"), (2, "NO CARGO"), (3, "SIN"), (4, "N/A"),
+                 (5, "XXXXXX"), (6, "99999"), (7, "0")),                                                         // → 1 fila NULL, Estado 0
+            Fila(T(8).ToString(), "MARCA Y PLACAS CON ESPACIO Y GUION", (1, "NO CARGO"), (2, "QUR 25"), (3, "CKH-13")), // → 2 filas + aviso
         };
         var archivo = h.EscribirXlsx("simit.xlsx", encabezado, filas);
 
@@ -50,14 +56,17 @@ internal static class CasoSimit
             """, ("@t", T(n)));
 
         await h.FlujoEstandar("SIMIT", def, archivo,
-            new Harness.Esperado(Leidas: 9, Excluidas: 1, Duplicadas: 1, Candidatas: 10, Insertadas: 9,
-                                 TitularesNuevos: 6, DescartadasVacias: 1, AgregadasPorExpansion: 3),
+            new Harness.Esperado(Leidas: 11, Excluidas: 1, Duplicadas: 1, Candidatas: 13, Insertadas: 12,
+                                 TitularesNuevos: 8, DescartadasVacias: 1, AgregadasPorExpansion: 4),
             Base + 1, Base + 99,
             trasValidar: p =>
             {
-                h.Igual("SIMIT 1: agregadas por expansión en el preview", 3, p.AgregadasPorExpansion);
+                h.Igual("SIMIT 1: agregadas por expansión en el preview", 4, p.AgregadasPorExpansion);
                 h.Igual("SIMIT 1: error documento inválido", 1, Harness.Error(p, "Documento inválido"));
-                h.Igual("SIMIT 1: aviso placa de más de 10", 1, Harness.Aviso(p, "placa de más de 10 caracteres descartada"));
+                // 1 placa larga (T4) + 5 marcas (T7) + 1 marca (T8), en UN solo grupo.
+                h.Igual("SIMIT 1: aviso 'no es una placa' (larga + marcas)", 7, Harness.Aviso(p, "valor que no es una placa descartado"));
+                h.Igual("SIMIT 1: las placas descartadas son UN grupo de advertencia", 1,
+                    p.Advertencias.Count(a => a.Mensaje.Contains("placa", StringComparison.OrdinalIgnoreCase)));
                 h.Check("SIMIT 1: la columna Placa no se pide en el archivo",
                     !p.ColumnasOpcionalesFaltantes.Contains("Placa") && p.ColumnasEncontradas.Contains("Placa1")
                     && p.ColumnasEncontradas.Contains("Placa15"),
@@ -72,6 +81,13 @@ internal static class CasoSimit
                 h.Igual("SIMIT 3: placa larga descartada, la otra entra (T4)", "GHI456:1", await Placas(4));
                 h.Igual("SIMIT 3: la fila vacía del titular con placa no entra (T5)", "JKL789:1", await Placas(5));
                 h.Igual("SIMIT 3: misma placa en dos filas = una (T6)", "MNO012:1", await Placas(6));
+                h.Igual("SIMIT 3: solo marcas → 1 fila Placa NULL, Estado 0 (T7)", "NULL:0", await Placas(7));
+                h.Igual("SIMIT 3: marca descartada, espacio y guion quitados (T8)", "CKH13:1,QUR25:1", await Placas(8));
+                h.Igual("SIMIT 3: ninguna marca entró como placa", 0, await h.Contar("""
+                    SELECT COUNT(*) FROM dbo.SIMIT
+                     WHERE TitularID BETWEEN @d AND @h
+                       AND Placa IN ('PAZYSALVO', 'PAZ Y SALVO', 'PAZYSALV', 'NOCARGO', 'NO CARGO', 'SIN', 'XXXXXX', '99999', 'N/A', '0')
+                    """, ("@d", Base + 1), ("@h", Base + 99)));
             });
     }
 }
