@@ -11,6 +11,7 @@ nuevo (`CargueFuentesMotor` + `Regla<Fuente>`). Corrida del **2026-09-24** contr
 | Fuente | Casos | Iguales | Diferencias | Sin explicar | Conclusión |
 |---|---:|---:|---:|---:|---|
 | Positiva | 23 | 4 | 19 | 0 | Paridad OK (E1, E2, E9–E11, P1–P6, R) |
+| SaludTotal | 19 | 5 | 14 | 0 | Paridad OK (E1, E9–E11, P1, P2, P4, P5) |
 
 "Sin explicar" = diferencia que no está en la leyenda (decisiones de ADR-039 o del plan) ni en el
 comentario de la regla. Una diferencia sin explicar es un bug: se corrige y se vuelve a correr.
@@ -171,6 +172,86 @@ PO23: fila no importable a PositivaAuxiliar (NumeroTelefonoCelular='573001110623
 PRINT: 16 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
 PRINT: 21 PERSONAS FUERON RELACIONADAS EN TITULAR_CARTERA LA BASE DE DATOS
 PRINT: 21 PERSONAS FUERON INGRESADAS A POSITIVA
+PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
+```
+</details>
+
+## SaludTotal
+
+**Conclusión: paridad OK con 14 diferencias explicadas, 0 sin explicar.** Sin regla propia
+(`ReglaGenerica`): el SP solo pasaba vacíos a NULL, creaba titulares y relaciones, calculaba el
+flag e insertaba. Hay 5 casos idénticos: solo NIT (el NIT entra al flag, ST03), NIT `0` → NULL con
+flag 0 (ST04), un correo que en otros SP caería por `LIKE` (ST06: este SP no tenía lista negra y el
+motor la aplica exacta), `UltimaFechaPago = 1900-01-01` → NULL (ST08) y el titular existente con
+contenido idéntico (ST09).
+
+Detalles:
+
+- **ST05, ST16, ST17 (P1).** El SP no cruzaba `ListaNegraCorreos` ni validaba el correo: guardaba
+  `no@gmail.com`, `Pedro.Gomez@Gmail.com` tal cual y `correo-sin-arroba.com`. El motor aplica a
+  toda columna Email la misma validación y lista negra (ADR-039 §4).
+- **ST07 (P1).** `NumeroTelefono` es celular (la BaseMadre lo expone como `[Celular Salud Total]`
+  y el 100 % de las filas con dato es 3xx): un fijo `6012345678` en esa columna se anula; el SP
+  lo guardaba y marcaba el flag.
+- **ST11, ST12 (P5).** El SP no purgaba vacías ni las descartaba: la vacía vieja sobrevive a la
+  llegada de datos y una vacía nueva de un titular con datos entra.
+- **ST18 (P2).** El SP solo anulaba `IngresoBase = ''`; `'0'` quedaba guardado.
+
+
+#### Escenario SaludTotal
+
+Columnas del destino: `NumeroTelefono · Email · FechaNacimiento · EstadoAfiliacion · TipoAfiliado · Ciudad · NIT · Empresa · Cargo · UltimaFechaPago · IngresoBase · EstadoEnSaludTotal · FechaConsulta`
+
+| Caso | Descripción | SP viejo: destino | Nuevo: destino | Titular (SP / nuevo) | Relación (SP / nuevo) | Resultado | Clasificación |
+|---|---|---|---|---|---|---|---|
+| ST01 | Titular nuevo; nombre con tilde; todos los campos | 3001234567 · andres@gmail.com · 1985-05-05 · ACTIVO · COTIZANTE · CALI · 900123456 · ACME SAS · ANALISTA · 2026-08-01 · 1423500 · 1 · HOY | 3001234567 · andres@gmail.com · 1985-05-05 · ACTIVO · COTIZANTE · CALI · 900123456 · ACME SAS · ANALISTA · 2026-08-01 · 1423500 · 1 · HOY | Andrés Peña / ANDRES PEÑA | L1/C29 / L1/C29 | difiere: titular | E1 solo el nombre |
+| ST02 | Documento inválido (4 dígitos) | 3001234568 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | — | DOC CORTO / — | L1/C29 / — | difiere: destino, titular, relación | P3 documento inválido |
+| ST03 | Solo NIT y Empresa (el NIT entra al flag) | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 800123456 · EMPLEADOR SA · ∅ · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 800123456 · EMPLEADOR SA · ∅ · ∅ · ∅ · 1 · HOY | SOLO NIT / SOLO NIT | L1/C29 / L1/C29 | igual | = |
+| ST04 | NIT '0' + Empresa y Cargo | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · SIN NIT SA · OPERARIO · ∅ · ∅ · 0 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · SIN NIT SA · OPERARIO · ∅ · ∅ · 0 · HOY | NIT CERO / NIT CERO | L1/C29 / L1/C29 | igual | = |
+| ST05 | Celular + email exacto en ListaNegraCorreos ('no@gmail.com') | 3001110655 · no@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110655 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | CORREO VETADO / CORREO VETADO | L1/C29 / L1/C29 | difiere: destino | P1 lista negra de correos en toda columna Email (el SP de SaludTotal no la cruzaba) |
+| ST06 | Email que en otros SP caería por LIKE ('juana@gmail.com') | 3001110656 · juana@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110656 · juana@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | JUANA LIKE / JUANA LIKE | L1/C29 / L1/C29 | igual | = |
+| ST07 | Fijo 60x en la columna de celular, único dato | 6012345678 · ∅ · ∅ · ∅ · ∅ · BOGOTA · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | ∅ · ∅ · ∅ · ∅ · ∅ · BOGOTA · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | FIJO EN CELULAR / FIJO EN CELULAR | L1/C29 / L1/C29 | difiere: destino | P1 celular 3xx (el SP lo guardaba con flag 1) |
+| ST08 | UltimaFechaPago '1900-01-01' (vacío de Excel) | 3001110658 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110658 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | FECHA VACIA / FECHA VACIA | L1/C29 / L1/C29 | igual | = |
+| ST09 | Titular existente, contenido idéntico en destino | 3001110659 · st9@gmail.com · ∅ · ∅ · ∅ · ∅ · 900111222 · ACME · ∅ · ∅ · ∅ · 1 · HOY | 3001110659 · st9@gmail.com · ∅ · ∅ · ∅ · ∅ · 900111222 · ACME · ∅ · ∅ · ∅ · 1 · HOY | SALUD EXISTENTE / SALUD EXISTENTE | L1/C29 / L1/C29 | igual | = |
+| ST10 | Existente; solo cambia Cargo | 3001110660 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · COORDINADOR · ∅ · ∅ · 1 · HOY | 3001110660 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · AUXILIAR · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110660 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · COORDINADOR · ∅ · ∅ · 1 · HOY | CAMBIA CARGO / CAMBIA CARGO | L1/C29 / L1/C29 | difiere: destino | P4 clave completa (el SP borraba la fila vieja) |
+| ST11 | Vacía vieja en destino; ahora trae celular | 3001110661 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY<br>∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · viejo 2026-01-15 | 3001110661 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | VACIA VIEJA / VACIA VIEJA | L1/C29 / L1/C29 | difiere: destino | P5 el SP de SaludTotal no purgaba vacías |
+| ST12 | Datos en destino; el archivo trae fila vacía | 3001110662 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · HOY | 3001110662 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | TIENE DATOS / TIENE DATOS | L1/C29 / L1/C29 | difiere: destino | P5 el SP inserta la vacía |
+| ST13 | Titular AJENO al archivo con duplicado exacto en destino | 3001110663 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | 3001110663 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15<br>3001110663 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · viejo 2026-01-15 | AJENO AL ARCHIVO / AJENO AL ARCHIVO | — / — | difiere: destino | E9 sin limpiezas globales |
+| ST14 | Titular repetido; la 2ª fila tiene más datos | 3001110664 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110664 · rep14@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | REPETIDO / REPETIDO | L1/C29 / L1/C29 | difiere: destino | E11 el SP conserva una fila arbitraria; el nuevo, la más completa |
+| ST15 | Par Líder/Cartera inactivo | 3001110665 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110665 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | PAR INACTIVO / PAR INACTIVO | L5/C16 / — | difiere: relación | E10 sin relación con par inactivo |
+| ST16 | Email con mayúsculas | 3001110666 · Pedro.Gomez@Gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110666 · pedro.gomez@gmail.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | PEDRO MAYUSCULAS / PEDRO MAYUSCULAS | L1/C29 / L1/C29 | difiere: destino | P1 email en minúsculas |
+| ST17 | Email sin arroba | 3001110667 · correo-sin-arroba.com · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110667 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | LUIS FORMATO / LUIS FORMATO | L1/C29 / L1/C29 | difiere: destino | P1 formato de email (el SP no validaba) |
+| ST18 | IngresoBase '0' | 3001110668 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 0 · 1 · HOY | 3001110668 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | INGRESO CERO / INGRESO CERO | L1/C29 / L1/C29 | difiere: destino | P2 '0' → NULL (el SP solo anulaba '') |
+| ST19 | Titular existente con nombre mojibake en BD; archivo 'Piña Ruiz' | 3001110669 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | 3001110669 · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · ∅ · 1 · HOY | PIÃ‘A RUIZ / PIÑA RUIZ | L1/C29 / L1/C29 | difiere: titular | E1 nombre reparado |
+
+<details><summary>Lado nuevo: preview, carga y limpieza</summary>
+
+```
+Preview: leídas 19, excluidas 1, duplicadas 1, expansión +0, candidatas 17, insertadas 15, refrescadas 1, vacías descartadas 1, vacías a purgar 1, titulares nuevos 12, nombres reparados 1, relaciones nuevas 16.
+Carga (ejecución 253): insertadas 15, refrescadas 1, vacías descartadas 1, purgadas 1, titulares nuevos 12, nombres reparados 1, relaciones 16.
+- error ×1: Documento inválido o vacío (se esperan de 5 a 15 dígitos)
+- aviso ×1: Email: email con formato inválido anulado
+- aviso ×1: Email: email en lista negra anulado
+- aviso ×1: Líder 5 y cartera 16 no son un par activo de Lider_Cartera: la fila entra sin relación
+- aviso ×1: NumeroTelefono: número fijo en la columna de celular, anulado
+- aviso ×1: Titular repetido en el archivo: se conserva la fila más completa
+- info ×16: Relaciones titular-cartera nuevas
+- info ×12: Titulares nuevos que se crearán
+- info ×2: Entradas de ListaNegraCorreos ignoradas (no son correo ni dominio)
+- info ×1: Filas vacías que no entran porque el titular ya tiene datos
+- info ×1: Filas vacías viejas que se eliminarán de dbo.SaludTotal
+- info ×1: Nombres de titular rotos en BD que se repararán
+Limpieza: rango 0 filas; CargueFuenteEjecucion 0→0; CargueFuenteReversion 0→0; SaludTotal 1586180→1586180; fuera de rango (doc inválido) destino 0→0, Titular 0→0.
+```
+</details>
+
+<details><summary>Lado viejo: mensajes del batch (PRINT y errores)</summary>
+
+```
+── ejecución del cuerpo del SP ──
+PRINT: 13 PERSONAS FUERON INGRESADAS A LA BASE DE DATOS
+PRINT: 18 PERSONAS FUERON RELACIONADAS EN TITULAR_CARTERA LA BASE DE DATOS
+PRINT: 18 PERSONAS FUERON INGRESADAS A SALUD TOTAL
 PRINT: 3 DUPLICADOS FUERON ELIMINADOS EN LA TABLA PRINCIPAL
 ```
 </details>

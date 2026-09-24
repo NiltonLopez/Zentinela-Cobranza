@@ -41,4 +41,24 @@ public class CatalogoCoherenciaSaludTests
         Assert.IsType<ReglaPositiva>(CatalogoReglasFuente.Obtener(d.Fuente));
         SinAliasRepetidos(d);
     }
+
+    [Fact]
+    public void SaludTotal_coincide_con_el_destino_real()
+    {
+        var d = CatalogoCargueFuentes.SaludTotal;
+        Assert.Equal(("dbo.SaludTotal", "EstadoEnSaludTotal", "FechaConsulta", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        // El flag del SP: NumeroTelefono, Email y NIT (lo demás es afiliación y empleador).
+        Assert.Equal(
+            ["NumeroTelefono:Celular:10", "Email:Email:255", "FechaNacimiento:Fecha:0:sinflag",
+             "EstadoAfiliacion:Texto:30:sinflag", "TipoAfiliado:Texto:50:sinflag", "Ciudad:Texto:50:sinflag",
+             "NIT:Entero:0", "Empresa:Texto:100:sinflag", "Cargo:Texto:60:sinflag",
+             "UltimaFechaPago:Fecha:0:sinflag", "IngresoBase:Texto:20:sinflag"],
+            Firma(d));
+        Assert.True(d.CreaTitular && d.CreaTitularCartera && !d.TitularIdComoTexto && d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.UnaPorTitular, d.Cardinalidad);
+        Assert.Equal(2, d.FaseIntegracion);
+        Assert.IsType<ReglaGenerica>(CatalogoReglasFuente.Obtener(d.Fuente));
+        SinAliasRepetidos(d);
+    }
 }

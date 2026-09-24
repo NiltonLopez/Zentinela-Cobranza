@@ -21,6 +21,10 @@ internal static class CatalogoReglasFuente
 
         // ── Fase 2, grupo salud ──
         [CatalogoCargueFuentes.Positiva.Fuente]   = new ReglaPositiva(),
+        // SaludTotal: sp_ProcesarSaludTotalAuxiliar solo pasaba vacíos a NULL ('' , NIT 0, fecha
+        // 1900-01-01), creaba Titular/relaciones, calculaba el flag e insertaba: todo genérico.
+        // No cruzaba ListaNegraCorreos ni validaba el teléfono: el motor sí (ADR-039 §4).
+        [CatalogoCargueFuentes.SaludTotal.Fuente] = new ReglaGenerica(CatalogoCargueFuentes.SaludTotal.Fuente),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

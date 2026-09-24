@@ -353,11 +353,58 @@ public static class CatalogoCargueFuentes
         ],
     };
 
+    /// <summary>
+    /// Salud Total (EPS). Sin regla propia (<c>ReglaGenerica</c>): <c>sp_ProcesarSaludTotalAuxiliar</c>
+    /// solo pasaba vacíos a NULL (incluidos NIT 0 y la fecha 1900-01-01), creaba Titular y
+    /// relaciones, calculaba el flag e insertaba: todo genérico. Verificado contra
+    /// <c>sys.columns</c> de <c>dbo.SaludTotal</c> el 2026-09-24 (FechaNacimiento y
+    /// UltimaFechaPago <c>date</c> NULL, FechaConsulta <c>date</c> NOT NULL, NIT bigint,
+    /// IngresoBase varchar(20); FK a Titular, sin triggers; 1.586.180 filas / 1.525.448 titulares).
+    /// NumeroTelefono es celular: el 100 % de las filas con dato es 3xx de 10 dígitos y la BaseMadre
+    /// lo expone como [Celular Salud Total]. El flag, como en el SP, mira teléfono, email y NIT.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue SaludTotal = new()
+    {
+        Fuente          = "SaludTotal",
+        Etiqueta        = "Salud Total (EPS)",
+        TablaDestino    = "dbo.SaludTotal",
+        ColumnaFlag     = "EstadoEnSaludTotal",
+        ColumnaFecha    = "FechaConsulta",
+        TipoFecha       = TipoFechaSello.Date,
+        FaseIntegracion = 2,
+        Notas           = "Afiliados EPS Salud Total: celular, email, afiliación y empleador.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil"],
+                TipoColumnaCargue.Celular, 10, Descripcion: "Celular (10 dígitos, empieza en 3)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 255, Descripcion: "Correo electrónico"),
+            new("FechaNacimiento", ["fechanacimiento", "fechadenacimiento", "nacimiento"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Fecha de nacimiento"),
+            new("EstadoAfiliacion", ["estadoafiliacion", "estadodeafiliacion"],
+                TipoColumnaCargue.Texto, 30, EntraAlFlag: false, Descripcion: "Activo, retirado…"),
+            new("TipoAfiliado", ["tipoafiliado", "tipodeafiliado", "tipoafiliacion"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Cotizante, beneficiario…"),
+            new("Ciudad", ["ciudad", "municipio"],
+                TipoColumnaCargue.Texto, 50, EntraAlFlag: false, Descripcion: "Ciudad"),
+            new("NIT", ["nit", "nitempresa", "nitempleador"],
+                TipoColumnaCargue.Entero, Descripcion: "NIT de la empresa empleadora"),
+            new("Empresa", ["empresa", "nombreempresa", "empleador"],
+                TipoColumnaCargue.Texto, 100, EntraAlFlag: false, Descripcion: "Empresa empleadora"),
+            new("Cargo", ["cargo"],
+                TipoColumnaCargue.Texto, 60, EntraAlFlag: false, Descripcion: "Cargo en la empresa"),
+            new("UltimaFechaPago", ["ultimafechapago", "fechaultimopago", "fechaultimapago", "ultimopago"],
+                TipoColumnaCargue.Fecha, EntraAlFlag: false, Descripcion: "Último pago de aportes"),
+            new("IngresoBase", ["ingresobase", "ibc", "ingresobasecotizacion", "salario"],
+                TipoColumnaCargue.Texto, 20, EntraAlFlag: false, Descripcion: "Ingreso base de cotización"),
+        ],
+    };
+
     public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas =
     [
         Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro,
         // Fase 2, grupo salud
-        Positiva,
+        Positiva, SaludTotal,
     ];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
