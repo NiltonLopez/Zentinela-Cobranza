@@ -17,6 +17,7 @@ internal static class CatalogoReglasFuente
         // e insertaba: todo genérico. Lo propio (TitularID varchar) es de la definición.
         [CatalogoCargueFuentes.NuevaEps.Fuente]  = new ReglaGenerica(CatalogoCargueFuentes.NuevaEps.Fuente),
         [CatalogoCargueFuentes.Simit.Fuente]     = new ReglaSimit(),
+        [CatalogoCargueFuentes.DatosClaro.Fuente] = new ReglaDatosClaro(),
     };
 
     public static bool Existe(string fuente) => Reglas.ContainsKey(fuente);

@@ -285,7 +285,37 @@ public static class CatalogoCargueFuentes
             .ToList(),
     };
 
-    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit];
+    /// <summary>
+    /// Datos Claro (operador). N:1: un titular puede tener varios teléfonos/correos; no crea
+    /// Titular ni relaciones (la tabla no tiene FK a Titular), no tiene flag ni política de
+    /// vacías, y el sello es <c>FechaInsercion</c>. Regla propia: lista negra de teléfonos y
+    /// exclusión de filas sin teléfono ni email. Verificado contra <c>sys.columns</c> de
+    /// <c>dbo.DatosClaro</c> el 2026-09-23 (FechaInsercion <c>date</c> NULL, sin FK ni triggers).
+    /// NumeroTelefono acepta celular o fijo: el SP no filtraba por tipo.
+    /// </summary>
+    public static readonly DefinicionFuenteCargue DatosClaro = new()
+    {
+        Fuente               = "DatosClaro",
+        Etiqueta             = "Datos Claro",
+        TablaDestino         = "dbo.DatosClaro",
+        ColumnaFlag          = null,
+        ColumnaFecha         = "FechaInsercion",
+        TipoFecha            = TipoFechaSello.Date,
+        CreaTitular          = false,
+        CreaTitularCartera   = false,
+        Cardinalidad         = CardinalidadCargue.VariasPorTitular,
+        AplicaPoliticaVacias = false,
+        Notas                = "Teléfonos y correos del operador Claro (varios por titular). No crea titulares.",
+        ColumnasDato =
+        [
+            new("NumeroTelefono", ["numerotelefono", "telefono", "celular", "numerocelular", "movil", "linea", "numerolinea"],
+                TipoColumnaCargue.Telefono, 10, Descripcion: "Teléfono (celular 3xx o fijo 60x, 10 dígitos)"),
+            new("Email", ["email", "correo", "correoelectronico", "mail"],
+                TipoColumnaCargue.Email, 100, Descripcion: "Correo electrónico"),
+        ],
+    };
+
+    public static readonly IReadOnlyList<DefinicionFuenteCargue> Todas = [Sura, Cajacopi, MutualSer, NuevaEps, Simit, DatosClaro];
 
     public static DefinicionFuenteCargue? Buscar(string? fuente) =>
         string.IsNullOrWhiteSpace(fuente)

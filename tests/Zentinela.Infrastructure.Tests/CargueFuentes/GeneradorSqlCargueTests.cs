@@ -155,6 +155,17 @@ public class GeneradorSqlCargueTests
     }
 
     [Fact]
+    public void Lista_negra_de_telefonos_por_igualdad_con_hash_join()
+    {
+        var sql = GeneradorSqlCargue.TelefonosEnListaNegra;
+        Assert.Contains("FROM dbo.ListaNegraTelefonos ln WHERE ln.NumeroTelefono = t.NumeroTelefono", sql);
+        Assert.Contains("OPTION (HASH JOIN)", sql);
+        Assert.DoesNotContain("LIKE", sql);
+        Assert.DoesNotContain("Auxiliar", sql);
+        Assert.Contains("varchar(10) COLLATE DATABASE_DEFAULT", GeneradorSqlCargue.CrearTablaTelefonos);
+    }
+
+    [Fact]
     public void Sin_flag_no_hay_politica_de_vacias()
     {
         var sinFlag = Sura with { ColumnaFlag = null };

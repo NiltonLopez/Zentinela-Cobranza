@@ -440,6 +440,7 @@ try
     await CasoMutualSer.Correr(h);
     await CasoNuevaEps.Correr(h);
     await CasoSimit.Correr(h);
+    await CasoDatosClaro.Correr(h);
 }
 catch (Exception ex)
 {

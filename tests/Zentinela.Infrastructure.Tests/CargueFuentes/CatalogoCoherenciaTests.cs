@@ -142,4 +142,17 @@ public class CatalogoCoherenciaTests
         Assert.Equal(CardinalidadCargue.VariasPorTitular, d.Cardinalidad);
         Assert.IsType<ReglaSimit>(CatalogoReglasFuente.Obtener(d.Fuente));
     }
+
+    [Fact]
+    public void DatosClaro_coincide_con_el_destino_real()
+    {
+        // dbo.DatosClaro: FechaInsercion date NULL, sin FK a Titular (sys.columns 2026-09-23).
+        var d = CatalogoCargueFuentes.DatosClaro;
+        Assert.Equal(("dbo.DatosClaro", null, "FechaInsercion", TipoFechaSello.Date),
+                     (d.TablaDestino, d.ColumnaFlag, d.ColumnaFecha, d.TipoFecha));
+        Assert.Equal(["NumeroTelefono:Telefono:10", "Email:Email:100"], Firma(d));
+        Assert.False(d.CreaTitular || d.CreaTitularCartera || d.AplicaPoliticaVacias);
+        Assert.Equal(CardinalidadCargue.VariasPorTitular, d.Cardinalidad);
+        Assert.True(CatalogoReglasFuente.Obtener(d.Fuente).NecesitaListaNegraTelefonos);
+    }
 }

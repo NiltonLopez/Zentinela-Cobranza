@@ -42,11 +42,12 @@ internal sealed class Harness
         ("MutualSer",       "TitularID BETWEEN @d AND @h"),
         ("NuevaEps",        "TRY_CAST(TitularID AS bigint) BETWEEN @d AND @h"),
         ("SIMIT",           "TitularID BETWEEN @d AND @h"),
+        ("DatosClaro",      "TitularID BETWEEN @d AND @h"),
         ("Titular",         "NumeroDocumento BETWEEN @d AND @h"),
     ];
 
     /// <summary>Tablas destino cuyo COUNT(*) debe quedar igual al terminar.</summary>
-    public static readonly string[] TablasDestino = ["Sura", "Cajacopi", "MutualSer", "NuevaEps", "SIMIT"];
+    public static readonly string[] TablasDestino = ["Sura", "Cajacopi", "MutualSer", "NuevaEps", "SIMIT", "DatosClaro"];
 
     public Harness(string cs, string carpeta)
     {

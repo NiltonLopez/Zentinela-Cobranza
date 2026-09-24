@@ -221,9 +221,6 @@ internal sealed class CargueFuentesMotor
     {
         var def = t.Definicion;
         GeneradorSqlCargue.ValidarDefinicion(def);
-        if (t.Regla.NecesitaListaNegraTelefonos)
-            throw new NotSupportedException("El cruce con ListaNegraTelefonos llega con DatosClaro (Etapa D).");
-
         var ctx = new ContextoCargue(def);
 
         // ── 1. Leyendo ──────────────────────────────────────────────────────
@@ -321,6 +318,14 @@ internal sealed class CargueFuentesMotor
                 CalcularFlag(f, def);
                 validas.Add(f);
             }
+        }
+
+        // ── 4b. Lista negra de teléfonos (si la regla la pide) ─────────────
+        // Antes de deduplicar: dos filas que solo difieren en un teléfono vetado quedan iguales.
+        if (t.Regla.NecesitaListaNegraTelefonos)
+        {
+            progreso.Report(new(FaseCargueJob.Limpieza, esc.LimpiezaFin, "Cruzando teléfonos con ListaNegraTelefonos"));
+            validas = await AplicarListaNegraTelefonosAsync(validas, t.Regla, ctx, prep, conn, ct);
         }
 
         // ── 5. Dedup ────────────────────────────────────────────────────────
@@ -738,6 +743,71 @@ internal sealed class CargueFuentesMotor
         fila.Flag = flag;
     }
 
+    // ── 4b. Lista negra de teléfonos ────────────────────────────────────────
+
+    /// <summary>
+    /// Anula los teléfonos (columnas Celular / Fijo / Telefono) que están en
+    /// <c>dbo.ListaNegraTelefonos</c> y vuelve a pasar por <c>regla.Validar</c> las filas tocadas:
+    /// una fila que se queda sin datos puede pasar a excluida. El cruce es por número, contra
+    /// la tabla REAL y sin mirar cartera (el SP de DatosClaro usaba ListaNegraTelefonosAuxiliar,
+    /// un staging de 1,2M filas, no la lista vigente). Los números distintos del archivo suben
+    /// a una #temp y se cruzan con HASH JOIN: la lista negra es un heap sin índice (~700k
+    /// filas) y un nested loop la recorrería una vez por número.
+    /// </summary>
+    private static async Task<List<FilaCargue>> AplicarListaNegraTelefonosAsync(
+        List<FilaCargue> filas, IReglaFuente regla, ContextoCargue ctx, Preparacion prep, SqlConnection conn, CancellationToken ct)
+    {
+        var def = ctx.Definicion;
+        var columnas = def.ColumnasDato
+            .Select((c, i) => (c, i))
+            .Where(x => x.c.Tipo is TipoColumnaCargue.Celular or TipoColumnaCargue.Fijo or TipoColumnaCargue.Telefono)
+            .ToList();
+        if (columnas.Count == 0) return filas;
+
+        var numeros = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in filas)
+            foreach (var (_, i) in columnas)
+                if (f.Datos[i] is string n) numeros.Add(n);
+        if (numeros.Count == 0) return filas;
+
+        await EjecutarAsync(conn, null, GeneradorSqlCargue.CrearTablaTelefonos, ct);
+        var dt = new DataTable();
+        dt.Columns.Add("NumeroTelefono", typeof(string));
+        foreach (var n in numeros) dt.Rows.Add(n);
+        await BulkAsync(conn, "#TelefonosArchivo", dt, ct);
+
+        var vetados = new HashSet<string>(StringComparer.Ordinal);
+        await using (var cmd = Comando(conn, null, GeneradorSqlCargue.TelefonosEnListaNegra))
+        await using (var rd = await cmd.ExecuteReaderAsync(ct))
+            while (await rd.ReadAsync(ct))
+                vetados.Add(rd.GetString(0));
+        ctx.Informar("Teléfonos distintos del archivo que están en ListaNegraTelefonos", vetados.Count);
+        if (vetados.Count == 0) return filas;
+
+        var resultado = new List<FilaCargue>(filas.Count);
+        foreach (var f in filas)
+        {
+            var tocada = false;
+            foreach (var (c, i) in columnas)
+            {
+                if (f.Datos[i] is string n && vetados.Contains(n))
+                {
+                    f.Datos[i] = null;
+                    ctx.Advertir($"{c.Nombre}: teléfono en ListaNegraTelefonos anulado");
+                    tocada = true;
+                }
+            }
+            if (tocada)
+            {
+                regla.Validar(f, ctx);
+                if (f.MotivoExclusion is not null) { prep.Excluidas++; continue; }
+                CalcularFlag(f, def);
+            }
+            resultado.Add(f);
+        }
+        return resultado;
+    }
+
     // ── 5. Dedup ────────────────────────────────────────────────────────────
 
     private static List<FilaCargue> Deduplicar(
@@ -807,6 +877,11 @@ internal sealed class CargueFuentesMotor
 
         if (!def.CreaTitular)
         {
+            // La fuente no crea titulares (DatosClaro, sin FK a Titular): la fila entra igual,
+            // como hacía el SP, pero se avisa; el Calificador la ignora porque cruza por Titular_Cartera.
+            foreach (var f in candidatas)
+                if (!enBD.ContainsKey(f.TitularID))
+                    prep.Ctx.Advertir("Titular inexistente en Titular: la fila entra igual (esta fuente no crea titulares)");
             prep.NombresIrrecuperables = candidatas.Count(f => f.NombreIrrecuperable);
             return candidatas;
         }

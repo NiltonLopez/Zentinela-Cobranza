@@ -161,6 +161,24 @@ internal static class GeneradorSqlCargue
         );
         """;
 
+    /// <summary>Números distintos del archivo, para cruzarlos con ListaNegraTelefonos.</summary>
+    public const string CrearTablaTelefonos = """
+        DROP TABLE IF EXISTS #TelefonosArchivo;
+        CREATE TABLE #TelefonosArchivo (NumeroTelefono varchar(10) COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY CLUSTERED);
+        """;
+
+    /// <summary>
+    /// Números del archivo presentes en la lista negra REAL (todas las carteras: la fuente no
+    /// tiene cartera). Igualdad exacta, nunca LIKE. HASH JOIN: ListaNegraTelefonos es un heap
+    /// sin índice; el hash se arma con la #temp (chica) y la lista se recorre una sola vez.
+    /// </summary>
+    public const string TelefonosEnListaNegra = """
+        SELECT t.NumeroTelefono
+          FROM #TelefonosArchivo t
+         WHERE EXISTS (SELECT 1 FROM dbo.ListaNegraTelefonos ln WHERE ln.NumeroTelefono = t.NumeroTelefono)
+        OPTION (HASH JOIN);
+        """;
+
     /// <summary>
     /// Existencia y nombre actual de cada titular del archivo. El "nombre roto" se decide en
     /// C# (<c>NormalizadorTitular.EstaRoto</c>), NUNCA con <c>LIKE '%Ã%'</c>: con collation
