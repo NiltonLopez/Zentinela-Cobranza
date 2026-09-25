@@ -169,26 +169,32 @@ publicado consigo mismo da cero diferencias en todas las columnas.
 
 ## Despliegue
 
-1. Copiar `etl/estado-titular/` al servidor, p. ej. a
-   `E:\BASES\SISTEMAS\Apps\ETL Carga UltimoEstadoTitular\cargador\`.
-2. Aplicar en DBCallCenter, en este orden:
-   - `2026-09-23_rediseno_etl_estado_titular.sql` (reaplicar: trae la compuerta nueva)
-   - `2026-09-25_cargador_estado_titular.sql`
-3. Crear un trabajo **nuevo** del Agente con un paso `CmdExec`, **ejecutar como `ProxySSIS`**
-   (habilitado para `CmdExec`; es la cuenta que hoy ya lee `E:\BASES`):
+Todo en `etl/estado-titular/desplegar.ps1`, desde la máquina del desarrollador:
 
-   ```
-   powershell -NoProfile -ExecutionPolicy Bypass -File "E:\...\cargador\cargar.ps1" -Modo publicar
-     -Entrada "E:\BASES\SISTEMAS\Apps\ReporteClientes"
-     -Python "E:\BASES\SISTEMAS\Apps\ETL Carga UltimoEstadoTitular\Archivos .py\python.exe"
-     -Conversor "E:\BASES\SISTEMAS\Apps\ETL Carga UltimoEstadoTitular\Archivos .py"
-     -Libs "E:\BASES\SISTEMAS\Apps\ETL BlackList\libs"
-   ```
+```powershell
+powershell -ExecutionPolicy Bypass -File etl\estado-titular\desplegar.ps1            # 1 a 4
+powershell -ExecutionPolicy Bypass -File etl\estado-titular\desplegar.ps1 -Publicar  # 5
+```
 
-   Rutas **locales** (`E:\`), no UNC: en el servidor no hay que pasar por la red. Sin
-   `-CadenaConexion`, se conecta con autenticación integrada como la cuenta del proxy, que es
-   `sysadmin`: **la contraseña de `sa` no aparece en ningún lado**.
-4. Que Power Automate dispare el trabajo nuevo en vez del viejo.
+1. Copia el cargador a `\\10.0.0.89\bases\SISTEMAS\Apps\ETL Carga UltimoEstadoTitular\cargador\`
+   (`E:\BASES\...` en el servidor).
+2. Aplica, en orden: `2026-09-23_rediseno_etl_estado_titular.sql` (trae la compuerta nueva),
+   `2026-09-25_cargador_estado_titular.sql` y `2026-09-23_avisos_etl_estado_titular.sql`.
+3. Aplica `2026-09-25_trabajos_cargador_estado_titular.sql`, que crea dos trabajos con un paso
+   `CmdExec` **ejecutado como `ProxySSIS`** (la cuenta que hoy ya corre el paquete y lee
+   `E:\BASES`):
+   - `ETL_UltimoEstadoTitular_Cargador` — modo `publicar`.
+   - `ETL_UltimoEstadoTitular_Cargador_Comparar` — modo `comparar`, no escribe nada.
+
+   Rutas **locales** (`E:\`); Python por el mismo `py.exe` que usa hoy la "Tarea Ejecutar
+   proceso" del paquete; conexión integrada con la cuenta del proxy: **la contraseña de `sa` no
+   aparece en ningún paso**. La salida de cada corrida queda en `cargador\logs\<modo>.log`.
+4. Corre el trabajo de comparar y muestra el log.
+5. Con `-Publicar`, corre el trabajo de publicar y espera a que termine.
+
+Después: que Power Automate dispare `ETL_UltimoEstadoTitular_Cargador` en vez de
+`Ejecutar_ETL_UltimoEstadoTitular`. Los CSV no se mueven ni se borran: Power Automate los
+sobrescribe en cada descarga, igual que hoy.
 
 **El trabajo viejo no se toca**: si algo sale mal, volver a disparar ese es el plan B completo.
 

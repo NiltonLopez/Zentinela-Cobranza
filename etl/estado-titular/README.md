@@ -7,6 +7,7 @@ copiarla. Si alguien cambia una regla de limpieza allá, el cargador la hereda.
 | Archivo | Qué hace |
 |---|---|
 | `limpiar.py` | Lee cada CSV con los mismos parámetros del conversor, aplica `transformar()` y escribe un `.part` con separadores de control |
+| `desplegar.ps1` | Lo instala en el servidor (ver Despliegue) |
 | `cargar.ps1` | Orquesta: corre la limpieza, sube los `.part` con `SqlBulkCopy` y ejecuta `procesar.sql` |
 | `procesar.sql` | Imita la columna derivada, el script, la división condicional y las tres búsquedas del paquete, con operaciones sobre conjuntos |
 
@@ -75,6 +76,6 @@ para correr el modo `publicar` de punta a punta sin tocar producción.
 
 ## Despliegue
 
-Ver ADR-039. En corto: copiar esta carpeta al servidor y crear un trabajo del Agente con un paso
-`CmdExec` que corra `cargar.ps1 -Modo publicar` con el proxy `ProxySSIS` (la cuenta que ya lee
-`E:\BASES`). El trabajo viejo queda intacto como plan B.
+Ver ADR-039. En corto: `desplegar.ps1` copia esta carpeta al servidor, aplica las migraciones y crea
+los trabajos del Agente (`CmdExec` con el proxy `ProxySSIS`, la cuenta que ya lee `E:\BASES`),
+corre una comparación, y con `-Publicar` publica. El trabajo viejo queda intacto como plan B.
