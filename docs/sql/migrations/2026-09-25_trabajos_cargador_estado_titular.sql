@@ -57,7 +57,7 @@ BEGIN
          @owner_login_name = N'sa', @notify_level_eventlog = 2;
     EXEC dbo.sp_add_jobstep @job_name = @nombre, @step_id = 1, @step_name = N'Cargador',
          @subsystem = N'CmdExec', @command = @cmd, @proxy_name = N'ProxySSIS',
-         @success_code = 0, @on_success_action = 1, @on_fail_action = 2,
+         @cmdexec_success_code = 0, @on_success_action = 1, @on_fail_action = 2,
          @output_file_name = @log, @flags = 0;
     EXEC dbo.sp_add_jobserver @job_name = @nombre, @server_name = N'(local)';
 
@@ -65,6 +65,13 @@ BEGIN
     FETCH NEXT FROM c INTO @nombre, @modo, @desc;
 END
 CLOSE c; DEALLOCATE c;
+
+-- Un error en sp_add_jobstep no corta el lote: sin esta comprobacion el trabajo
+-- quedaba creado, sin pasos, y el script decia "Trabajo creado" igual.
+IF (SELECT COUNT(*) FROM dbo.sysjobs j
+    WHERE j.name LIKE N'ETL_UltimoEstadoTitular_Cargador%'
+      AND EXISTS (SELECT 1 FROM dbo.sysjobsteps s WHERE s.job_id = j.job_id AND s.subsystem = N'CmdExec')) <> 2
+    THROW 50040, N'Los trabajos del cargador no quedaron completos (falta algun paso). Revisar los mensajes de arriba.', 1;
 GO
 
 SELECT j.name AS trabajo, s.subsystem, p.name AS proxy, s.output_file_name AS log
