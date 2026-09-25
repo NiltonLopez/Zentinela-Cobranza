@@ -15,10 +15,14 @@ public class RecursosHumanosDbContext : DbContext
     public DbSet<Empleado> Empleados { get; set; }
     public DbSet<Cargo> Cargos { get; set; }
 
+    /// <summary>Fotos de empleados (solo lectura; las sube RRHH).</summary>
+    public DbSet<FotoEmpleado> FotosEmpleado { get; set; }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         builder.ApplyConfiguration(new CargoMapping());
         builder.ApplyConfiguration(new EmpleadoMapping());
+        builder.ApplyConfiguration(new FotoEmpleadoMapping());
     }
 }

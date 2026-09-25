@@ -768,7 +768,39 @@ public class CalificadorCarteraService : ICalificadorCarteraService
     }
 
     /// <summary>
-    /// Lee el result set 9 (una sola fila con 30 SUMs: 15 fuentes × encontrado/no-encontrado)
+    /// Filas del panel "Porcentajes de Localización", en orden: etiqueta que ve el usuario y
+    /// prefijo de las columnas <c>{Prefijo}Enc</c>/<c>{Prefijo}NoEnc</c> del result set 9. Las
+    /// etiquetas son las que el front cruza con el catálogo de fuentes
+    /// (<c>CatalogoFuentesLocalizacion.EtiquetaCalificador</c>, ADR-040); los tests comparan las dos
+    /// listas, así que renombrar una fila aquí exige renombrarla allá.
+    /// </summary>
+    internal static readonly IReadOnlyList<(string Etiqueta, string Prefijo)> EtiquetasLocalizacion =
+    [
+        ("Cajacopi",      "Cajacopi"),
+        ("Cámara",        "Camara"),
+        ("Salud Total",   "SaludTotal"),
+        ("Fosyga",        "Fosyga"),
+        ("Compensados",   "Compensados"),
+        ("Positiva",      "Positiva"),
+        ("Tigo",          "Tigo"),
+        ("TigoUne",       "TigoUne"),
+        ("Coosalud",      "Coosalud"),
+        ("Savia Salud",   "SaviaSalud"),
+        ("Sura",          "Sura"),
+        ("SOS",           "Sos"),
+        ("Claro",         "Claro"),
+        ("MiVacuna",      "MiVacuna"),
+        ("MutualSer",     "MutualSer"),
+        ("NuevaEps",      "NuevaEps"),
+        ("ARL Sura",      "ArlSura"),
+        ("Positiva Emp.", "PosEmp"),
+        ("RUES",          "Rues"),
+        ("SIMIT",         "Simit"),
+        ("RGM",           "Rgm"),
+    ];
+
+    /// <summary>
+    /// Lee el result set 9 (una sola fila con 42 SUMs: 21 fuentes × encontrado/no-encontrado)
     /// y construye la lista de LocalizacionFuente. FaltanPorBuscar = total - encontrados - noEncontrados.
     /// Usa GetOrdinal por nombre para mantener consistencia con el resto de la clase.
     /// </summary>
@@ -785,30 +817,9 @@ public class CalificadorCarteraService : ICalificadorCarteraService
             return reader.IsDBNull(ord) ? 0 : reader.GetInt32(ord);
         }
 
-        return
-        [
-            Fuente("Cajacopi",      Sum("CajacopiEnc"),    Sum("CajacopiNoEnc"),    total),
-            Fuente("Cámara",        Sum("CamaraEnc"),      Sum("CamaraNoEnc"),      total),
-            Fuente("Salud Total",   Sum("SaludTotalEnc"),  Sum("SaludTotalNoEnc"),  total),
-            Fuente("Fosyga",        Sum("FosygaEnc"),      Sum("FosygaNoEnc"),      total),
-            Fuente("Compensados",   Sum("CompensadosEnc"), Sum("CompensadosNoEnc"), total),
-            Fuente("Positiva",      Sum("PositivaEnc"),    Sum("PositivaNoEnc"),    total),
-            Fuente("Tigo",          Sum("TigoEnc"),        Sum("TigoNoEnc"),        total),
-            Fuente("TigoUne",       Sum("TigoUneEnc"),     Sum("TigoUneNoEnc"),     total),
-            Fuente("Coosalud",      Sum("CoosaludEnc"),    Sum("CoosaludNoEnc"),    total),
-            Fuente("Savia Salud",   Sum("SaviaSaludEnc"),  Sum("SaviaSaludNoEnc"),  total),
-            Fuente("Sura",          Sum("SuraEnc"),        Sum("SuraNoEnc"),        total),
-            Fuente("SOS",           Sum("SosEnc"),         Sum("SosNoEnc"),         total),
-            Fuente("Claro",         Sum("ClaroEnc"),       Sum("ClaroNoEnc"),       total),
-            Fuente("MiVacuna",      Sum("MiVacunaEnc"),    Sum("MiVacunaNoEnc"),    total),
-            Fuente("MutualSer",     Sum("MutualSerEnc"),   Sum("MutualSerNoEnc"),   total),
-            Fuente("NuevaEps",      Sum("NuevaEpsEnc"),    Sum("NuevaEpsNoEnc"),    total),
-            Fuente("ARL Sura",      Sum("ArlSuraEnc"),     Sum("ArlSuraNoEnc"),     total),
-            Fuente("Positiva Emp.", Sum("PosEmpEnc"),      Sum("PosEmpNoEnc"),      total),
-            Fuente("RUES",          Sum("RuesEnc"),        Sum("RuesNoEnc"),        total),
-            Fuente("SIMIT",         Sum("SimitEnc"),       Sum("SimitNoEnc"),       total),
-            Fuente("RGM",           Sum("RgmEnc"),         Sum("RgmNoEnc"),         total),
-        ];
+        return EtiquetasLocalizacion
+            .Select(e => Fuente(e.Etiqueta, Sum(e.Prefijo + "Enc"), Sum(e.Prefijo + "NoEnc"), total))
+            .ToList();
 
         static LocalizacionFuente Fuente(string nombre, int enc, int noEnc, int tot) => new()
         {

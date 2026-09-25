@@ -13,6 +13,7 @@ using Zentinela.Infrastructure.SQLServer.Persistence;
 using Zentinela.Infrastructure.SQLServer.Repositories;
 using Zentinela.Infrastructure.SQLServer.Services;
 using Zentinela.Infrastructure.SQLServer.Services.CargueFuentes;
+using Zentinela.Infrastructure.SQLServer.Services.Localizacion;
 
 namespace Zentinela.Infrastructure.SQLServer;
 
@@ -125,6 +126,14 @@ public static class DependencyInjection
         services.AddSingleton<CargueFuentesJobStore>();
         services.AddSingleton<ICargueFuentesService, CargueFuentesOrquestador>();
         services.AddScoped<CargueFuentesMotor>();
+
+        // ── Informes de Localización (ADR-040) ───────────────────────────────
+        // Catálogo de fuentes (estado + último cargue OK) y fotos de personas. El caché de fotos
+        // es Singleton con MemoryCache propio (tope de 64 MB por bytes, ver FotoPersonaCache).
+        services.AddScoped<IFuentesLocalizacionService, FuentesLocalizacionService>();
+        services.AddSingleton<FotoPersonaCache>();
+        services.AddScoped<IFotoPersonaOrigen, FotoPersonaOrigenSql>();
+        services.AddScoped<IFotoPersonaService, FotoPersonaService>();
 
         return services;
     }

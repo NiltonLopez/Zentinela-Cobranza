@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { obtenerFuentesLocalizacion } from '../../api/fuentesLocalizacionApi';
+import { COLOR_ESTADO_FUENTE } from '../../types/fuentesLocalizacion';
 import {
   calificarCartera,
   obtenerOpcionesCalificador,
@@ -321,29 +323,32 @@ export function CalificadorCarteraPage() {
 // Estado operativo de cada fuente de localización (visual, no afecta lógica).
 // 'Funcional' = se actualiza con regularidad; 'Intermitente' = irregular;
 // 'Inactivo' = sin actualizaciones recientes.
-const ESTADO_FUENTE: Record<string, { etiqueta: string; color: string; nota?: string }> = {
-  'Cajacopi':         { etiqueta: 'Funcional',    color: '#16A34A' },
-  'Cámara':           { etiqueta: 'Intermitente', color: '#CA8A04' },
-  'Salud Total':      { etiqueta: 'Inactivo',     color: '#DC2626' },
-  'Fosyga':           { etiqueta: 'Intermitente', color: '#CA8A04' },
-  'Compensados':      { etiqueta: 'Intermitente', color: '#CA8A04' },
-  'Positiva':         { etiqueta: 'Funcional',    color: '#16A34A' },
-  'Tigo':             { etiqueta: 'Inactivo',     color: '#DC2626' },
-  'TigoUne':          { etiqueta: 'Funcional',    color: '#16A34A' },
-  'Coosalud':         { etiqueta: 'Funcional',    color: '#16A34A' },
-  'Savia Salud':      { etiqueta: 'Funcional',    color: '#16A34A' },
-  'Sura':             { etiqueta: 'Funcional',    color: '#16A34A' },
-  'SOS':              { etiqueta: 'Funcional',    color: '#16A34A' },
-  'Claro':            { etiqueta: 'Inactivo',     color: '#DC2626' },
-  'MiVacuna':         { etiqueta: 'Funcional',    color: '#16A34A' },
-  'MutualSer':        { etiqueta: 'Funcional',    color: '#16A34A' },
-  'NuevaEps':         { etiqueta: 'Funcional',    color: '#16A34A' },
-  'ARL Sura':         { etiqueta: 'Funcional',    color: '#16A34A', nota: 'solo nombre de empresa' },
-  'Positiva Emp.':    { etiqueta: 'Funcional',    color: '#16A34A' },
-  'RUES':             { etiqueta: 'Funcional',    color: '#16A34A' },
-  'SIMIT':            { etiqueta: 'Funcional',    color: '#16A34A' },
-  'RGM':              { etiqueta: 'Funcional',    color: '#16A34A' },
-};
+// Fuente única de verdad: CatalogoFuentesLocalizacion del backend (ADR-040), leído de
+// GET /api/fuentes-localizacion y cruzado por la etiqueta de la fila del Calificador.
+// Mientras carga (o si falla) el mapa queda vacío: la tabla se ve igual, sin el chip.
+type EstadoFuenteVisual = { etiqueta: string; color: string; nota?: string };
+
+function useEstadoFuentes(): Record<string, EstadoFuenteVisual> {
+  const { data } = useQuery({
+    queryKey: ['fuentes-localizacion'],
+    queryFn: obtenerFuentesLocalizacion,
+    // El catálogo solo cambia con un despliegue: una lectura por sesión basta.
+    staleTime: Infinity,
+  });
+
+  return useMemo(() => {
+    const mapa: Record<string, EstadoFuenteVisual> = {};
+    for (const f of data ?? []) {
+      if (!f.enPanelCalificador) continue;
+      mapa[f.etiquetaCalificador] = {
+        etiqueta: f.estado,
+        color: COLOR_ESTADO_FUENTE[f.estado],
+        nota: f.nota ?? undefined,
+      };
+    }
+    return mapa;
+  }, [data]);
+}
 
 // Celda numérica de la tabla de localización. Vive en el nivel superior del módulo,
 // NO dentro de TablaLocalizacion: si se declara en el cuerpo del render, su identidad
@@ -441,6 +446,8 @@ function TablaLocalizacion({
   liderID: number | null;
   etiquetaCartera: string;
 }) {
+  const estadoFuente = useEstadoFuentes();
+
   // Identificador único de la celda en hover: "{fuente}|{categoria}".
   // null = ninguna celda con hover. Cambia el cursor + revela el ícono.
   const [celdaHover, setCeldaHover] = useState<string | null>(null);
@@ -639,17 +646,17 @@ function TablaLocalizacion({
               >
                 <td style={{ padding: '8px 10px', fontWeight: 600 }}>
                   {f.fuente}
-                  {ESTADO_FUENTE[f.fuente] && (
+                  {estadoFuente[f.fuente] && (
                     <span
                       style={{
                         marginLeft: 6,
                         fontSize: 10,
                         fontWeight: 500,
-                        color: ESTADO_FUENTE[f.fuente].color,
+                        color: estadoFuente[f.fuente].color,
                       }}
                     >
-                      ({ESTADO_FUENTE[f.fuente].etiqueta}
-                      {ESTADO_FUENTE[f.fuente].nota ? `, ${ESTADO_FUENTE[f.fuente].nota}` : ''})
+                      ({estadoFuente[f.fuente].etiqueta}
+                      {estadoFuente[f.fuente].nota ? `, ${estadoFuente[f.fuente].nota}` : ''})
                     </span>
                   )}
                 </td>

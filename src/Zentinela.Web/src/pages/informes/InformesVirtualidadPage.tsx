@@ -5,7 +5,7 @@ import {
   Cell, Legend, CartesianGrid,
 } from 'recharts';
 import { obtenerOpcionesCalificador } from '../../api/calificadorApi';
-import { useAuth } from '../../context/AuthContext';
+import { useAlcanceLider } from '../../hooks/useAlcanceLider';
 import { ZDropdown } from '../../components/ZDropdown';
 import {
   getInformeMensajeria,
@@ -38,19 +38,6 @@ const C = {
 type Tab = 'mensajeria' | 'ivr' | 'llamadas-perdidas' | 'llamadas-entrantes' | 'pagos-impacto';
 
 const AÑO_HOY = new Date().getFullYear();
-
-// ── Alcance por rol ───────────────────────────────────────────────────────────
-/**
- * Un Líder ve el informe tal cual el administrador, pero solo con sus datos: el
- * selector de líder no se muestra y el filtro queda fijado a su propio liderID.
- * Esto es presentación — la restricción real la impone el servidor, que para el rol
- * Líder ignora el liderID de la URL y usa el del token (AlcanceLiderExtensions).
- */
-function useAlcanceLider() {
-  const { usuario } = useAuth();
-  const esLider = usuario?.rol === 'Líder';
-  return { esLider, liderPropio: esLider ? (usuario?.liderID ?? 0) : 0 };
-}
 
 // ── Utilidades de fecha ───────────────────────────────────────────────────────
 type Preset = 'hoy' | 'ciclo' | 'mes-pasado' | '7d' | '30d' | 'custom';

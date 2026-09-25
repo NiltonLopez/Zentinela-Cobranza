@@ -234,6 +234,57 @@ import { MetricCard } from '../components/MetricCard';
 
 ---
 
+### AvatarPersona
+
+Ubicación: `src/Zentinela.Web/src/components/AvatarPersona.tsx` (ADR-040, Informes de Localización).
+
+Avatar circular de un líder o asesor: la foto de RRHH si la tiene; si no (o mientras carga, o sin
+documento), sus iniciales sobre un color estable derivado del nombre.
+
+#### Props
+
+| Prop | Tipo | Default | Descripción |
+|---|---|---|---|
+| `documento` | `number \| null` | — | Cédula. `null`/ausente → solo iniciales, sin llamar al API |
+| `nombre` | `string` | — | Nombre completo: `alt`/`aria-label`, `title`, iniciales y color |
+| `tam` | `number` | `32` | Diámetro en px |
+| `style` | `CSSProperties` | — | Estilos extra (se mezclan sobre los del círculo) |
+
+#### Comportamiento
+
+- La foto sale de `GET /api/personas/{documento}/foto?tam=…` por `hooks/useFotoPersona.ts`: se baja
+  como blob con axios (el JWT va en el header, un `<img src>` directo no lo mandaría) y se muestra
+  como objectURL. Un objectURL por blob, compartido entre avatares de la misma persona, con revoke
+  diferido al desmontarse el último (sobrevive al doble montaje de StrictMode).
+- Tamaño pedido al servidor: la miniatura más chica de {48, 96, 160, 320} que cubra
+  `tam × devicePixelRatio` (tope 2x). Un avatar de 40 px en pantalla 2x pide 96.
+- react-query: clave `['foto-persona', documento, tam]`, `staleTime: Infinity`, `gcTime` 1 h,
+  404 → `null` sin reintentos (no es error).
+- Iniciales: primeras letras de las dos primeras palabras (`"MARÍA JOSÉ PÉREZ"` → `MJ`), texto
+  `#FFF` 600, `font-size` = 40 % del diámetro (mínimo 10 px).
+- Color de fondo: hash del nombre sobre una paleta de 10 tonos medios-oscuros
+  (`#B91C1C #C2410C #A16207 #15803D #0F766E #0369A1 #1D4ED8 #6D28D9 #A21CAF #BE185D`), todos con
+  contraste ≥ 4.5:1 contra blanco. La misma persona tiene siempre el mismo color.
+- Accesibilidad: con foto, `<img alt={nombre}>`; con iniciales, `<span role="img" aria-label={nombre}>`.
+- Si el `<img>` falla al cargar, vuelve a las iniciales.
+
+#### Ejemplo de uso
+
+```tsx
+import { AvatarPersona } from '../components/AvatarPersona';
+
+// Fila de ranking
+<AvatarPersona documento={lider.numeroDocumento} nombre={lider.nombre} tam={28} />
+
+// Podio (foto grande)
+<AvatarPersona documento={primero.numeroDocumento} nombre={primero.nombre} tam={96} />
+
+// Sin documento: solo iniciales
+<AvatarPersona nombre="Cartera sin líder" />
+```
+
+---
+
 ### TarjetaCartera
 
 No existe como componente independiente en el código fuente actual. Las carteras se renderizan en `CarterasPage` mediante la lista de `CarteraDto` obtenida del endpoint `GET /api/carteras`.

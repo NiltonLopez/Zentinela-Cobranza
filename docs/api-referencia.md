@@ -502,6 +502,72 @@ Fuentes analizadas: Cajacopi, Cámara, Salud Total, Fosyga, Compensados, Positiv
 
 ---
 
+## GET /api/fuentes-localizacion
+
+Catálogo de fuentes de localización (ADR-040): estado operativo que mantiene el equipo, grupo,
+nota y último cargue OK. Fuente única de verdad: `CatalogoFuentesLocalizacion`
+(`src/Zentinela.Application/Constants`). El Calificador lo usa para los chips de estado del panel
+"Porcentajes de Localización" (cruza `etiquetaCalificador` con `localizacion[].fuente`).
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`, `Auxiliar de Sistemas`, `Líder Externo`
+
+### Response body — 200 OK
+
+22 fuentes: las 21 del panel del Calificador, en su orden, más `CamaraEmpresa` (`enPanelCalificador: false`).
+
+```json
+[
+  {
+    "clave": "Fosyga",
+    "etiquetaCalificador": "Fosyga",
+    "slug": "fosyga",
+    "estado": "Funcional",
+    "grupo": "Afiliacion",
+    "nota": null,
+    "enPanelCalificador": true,
+    "ultimoCargueOk": "2026-09-24T15:38:04.985"
+  }
+]
+```
+
+| Campo | Descripción |
+|---|---|
+| `clave` | Igual a la fuente del Cargue de Fuentes (`CatalogoCargueFuentes`) |
+| `slug` | Slug de la descarga por celda del Calificador (ADR-019) |
+| `estado` | `Funcional` \| `Intermitente` \| `Inactivo` |
+| `grupo` | `Contacto` \| `Afiliacion` \| `Laboral` \| `Vehiculo` |
+| `ultimoCargueOk` | Fin del último `dbo.CargueFuenteEjecucion` con Estado `OK` (sin corridas del harness); `null` si nunca se cargó por el módulo |
+
+---
+
+## GET /api/personas/{documento}/foto
+
+Miniatura cuadrada JPEG de la foto de RRHH (`DBRecursosHumanos.dbo.FotoEmpleado`) de un líder o
+asesor activo, por cédula (ADR-040). Recorte centrado, SkiaSharp, calidad 82. Enlace
+`Empleado.NumeroDocumento = documento` (nunca por `Lider.ID`).
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director`
+
+| Parámetro | Tipo | Descripción |
+|---|---|---|
+| `documento` (ruta) | `long` | Cédula. Solo se sirven documentos de `dbo.Lider` activos (`NumeroDocumento`) o `dbo.Agente` activos (`AgenteID`) |
+| `tam` (query) | `int` | 48, 96, 160 (default) o 320. Otro valor → 160 |
+
+### Respuesta
+
+| Código | Condición |
+|---|---|
+| `200 OK` | `image/jpeg`, con `ETag: "{FotoID}-{UploadedAt.Ticks}-{tam}"` y `Cache-Control: private, max-age=86400` |
+| `304 Not Modified` | `If-None-Match` coincide con el ETag |
+| `404 Not Found` | Sin cuerpo: no tiene foto, la foto no se puede decodificar o el documento no es de un líder/asesor activo (no se distingue, para no revelar quién existe) |
+
+Caché del servidor: `FotoPersonaCache` (Singleton, `MemoryCache` propio de 64 MB medido en bytes,
+12 h deslizante por miniatura; el "sin foto" se recuerda 10 min).
+
+---
+
 ## GET /api/creador/columnas
 
 Retorna el catálogo de columnas disponibles en la Base Madre para construir el selector de columnas en el frontend.
