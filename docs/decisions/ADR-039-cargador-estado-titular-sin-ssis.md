@@ -1,6 +1,6 @@
 # ADR-039 — El flujo de datos del ETL de estado de titulares sale de SSIS
 
-**Estado:** Aceptado (pendiente de desplegar)
+**Estado:** Aceptado — desplegado 2026-09-25
 **Fecha:** 2026-09-25
 **Módulo afectado:** `ETL_UltimoEstadoTitular` → `UltimoEstadoTitular`, `HistoricoEstadoTitular`
 **Continúa:** [ADR-038](ADR-038-etl-estado-titular-reemplazo-acotado-y-compuertas.md) (compuertas y reemplazo acotado)
@@ -198,11 +198,26 @@ sobrescribe en cada descarga, igual que hoy.
 
 **El trabajo viejo no se toca**: si algo sale mal, volver a disparar ese es el plan B completo.
 
-## Qué NO se validó todavía
+## Primera corrida en el servidor (2026-09-25)
 
-- La corrida en el servidor. Toda la validación se hizo desde una estación de trabajo, por un
-  enlace de ~0,4 MB/s y ~350 ms de latencia. El tiempo real en el servidor, con disco y SQL locales,
-  hay que medirlo en la primera corrida.
-- El Python del servidor. Se probó con Python 3.14 y pandas 3.0.3 local; el servidor tiene la misma
-  versión de Python y pandas 3.0.2. Ninguno de los dos tiene `pyarrow`, así que el manejo de texto
-  es el mismo, pero la primera corrida en el servidor conviene hacerla en modo `comparar`.
+- **Comparar** en el servidor: resultado idéntico, cifra por cifra, al de la estación de trabajo
+  con los mismos CSV → el Python y el pandas del servidor limpian igual. 1 min 17 s en total.
+- **Publicar**: OK, 22 carteras, 2.322.388 titulares, 83.821 filas apartadas. Las carteras de
+  `Delmar_Cast` volvieron completas (519.352 / 43.935 / 177.100).
+
+| Fase | Estación de trabajo | Servidor |
+|---|---|---|
+| Limpieza (21 CSV) | 16 min | 43 s |
+| Subida | 2 min 56 s | 10 s |
+| Proceso del cargador | 40 s | 22 s |
+| `sp_Insertar_UltimoEstadoTitular` | — | 11 min 31 s |
+| `sp_Insertar_HistoricoEstadoTitular` | — | 5 min 37 s |
+| **Total publicar** | | **18 min 32 s** |
+
+Contra ~57 minutos por lotes, y sin 32 bits ni lotes. Lo que queda lento son **los dos
+procedimientos de ADR-038**, no el cargador: van a ~3.400 filas por segundo, la misma tasa que
+tenían con SSIS. Son el próximo objetivo de optimización.
+
+Un ajuste que solo apareció en el servidor: la autenticación integrada **contra sí mismo por IP**
+falla ("dominio que no es de confianza"); el cargador se conecta a la instancia local `.`, como el
+`/SERVER "."` del paquete.
