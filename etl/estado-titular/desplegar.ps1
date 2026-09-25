@@ -36,10 +36,19 @@ if (-not $sqlcmd) {
 }
 if (-not $sqlcmd) { throw 'No se encontro sqlcmd.exe' }
 
-if (-not $env:SQLCMDPASSWORD) {
-    $seguro = Read-Host "Contrasena de $Usuario en $Servidor" -AsSecureString
-    $env:SQLCMDPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro))
+# Se valida el inicio de sesion ANTES de tocar nada, con hasta 3 intentos: una
+# contrasena mal escrita no debe dejar el despliegue a medias.
+for ($intento = 1; $true; $intento++) {
+    if (-not $env:SQLCMDPASSWORD) {
+        $seguro = Read-Host "Contrasena de $Usuario en $Servidor" -AsSecureString
+        $env:SQLCMDPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro))
+    }
+    & $sqlcmd -S $Servidor -U $Usuario -C -l 30 -b -h -1 -Q "SET NOCOUNT ON; SELECT 1" *> $null
+    if ($LASTEXITCODE -eq 0) { Write-Host 'Inicio de sesion correcto.' -ForegroundColor Green; break }
+    $env:SQLCMDPASSWORD = $null
+    if ($intento -ge 3) { throw "No se pudo iniciar sesion como $Usuario en $Servidor. No se hizo nada." }
+    Write-Warning "No se pudo iniciar sesion como $Usuario (intento $intento de 3). Vuelve a escribirla."
 }
 
 function Sql([string]$consulta, [string]$base = 'msdb') {
