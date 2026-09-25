@@ -688,8 +688,16 @@ umbral (o no tiene fecha); `pctViejos` = viejos / buscados. Otro umbral → `400
 ### GET /api/informes/localizacion/rankings?criterio=Indice&incluirExternas=false
 
 `criterio`: `Indice` (default) · `Contacto` · `Cobertura` · `Frescura` · `SinContactoSaldo` (gana el
-menor). Otro valor → `400`. `incluirExternas` solo aplica a Admin/Director (relaciones externas y "BASE
-GENERAL"); para el Líder siempre es `false`.
+menor) · `Uso` · `Retorno` (etapa 3). Otro valor → `400`. `incluirExternas` solo aplica a Admin/Director
+(relaciones externas y "BASE GENERAL"); para el Líder siempre es `false`.
+
+**`Uso` y `Retorno`** salen de los lotes de envío ENVIADO/CERRADO de los últimos
+`InformesLocalizacion:Envios:DiasVentanaRanking` (90) días, no del corte: `Uso` = % de la cola sugerida
+aproximada enviada (tope 100), `Retorno` = % de lo enviado que volvió buscado (null sin lotes, al final).
+Mismo universo de pares que los demás criterios (un lote de un par externo o inactivo no cuenta). Cada fila
+trae `envios: { lotes, enviados, cola, pctColaEnviada, buscados, pctRetorno, localizados }`, `delta` es
+`null` y la respuesta suma `ventanaDias`. Si no hay ningún lote en la ventana: `lideres` y `carteras`
+vacíos y `aviso` con el motivo.
 
 ```json
 {
@@ -787,6 +795,133 @@ TitularID y columnas de dato no fecha con formato texto (`@`), sin filas de ejem
 - Una sola fuente con filas → `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).
 - Varias → `.zip` (`application/zip`) con un `.xlsx` por fuente: el Cargue de Fuentes recibe un archivo por fuente.
 - Sin filas → `404 { mensaje }`. `400`/`403`/`409` como en `sugerencias`.
+
+### Envíos a localización (etapa 3)
+
+Lotes en `dbo.LocalizacionEnvio` / `LocalizacionEnvioDetalle` (ADO.NET, `LocalizacionEnviosService`). Un lote
+= un par (líder, cartera) y una fuente Funcional, código `LOC-000123`. Estados: `BORRADOR` → `ENVIADO` →
+`CERRADO`, o `ANULADO` desde `BORRADOR`/`ENVIADO`. Reglas completas en ADR-040 → "Etapa 3".
+
+**Alcance.** El Líder solo crea lotes sobre su par (el `liderID` del cuerpo o la URL se ignora; la cartera
+tiene que ser suya → `403`) y solo ve y opera sus lotes: uno ajeno responde `404`, como si no existiera.
+
+| Código | Condición (todos los endpoints de envíos) |
+|---|---|
+| `400 Bad Request` | `{ mensaje }`: parámetro inválido |
+| `403 Forbidden` | Líder sin `liderID` en el token; cartera que no es del Líder |
+| `404 Not Found` | `{ mensaje }`: el lote no existe o es de otro líder |
+| `409 Conflict` | `{ mensaje, estadoActual }`: el lote ya no está en el estado de origen (otro usuario lo cambió). Al crear: `{ mensaje, etlEnCurso: true, inicio }` si corre el ETL de gestión |
+| `503 Service Unavailable` | `{ mensaje, script, sinTablas: true }`: falta aplicar el script |
+
+#### POST /api/informes/localizacion/envios
+
+Crea un lote `BORRADOR`. El cuerpo son **los mismos parámetros de la consulta de sugerencias** que el usuario
+tiene en pantalla más la `fuente` del lote: el servidor **recalcula** las sugerencias y guarda las filas de esa
+fuente del top (las mismas que se ven y que baja el Excel). No se reciben TitularIDs.
+
+```json
+{ "liderID": 3, "carteraID": 4, "fuente": "Fosyga",
+  "fuentes": ["Fosyga"], "umbralDias": 180, "umbralRefrescoDias": null, "soloConSaldo": false,
+  "top": 200, "excluirEnviadosDias": 60, "incluirLocalizados": false,
+  "observacion": "Prioridad alta" }
+```
+
+- `liderID` obligatorio para Admin/Director (un lote es de un par; la cartera completa → `400`).
+- `fuente` Funcional y dentro de `fuentes` (vacío = todas las Funcionales); `top` ≤ 5.000; `observacion` ≤ 500.
+- Detalle con **foto** al crear: `SaldoTotal`, `UltimoPerfil`, `MejorPerfil`, `FechaUltimaGestion`,
+  `FechaPromesa`, `ValorPromesa` de `UltimoEstadoTitular` (titular + cartera), `UltimaConsultaPrevia`,
+  `Categoria` y `Prioridad` de la sugerencia. Solo titulares del par con relación activa; todo en una transacción.
+
+**201 Created**
+```json
+{ "envioID": 1, "codigo": "LOC-000001", "titulares": 200,
+  "avisos": ["El lote lleva las 200 filas de Fosyga del top pedido; hay más candidatos: sube el top para enviar más."] }
+```
+
+#### GET /api/informes/localizacion/envios?liderID=&carteraID=&fuente=&estado=&desde=&hasta=
+
+Lotes, los más recientes primero (máximo `Envios:MaxLotesLista` = 300; `recortado: true` si hay más). `desde`/
+`hasta` filtran por `FechaCreacion`. Cada lote enviado trae `retorno` e `impacto` (ver abajo).
+
+```json
+{ "envios": [ { "envioID": 4, "codigo": "LOC-000004", "liderID": 3, "lider": "JULIO CESAR MORA LEON",
+                "documentoLider": 71000000, "carteraID": 4, "cartera": "BERTAL", "fuente": "Fosyga",
+                "etiquetaFuente": "Fosyga", "estado": "ENVIADO", "titulares": 300, "parametros": "{…}",
+                "observacion": null, "creadoPor": "usuario.cargue", "fechaCreacion": "2026-09-20T09:12:00",
+                "enviadoPor": "usuario.cargue", "fechaEnvio": "2026-09-20T10:00:00", "cerradoPor": null, "fechaCierre": null,
+                "anuladoPor": null, "fechaAnulacion": null, "motivoAnulacion": null,
+                "retorno": { "base": "CARGUE", "cargueEjecucionID": 509, "fechaCargue": "2026-09-24T15:38:04",
+                             "buscadosDesde": "2026-09-24T00:00:00", "buscados": 200, "pctRetorno": 66.67,
+                             "localizados": 171, "pctLocalizadosBuscados": 85.5, "pctLocalizados": 57.0,
+                             "fechaRetorno": "2026-09-24T15:38:04", "diasRetorno": 4 },
+                "impacto": { "gestionados": 2, "pctGestionados": 0.67, "pasaronAContacto": 0, "titularesConPago": 0,
+                             "pagos": 0, "valorPagado": 0, "honorarios": 0, "promesasVigentes": 0 } } ],
+  "recortado": false }
+```
+
+- **`retorno`** (null si no se ha enviado): la vuelta es el **primer `CargueFuenteEjecucion` OK de la fuente con
+  `FechaFin` posterior al envío** (sin usuarios `harness-cargue*`), `base: "CARGUE"`; buscado = el titular tiene
+  una fila en la fuente con fecha ≥ `SelloFechaConsulta` de ese cargue. Sin cargue: `base: "FECHA"` y cuenta
+  toda fila con fecha > `FechaEnvio`. Localizado = buscado cuya última fila (fecha DESC, "encontrado" primero en
+  empate) cumple el predicado del catálogo. `diasRetorno` = días del envío al fin del cargue (o al primer dato
+  nuevo, sin cargue); `null` mientras no vuelva nada.
+- **`impacto`** (null si no se ha enviado): `gestionados` = `UltimoEstadoTitular.FechaUltimaGestion` posterior al
+  **día** del envío; `pasaronAContacto` = gestionados cuyo perfil actual es de contacto (ContactoDirecto,
+  Acuerdos o tercero/familiar) y el de la foto no; pagos = `dbo.Pago` por `CedulaTitular` con `FechaPago`
+  posterior al día del envío (cualquier cartera); `promesasVigentes` = `FechaPromesa` ≥ hoy y distinta de la foto.
+
+#### GET /api/informes/localizacion/envios/{id}?pagina=1&tam=50
+
+El lote (como en la lista) y una página de su detalle por prioridad (`tam` ≤ `Envios:MaxTamPaginaDetalle` = 500).
+
+```json
+{ "envio": { "...": "..." }, "pagina": 1, "tamPagina": 50, "totalFilas": 300,
+  "filas": [ { "titularID": 318061, "nombre": "…", "categoria": "NO_ENC_VIEJO", "prioridad": 90,
+               "ultimaConsultaPrevia": "2025-01-10T00:00:00", "saldoFoto": 1250000.00, "perfilFoto": "Mensaje en buzon",
+               "gestionFoto": "2026-06-02T00:00:00", "buscado": true, "localizado": true, "fechaDato": "2026-09-24T00:00:00",
+               "perfilActual": "Mensaje en buzon", "gestionActual": "2026-06-02T00:00:00", "gestionado": false,
+               "pasoAContacto": false, "valorPagado": 0, "promesaVigente": null } ] }
+```
+
+#### GET /api/informes/localizacion/envios/{id}/excel
+
+El `.xlsx` del lote con el **formato del Cargue de Fuentes** (el mismo generador de `sugerencias/excel`), con
+sus titulares por prioridad: `Localizacion_{Fuente}_{Codigo}_{yyyyMMdd}.xlsx`.
+
+#### POST /api/informes/localizacion/envios/{id}/enviar · /cerrar · /anular
+
+Transición con usuario (claim `userName`) y fecha (`SYSDATETIME()` del servidor de BD). Concurrencia optimista:
+`UPDATE … WHERE Estado IN (<origen>)`; si no afecta filas → `409` con `estadoActual`. `anular` acepta un cuerpo
+opcional `{ "motivo": "…" }` (≤ 300). Responde `200` con el lote actualizado (con retorno e impacto).
+
+| Acción | Desde | Hacia | Marca |
+|---|---|---|---|
+| `enviar` | BORRADOR | ENVIADO | `EnviadoPor`, `FechaEnvio` (desde aquí se mide el retorno) |
+| `cerrar` | ENVIADO | CERRADO | `CerradoPor`, `FechaCierre` |
+| `anular` | BORRADOR, ENVIADO | ANULADO | `AnuladoPor`, `FechaAnulacion`, `MotivoAnulacion` |
+
+#### GET /api/informes/localizacion/uso-departamento?desde=&hasta=&liderID=
+
+Uso del departamento por líder: lotes ENVIADO/CERRADO con `FechaEnvio` en [`desde`, `hasta`] (default: los
+últimos 90 días; máximo dos años). Filas: todos los líderes con alguna relación interna activa (aunque no hayan
+enviado nada) más los que tengan lotes; el Líder recibe solo la suya.
+
+```json
+{ "desde": "2026-06-27T00:00:00", "hasta": "2026-09-25T00:00:00", "corteCola": "2026-09-25T13:05:00",
+  "lideres": [ { "liderID": 3, "nombre": "JULIO CESAR MORA LEON", "documento": 71000000,
+                 "lotes": 2, "borradores": 0, "enviados": 500, "cola": 1300, "pctColaEnviada": 38.46,
+                 "buscados": 200, "pctRetorno": 40.0, "localizados": 171, "pctLocalizados": 34.2,
+                 "gestionados": 2, "pasaronAContacto": 0, "titularesConPago": 0, "valorPagado": 0, "honorarios": 0,
+                 "promesasVigentes": 0, "lotesConRetorno": 1, "diasRetornoPromedio": 4.0 } ],
+  "total": { "liderID": 0, "nombre": "Total", "...": "..." },
+  "avisos": [] }
+```
+
+- `enviados` = filas titular × fuente. `borradores` = lotes en BORRADOR (sin filtro de fecha).
+- `cola` = **aproximación** del último corte OK: por par y fuente Funcional, "Falta por buscar" + min(No
+  encontrados, buscados con dato de más de 180 días). Es un techo de los candidatos de las sugerencias antes de
+  exclusiones → `pctColaEnviada` (tope 100) es un piso. `null` sin corte (con aviso).
+- `diasRetornoPromedio`: promedio de los lotes que ya tuvieron retorno.
 
 ---
 

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 // Piezas compartidas por las pestañas de Informes de Localización (ADR-040): formato, colores,
-// chip de estado de fuente, barra de cobertura, podio con fotos, filtros de alcance y avisos.
+// chip de estado de fuente y de lote, barra de cobertura, podio con fotos, filtros de alcance, modal de
+// confirmación y avisos.
 // Exporta a propósito componentes + helpers juntos (como reporteCompartido); el HMR no aplica.
 import { useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -9,6 +10,7 @@ import { useAlcanceLider } from '../../../hooks/useAlcanceLider';
 import { AvatarPersona } from '../../../components/AvatarPersona';
 import { ZDropdown } from '../../../components/ZDropdown';
 import { COLOR_ESTADO_FUENTE, type EstadoFuente } from '../../../types/fuentesLocalizacion';
+import type { EstadoLote } from '../../../types/informesLocalizacion';
 
 // ── Formato ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +70,69 @@ export function ChipEstadoFuente({ estado, nota }: { estado: EstadoFuente; nota?
     >
       {estado}{nota ? ' *' : ''}
     </span>
+  );
+}
+
+// ── Chip de estado de un lote de envío (etapa 3) ─────────────────────────────
+
+export const COLOR_ESTADO_LOTE: Record<EstadoLote, string> = {
+  BORRADOR: '#64748b',
+  ENVIADO:  '#2563eb',
+  CERRADO:  '#16a34a',
+  ANULADO:  '#dc2626',
+};
+
+const ETIQUETA_ESTADO_LOTE: Record<EstadoLote, string> = {
+  BORRADOR: 'Borrador',
+  ENVIADO:  'Enviado',
+  CERRADO:  'Cerrado',
+  ANULADO:  'Anulado',
+};
+
+export function ChipEstadoLote({ estado }: { estado: EstadoLote }) {
+  const color = COLOR_ESTADO_LOTE[estado] ?? '#64748b';
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+      background: `${color}1f`, color, whiteSpace: 'nowrap', border: `1px solid ${color}44`,
+    }}>
+      {ETIQUETA_ESTADO_LOTE[estado] ?? estado}
+    </span>
+  );
+}
+
+// ── Confirmación (modal) ──────────────────────────────────────────────────────
+
+/** Modal de confirmación con el estilo de ModalColumnas; `children` va entre el texto y los botones. */
+export function ModalConfirmar({ titulo, texto, confirmar, color = 'var(--z-brand)', ocupado, error, onConfirmar, onCerrar, children }: {
+  titulo: string; texto: ReactNode; confirmar: string; color?: string; ocupado?: boolean; error?: string | null;
+  onConfirmar: () => void; onCerrar: () => void; children?: ReactNode;
+}) {
+  return (
+    <div onClick={ocupado ? undefined : onCerrar} style={{
+      position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16,
+    }}>
+      <div role="dialog" aria-modal="true" aria-label={titulo} onClick={e => e.stopPropagation()} style={{
+        background: 'var(--z-bg-card)', border: '1px solid var(--z-border)', borderRadius: 12, padding: 24,
+        width: 'min(480px, 100%)', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--z-text-primary)', margin: 0 }}>{titulo}</h2>
+        <div style={{ fontSize: 13, color: 'var(--z-text-muted)', lineHeight: 1.5 }}>{texto}</div>
+        {children}
+        {error && <p style={{ margin: 0, fontSize: 12, color: '#dc2626' }}>{error}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onCerrar} disabled={ocupado} style={{
+            padding: '6px 14px', borderRadius: 7, fontSize: 13, border: '1px solid var(--z-border)',
+            background: 'transparent', color: 'var(--z-text-muted)', cursor: ocupado ? 'not-allowed' : 'pointer',
+          }}>Cancelar</button>
+          <button type="button" onClick={onConfirmar} disabled={ocupado} style={{
+            padding: '6px 14px', borderRadius: 7, fontSize: 13, fontWeight: 600, border: 'none',
+            background: ocupado ? '#94a3b8' : color, color: '#fff', cursor: ocupado ? 'not-allowed' : 'pointer',
+          }}>{ocupado ? 'Procesando…' : confirmar}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

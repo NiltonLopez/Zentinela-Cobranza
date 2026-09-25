@@ -226,6 +226,22 @@ public class FilaRankingLiderDto
     public decimal SaldoSinContacto { get; set; }
     /// <summary>Es la fila del Líder que consulta.</summary>
     public bool EsPropio { get; set; }
+    /// <summary>Criterios Uso y Retorno: lo que envió en la ventana (null en los demás criterios).</summary>
+    public EnviosRankingDto? Envios { get; set; }
+}
+
+/// <summary>Lotes de un líder, cartera o par en la ventana de los rankings de Uso y Retorno (etapa 3).</summary>
+public class EnviosRankingDto
+{
+    public int Lotes { get; set; }
+    /// <summary>Filas enviadas (titular × fuente).</summary>
+    public int Enviados { get; set; }
+    /// <summary>Cola sugerida aproximada del corte (null si no hay).</summary>
+    public int? Cola { get; set; }
+    public decimal? PctColaEnviada { get; set; }
+    public int Buscados { get; set; }
+    public decimal? PctRetorno { get; set; }
+    public int Localizados { get; set; }
 }
 
 public class FilaRankingCarteraDto
@@ -245,6 +261,8 @@ public class FilaRankingCarteraDto
     public decimal? PctFrescura { get; set; }
     public int SinContactoConSaldo { get; set; }
     public decimal SaldoSinContacto { get; set; }
+    /// <summary>Criterios Uso y Retorno: lo que se envió en la ventana.</summary>
+    public EnviosRankingDto? Envios { get; set; }
 }
 
 public class RankingsLocalizacionDto
@@ -264,4 +282,8 @@ public class RankingsLocalizacionDto
     /// <summary>Admin/Director: ranking de carteras. Líder: sus pares, entre ellos.</summary>
     public List<FilaRankingCarteraDto> Carteras { get; set; } = [];
     public bool CarterasSonPropias { get; set; }
+    /// <summary>Uso y Retorno: días de la ventana de lotes (por FechaEnvio) que se miran.</summary>
+    public int? VentanaDias { get; set; }
+    /// <summary>Aviso para mostrar (p. ej. "todavía no hay lotes enviados": las listas vienen vacías).</summary>
+    public string? Aviso { get; set; }
 }

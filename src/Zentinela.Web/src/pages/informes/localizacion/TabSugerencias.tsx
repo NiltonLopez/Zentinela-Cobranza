@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  descargarSugerenciasExcel, obtenerSugerenciasLocalizacion, problemaSugerencias,
+  crearEnvioLocalizacion, descargarSugerenciasExcel, obtenerSugerenciasLocalizacion, problemaEnvios, problemaSugerencias,
 } from '../../../api/informesLocalizacionApi';
 import { obtenerFuentesLocalizacion } from '../../../api/fuentesLocalizacionApi';
 import type {
-  CategoriaSugerencia, DesglosePrioridad, FilaSugerencia, ParametrosSugerencias, SugerenciasLocalizacion,
+  CategoriaSugerencia, DesglosePrioridad, EnvioCreado, FilaSugerencia, ParametrosSugerencias, SugerenciasLocalizacion,
 } from '../../../types/informesLocalizacion';
 import { COLOR_ESTADO_FUENTE } from '../../../types/fuentesLocalizacion';
 import {
@@ -13,7 +13,7 @@ import {
 } from '../../../components/informes/reporteCompartido';
 import type { DownloadRegistrar, PdfExportDescriptor, PdfTableData } from '../../../components/informes/reporteCompartido';
 import {
-  ChipEstadoFuente, FiltrosAlcance, Opciones, TD_NUM, Tarjeta, fmtFecha, fmtFechaHora, fmtNum, type Alcance,
+  ChipEstadoFuente, FiltrosAlcance, ModalConfirmar, Opciones, TD_NUM, Tarjeta, fmtFecha, fmtFechaHora, fmtNum, type Alcance,
 } from './compartidos';
 
 // ── Etiquetas y colores ───────────────────────────────────────────────────────
@@ -125,8 +125,10 @@ function guardarBlob(blob: Blob, nombre: string) {
 // ║  TAB — SUGERENCIAS DE LOCALIZACIÓN (etapa 2)                                  ║
 // ║  Consulta manual (botón), en línea sobre el par: no depende del precálculo.   ║
 // ╚══════════════════════════════════════════════════════════════════════════════╝
-export function TabSugerencias({ alcance, onAlcance, onRegisterDownload }: {
+export function TabSugerencias({ alcance, onAlcance, onRegisterDownload, onLoteCreado }: {
   alcance: Alcance; onAlcance: (a: Alcance) => void; onRegisterDownload?: DownloadRegistrar;
+  /** Lote creado desde aquí: la página lo abre en la pestaña Envíos. */
+  onLoteCreado?: (envioID: number) => void;
 }) {
   const { data: catalogo = [] } = useQuery({
     queryKey: ['fuentes-localizacion'],
@@ -345,8 +347,118 @@ export function TabSugerencias({ alcance, onAlcance, onRegisterDownload }: {
         </Aviso>
       )}
 
+      {datos && resultado && (
+        <CrearLotes datos={datos} parametros={resultado.p} desactualizado={desactualizado} onLoteCreado={onLoteCreado} />
+      )}
+
       {datos && <Resultados datos={datos} descargando={descargando} errorExcel={errorExcel} onExcel={descargarExcel} />}
     </div>
+  );
+}
+
+// ── Crear lotes de envío (etapa 3) ────────────────────────────────────────────
+
+/**
+ * Un botón por fuente con filas en el top. El servidor recalcula las sugerencias con los MISMOS parámetros
+ * de esta consulta y guarda las filas de esa fuente: no se mandan TitularIDs.
+ */
+function CrearLotes({ datos, parametros, desactualizado, onLoteCreado }: {
+  datos: SugerenciasLocalizacion; parametros: ParametrosSugerencias; desactualizado: boolean;
+  onLoteCreado?: (envioID: number) => void;
+}) {
+  const [fuente, setFuente] = useState<string | null>(null);
+  const [observacion, setObservacion] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [creados, setCreados] = useState<EnvioCreado[]>([]);
+
+  const porFuente = useMemo(() => {
+    const m = new Map<string, { etiqueta: string; filas: number }>();
+    for (const f of datos.filas) {
+      const x = m.get(f.fuente) ?? { etiqueta: f.etiquetaFuente, filas: 0 };
+      x.filas++;
+      m.set(f.fuente, x);
+    }
+    return Array.from(m, ([clave, v]) => ({ clave, ...v }));
+  }, [datos.filas]);
+
+  const crear = useMutation({
+    mutationFn: (clave: string) => crearEnvioLocalizacion({ ...parametros, fuente: clave, observacion: observacion.trim() || null }),
+    onSuccess: c => {
+      setCreados(prev => [c, ...prev]);
+      setFuente(null);
+      setObservacion('');
+    },
+    onError: async err => setError((await problemaEnvios(err)).mensaje),
+  });
+
+  if (porFuente.length === 0) return null;
+  const sinLider = !parametros.liderID;
+  const sinRegistro = !datos.registroEnviosDisponible;
+  const bloqueado = sinLider || sinRegistro;
+  const elegida = porFuente.find(f => f.clave === fuente);
+
+  return (
+    <Tarjeta titulo="Enviar a localización">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--z-text-muted)', lineHeight: 1.5 }}>
+          Un lote por fuente con las filas de esa fuente del top que ves aquí. Nace en borrador; lo envías desde la
+          pestaña Envíos, donde se mide su retorno y su impacto.
+          {sinLider && <strong style={{ color: '#ca8a04' }}> Elige un líder: un lote es de un par líder–cartera.</strong>}
+          {sinRegistro && <strong style={{ color: '#dc2626' }}> El registro de envíos todavía no está instalado (falta aplicar el script).</strong>}
+          {desactualizado && !bloqueado && <span style={{ color: '#ca8a04' }}> El lote usa los filtros de la última consulta generada.</span>}
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {porFuente.map(f => (
+            <button key={f.clave} type="button" disabled={bloqueado || crear.isPending}
+              onClick={() => { setError(null); setFuente(f.clave); }}
+              style={{
+                padding: '6px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, border: 'none',
+                background: bloqueado ? '#94a3b8' : '#2563eb', color: '#fff', cursor: bloqueado ? 'not-allowed' : 'pointer',
+              }}>
+              + Crear lote de envío · {f.etiqueta} ({fmtNum(f.filas)})
+            </button>
+          ))}
+        </div>
+        {creados.map(c => (
+          <div key={c.envioID} style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12, color: '#166534',
+            background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.30)', borderRadius: 8, padding: '8px 12px',
+          }}>
+            <span>Se creó el lote <strong>{c.codigo}</strong> con {fmtNum(c.titulares)} titulares (borrador).</span>
+            {c.avisos.map(a => <span key={a} style={{ color: '#92400e' }}>{a}</span>)}
+            {onLoteCreado && (
+              <button type="button" onClick={() => onLoteCreado(c.envioID)} style={{
+                border: 'none', background: 'none', color: 'var(--z-brand)', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 12,
+              }}>Ver en Envíos →</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {elegida && (
+        <ModalConfirmar
+          titulo={`Crear lote de ${elegida.etiqueta}`}
+          texto={<>
+            Se recalculan las sugerencias con los filtros de esta consulta y se guardan las filas de {elegida.etiqueta}
+            {' '}({fmtNum(elegida.filas)} en pantalla) con la foto de cada titular: saldo, perfil y última gestión.
+            {' '}Si los datos cambiaron desde que generaste la consulta, el número puede variar un poco.
+          </>}
+          confirmar="Crear lote"
+          ocupado={crear.isPending}
+          error={error}
+          onConfirmar={() => crear.mutate(elegida.clave)}
+          onCerrar={() => setFuente(null)}
+        >
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--z-text-muted)' }}>
+            Nota para el departamento (opcional)
+            <textarea value={observacion} onChange={e => setObservacion(e.target.value.slice(0, 500))} rows={3} style={{
+              resize: 'vertical', padding: 8, borderRadius: 6, border: '1px solid var(--z-border)',
+              background: 'var(--z-bg-page)', color: 'var(--z-text-primary)', fontSize: 13, fontFamily: 'inherit',
+            }} />
+          </label>
+        </ModalConfirmar>
+      )}
+    </Tarjeta>
   );
 }
 

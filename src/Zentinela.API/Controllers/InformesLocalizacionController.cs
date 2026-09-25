@@ -12,14 +12,16 @@ namespace Zentinela.API.Controllers;
 
 /// <summary>
 /// Informes de Localización (ADR-040): resumen, cobertura por fuente, frescura y rankings con foto,
-/// leídos del último corte del precálculo; y sugerencias de localización (etapa 2), calculadas en línea.
+/// leídos del último corte del precálculo; sugerencias de localización (etapa 2), calculadas en línea; y
+/// envíos a localización con su retorno, impacto y el uso del departamento (etapa 3).
 ///
 /// Alcance: Admin y Director ven todo. Un Líder ve solo lo suyo: <c>TryResolverLiderID</c> ignora el
 /// <c>liderID</c> de la URL y usa el del token, y si pide una <c>carteraID</c> tiene que estar en su
 /// Lider_Cartera activo. Como su liderID siempre queda fijado, un Líder nunca obtiene la cartera completa.
 ///
 /// Errores: 503 mientras el usuario no aplique el script de las tablas; 409 si aún no hay corte. Las
-/// sugerencias no usan el precálculo: 400 por parámetros, 409 mientras corre el ETL de gestión.
+/// sugerencias no usan el precálculo: 400 por parámetros, 409 mientras corre el ETL de gestión. Envíos: 503 sin
+/// tablas, 404 si el lote no existe o es de otro líder, 409 si otro usuario ya cambió su estado.
 /// </summary>
 [ApiController]
 [Route("api/informes/localizacion")]
@@ -30,15 +32,17 @@ public class InformesLocalizacionController : ControllerBase
     private readonly ILocalizacionResumenCoordinador _coordinador;
     private readonly ILocalizacionSugerenciasService _sugerencias;
     private readonly IExcelExporter _excel;
+    private readonly ILocalizacionEnviosService _envios;
 
     public InformesLocalizacionController(
         IInformesLocalizacionService service, ILocalizacionResumenCoordinador coordinador,
-        ILocalizacionSugerenciasService sugerencias, IExcelExporter excel)
+        ILocalizacionSugerenciasService sugerencias, IExcelExporter excel, ILocalizacionEnviosService envios)
     {
         _service = service;
         _coordinador = coordinador;
         _sugerencias = sugerencias;
         _excel = excel;
+        _envios = envios;
     }
 
     /// <summary>KPIs, índice, gráfico por fuente y alertas del alcance.</summary>
@@ -72,7 +76,7 @@ public class InformesLocalizacionController : ControllerBase
         [FromQuery] string? criterio, [FromQuery] bool incluirExternas = false, CancellationToken ct = default)
     {
         if (!CalculoLocalizacion.TryParseCriterio(criterio, out var c))
-            return BadRequest(new { mensaje = "Criterio inválido: Indice, Contacto, Cobertura, Frescura o SinContactoSaldo." });
+            return BadRequest(new { mensaje = "Criterio inválido: Indice, Contacto, Cobertura, Frescura, SinContactoSaldo, Uso o Retorno." });
 
         // Sin liderID pedido: para el Líder devuelve el suyo (el del token); para el resto, null.
         if (!User.TryResolverLiderID(null, out var propio)) return Forbid();
@@ -202,6 +206,126 @@ public class InformesLocalizacionController : ControllerBase
         while (limpio.Contains("__")) limpio = limpio.Replace("__", "_");
         limpio = limpio.Trim('_');
         return limpio.Length > 60 ? limpio[..60] : limpio;
+    }
+
+    // ── Envíos a localización (etapa 3) ───────────────────────────────────────
+
+    /// <summary>
+    /// Crea un lote BORRADOR con las filas de una fuente del top de sugerencias, recalculado en el servidor con
+    /// los mismos parámetros (no se reciben TitularIDs). El Líder solo sobre su par (su liderID lo fija el token
+    /// y la cartera tiene que ser suya). 201 con el código del lote; 400 parámetros; 409 si corre el ETL.
+    /// </summary>
+    [HttpPost("envios")]
+    public async Task<IActionResult> CrearEnvio([FromBody] CrearEnvioLocalizacionDto cuerpo, CancellationToken ct)
+    {
+        if (cuerpo.CarteraID <= 0) return BadRequest(new { mensaje = "Elige una cartera." });
+        if (!User.TryResolverLiderID(cuerpo.LiderID, out var efectivo)) return Forbid();
+        if (EsLider && !await _service.EsCarteraDelLiderAsync(efectivo!.Value, cuerpo.CarteraID, ct)) return Forbid();
+        cuerpo.LiderID = efectivo;
+
+        return await TraducirEnvios(async () =>
+        {
+            var creado = await _envios.CrearAsync(cuerpo, Usuario, ct);
+            return StatusCode(StatusCodes.Status201Created, creado);
+        });
+    }
+
+    /// <summary>Lotes, los más recientes primero, con retorno e impacto de los enviados. El Líder, solo los suyos.</summary>
+    [HttpGet("envios")]
+    public Task<IActionResult> Envios([FromQuery] FiltroEnviosLocalizacion filtro, CancellationToken ct)
+    {
+        if (!User.TryResolverLiderID(filtro.LiderID, out var efectivo)) return Task.FromResult<IActionResult>(Forbid());
+        filtro.LiderID = efectivo;
+        return TraducirEnvios(async () => Ok(await _envios.ListarAsync(filtro, ct)));
+    }
+
+    /// <summary>Un lote: cabecera, retorno, impacto y una página de su detalle (por prioridad).</summary>
+    [HttpGet("envios/{id:int}")]
+    public Task<IActionResult> Envio(int id, [FromQuery] int pagina = 1, [FromQuery] int tam = 50, CancellationToken ct = default)
+    {
+        if (!AlcanceEnvios(out var alcance)) return Task.FromResult<IActionResult>(Forbid());
+        return TraducirEnvios(async () => Ok(await _envios.ObtenerAsync(id, alcance, pagina, tam, ct)));
+    }
+
+    /// <summary>Excel del lote con el formato del Cargue de Fuentes (el mismo de las sugerencias).</summary>
+    [HttpGet("envios/{id:int}/excel")]
+    public Task<IActionResult> EnvioExcel(int id, CancellationToken ct)
+    {
+        if (!AlcanceEnvios(out var alcance)) return Task.FromResult<IActionResult>(Forbid());
+        return TraducirEnvios(async () =>
+        {
+            var archivo = await _envios.ExcelAsync(id, alcance, ct);
+            return File(archivo.Contenido, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", archivo.NombreArchivo);
+        });
+    }
+
+    /// <summary>
+    /// Enviar (BORRADOR → ENVIADO), cerrar (ENVIADO → CERRADO) o anular (BORRADOR/ENVIADO → ANULADO, con motivo
+    /// opcional). Concurrencia optimista: 409 si el lote ya no está en el estado de origen; 404 si no existe o es
+    /// de otro líder.
+    /// </summary>
+    [HttpPost("envios/{id:int}/{accion:regex(^(enviar|cerrar|anular)$)}")]
+    public Task<IActionResult> CambiarEstadoEnvio(
+        int id, string accion,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] AnularEnvioLocalizacionDto? cuerpo,
+        CancellationToken ct)
+    {
+        if (!TransicionesEnvio.TryParseAccion(accion, out var a)) return Task.FromResult<IActionResult>(NotFound());
+        if (!AlcanceEnvios(out var alcance)) return Task.FromResult<IActionResult>(Forbid());
+        return TraducirEnvios(async () =>
+            Ok(await _envios.CambiarEstadoAsync(id, a, Usuario, a == AccionEnvio.Anular ? cuerpo?.Motivo : null, alcance, ct)));
+    }
+
+    /// <summary>
+    /// Uso del departamento de localización por líder en el período (lotes por FechaEnvio): lotes, titulares
+    /// enviados, % de su cola sugerida, retorno, localizados, gestión y pagos posteriores. El Líder, solo su fila.
+    /// Por defecto, los últimos 90 días.
+    /// </summary>
+    [HttpGet("uso-departamento")]
+    public Task<IActionResult> UsoDepartamento(
+        [FromQuery] DateTime? desde, [FromQuery] DateTime? hasta, [FromQuery] int? liderID, CancellationToken ct)
+    {
+        if (!User.TryResolverLiderID(liderID, out var efectivo)) return Task.FromResult<IActionResult>(Forbid());
+        var h = (hasta ?? DateTime.Today).Date;
+        var d = (desde ?? h.AddDays(-90)).Date;
+        if (d > h) return Task.FromResult<IActionResult>(BadRequest(new { mensaje = "La fecha inicial es posterior a la final." }));
+        if ((h - d).TotalDays > 731) return Task.FromResult<IActionResult>(BadRequest(new { mensaje = "El período máximo es de dos años." }));
+        return TraducirEnvios(async () => Ok(await _envios.UsoDepartamentoAsync(d, h, efectivo, ct)));
+    }
+
+    /// <summary>Quien registra la acción: el claim userName del token.</summary>
+    private string Usuario => User.FindFirstValue("userName") ?? User.Identity?.Name ?? "desconocido";
+
+    /// <summary>LiderID con el que se recorta un lote: el del token para el Líder; null para Admin/Director.</summary>
+    private bool AlcanceEnvios(out int? alcance)
+    {
+        alcance = null;
+        if (!EsLider) return true;
+        return User.TryResolverLiderID(null, out alcance) && alcance is not null;
+    }
+
+    private async Task<IActionResult> TraducirEnvios(Func<Task<IActionResult>> accion)
+    {
+        try
+        {
+            return await Traducir(accion);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+        catch (LocalizacionEnvioNoEncontradoException ex)
+        {
+            return NotFound(new { mensaje = ex.Message });
+        }
+        catch (LocalizacionEnvioConflictoException ex)
+        {
+            return Conflict(new { mensaje = ex.Message, estadoActual = ex.EstadoActual });
+        }
+        catch (LocalizacionEtlEnCursoException ex)
+        {
+            return Conflict(new { mensaje = ex.Message, etlEnCurso = true, inicio = ex.Inicio });
+        }
     }
 
     // ── Alcance y errores ─────────────────────────────────────────────────────

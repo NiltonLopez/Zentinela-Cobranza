@@ -334,11 +334,15 @@ la etapa 1). Un lote = un par y una fuente (Funcional).
 | CreadoPor / FechaCreacion | varchar(100) / datetime2(0) | NO | Default `SYSDATETIME()` |
 | EnviadoPor / FechaEnvio, CerradoPor / FechaCierre, AnuladoPor / FechaAnulacion | varchar(100) / datetime2(0) | SI | CHECK `CK_LocalizacionEnvio_Fechas`: cada estado exige su fecha |
 | MotivoAnulacion | nvarchar(300) | SI | |
-| CargueEjecucionID | bigint | SI | FK a `CargueFuenteEjecucion`: el cargue OK que se tomó como retorno |
-| FechaRetorno | datetime2(0) | SI | |
+| CargueEjecucionID | bigint | SI | FK a `CargueFuenteEjecucion`: vínculo explícito con el cargue que devolvió el lote (etapa 4). La etapa 3 no lo escribe: el retorno se calcula al leer (primer cargue OK de la fuente posterior al envío); si viene lleno, manda |
+| FechaRetorno | datetime2(0) | SI | Reservada para la etapa 4 (la etapa 3 la calcula al leer) |
 
 Índices: `IX_LocalizacionEnvio_Par` (LiderID, CarteraID, Fuente, Estado) INCLUDE (FechaEnvio);
 `IX_LocalizacionEnvio_Estado` (Estado, FechaEnvio).
+
+Escrituras (etapa 3, `LocalizacionEnviosService`): INSERT del lote (`BORRADOR`, `Titulares` se fija en la misma
+transacción que el detalle) y UPDATE de estado con concurrencia optimista
+(`WHERE EnvioID = @id AND Estado IN (<origen>)`). Nunca se borran lotes (anular deja la fila).
 
 ### LocalizacionEnvioDetalle
 Titulares de cada lote con la foto de su estado al crearlo (etapa 3). PK (EnvioID, TitularID); FK a
@@ -357,6 +361,10 @@ Titulares de cada lote con la foto de su estado al crearlo (etapa 3). PK (EnvioI
 
 Índice: `IX_LocalizacionEnvioDetalle_Titular` (TitularID) INCLUDE (EnvioID) — "excluir enviados en los
 últimos 60 días".
+
+La foto se toma al CREAR el lote (no al enviarlo): `UltimoEstadoTitular` del titular en la cartera del lote,
+`UltimaConsultaPrevia` = fecha de la última fila del titular en la fuente (la de la sugerencia). El impacto
+compara contra ella (perfil sin contacto → con contacto; promesa distinta de la de la foto).
 
 ### HistoricoVirtualidad
 Histórico consolidado de virtualidad (IVR / SMS / Correo). Una sola tabla con discriminador `Canal`. Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.

@@ -1,6 +1,6 @@
 # ADR-040 — Informes de Localización: precálculo por cortes, mismas cifras que el Calificador
 
-**Estado:** Aceptado (etapas 0, 1 y 2 implementadas; 3 y 4 pendientes)
+**Estado:** Aceptado (etapas 0, 1, 2 y 3 implementadas; 4 pendiente)
 **Fecha:** 2026-09-25
 **Módulo afectado:** Informes → Informes de Localización (nuevo, `/informes/localizacion`). Lee las 21
 fuentes de localización del panel del Calificador, `Titular_Cartera`, `Lider_Cartera`, `Cartera`, `Lider`,
@@ -254,14 +254,103 @@ llenado se lee con `ArchivoTabular.LeerXlsxPorFilas` y `CargueFuentesMotor.Resol
 `1234567890123` leída tal cual y válida para `TryDocumento`. Falta la prueba a mano de punta a punta
 (exportar Fosyga, llenarlo y subirlo en Cargue de Fuentes).
 
-"Crear lote de envío" no aparece en la pestaña (no se muestra un botón deshabilitado): llega con la etapa 3.
+"Crear lote de envío" llegó con la etapa 3 (abajo): un botón por fuente del top.
+
+### Etapa 3 — Envíos a localización, retorno, impacto y uso del departamento
+
+`POST/GET envios`, `GET envios/{id}` (+`/excel`), `POST envios/{id}/enviar|cerrar|anular` y
+`GET uso-departamento` (`LocalizacionEnviosService`, `GeneradorSqlEnvios`; reglas puras en
+`Application/Utils/EnvioLocalizacion.cs`). Pestaña "Envíos" (lista con filtros y `ChipEstadoLote`, detalle
+con retorno, impacto y titulares, acciones con confirmación, Excel, enlace "Cargar retorno" a Cargue de
+Fuentes para Admin/Auxiliar de Sistemas y la sección "Uso del departamento" con `AvatarPersona`); en
+Sugerencias, "Crear lote de envío" por fuente. Las tablas son las del script de la etapa 1 (sin cambios):
+si faltan, 503 con el nombre del script.
+
+#### Lotes y estados
+
+- Un lote = un par (líder, cartera) y una fuente **Funcional**; código `LOC-000123` (columna calculada).
+- `BORRADOR` → `ENVIADO` → `CERRADO`; `ANULADO` desde `BORRADOR` o `ENVIADO`. Cada transición guarda usuario
+  (claim `userName`) y fecha (`SYSDATETIME()` de la BD). **Concurrencia optimista**: `UPDATE … WHERE EnvioID = @id
+  AND Estado IN (<origen>) AND (@LiderAlcance IS NULL OR LiderID = @LiderAlcance)`; 0 filas → se relee el estado:
+  no existe o es de otro líder → 404; otro estado → 409 con el estado actual.
+- Admin, Director y Líder pueden crear, enviar, cerrar y anular; el Líder solo sobre su par y sus lotes (un lote
+  ajeno es 404, no 403: no se revela que existe).
+- **El retorno se mide desde el envío**, no desde la creación: un borrador puede esperar días.
+
+#### Crear: el servidor recalcula, no recibe TitularIDs (decisión de seguridad)
+
+El cliente manda **los mismos parámetros de la consulta de sugerencias** que tiene en pantalla más la fuente;
+el servidor vuelve a calcular las sugerencias (`ILocalizacionSugerenciasService`, mismo 409 si corre el ETL de
+gestión) y guarda **las filas de esa fuente del top** (las que se ven y las que baja el Excel). Se descartó
+aceptar una lista de TitularIDs del cliente (ni siquiera como filtro): cualquiera podría meter titulares de
+otro par o saltarse las exclusiones (ya pagó, promesa, enviados recientes). El costo es recalcular (0,5–4 s según
+el par, medido en la etapa 2) y que, si los datos cambiaron entre la consulta y el clic, el lote puede diferir
+un poco de lo que se veía (la respuesta dice cuántos titulares entraron).
+
+El batch de creación: primero, fuera de la transacción, la **foto** de cada titular (`UltimoEstadoTitular` por su
+PK: saldo, perfiles, última gestión, promesa) y la verificación de que pertenece al par con relación activa
+(defensa adicional; los que no, se descartan y se avisa); luego una transacción corta inserta cabecera + detalle
+y fija `Titulares`. `Categoria`, `Prioridad` y `UltimaConsultaPrevia` salen de la fila de la sugerencia. Tope:
+5.000 titulares (`Envios:MaxTitularesLote`). Un lote exige `liderID`: la "cartera completa" no se envía como lote.
+
+#### Retorno
+
+- La vuelta de un lote es el **primer `CargueFuenteEjecucion` OK de su fuente con `FechaFin` posterior a
+  `FechaEnvio`**, sin las corridas del harness (`harness-cargue*`). La elige C# (`RetornoEnvio.ElegirCargue`) y le
+  pasa al SQL el umbral. Si el lote ya tiene `CargueEjecucionID` (vínculo explícito, etapa 4), ese manda.
+- **Buscado tras el envío**: el titular tiene una fila en la fuente con fecha ≥ `SelloFechaConsulta` del cargue (el
+  cargue escribe ese sello en las filas que inserta o refresca). **Sin cargue registrado**: fecha > `FechaEnvio`
+  (para fuentes con fecha `date`, desde el día siguiente). Se evalúa sobre la **última fila** del titular (fecha
+  DESC y, en empate, la que cumple el predicado, como la etapa 1): tener una fila desde el umbral ⇔ la última la
+  tiene. La fecha se compara sin truncar (RUES y Claro guardan hora; el sello de RUES es `datetime`).
+- **Localizado**: buscado y su última fila cumple `PredicadoEncontrado` del catálogo.
+- `% retorno` = buscados / titulares; `% localizados` sobre buscados y sobre titulares; **días al retorno** = del
+  día del envío al fin del cargue, o al primer dato nuevo si no hay cargue; `null` mientras no vuelva nada.
+- Aproximación asumida: no se sabe qué archivo devolvió qué lote. Si dos lotes de la misma fuente esperan, el
+  primer cargue cuenta para los dos; un cargue de otro proveedor también "devuelve" el lote si trae a sus titulares.
+
+#### Impacto (contra la foto del lote)
+
+| Métrica | Regla |
+|---|---|
+| Gestionados después | `UltimoEstadoTitular.FechaUltimaGestion` (titular + cartera del lote) posterior al **día** del envío (es `date`) |
+| Pasaron a contacto | Gestionados cuyo UltimoPerfil actual es "con contacto" y el de la foto no. Con contacto = `PerfilClasificacion.ContactoDirecto` ∪ `Acuerdos` ∪ perfiles con "tercero"/"familiar" (ADR-029), comparación normalizada (`PerfilesContacto`; el SQL recibe las claves como JSON). Ya pagó no cuenta (los pagos van aparte) |
+| Pagos después | `dbo.Pago` por `CedulaTitular` con `FechaPago` posterior al día del envío, **de cualquier cartera**: titulares con pago, pagos, valor y honorarios |
+| Promesas vigentes | `FechaPromesa` actual ≥ hoy y distinta de la de la foto (nueva desde el envío) |
+
+`Pago` no tiene índice por cédula (11 mil filas): se cruza con HASH JOIN. `UltimoEstadoTitular`, por su PK con
+`LOOP JOIN` + `FORCESEEK`, como las sugerencias.
+
+#### Uso del departamento y rankings de Uso y Retorno
+
+- Por líder, lotes ENVIADO/CERRADO con `FechaEnvio` en el período (default 90 días): lotes, borradores, filas
+  enviadas (titular × fuente), buscados, % retorno, localizados, días al retorno promedio, gestionados, pasaron a
+  contacto, titulares con pago y valor. Filas para todos los líderes con relación interna activa, aunque no hayan
+  enviado nada (así se ve quién no usa el departamento). El Líder ve solo la suya.
+- **% de su cola sugerida enviada — aproximación.** Contar los candidatos reales exigiría recalcular las sugerencias
+  de cada par (0,5–4 s cada uno: minutos para todo el departamento). Se usa el último corte: por par y fuente
+  Funcional, **Falta por buscar + min(No encontrados, buscados con dato de más de 180 días)**. Es un techo de los
+  candidatos antes de exclusiones (el corte no separa los no encontrados viejos de los encontrados viejos, ni
+  conoce perfiles, promesas o saldo), así que el % (tope 100) es un piso. Sin corte, "—" con aviso.
+- Rankings: criterios **Uso** (% de la cola enviada) y **Retorno** (% de lo enviado que volvió buscado), con los
+  lotes de los últimos `Envios:DiasVentanaRanking` (90) días, el mismo universo de pares que los demás criterios
+  (por defecto solo internos) y sin variación contra el corte anterior. Sin lotes en la ventana: listas vacías con
+  un aviso. Retorno sin lotes = sin valor (al final); Uso sin lotes = 0 %.
+
+#### Cómo se calcula
+
+Un batch por consulta (`GeneradorSqlEnvios.Metricas`) para los lotes pedidos: `#L` (lote + umbral de C#) →
+`#D` (detalle con la foto) → `#U` (última fila por titular, un bloque por fuente de los lotes pedidos) → `#P`
+(pagos) → `#M` (banderas por titular) → una fila por lote con los conteos; C# arma retorno, impacto y agregados
+(`MetricasEnvio`, `UsoDepartamentoCalculo`). Los nombres de las tablas propias van con prefijo
+(`TablasEnvio.ConPrefijo("dbo." | "#")`): el mismo SQL corrió contra tablas temporales antes de que existieran.
 
 ### Etapas siguientes (plan aprobado)
 
 2. ~~Sugerencias de localización y Excel con el formato del Cargue de Fuentes.~~ Hecha (arriba).
-3. Envíos (`LocalizacionEnvio*`, tablas ya creadas por el script de la etapa 1), retorno, impacto y uso
-   del departamento; criterios de ranking de uso y retorno.
-4. Tendencias, servicio de las 13:05, asesores con foto y alertas semanales.
+3. ~~Envíos, retorno, impacto y uso del departamento; criterios de ranking de uso y retorno.~~ Hecha (arriba).
+4. Tendencias, servicio de las 13:05, asesores con foto, alertas semanales y **vínculo explícito lote ↔ cargue
+   de retorno** (llenar `CargueEjecucionID` / `FechaRetorno`; el cálculo de la etapa 3 ya lo respeta si viene).
 
 ## Lo que no se puede medir hoy
 
@@ -281,6 +370,10 @@ Se dice en la UI ("Qué no se puede medir hoy") y aquí:
   las externas DXS, Serviplata y Retornamos Legal. Ahí "sin contacto con saldo" sería 0 y ganaría el
   ranking; por eso ese porcentaje vale `null` ("—") cuando el universo no tiene ningún titular con saldo,
   y queda al final.
+- **Envíos (etapa 3):** qué archivo devolvió cada lote (el retorno es el primer cargue OK posterior de la
+  fuente); las gestiones y pagos del mismo día del envío (`FechaUltimaGestion` y `FechaPago` son `date`: se
+  cuentan los de días posteriores); si un pago se debe a la localización o habría llegado igual (no hay grupo de
+  control); y la cola sugerida exacta de cada líder (se aproxima con el corte).
 
 ## Discrepancias Calificador vs Cargue de Fuentes (encontradas en la etapa 0)
 
@@ -364,7 +457,32 @@ empates, top + posición del Líder, exclusión de externas, saldo sin datos) y 
 y su precedencia, −100 por contacto fresco, despliegue de máscaras, titulares por motivo, top exacto contra
 fuerza bruta, tramos de tamaño, fuentes solo Funcionales) y `ExcelListaLocalizacionTests` (encabezados =
 columnas esperadas del cargue para las 16 Funcionales, TitularID texto, el lector del cargue acepta el archivo
-lleno).
+lleno). Etapa 3: `EnviosLocalizacionTests` (transiciones válidas e inválidas y su SQL con concurrencia y alcance;
+retorno con cargue antes / después / de otra fuente / del harness / fallido / vinculado y sin cargue; umbral
+inclusivo del sello y estricto de la fecha; impacto y perfiles con contacto; cola aproximada; uso con lotes de dos
+líderes y total; tope del 100 %; validación de la creación; prefijo `#` sin tocar tablas de producción).
+`Zentinela.API.Tests` no compila en la rama (errores previos en `CarterasControllerTests` y `AuthServiceTests`),
+así que el alcance del Líder en el controlador no tiene test automático: se verificó en el servicio (SQL y la
+corrida con `#temp`, abajo).
+
+### Envíos: pruebas contra tablas temporales (2026-09-25)
+
+Las tablas `LocalizacionEnvio*` aún no existían en producción. Se crearon en la sesión `#LocalizacionEnvio`,
+`#LocalizacionEnvioDetalle` (el MISMO DDL del script: columna calculada `Codigo`, CHECK de estado, de fechas y
+de categoría, índices), `#LocalizacionCorte` y `#LocalizacionResumenFuente`, y se ejecutó el servicio real
+(`LocalizacionEnviosService` con `TablasEnvio.ConPrefijo("#")` y la conexión de esa sesión) contra los datos
+reales, solo leyendo tablas `dbo`. Cada número se comparó con una consulta independiente:
+
+| Prueba | Resultado |
+|---|---|
+| Crear desde sugerencias reales (Líder 3 / BERTAL, Fosyga, top 200) | `LOC-000001` BORRADOR, 200 titulares (198 NUNCA_BUSCADO, 2 NO_ENC_VIEJO), 6,8 s con el recálculo. Foto vs `UltimoEstadoTitular`: 0 diferencias; titulares fuera del par: 0; "nunca buscado" con fila en Fosyga: 0; `UltimaConsultaPrevia` ≠ MAX(fecha) en Fosyga: 0 |
+| Transiciones | cerrar un BORRADOR → 409; enviar como Líder 14 (lote del Líder 3) → 404; enviar como Líder 3 → ENVIADO; enviar otra vez → 409; cerrar → CERRADO; anular un CERRADO → 409; lote inexistente → 404; anular BORRADOR y ENVIADO → ANULADO con usuario, fecha y motivo; enviar / cerrar un ANULADO → 409. El Líder 14 no ve el lote (404) y su lista sale vacía |
+| Titulares ajenos | Un lote con 1 titular de otro par entra sin él (aviso "1 titulares ya no pertenecen al par"); uno solo con ajenos no se crea (400) |
+| Retorno con cargue (BERTAL, Fosyga, 300 titulares: 200 con fila del cargue 509 y 100 sin ninguna fila; envío simulado el 2026-09-20 10:00) | Cargue 509 (fin 2026-09-24 15:38, sello 2026-09-24), buscados 200 (66,67 %), localizados 171 (85,5 % de los buscados), 4 días. Independiente (MAX fecha ≥ sello y última fila con EPS/Régimen/Tipo afiliado): 200 y 171 |
+| Retorno sin cargue e impacto (Líder 15 / ALIARCOM, Sura —sin cargues registrados—, 400 titulares, envío simulado el 2026-06-01) | Base FECHA, buscados 0 (Sura no tiene datos posteriores); gestionados 15, titulares con pago 400, pagos 686, valor 70.991.604, honorarios 1.916.773,46, promesas nuevas 0. Independiente: los mismos números |
+| Pasaron a contacto | Con la foto de todos puesta en "Ilocalizado": 5 = los gestionados después con perfil actual Acuerdo de pago Total (3), No hubo acuerdo (1) y Contacto con tercero (1); "Informativo Chat" y "No contesta" no cuentan |
+| Uso del departamento (lotes de los Líderes 3 y 15, cola sintética en `#LocalizacionResumenFuente`) | Líder 3: 2 lotes (el anulado no cuenta), 500 enviados, cola 1.300 (Fosyga 400 + min(100, 300); Sura 100 + min(800, 700); Cámara, Intermitente, fuera), 38,46 %, 200 buscados, 171 localizados, 4 días. Líder 15: cola 155, 400 enviados → 100 % (tope). Como Líder 3: solo su fila |
+| Rendimiento (servidor compartido, desde el equipo de desarrollo) | Crear un lote de 5.000: 0,8–0,9 s. Detalle de un lote de 5.000 con retorno e impacto: 1,6–1,8 s (3 corridas). Uso del departamento con 4 lotes (5.900 filas): 2,3 s. Detalle de un lote de 300–400: 1,1–1,2 s |
 
 ## Consecuencias
 
@@ -374,3 +492,6 @@ lleno).
   Gestión al …"); un cargue OK dispara un corte nuevo en segundo plano (~1 min).
 - Agregar una fuente al catálogo la suma al precálculo, a la cobertura y a la frescura sin tocar SQL. Si
   aporta celular o email, hay que declarar su `PredicadoContacto` **y** revisar `SinContacto` del Calificador.
+- Los envíos quedan registrados desde este módulo; los anteriores no existen para los informes. El retorno de
+  un lote se recalcula en cada lectura: las filas que lleguen después a la fuente cambian sus cifras (la etapa 4
+  guardará el vínculo explícito con el cargue).

@@ -2,8 +2,11 @@ using Zentinela.Application.Settings;
 
 namespace Zentinela.Application.Utils;
 
-/// <summary>Criterio de los rankings de localización (ADR-040). En la etapa 3 se suman Uso y Retorno.</summary>
-public enum CriterioRankingLocalizacion { Indice, Contacto, Cobertura, Frescura, SinContactoSaldo }
+/// <summary>
+/// Criterio de los rankings de localización (ADR-040). Uso y Retorno (etapa 3) no salen del corte sino de los
+/// lotes de envío (<see cref="UsoDepartamentoCalculo"/>): % de la cola sugerida enviada y % de retorno.
+/// </summary>
+public enum CriterioRankingLocalizacion { Indice, Contacto, Cobertura, Frescura, SinContactoSaldo, Uso, Retorno }
 
 /// <summary>
 /// Métricas que cruzan fuentes para un universo de titulares (un par, una cartera, un líder o toda
@@ -88,6 +91,19 @@ public static class CalculoLocalizacion
             CriterioRankingLocalizacion.SinContactoSaldo => PctSinContactoConSaldo(m),
             _ => null,
         };
+
+    /// <summary>Uso y Retorno se calculan con los lotes de envío, no con el corte.</summary>
+    public static bool EsDeEnvios(CriterioRankingLocalizacion c) =>
+        c is CriterioRankingLocalizacion.Uso or CriterioRankingLocalizacion.Retorno;
+
+    /// <summary>
+    /// Valor de Uso (% de la cola sugerida enviada) o Retorno (% de lo enviado que volvió buscado) de un grupo de
+    /// lotes. Sin lotes, Retorno es null (va al final) y Uso es 0 si hay cola (no usó el departamento).
+    /// </summary>
+    public static decimal? ValorEnvios(UsoAgregado u, CriterioRankingLocalizacion c) =>
+        c == CriterioRankingLocalizacion.Uso
+            ? u.PctColaEnviada
+            : u.Lotes == 0 ? null : u.PctRetorno;
 
     public static bool TryParseCriterio(string? texto, out CriterioRankingLocalizacion criterio)
     {

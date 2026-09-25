@@ -12,9 +12,10 @@ import { TabCobertura } from './localizacion/TabCobertura';
 import { TabFrescura } from './localizacion/TabFrescura';
 import { TabRankings } from './localizacion/TabRankings';
 import { TabSugerencias } from './localizacion/TabSugerencias';
+import { TabEnvios } from './localizacion/TabEnvios';
 import { fmtFechaHora, type Alcance } from './localizacion/compartidos';
 
-type Tab = 'resumen' | 'cobertura' | 'frescura' | 'rankings' | 'sugerencias';
+type Tab = 'resumen' | 'cobertura' | 'frescura' | 'rankings' | 'sugerencias' | 'envios';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen',   label: 'Resumen' },
@@ -22,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'frescura',  label: 'Frescura' },
   { id: 'rankings',  label: 'Rankings' },
   { id: 'sugerencias', label: 'Sugerencias' },
+  { id: 'envios',      label: 'Envíos' },
 ];
 
 const MOTIVO: Record<string, string> = {
@@ -46,6 +48,8 @@ export function InformesLocalizacionPage() {
   // Alcance compartido por Resumen, Cobertura y Frescura (para el Líder, fijo a su liderID).
   const [alcance, setAlcance] = useState<Alcance>({ liderID: liderPropio, carteraID: 0 });
   const [descargando, setDescargando] = useState(false);
+  // Lote recién creado desde Sugerencias: la pestaña Envíos lo abre.
+  const [loteAbierto, setLoteAbierto] = useState<number | null>(null);
   const [modalCols, setModalCols] = useState<PdfExportDescriptor | null>(null);
   const downloadFnRef = useRef<DownloadFactory | null>(null);
 
@@ -86,8 +90,8 @@ export function InformesLocalizacionPage() {
 
   const problema = estado.isError ? problemaLocalizacion(estado.error) : null;
   const e = estado.data;
-  // Las Sugerencias no dependen del corte: su PDF se puede bajar aunque no haya precálculo.
-  const sinDescarga = !e?.ultimoOk && tabActiva !== 'sugerencias';
+  // Sugerencias y Envíos no dependen del corte: su PDF se puede bajar aunque no haya precálculo.
+  const sinDescarga = !e?.ultimoOk && tabActiva !== 'sugerencias' && tabActiva !== 'envios';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1300, margin: '0 auto' }}>
@@ -99,7 +103,7 @@ export function InformesLocalizacionPage() {
             Informes de Localización
           </h1>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
-            Cobertura, frescura y rankings de localización por líder y cartera
+            Cobertura, frescura, rankings, sugerencias y envíos a localización por líder y cartera
           </p>
         </div>
 
@@ -204,7 +208,11 @@ export function InformesLocalizacionPage() {
 
           {/* Contenido */}
           {tabActiva === 'sugerencias' ? (
-            <TabSugerencias alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />
+            <TabSugerencias alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload}
+              onLoteCreado={id => { setLoteAbierto(id); setTabActiva('envios'); }} />
+          ) : tabActiva === 'envios' ? (
+            // Los envíos no dependen del corte: leen LocalizacionEnvio* (su propio aviso si faltan las tablas).
+            <TabEnvios alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} loteInicial={loteAbierto} />
           ) : problema?.tipo === 'sin-tablas' ? (
             <AvisoEstado color="#dc2626" titulo="El módulo todavía no está instalado en la base de datos">
               {problema.mensaje || 'Falta aplicar docs/sql/migrations/2026-09-26_informes_localizacion.sql.'}

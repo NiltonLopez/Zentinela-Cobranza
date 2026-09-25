@@ -49,6 +49,27 @@ public class InformesLocalizacionSettings
 
     /// <summary>Pesos del puntaje y límites de las sugerencias (subsección "Sugerencias").</summary>
     public SugerenciasLocalizacionSettings Sugerencias { get; set; } = new();
+
+    // ── Envíos a localización (etapa 3) ──────────────────────────────────────
+
+    /// <summary>Límites de los lotes y ventanas del uso del departamento (subsección "Envios").</summary>
+    public EnviosLocalizacionSettings Envios { get; set; } = new();
+}
+
+/// <summary>Envíos a localización (ADR-040, etapa 3).</summary>
+public class EnviosLocalizacionSettings
+{
+    /// <summary>Tope de titulares por lote (el mismo del top de sugerencias).</summary>
+    public int MaxTitularesLote { get; set; } = 5000;
+
+    /// <summary>Lotes que devuelve la lista, los más recientes primero.</summary>
+    public int MaxLotesLista { get; set; } = 300;
+
+    /// <summary>Filas por página del detalle de un lote (tope).</summary>
+    public int MaxTamPaginaDetalle { get; set; } = 500;
+
+    /// <summary>Los rankings de Uso y Retorno miran los lotes enviados en estos últimos días.</summary>
+    public int DiasVentanaRanking { get; set; } = 90;
 }
 
 /// <summary>

@@ -143,7 +143,19 @@ export interface FrescuraLocalizacion {
   fuentes: FilaFrescura[];
 }
 
-export type CriterioRanking = 'Indice' | 'Contacto' | 'Cobertura' | 'Frescura' | 'SinContactoSaldo';
+export type CriterioRanking = 'Indice' | 'Contacto' | 'Cobertura' | 'Frescura' | 'SinContactoSaldo' | 'Uso' | 'Retorno';
+
+/** Criterios Uso y Retorno (etapa 3): lo enviado a localización en la ventana. */
+export interface EnviosRanking {
+  lotes: number;
+  /** Filas enviadas (titular × fuente). */
+  enviados: number;
+  cola: number | null;
+  pctColaEnviada: number | null;
+  buscados: number;
+  pctRetorno: number | null;
+  localizados: number;
+}
 
 export interface FilaRankingLider {
   posicion: number;
@@ -162,6 +174,8 @@ export interface FilaRankingLider {
   sinContactoConSaldo: number;
   saldoSinContacto: number;
   esPropio: boolean;
+  /** Solo con los criterios Uso y Retorno. */
+  envios: EnviosRanking | null;
 }
 
 export interface FilaRankingCartera {
@@ -179,6 +193,7 @@ export interface FilaRankingCartera {
   pctFrescura: number | null;
   sinContactoConSaldo: number;
   saldoSinContacto: number;
+  envios: EnviosRanking | null;
 }
 
 export interface RankingsLocalizacion {
@@ -194,6 +209,10 @@ export interface RankingsLocalizacion {
   carteras: FilaRankingCartera[];
   /** true para el Líder: son sus pares, no carteras completas. */
   carterasSonPropias: boolean;
+  /** Uso y Retorno: días de la ventana de lotes. */
+  ventanaDias: number | null;
+  /** P. ej. "todavía no hay lotes enviados" (las listas vienen vacías). */
+  aviso: string | null;
 }
 
 // ── Sugerencias (etapa 2) ─────────────────────────────────────────────────────
@@ -307,4 +326,151 @@ export interface SugerenciasLocalizacion {
   filas: FilaSugerencia[];
   hayMas: boolean;
   duracionMs: number;
+}
+
+// ── Envíos a localización (etapa 3) ───────────────────────────────────────────
+
+export type EstadoLote = 'BORRADOR' | 'ENVIADO' | 'CERRADO' | 'ANULADO';
+
+export type AccionLote = 'enviar' | 'cerrar' | 'anular';
+
+/** POST envios: los mismos parámetros de la consulta de sugerencias + la fuente del lote. */
+export interface CrearEnvio extends ParametrosSugerencias {
+  fuente: string;
+  observacion?: string | null;
+}
+
+export interface EnvioCreado {
+  envioID: number;
+  /** LOC-000123. */
+  codigo: string;
+  titulares: number;
+  avisos: string[];
+}
+
+export interface RetornoEnvio {
+  /** CARGUE = hay un cargue OK de la fuente después del envío; FECHA = no, se cuenta todo dato posterior al envío. */
+  base: 'CARGUE' | 'FECHA';
+  cargueEjecucionID: number | null;
+  fechaCargue: string | null;
+  buscadosDesde: string;
+  buscados: number;
+  pctRetorno: number | null;
+  localizados: number;
+  pctLocalizadosBuscados: number | null;
+  pctLocalizados: number | null;
+  /** null = todavía no volvió nada. */
+  fechaRetorno: string | null;
+  diasRetorno: number | null;
+}
+
+export interface ImpactoEnvio {
+  gestionados: number;
+  pctGestionados: number | null;
+  pasaronAContacto: number;
+  titularesConPago: number;
+  pagos: number;
+  valorPagado: number;
+  honorarios: number;
+  promesasVigentes: number;
+}
+
+export interface EnvioLocalizacion {
+  envioID: number;
+  codigo: string;
+  liderID: number;
+  lider: string;
+  documentoLider: number | null;
+  carteraID: number;
+  cartera: string;
+  fuente: string;
+  etiquetaFuente: string;
+  estado: EstadoLote;
+  titulares: number;
+  parametros: string | null;
+  observacion: string | null;
+  creadoPor: string;
+  fechaCreacion: string;
+  enviadoPor: string | null;
+  fechaEnvio: string | null;
+  cerradoPor: string | null;
+  fechaCierre: string | null;
+  anuladoPor: string | null;
+  fechaAnulacion: string | null;
+  motivoAnulacion: string | null;
+  retorno: RetornoEnvio | null;
+  impacto: ImpactoEnvio | null;
+}
+
+export interface FilaDetalleEnvio {
+  titularID: number;
+  nombre: string | null;
+  categoria: CategoriaSugerencia;
+  prioridad: number;
+  ultimaConsultaPrevia: string | null;
+  saldoFoto: number | null;
+  perfilFoto: string | null;
+  gestionFoto: string | null;
+  buscado: boolean;
+  localizado: boolean;
+  fechaDato: string | null;
+  perfilActual: string | null;
+  gestionActual: string | null;
+  gestionado: boolean;
+  pasoAContacto: boolean;
+  valorPagado: number;
+  promesaVigente: string | null;
+}
+
+export interface DetalleEnvioLocalizacion {
+  envio: EnvioLocalizacion;
+  filas: FilaDetalleEnvio[];
+  pagina: number;
+  tamPagina: number;
+  totalFilas: number;
+}
+
+export interface FiltroEnvios {
+  liderID?: number;
+  carteraID?: number;
+  fuente?: string;
+  estado?: EstadoLote;
+}
+
+export interface ListaEnviosLocalizacion {
+  envios: EnvioLocalizacion[];
+  recortado: boolean;
+}
+
+export interface FilaUsoLider {
+  /** 0 en la fila de total. */
+  liderID: number;
+  nombre: string;
+  documento: number | null;
+  lotes: number;
+  borradores: number;
+  enviados: number;
+  cola: number | null;
+  pctColaEnviada: number | null;
+  buscados: number;
+  pctRetorno: number | null;
+  localizados: number;
+  pctLocalizados: number | null;
+  gestionados: number;
+  pasaronAContacto: number;
+  titularesConPago: number;
+  valorPagado: number;
+  honorarios: number;
+  promesasVigentes: number;
+  lotesConRetorno: number;
+  diasRetornoPromedio: number | null;
+}
+
+export interface UsoDepartamento {
+  desde: string;
+  hasta: string;
+  corteCola: string | null;
+  lideres: FilaUsoLider[];
+  total: FilaUsoLider;
+  avisos: string[];
 }

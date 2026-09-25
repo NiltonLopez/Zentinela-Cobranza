@@ -36,6 +36,12 @@ backlog: los items se cierran o se descartan con razón explícita.
   deja 0 candidatos: la pantalla avisa y hay que desmarcarlo. Mientras corre el ETL de gestión responden
   409. **Pendiente la prueba a mano:** exportar el Excel de Fosyga, llenarlo y subirlo en Cargue de Fuentes
   (los tests ya pasan el archivo por el lector de columnas del cargue).
+- **Envíos (etapa 3) sí necesitan el script** (`LocalizacionEnvio*`; sin él, la pestaña Envíos y los rankings de
+  Uso y Retorno avisan que falta). El script no cambió con la etapa 3. Probado solo contra tablas `#temp` (ADR-040
+  → "Envíos: pruebas contra tablas temporales"). **Pendiente la prueba a mano:** crear un lote desde Sugerencias,
+  enviarlo, subir el retorno en Cargue de Fuentes y ver retorno e impacto; con un Líder, confirmar que no ve lotes
+  de otros. El retorno es el **primer cargue OK de la fuente después del envío**: si se suben archivos de la
+  misma fuente que no son la respuesta del lote, cuentan igual (el vínculo explícito llega en la etapa 4).
 - **Sugerencias y `UltimoEstadoTitular`:** el batch busca por la PK con `INDEX(1), FORCESEEK`. Si algún día
   cambia la PK de la tabla, revisar `GeneradorSqlSugerencias` (sin la sugerencia, con estadísticas viejas, un
   par mediano tardó 63 s).

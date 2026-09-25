@@ -140,7 +140,7 @@ public class RankingCalculoTests
     }
 
     [Theory]
-    [InlineData("uso")]
+    [InlineData("costo")]   // "uso" y "retorno" existen desde la etapa 3
     [InlineData("99")]
     public void Criterio_desconocido_se_rechaza(string texto) =>
         Assert.False(CalculoLocalizacion.TryParseCriterio(texto, out _));

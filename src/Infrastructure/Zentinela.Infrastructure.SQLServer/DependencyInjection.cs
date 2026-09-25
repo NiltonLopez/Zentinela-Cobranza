@@ -142,6 +142,8 @@ public static class DependencyInjection
         services.AddScoped<IInformesLocalizacionService, InformesLocalizacionService>();
         // Sugerencias (etapa 2): en línea sobre el par, no dependen del precálculo.
         services.AddScoped<ILocalizacionSugerenciasService, LocalizacionSugerenciasService>();
+        // Envíos (etapa 3): lotes, retorno, impacto y uso del departamento.
+        services.AddScoped<ILocalizacionEnviosService, LocalizacionEnviosService>();
 
         return services;
     }

@@ -1,16 +1,24 @@
 import axios from 'axios';
 import api from './authApi';
 import type {
+  AccionLote,
   AgruparCobertura,
   CoberturaLocalizacion,
+  CrearEnvio,
   CriterioRanking,
+  DetalleEnvioLocalizacion,
+  EnvioCreado,
+  EnvioLocalizacion,
   EstadoLocalizacion,
+  FiltroEnvios,
   FrescuraLocalizacion,
+  ListaEnviosLocalizacion,
   ParametrosSugerencias,
   RankingsLocalizacion,
   ResumenLocalizacion,
   SugerenciasLocalizacion,
   UmbralFrescura,
+  UsoDepartamento,
 } from '../types/informesLocalizacion';
 
 // Informes de Localización (ADR-040). Todo lee el último corte del precálculo. El servidor fija el
@@ -134,5 +142,76 @@ export async function problemaSugerencias(error: unknown): Promise<{ etl: boolea
   return {
     etl: error.response?.status === 409 && !!c?.etlEnCurso,
     mensaje: c?.mensaje || 'No se pudieron calcular las sugerencias.',
+  };
+}
+
+// ── Envíos a localización (etapa 3) ───────────────────────────────────────────
+// 503 = falta el script de las tablas; 404 = el lote no existe o es de otro líder; 409 = otro usuario ya
+// cambió el estado del lote (o, al crear, corre el ETL de gestión); 400 = parámetros.
+
+/** Crea un lote BORRADOR: el servidor recalcula las sugerencias con estos parámetros y toma las filas de la fuente. */
+export const crearEnvioLocalizacion = async (p: CrearEnvio): Promise<EnvioCreado> => {
+  const { data } = await api.post<EnvioCreado>(`${BASE}/envios`, {
+    ...p,
+    liderID: p.liderID || null,
+  }, { timeout: 320_000 });
+  return data;
+};
+
+export const listarEnviosLocalizacion = async (f: FiltroEnvios): Promise<ListaEnviosLocalizacion> => {
+  const { data } = await api.get<ListaEnviosLocalizacion>(`${BASE}/envios`, {
+    params: {
+      ...(f.liderID ? { liderID: f.liderID } : {}),
+      ...(f.carteraID ? { carteraID: f.carteraID } : {}),
+      ...(f.fuente ? { fuente: f.fuente } : {}),
+      ...(f.estado ? { estado: f.estado } : {}),
+    },
+    timeout: 120_000,
+  });
+  return data;
+};
+
+export const obtenerEnvioLocalizacion = async (id: number, pagina: number, tam: number): Promise<DetalleEnvioLocalizacion> => {
+  const { data } = await api.get<DetalleEnvioLocalizacion>(`${BASE}/envios/${id}`, { params: { pagina, tam }, timeout: 120_000 });
+  return data;
+};
+
+export const cambiarEstadoEnvio = async (id: number, accion: AccionLote, motivo?: string): Promise<EnvioLocalizacion> => {
+  const { data } = await api.post<EnvioLocalizacion>(`${BASE}/envios/${id}/${accion}`,
+    accion === 'anular' ? { motivo: motivo?.trim() || null } : undefined);
+  return data;
+};
+
+export const descargarEnvioExcel = async (id: number): Promise<Blob> => {
+  const res = await api.get(`${BASE}/envios/${id}/excel`, { responseType: 'blob', timeout: 120_000 });
+  return res.data as Blob;
+};
+
+export const obtenerUsoDepartamento = async (desde: string, hasta: string, liderID?: number): Promise<UsoDepartamento> => {
+  const { data } = await api.get<UsoDepartamento>(`${BASE}/uso-departamento`, {
+    params: { desde, hasta, ...(liderID ? { liderID } : {}) },
+    timeout: 120_000,
+  });
+  return data;
+};
+
+/**
+ * Mensaje de un error de envíos (con responseType 'blob' el cuerpo llega como Blob). sinTablas = 503 (falta el
+ * script); conflicto = 409 (el lote cambió de estado, o corre el ETL al crear).
+ */
+export async function problemaEnvios(error: unknown): Promise<{ sinTablas: boolean; conflicto: boolean; mensaje: string }> {
+  if (!axios.isAxiosError(error)) return { sinTablas: false, conflicto: false, mensaje: 'Ocurrió un error inesperado.' };
+  let cuerpo: unknown = error.response?.data;
+  if (cuerpo instanceof Blob) {
+    try { cuerpo = JSON.parse(await cuerpo.text()); } catch { cuerpo = undefined; }
+  }
+  const mensaje = (cuerpo as { mensaje?: string } | undefined)?.mensaje;
+  const status = error.response?.status;
+  if (status === 403) return { sinTablas: false, conflicto: false, mensaje: 'No tienes acceso a ese par líder–cartera.' };
+  if (error.code === 'ECONNABORTED') return { sinTablas: false, conflicto: false, mensaje: 'La consulta tardó demasiado. Vuelve a intentarlo.' };
+  return {
+    sinTablas: status === 503,
+    conflicto: status === 409,
+    mensaje: mensaje || (status === 404 ? 'No existe el lote o no tienes acceso a él.' : 'No se pudo completar la operación.'),
   };
 }

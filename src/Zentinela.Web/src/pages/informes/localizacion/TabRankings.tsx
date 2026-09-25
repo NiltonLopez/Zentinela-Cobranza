@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { obtenerRankingsLocalizacion, problemaLocalizacion } from '../../../api/informesLocalizacionApi';
-import type { CriterioRanking, FilaRankingLider, RankingsLocalizacion } from '../../../types/informesLocalizacion';
+import type { CriterioRanking, EnviosRanking, FilaRankingLider, RankingsLocalizacion } from '../../../types/informesLocalizacion';
 import { useAlcanceLider } from '../../../hooks/useAlcanceLider';
 import { AvatarPersona } from '../../../components/AvatarPersona';
 import {
@@ -18,9 +18,20 @@ const CRITERIOS: { value: CriterioRanking; label: string }[] = [
   { value: 'Cobertura',        label: '% Cobertura' },
   { value: 'Frescura',         label: '% Frescura' },
   { value: 'SinContactoSaldo', label: 'Sin contacto con saldo' },
+  { value: 'Uso',              label: 'Uso del departamento' },
+  { value: 'Retorno',          label: 'Retorno' },
 ];
 
 const etiquetaCriterio = (c: CriterioRanking) => CRITERIOS.find(x => x.value === c)?.label ?? c;
+
+/** Uso y Retorno salen de los lotes de envío (etapa 3), no del corte. */
+const esDeEnvios = (c: CriterioRanking) => c === 'Uso' || c === 'Retorno';
+
+/** Lo que muestra el podio debajo del nombre. */
+const detalleEnvios = (c: CriterioRanking, e: EnviosRanking | null) =>
+  !e ? '' : c === 'Uso'
+    ? `${fmtNum(e.lotes)} lotes · ${fmtNum(e.enviados)} enviados`
+    : `${fmtNum(e.buscados)} de ${fmtNum(e.enviados)} buscados`;
 
 /** Valor del criterio como se muestra: el índice sin %, el resto como porcentaje. */
 const fmtValor = (c: CriterioRanking, v: number | null) =>
@@ -100,11 +111,29 @@ export function TabRankings({ onRegisterDownload }: { onRegisterDownload?: Downl
   }
 
   const c = data.criterio;
-  const detalle = (l: FilaRankingLider) => `${fmtNum(l.total)} titulares`;
+  const envios = esDeEnvios(c);
+  const detalle = (l: FilaRankingLider) => (envios ? detalleEnvios(c, l.envios) : `${fmtNum(l.total)} titulares`);
+  const celdaEnvios = (e: EnviosRanking | null) => (!e ? '—' : c === 'Uso'
+    ? `${fmtNum(e.lotes)} · ${fmtNum(e.enviados)}`
+    : `${fmtNum(e.buscados)} / ${fmtNum(e.enviados)} · ${fmtNum(e.localizados)} loc.`);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {controles}
+
+      {data.aviso && (
+        <div style={{ fontSize: 12, color: '#92400e', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, padding: '10px 14px', lineHeight: 1.5 }}>
+          {data.aviso}
+        </div>
+      )}
+
+      {envios && (
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--z-text-muted)', lineHeight: 1.5 }}>
+          {c === 'Uso'
+            ? 'Uso del departamento = filas enviadas a localización / cola sugerida aproximada del último corte (falta por buscar + no encontrados viejos en fuentes Funcionales, antes de exclusiones). Es un piso; tope 100 %.'
+            : 'Retorno = titulares enviados que volvieron buscados (dato nuevo en la fuente desde el cargue de retorno) / titulares enviados. Sin lotes no hay valor.'}
+        </p>
+      )}
 
       {esLider && data.miPosicion != null && (
         <div style={{
@@ -124,7 +153,9 @@ export function TabRankings({ onRegisterDownload }: { onRegisterDownload?: Downl
 
       <Tarjeta titulo={data.recortado ? `Líderes — los primeros y tu posición (de ${data.totalLideres})` : `Líderes (${data.totalLideres})`}
         derecha={<span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>
-          Variación contra {data.corteAnterior ? `el corte del ${fmtFecha(data.corteAnterior.fechaCorte)}` : '— (aún no hay un corte de un día anterior)'}
+          {envios
+            ? `Lotes enviados en los últimos ${data.ventanaDias ?? 90} días`
+            : <>Variación contra {data.corteAnterior ? `el corte del ${fmtFecha(data.corteAnterior.fechaCorte)}` : '— (aún no hay un corte de un día anterior)'}</>}
         </span>}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -133,7 +164,7 @@ export function TabRankings({ onRegisterDownload }: { onRegisterDownload?: Downl
                 <th style={{ ...TH, textAlign: 'center', width: 48 }}>#</th>
                 <th style={{ ...TH, textAlign: 'left' }}>Líder</th>
                 <th style={{ ...TH, textAlign: 'right' }}>{etiquetaCriterio(c)}</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Variación</th>
+                <th style={{ ...TH, textAlign: 'center' }}>{envios ? (c === 'Uso' ? 'Lotes · enviados' : 'Buscados / enviados') : 'Variación'}</th>
                 <th style={{ ...TH, textAlign: 'right' }}>Titulares</th>
                 <th style={{ ...TH, textAlign: 'right' }}>Índice</th>
                 <th style={{ ...TH, textAlign: 'right' }}>% Contacto</th>
@@ -160,7 +191,7 @@ export function TabRankings({ onRegisterDownload }: { onRegisterDownload?: Downl
                         </span>
                       </td>
                       <td style={{ ...TD, ...TD_NUM, fontWeight: 700, color: c === 'Indice' ? colorNivel(l.valor) : 'var(--z-text-primary)' }}>{fmtValor(c, l.valor)}</td>
-                      <td style={{ ...TD, textAlign: 'center' }}><Delta valor={l.delta} menorEsMejor={data.menorEsMejor} /></td>
+                      <td style={{ ...TD, textAlign: 'center' }}>{envios ? celdaEnvios(l.envios) : <Delta valor={l.delta} menorEsMejor={data.menorEsMejor} />}</td>
                       <td style={{ ...TD, ...TD_NUM }}>{fmtNum(l.total)}</td>
                       <td style={{ ...TD, ...TD_NUM, color: colorNivel(l.indice) }}>{l.indice?.toFixed(1) ?? '—'}</td>
                       <td style={{ ...TD, ...TD_NUM }}>{fmtPct(l.pctContacto)}</td>
@@ -191,7 +222,7 @@ export function TabRankings({ onRegisterDownload }: { onRegisterDownload?: Downl
                 <th style={{ ...TH, textAlign: 'left' }}>Cartera</th>
                 {!data.carterasSonPropias && <th style={{ ...TH, textAlign: 'center' }}>Líderes</th>}
                 <th style={{ ...TH, textAlign: 'right' }}>{etiquetaCriterio(c)}</th>
-                <th style={{ ...TH, textAlign: 'center' }}>Variación</th>
+                <th style={{ ...TH, textAlign: 'center' }}>{envios ? (c === 'Uso' ? 'Lotes · enviados' : 'Buscados / enviados') : 'Variación'}</th>
                 <th style={{ ...TH, textAlign: 'right' }}>Titulares</th>
                 <th style={{ ...TH, textAlign: 'right' }}>Índice</th>
                 <th style={{ ...TH, textAlign: 'right' }}>% Contacto</th>
@@ -209,7 +240,7 @@ export function TabRankings({ onRegisterDownload }: { onRegisterDownload?: Downl
                   <td style={{ ...TD, fontWeight: 500, color: 'var(--z-text-primary)' }}>{k.nombre}</td>
                   {!data.carterasSonPropias && <td style={{ ...TD, textAlign: 'center', color: 'var(--z-text-muted)' }}>{k.lideres}</td>}
                   <td style={{ ...TD, ...TD_NUM, fontWeight: 700, color: c === 'Indice' ? colorNivel(k.valor) : 'var(--z-text-primary)' }}>{fmtValor(c, k.valor)}</td>
-                  <td style={{ ...TD, textAlign: 'center' }}><Delta valor={k.delta} menorEsMejor={data.menorEsMejor} /></td>
+                  <td style={{ ...TD, textAlign: 'center' }}>{envios ? celdaEnvios(k.envios) : <Delta valor={k.delta} menorEsMejor={data.menorEsMejor} />}</td>
                   <td style={{ ...TD, ...TD_NUM }}>{fmtNum(k.total)}</td>
                   <td style={{ ...TD, ...TD_NUM, color: colorNivel(k.indice) }}>{k.indice?.toFixed(1) ?? '—'}</td>
                   <td style={{ ...TD, ...TD_NUM }}>{fmtPct(k.pctContacto)}</td>

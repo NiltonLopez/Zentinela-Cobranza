@@ -38,6 +38,7 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
     private readonly IMemoryCache _cache;
     private readonly ILocalizacionResumenCoordinador _coordinador;
     private readonly IFuentesLocalizacionService _fuentes;
+    private readonly ILocalizacionEnviosService _envios;
     private readonly InformesLocalizacionSettings _opciones;
 
     public InformesLocalizacionService(
@@ -45,12 +46,14 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
         IMemoryCache cache,
         ILocalizacionResumenCoordinador coordinador,
         IFuentesLocalizacionService fuentes,
+        ILocalizacionEnviosService envios,
         IOptions<InformesLocalizacionSettings> opciones)
     {
         _db = db;
         _cache = cache;
         _coordinador = coordinador;
         _fuentes = fuentes;
+        _envios = envios;
         _opciones = opciones.Value;
     }
 
@@ -308,6 +311,8 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
         var esLider = liderPropio is not null;
         if (esLider) incluirExternas = false;   // el interruptor es solo de Admin/Director
         var soloInternas = !incluirExternas;
+        if (CalculoLocalizacion.EsDeEnvios(criterio))
+            return await RankingEnviosAsync(s, criterio, incluirExternas, liderPropio, ct);
         var menorEsMejor = CalculoLocalizacion.MenorEsMejor(criterio);
 
         decimal? Valor(MetricasLocalizacion m) => CalculoLocalizacion.ValorCriterio(m, criterio, _opciones);
@@ -395,6 +400,124 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
             Carteras           = carteras,
             CarterasSonPropias = esLider,
         };
+    }
+
+    /// <summary>
+    /// Rankings de Uso del departamento y Retorno (etapa 3): con los lotes ENVIADO/CERRADO de los últimos
+    /// <see cref="EnviosLocalizacionSettings.DiasVentanaRanking"/> días. Mismo universo que los demás criterios:
+    /// líderes del corte y, por defecto, solo sus pares internos (un lote de un par externo o ya inactivo no
+    /// cuenta). Uso = % de la cola sugerida aproximada del corte que envió; Retorno = % de lo enviado que volvió
+    /// buscado. Sin variación contra el corte anterior (los lotes no tienen corte). Si no hay ningún lote en la
+    /// ventana, las listas vienen vacías con un aviso.
+    /// </summary>
+    private async Task<RankingsLocalizacionDto> RankingEnviosAsync(
+        Snapshot s, CriterioRankingLocalizacion criterio, bool incluirExternas, int? liderPropio, CancellationToken ct)
+    {
+        var esLider = liderPropio is not null;
+        var soloInternas = !incluirExternas;
+        var dias = Math.Max(1, _opciones.Envios.DiasVentanaRanking);
+        var hasta = DateTime.Today;
+        var uso = await _envios.UsoPorParAsync(hasta.AddDays(-dias), hasta, ct);
+
+        var dto = new RankingsLocalizacionDto
+        {
+            Corte              = s.Corte,
+            Criterio           = criterio.ToString(),
+            MenorEsMejor       = false,
+            IncluirExternas    = incluirExternas,
+            CarterasSonPropias = esLider,
+            VentanaDias        = dias,
+        };
+
+        // Universo: los pares del corte (internos, salvo el interruptor).
+        var pares = s.Pares.Where(p => !soloInternas || p.Interna).ToList();
+        var enUniverso = pares.Select(p => (p.LiderID, p.CarteraID)).ToHashSet();
+        var lotes = uso.Lotes.Where(l => enUniverso.Contains((l.LiderID, l.CarteraID))).ToList();
+        var colas = uso.Colas.Where(c => enUniverso.Contains((c.LiderID, c.CarteraID))).ToList();
+
+        if (lotes.Count == 0)
+        {
+            dto.Aviso = $"Todavía no hay lotes enviados a localización en los últimos {dias} días"
+                      + (incluirExternas ? "" : " (sin relaciones externas ni BASE GENERAL)")
+                      + ": el ranking de " + (criterio == CriterioRankingLocalizacion.Uso ? "uso del departamento" : "retorno")
+                      + " aparece cuando se envíe el primero (pestaña Sugerencias → Crear lote de envío).";
+            return dto;
+        }
+        if (uso.CorteCola is null && criterio == CriterioRankingLocalizacion.Uso)
+            dto.Aviso = "No hay corte de localización para estimar la cola sugerida: el % de uso no se puede calcular.";
+
+        UsoAgregado Agregar(Func<int, int, bool> incluye)
+        {
+            var suyos = lotes.Where(l => incluye(l.LiderID, l.CarteraID)).ToList();
+            int? cola = uso.CorteCola is null ? null : colas.Where(c => incluye(c.LiderID, c.CarteraID)).Sum(c => c.Cola);
+            return UsoDepartamentoCalculo.Agregar(suyos, cola);
+        }
+        static EnviosRankingDto Envios(UsoAgregado u) => new()
+        {
+            Lotes = u.Lotes, Enviados = u.Metricas.Titulares, Cola = u.Cola, PctColaEnviada = u.PctColaEnviada,
+            Buscados = u.Metricas.Buscados, PctRetorno = u.PctRetorno, Localizados = u.Metricas.Localizados,
+        };
+
+        // ── Líderes ──
+        var candidatos = s.Lideres
+            .Where(l => l.LiderID != 0 && l.SoloInternas == soloInternas && l.Metricas.Total > 0)
+            .Select(l => (Lider: l, Uso: Agregar((li, _) => li == l.LiderID)))
+            .ToList();
+        var ranking = CalculoLocalizacion.Rankear(candidatos, x => CalculoLocalizacion.ValorEnvios(x.Uso, criterio),
+                                                  x => s.NombreLider(x.Lider.LiderID), menorEsMejor: false);
+
+        IReadOnlyList<FilaRankeada<(FilaLider Lider, UsoAgregado Uso)>> visibles = ranking;
+        if (esLider)
+        {
+            var recorte = CalculoLocalizacion.RecortarParaLider(ranking, x => x.Lider.LiderID == liderPropio, _opciones.TopRankingLider);
+            visibles = recorte.Filas;
+            dto.MiPosicion = recorte.MiPosicion;
+            dto.Recortado = recorte.Recortado;
+        }
+        dto.TotalLideres = ranking.Count;
+        dto.Lideres = visibles.Select(f =>
+        {
+            var m = f.Item.Lider.Metricas;
+            return new FilaRankingLiderDto
+            {
+                Posicion            = f.Posicion,
+                LiderID             = f.Item.Lider.LiderID,
+                Nombre              = s.NombreLider(f.Item.Lider.LiderID),
+                Documento           = s.DocumentoLider(f.Item.Lider.LiderID),
+                Valor               = f.Valor,
+                Total               = m.Total,
+                Indice              = CalculoLocalizacion.Indice(m, _opciones),
+                PctContacto         = CalculoLocalizacion.PctContacto(m),
+                PctCobertura        = CalculoLocalizacion.PctCobertura(m),
+                PctFrescura         = CalculoLocalizacion.PctFrescura(m),
+                SinContactoConSaldo = m.SinContactoConSaldo,
+                SaldoSinContacto    = m.SaldoSinContacto,
+                EsPropio            = f.Item.Lider.LiderID == liderPropio,
+                Envios              = Envios(f.Item.Uso),
+            };
+        }).ToList();
+
+        // ── Carteras: Admin/Director, la cartera (sus pares del universo); el Líder, sus pares ──
+        IEnumerable<(int CarteraID, int? LiderID, int Lideres, MetricasLocalizacion M, UsoAgregado Uso)> grupos = esLider
+            ? pares.Where(p => p.LiderID == liderPropio && p.Metricas.Total > 0)
+                   .Select(p => (p.CarteraID, (int?)p.LiderID, 1, p.Metricas,
+                                 Agregar((li, ca) => li == p.LiderID && ca == p.CarteraID)))
+            : pares.GroupBy(p => p.CarteraID)
+                   .Select(g => (g.Key, (int?)null, g.Count(), MetricasLocalizacion.Sumar(g.Select(p => p.Metricas)),
+                                 Agregar((_, ca) => ca == g.Key)))
+                   .Where(x => x.Item4.Total > 0);
+
+        dto.Carteras = CalculoLocalizacion
+            .Rankear(grupos.ToList(), x => CalculoLocalizacion.ValorEnvios(x.Uso, criterio), x => s.NombreCartera(x.CarteraID), menorEsMejor: false)
+            .Select(f =>
+            {
+                var fila = FilaCartera(f.Posicion, f.Item.CarteraID, s.NombreCartera(f.Item.CarteraID), f.Item.LiderID,
+                                       f.Item.Lideres, f.Valor, null, f.Item.M);
+                fila.Envios = Envios(f.Item.Uso);
+                return fila;
+            })
+            .ToList();
+        return dto;
     }
 
     private FilaRankingCarteraDto FilaCartera(
