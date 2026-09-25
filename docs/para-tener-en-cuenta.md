@@ -7,6 +7,31 @@ backlog: los items se cierran o se descartan con razón explícita.
 
 ---
 
+## PENDIENTE: aplicar el script de Informes de Localización (ADR-040, etapa 1)
+
+- **El usuario debe ejecutar** `docs/sql/migrations/2026-09-26_informes_localizacion.sql` en DBCallCenter
+  (el clasificador bloquea las escrituras de DDL desde los agentes):
+  `sqlcmd -S 10.0.0.89,1433 -U <usuario> -P <clave> -d DBCallCenter -C -b -f 65001 -i docs/sql/migrations/2026-09-26_informes_localizacion.sql`.
+  Idempotente; crea `LocalizacionCorte`, `LocalizacionResumenFuente`, `LocalizacionResumenFuenteLider`,
+  `LocalizacionResumenPar`, `LocalizacionResumenLider` y, ya para la etapa 3, `LocalizacionEnvio` y
+  `LocalizacionEnvioDetalle`. Validado con `SET NOEXEC ON` y creando copias `#temp` de las tablas.
+- **Mientras no se aplique**, `/api/informes/localizacion/*` responde **503** con el nombre del script y la
+  página muestra "El módulo todavía no está instalado". El arranque de la API no falla (solo deja un aviso
+  en el log).
+- **Después de aplicarlo**, el primer corte se calcula solo (~1 min): al arrancar la API (30 s después) o
+  al primer acceso a la página. Luego se recalcula tras cada cargue OK del Cargue de Fuentes, al primer
+  acceso después de las 13:00 y con "Recalcular" (Admin).
+- Una API de desarrollo contra la misma BD también calcula cortes al arrancar; poner
+  `InformesLocalizacion:CalcularAlArrancar = false` en su appsettings si no se quiere. Dos procesos no
+  calculan a la vez (se miran los cortes `EN CURSO`).
+- **Las cifras pueden diferir del Calificador en unos pocos titulares** por par y fuente: los que tienen
+  dos filas con la misma fecha en la fuente. El Calificador elige una al azar; los Informes, la que tiene
+  dato. Medido y explicado en ADR-040.
+- **Carteras sin saldo:** 16 carteras activas no tienen ningún `UltimoEstadoTitular.SaldoTotal > 0` (las Delmar,
+  LATIN, Mil Ambientaria, Interenlace, Prima; o sin filas en UET, como COBRANO y las externas; detalle en
+  ADR-040). "Sin contacto con saldo" sale "—" ahí. Si ese saldo debería existir, revisar el
+  ETL de gestión.
+
 ## Cargue de Fuentes de Datos — lo que hay que saber (2026-09-24, ADR-039)
 
 - **Caché del Calificador.** El cargue llama `ICalificadorCarteraCache.InvalidarTodo()` al terminar OK

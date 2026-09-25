@@ -568,6 +568,153 @@ Caché del servidor: `FotoPersonaCache` (Singleton, `MemoryCache` propio de 64 M
 
 ---
 
+## Informes de Localización — /api/informes/localizacion (ADR-040)
+
+Leen el **último corte OK** del precálculo (`dbo.LocalizacionCorte` + `LocalizacionResumen*`). Las cifras
+son las del Calificador (mismo predicado de "encontrado", misma "última fila", Total = filas de
+`Titular_Cartera`), con desempate determinista en empates de fecha (ver ADR-040).
+
+**Autenticación requerida:** Sí
+**Roles permitidos:** `Admin`, `Líder`, `Director` (en la clase; `recalcular` solo `Admin`)
+
+**Alcance.** Parámetros opcionales `liderID` y `carteraID`. Para el rol **Líder** el `liderID` de la URL
+se ignora y se usa el del token (`TryResolverLiderID`); una `carteraID` que no esté en su `Lider_Cartera`
+activo → `403`. Así un Líder nunca obtiene cifras de cartera completa.
+
+| `liderID` | `carteraID` | Alcance | Universo |
+|---|---|---|---|
+| — | — | `global` | Titulares distintos de todos los pares activos |
+| sí | — | `lider` | Titulares distintos del líder |
+| — | sí | `cartera` | Suma de los pares activos de la cartera (solo Admin/Director) |
+| sí | sí | `par` | Filas de `Titular_Cartera` del par |
+
+**Códigos comunes**
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Datos del corte |
+| `403 Forbidden` | Rol sin acceso; Líder sin `liderID` en el token; cartera que no es del Líder |
+| `409 Conflict` | Aún no hay corte OK: `{ mensaje, calculando, sinCorte: true }` |
+| `503 Service Unavailable` | Faltan las tablas: `{ mensaje, script: "docs/sql/migrations/2026-09-26_informes_localizacion.sql", sinTablas: true }` |
+
+Porcentajes en escala 0–100 con dos decimales; `null` cuando no hay universo.
+
+### GET /api/informes/localizacion/resumen/estado
+
+Metadatos del corte, para el banner ("Localización al `fechaCorte` · Gestión al `datosGestionAl`") y los
+estados de la página. Abierto a los tres roles (no expone cifras). Si el último corte quedó viejo (regla
+de las 13:00) o no hay ninguno, pide uno en segundo plano.
+
+```json
+{
+  "calculando": false,
+  "motivoEnCurso": null,
+  "inicioEnCurso": null,
+  "ultimoOk": {
+    "corteID": 12, "fechaCorte": "2026-09-25T13:02:11", "motivo": "CORTE_13H", "usuario": null,
+    "estado": "OK", "duracionMs": 51279, "pares": 56, "titulares": 1931286,
+    "datosGestionAl": "2026-09-25T09:43:19", "error": null
+  },
+  "ultimoIntento": { "...": "mismo formato; puede ser ERROR" },
+  "vigente": true
+}
+```
+
+`motivo`: `ARRANQUE` (al arrancar o primer corte) · `CORTE_13H` · `CARGUE_FUENTE` · `MANUAL`.
+
+### POST /api/informes/localizacion/resumen/recalcular
+
+Solo `Admin`. Pide un corte nuevo en segundo plano (single-flight: si ya hay uno corriendo, ese lo cubre;
+el botón se deshabilita mientras `calculando`). `202 Accepted` con `{ mensaje }`; `503` si faltan las tablas.
+
+### GET /api/informes/localizacion/resumen?liderID=&carteraID=
+
+KPIs, índice, gráfico por fuente y alertas del alcance.
+
+```json
+{
+  "corte": { "...": "CorteLocalizacionDto" },
+  "alcance": "par",
+  "etiquetaAlcance": "SG+ — VANESA ARANGO",
+  "metricas": {
+    "total": 36197, "conContacto": 27696, "sinContacto": 8501, "conContactoFuncional": 20001,
+    "buscadosAlguna": 36071, "buscadosFuncional": 36066, "nuncaBuscadosFuncional": 131,
+    "frescos180": 36050, "conSaldo": 10696, "sinContactoConSaldo": 3816,
+    "saldoSinContacto": 534193765.00, "saldoTotal": 1544166406.00,
+    "pctContacto": 76.51, "pctCobertura": 99.64, "pctFrescura": 99.59, "pctSinContactoConSaldo": 10.54,
+    "indice": 88.06
+  },
+  "fuentes": [
+    { "clave": "Fosyga", "etiqueta": "Fosyga", "slug": "fosyga", "estado": "Funcional", "grupo": "Afiliacion",
+      "nota": null, "total": 36197, "buscados": 20666, "encontrados": 20350, "noEncontrados": 316,
+      "faltaPorBuscar": 15531, "pctEncontrados": 56.22, "pctNoEncontrados": 0.87, "pctFaltaPorBuscar": 42.91,
+      "ultimaConsultaMax": "2026-09-24", "ultimoCargueOk": "2026-09-24T15:38:04" }
+  ],
+  "alertas": [
+    { "tipo": "POR_BUSCAR", "severidad": "alta", "mensaje": "Fosyga (Funcional): 42,9 % ...", "fuente": "Fosyga",
+      "liderID": null, "carteraID": null }
+  ],
+  "pesos": { "contacto": 0.50, "cobertura": 0.25, "frescura": 0.25 }
+}
+```
+
+- `conContacto` = Total − `SinContacto` del Calificador (celular o email en la última fila de alguna fuente).
+- `pctSinContactoConSaldo` es `null` si el universo no tiene ningún titular con saldo (carteras sin saldo
+  en `UltimoEstadoTitular`: hoy 16 carteras activas, entre ellas las Delmar, LATIN y Mil Ambientaria).
+- Alertas: `POR_BUSCAR` (Funcional con > 30 % sin buscar), `DATO_VIEJO` (último dato > 365 días),
+  `SIN_CONTACTO_SALDO` (par con > 40 % sin contacto y con saldo). Umbrales en `InformesLocalizacion`.
+
+### GET /api/informes/localizacion/cobertura?liderID=&carteraID=&agrupar=par|cartera|lider
+
+Una fila por grupo × fuente: `{ grupo, etiquetaGrupo, liderID, nombreLider, documentoLider, carteraID,
+nombreCartera, esPar, fuente: FuenteResumenDto, pctCobertura, pctExito, pctLocalizacion }`.
+
+| `agrupar` | Filas |
+|---|---|
+| `par` (default) | Cada par del alcance |
+| `cartera` | Suma de los pares por cartera |
+| `lider` | Con `carteraID`: los pares de esa cartera (comparar líderes de una misma cartera). Sin `carteraID`: titulares distintos por líder |
+
+`esPar = true` → la fila admite la descarga por celda del Calificador
+(`GET /api/calificador/{carteraID}/localizacion/{slug}/{categoria}?liderID=`, ADR-019).
+`pctCobertura` = buscados / total · `pctExito` = encontrados / buscados · `pctLocalizacion` = encontrados / total.
+
+### GET /api/informes/localizacion/frescura?liderID=&carteraID=&umbral=90|180|365
+
+Por fuente: `{ clave, etiqueta, estado, total, buscados, hasta90, de91a180, de181a365, mas365, viejos,
+pctViejos, ultimaConsultaMax, ultimoCargueOk }`. `viejos` = buscados cuya última consulta supera el
+umbral (o no tiene fecha); `pctViejos` = viejos / buscados. Otro umbral → `400`.
+
+### GET /api/informes/localizacion/rankings?criterio=Indice&incluirExternas=false
+
+`criterio`: `Indice` (default) · `Contacto` · `Cobertura` · `Frescura` · `SinContactoSaldo` (gana el
+menor). Otro valor → `400`. `incluirExternas` solo aplica a Admin/Director (relaciones externas y "BASE
+GENERAL"); para el Líder siempre es `false`.
+
+```json
+{
+  "corte": { "...": "..." }, "corteAnterior": { "...": "último OK de un día anterior, o null" },
+  "criterio": "Indice", "menorEsMejor": false, "incluirExternas": false,
+  "lideres": [
+    { "posicion": 1, "liderID": 14, "nombre": "VANESA ARANGO", "documento": 43000000, "valor": 88.1,
+      "delta": 0.4, "total": 36197, "indice": 88.06, "pctContacto": 76.51, "pctCobertura": 99.64,
+      "pctFrescura": 99.59, "sinContactoConSaldo": 3816, "saldoSinContacto": 534193765.00, "esPropio": false }
+  ],
+  "totalLideres": 24, "miPosicion": null, "recortado": false,
+  "carteras": [ { "posicion": 1, "carteraID": 28, "nombre": "SG+", "liderID": null, "lideres": 1, "valor": 88.1, "...": "..." } ],
+  "carterasSonPropias": false
+}
+```
+
+- `valor` redondeado a un decimal; empates comparten posición ("1, 2, 2, 4"). `delta` en puntos contra
+  `corteAnterior`.
+- Líderes: titulares distintos; `documento` es la cédula para `GET /api/personas/{documento}/foto`.
+- **Líder:** `lideres` = top 5 (con empates de la 5.ª posición) + su fila (`esPropio: true`), `miPosicion`
+  y `recortado: true`; nunca la lista completa. `carteras` = sus pares, ordenados entre sí
+  (`carterasSonPropias: true`).
+
+---
+
 ## GET /api/creador/columnas
 
 Retorna el catálogo de columnas disponibles en la Base Madre para construir el selector de columnas en el frontend.

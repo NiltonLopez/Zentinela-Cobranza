@@ -253,6 +253,111 @@ runtime. No registra `Titular` ni `Titular_Cartera` (no se revierten).
 De una `D` solo se guarda la fecha: al revertir se reinserta como fila vacía y las columnas que no entran
 al flag vuelven en NULL.
 
+### LocalizacionCorte
+Un precálculo de los *Informes de Localización* (ADR-040). La API inserta la fila `EN CURSO`, corre el
+batch (`GeneradorSqlLocalizacion`, ~51 s para toda la base) y la cierra `OK` o `ERROR`. Los informes leen
+el último `OK`. Script: `docs/sql/migrations/2026-09-26_informes_localizacion.sql` (**pendiente de aplicar
+por el usuario**; mientras falte, `/api/informes/localizacion` responde 503). Excluida de las migraciones
+de EF (ADO.NET). Retención: la API borra los cortes de más de 26 semanas; las filas de resumen se van en
+cascada.
+
+| Columna | Tipo | Nullable | Notas |
+|---------|------|----------|-------|
+| CorteID | int identity | NO | PK clustered |
+| FechaCorte | datetime2(0) | NO | Inicio del cálculo, reloj de la API ("Localización al …") |
+| Motivo | varchar(20) | NO | CHECK `ARRANQUE` \| `CORTE_13H` \| `CARGUE_FUENTE` \| `MANUAL` |
+| Usuario | varchar(100) | SI | Quién lo pidió (`MANUAL`) |
+| Estado | varchar(12) | NO | CHECK `EN CURSO` \| `OK` \| `ERROR`; default `EN CURSO`. Un `EN CURSO` de más de 15 min se cierra `ERROR` ("Interrumpido") en la siguiente corrida |
+| DuracionMs | int | SI | Duración del batch |
+| Pares / Titulares | int | SI | Pares activos con titulares / titulares distintos |
+| DatosGestionAl | datetime2(0) | SI | `vw_EtlEstadoTitularEstado.UltimaCargaOk` al calcular ("Gestión al …") |
+| Error | nvarchar(1000) | SI | Mensaje si `ERROR` |
+
+Índice: `IX_LocalizacionCorte_Estado` (Estado, CorteID DESC) INCLUDE (FechaCorte).
+
+### LocalizacionResumenFuente
+Por corte, par (líder, cartera) y fuente del panel del Calificador (21; CamaraEmpresa no es por titular).
+PK (CorteID, LiderID, CarteraID, Fuente); FK a `LocalizacionCorte` ON DELETE CASCADE.
+
+| Columna | Tipo | Nullable | Notas |
+|---------|------|----------|-------|
+| CorteID, LiderID, CarteraID | int | NO | Par activo (`Lider_Cartera.Activo = 1`, `Cartera.Activa = 1`) |
+| Fuente | varchar(30) | NO | Clave del Cargue de Fuentes (`Fosyga`, `DatosClaro`…) |
+| Total | int | NO | Filas de `Titular_Cartera` del par con titular en `dbo.Titular` (= Calificador) |
+| Buscados | int | NO | Con al menos una fila en la fuente. Falta por buscar = Total − Buscados |
+| Encontrados | int | NO | La última fila (`Fecha DESC, Enc DESC, Con DESC`) cumple el predicado del catálogo. No encontrados = Buscados − Encontrados |
+| Viejos90 / Viejos180 / Viejos365 | int | NO | Buscados cuya última consulta tiene más de N días o no tiene fecha |
+| UltimaConsultaMax | date | SI | Consulta más reciente del par en la fuente |
+
+CHECK `CK_LocalizacionResumenFuente_Conteos`: Buscados ≤ Total, Encontrados ≤ Buscados, Viejos365 ≤ Viejos180 ≤ Viejos90 ≤ Buscados.
+
+### LocalizacionResumenFuenteLider
+Igual que `LocalizacionResumenFuente` pero por líder con titulares **distintos** (un titular en dos
+carteras del líder cuenta una vez). **LiderID 0 = toda la base.** PK (CorteID, LiderID, Fuente); FK con
+cascada; mismo CHECK de conteos.
+
+### LocalizacionResumenPar
+Métricas que cruzan fuentes, por par. PK (CorteID, LiderID, CarteraID); FK con cascada.
+
+| Columna | Tipo | Nullable | Notas |
+|---------|------|----------|-------|
+| Interna | bit | NO | `Lider_Cartera.EsExterna = 0` y ni el líder ni la cartera se llaman "BASE GENERAL" (lo que los rankings incluyen por defecto) |
+| Total | int | NO | Como en `LocalizacionResumenFuente` |
+| ConContacto | int | NO | Celular o email en la última fila de alguna fuente = Total − `SinContacto` del Calificador |
+| ConContactoFuncional | int | NO | Lo mismo, solo en fuentes Funcionales |
+| BuscadosAlguna / BuscadosFuncional | int | NO | Con fila en alguna fuente / en alguna Funcional |
+| Frescos180 | int | NO | Consulta más reciente (cualquier fuente) de 180 días o menos |
+| ConSaldo | int | NO | `UltimoEstadoTitular.SaldoTotal > 0` (por TitularID + CarteraID) |
+| SinContactoConSaldo | int | NO | Con saldo y sin contacto |
+| SaldoSinContacto / SaldoTotal | decimal(19,2) | NO | Saldo de los sin contacto / saldo total del par |
+
+### LocalizacionResumenLider
+Las mismas métricas por líder con titulares distintos. PK (CorteID, LiderID, SoloInternas); FK con
+cascada. `SoloInternas = 0`: todos los pares activos del líder; `= 1`: solo los internos (sin externas ni
+BASE GENERAL, con el saldo de esos pares; un líder sin pares internos no tiene fila). **LiderID 0 = toda
+la base.** El saldo de un titular es la suma de sus carteras del líder.
+
+### LocalizacionEnvio
+Lotes enviados al departamento de localización (ADR-040, **etapa 3**; la tabla la crea ya el script de
+la etapa 1). Un lote = un par y una fuente (Funcional).
+
+| Columna | Tipo | Nullable | Notas |
+|---------|------|----------|-------|
+| EnvioID | int identity | NO | PK clustered |
+| Codigo | calculada | — | `'LOC-' + 6 dígitos` (`LOC-000123`), no persistida |
+| LiderID, CarteraID | int | NO | Par del lote |
+| Fuente | varchar(30) | NO | Clave del Cargue de Fuentes |
+| Estado | varchar(10) | NO | CHECK `BORRADOR` \| `ENVIADO` \| `CERRADO` \| `ANULADO`; default `BORRADOR` |
+| Titulares | int | NO | Default 0 |
+| Parametros | nvarchar(1000) | SI | JSON de la sugerencia que originó el lote |
+| Observacion | nvarchar(500) | SI | |
+| CreadoPor / FechaCreacion | varchar(100) / datetime2(0) | NO | Default `SYSDATETIME()` |
+| EnviadoPor / FechaEnvio, CerradoPor / FechaCierre, AnuladoPor / FechaAnulacion | varchar(100) / datetime2(0) | SI | CHECK `CK_LocalizacionEnvio_Fechas`: cada estado exige su fecha |
+| MotivoAnulacion | nvarchar(300) | SI | |
+| CargueEjecucionID | bigint | SI | FK a `CargueFuenteEjecucion`: el cargue OK que se tomó como retorno |
+| FechaRetorno | datetime2(0) | SI | |
+
+Índices: `IX_LocalizacionEnvio_Par` (LiderID, CarteraID, Fuente, Estado) INCLUDE (FechaEnvio);
+`IX_LocalizacionEnvio_Estado` (Estado, FechaEnvio).
+
+### LocalizacionEnvioDetalle
+Titulares de cada lote con la foto de su estado al crearlo (etapa 3). PK (EnvioID, TitularID); FK a
+`LocalizacionEnvio` ON DELETE CASCADE.
+
+| Columna | Tipo | Nullable | Notas |
+|---------|------|----------|-------|
+| EnvioID | int | NO | |
+| TitularID | bigint | NO | |
+| Categoria | varchar(20) | NO | CHECK `NUNCA_BUSCADO` \| `NO_ENC_VIEJO` \| `ENC_VIEJO` |
+| Prioridad | smallint | NO | Puntaje explicable de la sugerencia |
+| UltimaConsultaPrevia | date | SI | Última consulta en la fuente antes del envío (NULL = nunca) |
+| SaldoTotal, ValorPromesa | money | SI | Foto de `UltimoEstadoTitular` del par |
+| UltimoPerfil, MejorPerfil | varchar(50) | SI | |
+| FechaUltimaGestion, FechaPromesa | date | SI | |
+
+Índice: `IX_LocalizacionEnvioDetalle_Titular` (TitularID) INCLUDE (EnvioID) — "excluir enviados en los
+últimos 60 días".
+
 ### HistoricoVirtualidad
 Histórico consolidado de virtualidad (IVR / SMS / Correo). Una sola tabla con discriminador `Canal`. Único punto de escritura del módulo "Gestión de Histórico de Virtualidad" (Administración) — reemplazó las tablas legacy `IVREnviados`/`MensajesEnviados` (consolidación 2026-07-06). Renombrada de `SolicitudVirtualidad` el 2026-07-08 (`docs/sql/migrations/2026-07-08_rename_solicitud_a_historico_virtualidad.sql`), 0 filas al momento del rename.
 
