@@ -50,15 +50,17 @@ internal sealed class CargueFuentesMotor
 
     private readonly CallCenterDbContext _db;
     private readonly ICalificadorCarteraCache _cache;
+    private readonly ILocalizacionResumenCoordinador _localizacion;
     private readonly ILogger<CargueFuentesMotor> _log;
     private readonly CargueFuentesSettings _opciones;
 
     public CargueFuentesMotor(
-        CallCenterDbContext db, ICalificadorCarteraCache cache,
+        CallCenterDbContext db, ICalificadorCarteraCache cache, ILocalizacionResumenCoordinador localizacion,
         ILogger<CargueFuentesMotor> log, IOptions<CargueFuentesSettings> opciones)
     {
         _db = db;
         _cache = cache;
+        _localizacion = localizacion;
         _log = log;
         _opciones = opciones.Value;
     }
@@ -162,6 +164,10 @@ internal sealed class CargueFuentesMotor
                 // El Calificador cachea hasta 24 h cifras que salen de estas tablas (vía
                 // fn_BaseMadreParaTitulares) y solo se limpia al corte de la 1 p. m.
                 _cache.InvalidarTodo();
+                // Los Informes de Localización (ADR-040) guardan un corte precalculado de estas mismas
+                // tablas: se pide uno nuevo en segundo plano. No bloquea ni puede tumbar el cargue.
+                try { _localizacion.SolicitarRecalculo("CARGUE_FUENTE"); }
+                catch (Exception exLoc) { _log.LogWarning(exLoc, "No se pudo pedir el recálculo de localización"); }
             }
 
             resultado.DuracionSegundos = Math.Round(reloj.Elapsed.TotalSeconds, 1);

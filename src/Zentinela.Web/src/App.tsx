@@ -34,6 +34,7 @@ import { ComparadorCarterasPage } from './pages/cartera/ComparadorCarterasPage';
 // Informes
 import { InformesVirtualidadPage } from './pages/informes/InformesVirtualidadPage';
 import { InformesRecaudoPage } from './pages/informes/InformesRecaudoPage';
+import { InformesLocalizacionPage } from './pages/informes/InformesLocalizacionPage';
 import { AgenciasExternasPage } from './pages/informes/AgenciasExternasPage';
 import { AuditoriaGestionesPage } from './pages/informes/AuditoriaGestionesPage';
 import { InformesGeneralesPage } from './pages/informes/InformesGeneralesPage';
@@ -174,6 +175,14 @@ function App() {
                 element={
                   <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
                     <InformesRecaudoPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/informes/localizacion"
+                element={
+                  <RutaProtegida rolesPermitidos={['Admin', 'Líder', 'Director']}>
+                    <InformesLocalizacionPage />
                   </RutaProtegida>
                 }
               />

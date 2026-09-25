@@ -71,4 +71,9 @@ if (app.Environment.IsDevelopment())
     await DbSeeder.SeedAsync(scope.ServiceProvider);
 }
 
+// Informes de Localización (ADR-040): si no hay corte del día, calcularlo en segundo plano una vez
+// arrancada la API (con espera; nunca bloquea ni tumba el arranque, ni aunque falten las tablas).
+app.Lifetime.ApplicationStarted.Register(() =>
+    app.Services.GetRequiredService<Zentinela.Application.Interfaces.ILocalizacionResumenCoordinador>().VerificarAlArrancar());
+
 app.Run();

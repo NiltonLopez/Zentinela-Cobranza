@@ -31,6 +31,11 @@ public enum GrupoFuente { Contacto, Afiliacion, Laboral, Vehiculo }
 /// <param name="EnPanelCalificador">Tiene fila en "Porcentajes de Localización" del Calificador.</param>
 /// <param name="ColumnaClave">Columna que identifica al titular en la tabla. "TitularID" salvo
 /// CamaraEmpresa (NIT de la empresa), que por eso no se puede medir por titular.</param>
+/// <param name="PredicadoContacto">Condición SQL (alias <c>s.</c>) de "tiene celular o email" en la
+/// última fila del titular: las columnas exactas que el Calificador cruza en <c>SinContacto</c> del
+/// result set 1 (<c>Cel*</c> / <c>Em*</c>), con la misma traducción de <c>NOT IN ('','0')</c> sobre el
+/// <c>ISNULL(col, 0)</c> de la función. Null si la fuente no aporta ni celular ni email. Los Informes
+/// de Localización calculan con esto <c>ConContacto</c> = Total − <c>SinContacto</c> (ADR-040).</param>
 public sealed record FuenteLocalizacion(
     string Clave,
     string EtiquetaCalificador,
@@ -43,7 +48,8 @@ public sealed record FuenteLocalizacion(
     string? Nota = null,
     bool TitularIdComoTexto = false,
     bool EnPanelCalificador = true,
-    string ColumnaClave = "TitularID");
+    string ColumnaClave = "TitularID",
+    string? PredicadoContacto = null);
 
 /// <summary>
 /// Catálogo de fuentes de localización (ADR-040): fuente única de verdad del estado de cada fuente
@@ -92,15 +98,18 @@ public static class CatalogoFuentesLocalizacion
     [
         new("Cajacopi", "Cajacopi", "cajacopi", "dbo.Cajacopi", "FechaConsulta",
             O(Texto("NumeroTelefonoCelular"), Texto("Email"), Edad("FechaNacimiento")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefonoCelular"), Texto("Email"))),
 
         new("Camara", "Cámara", "camara", "dbo.Camara", "FechaConsulta",
             O(Texto("NumeroTelefono"), Texto("Email")),
-            EstadoFuente.Intermitente, GrupoFuente.Contacto),
+            EstadoFuente.Intermitente, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefono"), Texto("Email"))),
 
         new("SaludTotal", "Salud Total", "salud-total", "dbo.SaludTotal", "FechaConsulta",
             O(Texto("NumeroTelefono"), Texto("Email"), Numero("NIT"), Texto("Empresa")),
-            EstadoFuente.Inactivo, GrupoFuente.Contacto),
+            EstadoFuente.Inactivo, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefono"), Texto("Email"))),
 
         // Fosyga pasa a Funcional por pedido del usuario (ADR-040): ya se carga por el Cargue de Fuentes.
         new("Fosyga", "Fosyga", "fosyga", "dbo.Fosyga", "FechaConsulta",
@@ -113,54 +122,65 @@ public static class CatalogoFuentesLocalizacion
 
         new("Positiva", "Positiva", "positiva", "dbo.Positiva", "FechaConsulta",
             O(Texto("NumeroTelefonoCelular"), Texto("Email"), Edad("FechaNacimiento")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefonoCelular"), Texto("Email"))),
 
         new("Tigo", "Tigo", "tigo", "dbo.Tigo", "FechaConsulta",
             O(Texto("NumeroTelefono"), Texto("Email")),
-            EstadoFuente.Inactivo, GrupoFuente.Contacto),
+            EstadoFuente.Inactivo, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefono"), Texto("Email"))),
 
         new("TigoUne", "TigoUne", "tigoune", "dbo.TigoUne", "FechaConsulta",
             O(Texto("NumeroTelefono"), Texto("Email")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefono"), Texto("Email"))),
 
         // [Departamento Coosalud] / [Municipio Coosalud] son DepartamentoOrigen / MunicipioOrigen.
         new("Coosalud", "Coosalud", "coosalud", "dbo.Coosalud", "FechaConsulta",
             O(Texto("NumeroTelefono"), Texto("Email"), Texto("DepartamentoOrigen"), Texto("MunicipioOrigen")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefono"), Texto("Email"))),
 
         // [Estado Afiliacion SaviaSalud] es EstadoDeAfiliacion. NumeroTelefono NO cuenta (la
         // BaseMadre no lo proyecta).
         new("SaviaSalud", "Savia Salud", "saviasalud", "dbo.SaviaSalud", "FechaConsulta",
             O(Texto("NumeroCelular"), Texto("Regimen"), Texto("EstadoDeAfiliacion")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: Texto("NumeroCelular")),
 
         new("Sura", "Sura", "sura", "dbo.Sura", "FechaConsulta",
             O(Texto("NumeroCelular"), Texto("Email"), Texto("Empresa"), Texto("EstadoAfiliacion")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroCelular"), Texto("Email"))),
 
         // [Celular SOS] = Telefono, [Nit Sos] = NitEmpresa, [Empresa SOS] = RazonSocial.
         new("SOS", "SOS", "sos", "dbo.SOS", "FechaConsulta",
             O(Texto("Telefono"), Numero("NitEmpresa"), Texto("RazonSocial")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: Texto("Telefono")),
 
         // Única fuente con FechaInsercion (la tabla no tiene FechaConsulta).
         new("DatosClaro", "Claro", "claro", "dbo.DatosClaro", "FechaInsercion",
             O(Texto("NumeroTelefono"), Texto("Email")),
-            EstadoFuente.Inactivo, GrupoFuente.Contacto),
+            EstadoFuente.Inactivo, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefono"), Texto("Email"))),
 
         new("MiVacuna", "MiVacuna", "mivacuna", "dbo.MiVacuna", "FechaConsulta",
             O(Texto("Celular"), Texto("Email")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("Celular"), Texto("Email"))),
 
         new("MutualSer", "MutualSer", "mutualser", "dbo.MutualSer", "FechaConsulta",
             O(Texto("NumeroTelefonoCelular"), Texto("NumeroTelefonoCelular2"), Texto("Email"),
               Texto("Departamento"), Texto("Municipio")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto),
+            EstadoFuente.Funcional, GrupoFuente.Contacto,
+            PredicadoContacto: O(Texto("NumeroTelefonoCelular"), Texto("NumeroTelefonoCelular2"), Texto("Email"))),
 
         // TitularID varchar(30): la BaseMadre cruza con TRY_CAST(TitularID AS BIGINT).
         new("NuevaEps", "NuevaEps", "nuevaeps", "dbo.NuevaEps", "FechaConsulta",
             O(Texto("NumeroTelefono"), Texto("Departamento"), Texto("Municipio")),
-            EstadoFuente.Funcional, GrupoFuente.Contacto, TitularIdComoTexto: true),
+            EstadoFuente.Funcional, GrupoFuente.Contacto, TitularIdComoTexto: true,
+            PredicadoContacto: Texto("NumeroTelefono")),
 
         new("ARLSura", "ARL Sura", "arlsura", "dbo.ARLSura", "FechaConsulta",
             O(Numero("NIT"), Texto("Empresa")),

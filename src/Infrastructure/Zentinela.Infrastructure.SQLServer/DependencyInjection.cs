@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
         services.Configure<ProyeccionPromesasSettings>(configuration.GetSection("ProyeccionPromesas"));
         services.Configure<CargueFuentesSettings>(configuration.GetSection("CargueFuentes"));
+        services.Configure<InformesLocalizacionSettings>(configuration.GetSection("InformesLocalizacion"));
 
         // ── DbContexts ────────────────────────────────────────────────────────
         services.AddDbContext<ZentinelaDbContext>(options =>
@@ -134,6 +135,11 @@ public static class DependencyInjection
         services.AddSingleton<FotoPersonaCache>();
         services.AddScoped<IFotoPersonaOrigen, FotoPersonaOrigenSql>();
         services.AddScoped<IFotoPersonaService, FotoPersonaService>();
+        // Precálculo por cortes: el coordinador es Singleton (un cálculo a la vez, en segundo plano, con
+        // scope propio); el servicio que corre el batch y las lecturas son Scoped.
+        services.AddSingleton<ILocalizacionResumenCoordinador, LocalizacionResumenCoordinador>();
+        services.AddScoped<LocalizacionResumenService>();
+        services.AddScoped<IInformesLocalizacionService, InformesLocalizacionService>();
 
         return services;
     }

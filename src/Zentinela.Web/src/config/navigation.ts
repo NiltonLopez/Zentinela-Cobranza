@@ -54,6 +54,8 @@ export const MODULOS: Modulo[] = [
     subModulos: [
       { key: 'virtualidad',         label: 'Informes de Virtualidad', path: '/informes/virtualidad', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'recaudo',             label: 'Informes de Recaudo',     path: '/informes/recaudo',     rolesPermitidos: ['Admin', 'Líder', 'Director'] },
+      // ADR-040: el Líder ve solo lo suyo (el servidor fija su liderID) y en rankings el top + su posición.
+      { key: 'localizacion',        label: 'Informes de Localización', path: '/informes/localizacion', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'agencias-externas',   label: 'Agencias Externas',       path: '/informes/agencias-externas', rolesPermitidos: ['Admin', 'Líder', 'Director'] },
       { key: 'auditoria-gestiones', label: 'Auditoría de Gestiones',  path: '/informes/auditoria-gestiones', rolesPermitidos: ['Admin', 'Director'] },
       { key: 'generales',           label: 'Informes Generales',      path: '/informes/generales',           rolesPermitidos: ['Admin', 'Director'] },
