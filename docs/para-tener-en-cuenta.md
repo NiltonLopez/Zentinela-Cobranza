@@ -3,7 +3,7 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-09-24**.
+Última actualización: **2026-09-25**.
 
 ---
 
@@ -20,10 +20,15 @@ backlog: los items se cierran o se descartan con razón explícita.
   como nueva (hoy hay 0). Sus ~3.000 teléfonos de 7 dígitos ya no entran como celular; los existentes
   quedan.
 - **SIMIT: placas.** Placa válida = sin espacios ni guiones, mayúsculas, 5–7 caracteres A-Z/0-9 con letra y
-  dígito. Marcas (`PAZ Y SALVO`, `NO CARGO`, `SIN`…) = "sin placa". **Aplicar
-  `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql` antes (o junto con) la primera carga de
-  SIMIT**: sin él, `QUR25` no reconoce la fila legacy `QUR 25` y la duplica, y las marcas siguen contando
-  como titulares encontrados.
+  dígito. Marcas (`PAZ Y SALVO`, `NO CARGO`, `SIN`…) = "sin placa". El legacy lo corrigió
+  `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql`, **ejecutado en producción el 2026-09-25**
+  (sesión de las 03:41, hora del servidor): 7 placas pasadas a canónicas; 5.870 marcas a "sin placa"
+  (5.718 `PAZ Y SALV` con estado 0 + 152 con estado 1); borradas 75 filas vacías de titulares con placas,
+  5.727 "sin placa" repetidas y 1 placa repetida; 0 placas no canónicas restantes; `dbo.SIMIT` 301.840 → 296.037 filas.
+  Coincidió exactamente con la prueba con `ROLLBACK`. Respaldo en `dbo.SIMIT_Respaldo_20260924` (11.804
+  filas: todas las de los 5.873 titulares tocados, antes del cambio). **Cómo revertir:** script comentado
+  al final de la migración, por titular (borrar sus filas actuales y reinsertar las del respaldo); descarta
+  lo que un cargue SIMIT posterior les haya hecho.
 - **Clave de contenido con collation `Modern_Spanish_CI_AS`.** El refresco compara con `INTERSECT`, que usa
   la collation: un cambio **solo de mayúsculas** (o de espacios finales) cuenta como contenido idéntico,
   se refresca la fecha y el texto viejo se conserva. Un cambio de tilde sí es contenido nuevo.
@@ -57,8 +62,8 @@ Las 22 fuentes de localización ya se cargan por el módulo. Lo nuevo de la Fase
   de NULL. Sin pérdida (las vistas toman la más reciente, que es la limpia), pero la tabla crece una fila
   por titular afectado. Volumen legacy medido el 2026-09-24: **Positiva 140.758 correos `''` y 30.056
   celulares `'0'`**, **Coosalud 32.698 correos `''`**, **MiVacuna 1.118 correos `''`**, SaludTotal 14 y
-  SOS 6 teléfonos, TigoUne 27.166 filas con `''` en teléfono o email. El script ya existe (commit
-  199d99b) y **no se ha ejecutado**: ver "PENDIENTE: normalizar vacíos legacy" abajo.
+  SOS 6 teléfonos, TigoUne 27.166 filas con `''` en teléfono o email. **Resuelto:** el script (commit
+  199d99b) se ejecutó en producción el 2026-09-25: ver "HECHO: normalizar vacíos legacy" abajo.
 - **Ejecuciones de prueba ocultas** (commit cb20c62, `UsuariosPruebaCargue`). La lista "Cargues en curso y
   recientes" no muestra las ejecuciones de cuentas `harness-cargue*`: el harness escribe **temporalmente en
   la BD de producción** (`CargueFuenteEjecucion`, que borra al limpiar). El filtro va en el SQL de
@@ -96,27 +101,35 @@ Las 22 fuentes de localización ya se cargan por el módulo. Lo nuevo de la Fase
   número enorme haría fallar el cargue entero (con rollback, sin decir la fila). Hoy solo `RGM.Modelo`, que
   `ReglaRgm` valida como año.
 
-## PENDIENTE: normalizar vacíos legacy antes de la primera carga (ADR-039, commit 199d99b)
+## HECHO: normalizar vacíos legacy (ADR-039, commit 199d99b; ejecutado el 2026-09-25)
 
-- `docs/sql/migrations/2026-09-25_normalizar_vacios_legacy.sql`, **NO ejecutado. Solo con confirmación
-  explícita del usuario**, fuera de horario y antes de la primera carga de cada fuente con el módulo.
-  Pasa a NULL los centinelas legacy (`''`, `'0'`, `'NULL'`, `'N/A'`, blancos, NIT `0`, fechas <= 1900) y
-  recorta/colapsa blancos con el mismo criterio del motor; sin él la primera recarga inserta una fila por
-  titular afectado en vez de refrescar (S1).
-- **≈500.591 filas en 19 tablas** (Positiva 170.455, PositivaEmpresas 102.661, Coosalud 101.539…; medido el
-  2026-09-24). Sura y Compensados: nada. **SIMIT va por su propio script** (`2026-09-24_simit_placas_legacy.sql`).
-- **Titulares que pasan de flag 1 a 0** (sin ninguna fila con flag 1): Positiva 28.683, MiVacuna 269,
-  Cámara 57, CamaraEmpresa 6, ARLSura 1, MutualSer 1. Cambian `[Estado <Fuente>]` de la BaseMadre y las
-  vistas `vw_Datos*` / `vw_SinDatos*` (pasan a "sin datos"). El **panel de localización del Calificador casi
-  no cambia** (ya trata `''` y `'0'` como vacíos): solo 16 titulares de Positiva con fecha de nacimiento
-  <= 1900. **No recalcula el flag de Compensados** (sale también del Estado del archivo).
-- **Cómo:** `@Solo = '<Fuente>'` para una sola (o NULL = todas); correr primero el bloque 0 (solo lectura) y
-  comparar con las cifras de la cabecera. Una transacción por tabla con `TABLOCKX`: **bloquea cada tabla**
-  mientras se normaliza (la BaseMadre y el Calificador esperan); ~15 min las 19, más ~7 del diagnóstico.
-  Aborta sola si hay un cargue de esa fuente en curso o algo no cuadra. Respaldo de las filas tocadas en
-  `dbo.<Tabla>_RespaldoVacios_20260925`; reversión comentada al final del script (ojo: si ya corrió un
-  cargue de esa fuente, revertir devuelve centinelas a filas refrescadas). Tras correrlo, la caché del
-  Calificador no se invalida sola (reciclar el AppPool o esperar la 1 p. m.).
+- `docs/sql/migrations/2026-09-25_normalizar_vacios_legacy.sql` **se ejecutó en producción el 2026-09-25**
+  (sesión de las 03:41, hora del servidor, Colombia), para todas las fuentes (`@Solo = NULL`): 18 min,
+  **19 tablas OK, 0 errores**, número de filas intacto en todas, 0 centinelas pendientes, 0 flags 0 → 1. Pasó a NULL los centinelas legacy (`''`, `'0'`, `'NULL'`, `'N/A'`, blancos,
+  NIT `0`, fechas <= 1900) y recortó/colapsó blancos con el mismo criterio del motor, para que la primera
+  recarga refresque en vez de insertar una fila por titular afectado (S1).
+- **500.591 filas en 19 tablas, igual a lo medido el 2026-09-24:** Positiva 170.455, PositivaEmpresas
+  102.661, Coosalud 101.539, SaludTotal 37.297, SaviaSalud 31.804, TigoUne 27.300, ARLSura 18.043,
+  MutualSer 8.078, Fosyga 1.681, MiVacuna 1.118, Cajacopi 204, SOS 129, Camara 103, Tigo 63,
+  CamaraEmpresa 40, DatosClaro 27, RUES 24, NuevaEps 18, RGM 7. Sura y Compensados: nada. SIMIT fue por su
+  propio script (ver arriba).
+- **Flag 1 → 0** (filas / titulares que se quedaron sin ninguna fila con flag 1): Positiva 29.882 / 28.683,
+  MiVacuna 269 / 269, Camara 69 / 57, CamaraEmpresa 13 / 6, ARLSura 1 / 1, MutualSer 1 / 1. Cambian
+  `[Estado <Fuente>]` de la BaseMadre y las vistas `vw_Datos*` / `vw_SinDatos*` (pasan a "sin datos"). El
+  **panel de localización del Calificador casi no cambia** (ya trataba `''` y `'0'` como vacíos): solo 16
+  titulares de Positiva con fecha de nacimiento <= 1900. **No recalculó el flag de Compensados**.
+- **Caché del Calificador:** el script no la invalida (cachea hasta 24 h); los cambios de ambos scripts se
+  ven tras el corte de la 1 p. m. o un reciclaje del AppPool.
+- **Fosyga ya tenía su primer cargue real con el módulo** (2026-09-24, usuario `usuario.cargue`, OK; la
+  tabla tenía 2.716.121 filas al normalizar). Revertir ese cargue por `CargueFuenteReversion` **no
+  restaurará las filas que refrescó y que luego se normalizaron**: su contenido cambió y el hash guardado
+  ya no coincide.
+- **Respaldos:** las filas tocadas, tal como estaban y con su RID, en las 19 tablas
+  `dbo.<Tabla>_RespaldoVacios_20260925` (ver `docs/schema.md`, "Respaldos temporales del Cargue de
+  Fuentes"). **Cómo revertir:** por tabla, con el script comentado al final de la migración (devuelve cada
+  fila a su RID desde el respaldo). Ojo: si ya corrió un cargue de esa fuente (Fosyga, por lo menos),
+  revertir devuelve los centinelas a filas que ese cargue refrescó. Los respaldos se pueden borrar tras
+  validar, p. ej. junto con el DROP de las Auxiliar (~2026-10-25).
 
 ## DOS documentos ADR-039 (2026-09-24)
 

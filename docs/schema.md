@@ -1,6 +1,6 @@
 # Schema — DBCallCenter
 
-> Generado: 2026-04-02 — Actualizado: 2026-09-24 (Fase 2 del Cargue de Fuentes de Datos, ADR-039: las 22 fuentes; tipos verificados con `sys.columns`)  
+> Generado: 2026-04-02 — Actualizado: 2026-09-25 (scripts legacy de SIMIT y de normalización de vacíos ejecutados; 20 tablas temporales de respaldo, ver "Respaldos temporales del Cargue de Fuentes"). Antes: 2026-09-24 (Fase 2 del Cargue de Fuentes de Datos, ADR-039: las 22 fuentes; tipos verificados con `sys.columns`)  
 > Servidor: 10.0.0.89,1433  
 > Base de datos: DBCallCenter  
 > Total tablas: 88 | Vistas: 40 | Stored Procedures: 33 (conteo de `sys.tables` / `sys.views` / `sys.procedures` del 2026-09-24; no todas están documentadas aquí)
@@ -789,9 +789,13 @@ Datos del Sistema Integrado de Multas e Infracciones de Transito por titular.
 > espacios ni guiones, mayúsculas, 5 a 7 caracteres A-Z/0-9 con al menos una letra y un dígito
 > (`PlacaVehiculo.EsValida`). Marcas como `PAZ Y SALVO`, `NO CARGO`, `SIN`, `N/A`, `XXXXXX` se descartan con
 > advertencia; un titular sin placas válidas entra como una fila `Placa NULL, EstadoEnSIMIT = 0`. Los datos
-> legacy (marcas guardadas como placa, placas con espacio o guion) se corrigen con
-> `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql`, que debe aplicarse para que la próxima carga
-> reconozca esas placas y no las duplique.
+> legacy (marcas guardadas como placa, placas con espacio o guion) se corrigieron con
+> `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql`, **ejecutado en producción el 2026-09-25**
+> (sesión de las 03:41, hora del servidor): 7 placas pasadas a canónicas, 5.870 marcas a "sin placa"
+> (5.718 `PAZ Y SALV` con estado 0 + 152 con estado 1), borradas 75 filas vacías de titulares con placas,
+> 5.727 "sin placa" repetidas y 1 placa repetida; 0 placas no canónicas restantes. `dbo.SIMIT` pasó de
+> 301.840 a 296.037 filas. Respaldo en `dbo.SIMIT_Respaldo_20260924` (ver "Respaldos temporales del Cargue
+> de Fuentes").
 ### SOS
 Datos del Sistema de Ocupacion y Seguridad laboral por titular.
 
@@ -1765,6 +1769,54 @@ Tabla de staging para carga de lista negra de telefonos desde fuentes externas.
 | UltimoNumeroMarcado | nvarchar(max) | SI | — | — |
 | Tipificacion | nvarchar(max) | SI | — | — |
 | Cartera | nvarchar(max) | SI | — | — |
+
+### Respaldos temporales del Cargue de Fuentes (ADR-039, 2026-09-25)
+
+Tablas **temporales** creadas por los dos scripts legacy del Cargue de Fuentes al ejecutarse en producción
+el 2026-09-25 (sesión de las 03:41, hora del servidor). Nadie las lee: solo sirven para revertir. **Se
+pueden borrar tras validar** los datos corregidos, p. ej. junto con el DROP de las Auxiliar (~2026-10-25);
+el `DROP TABLE` de cada una está comentado al final de su script. Nombres y filas verificados con
+`sys.tables` el 2026-09-25. Excluirlas de cualquier conteo o búsqueda de fuentes (como los `*_bak`).
+
+**`dbo.SIMIT_Respaldo_20260924`** (11.804 filas) — de `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql`.
+Todas las filas de `dbo.SIMIT` de los 5.873 titulares que el script tocó, tal como estaban antes del cambio.
+Mismas columnas que `SIMIT` (`TitularID`, `Placa`, `EstadoEnSIMIT`, `FechaConsulta`). Reversión por titular:
+borrar sus filas actuales en `SIMIT` y reinsertar las del respaldo (descarta lo que un cargue SIMIT
+posterior les haya hecho).
+
+**`dbo.<Tabla>_RespaldoVacios_20260925`** (19 tablas) — de
+`docs/sql/migrations/2026-09-25_normalizar_vacios_legacy.sql`. Las filas de cada fuente que el script
+normalizó, tal como estaban antes (con los centinelas `''`/`'0'`…). Columnas: `FilaRespaldo int` (identity),
+`RID varbinary` (`%%physloc%%` de la fila en el heap de origen, con el que se revierte) y todas las columnas
+de la tabla de origen. Reversión por tabla (script comentado al final de la migración); si ya corrió un
+cargue de esa fuente, devuelve centinelas a filas que el cargue refrescó.
+
+| Tabla de respaldo | Filas | Flag 1 → 0 (filas / titulares) |
+|---|---|---|
+| Positiva_RespaldoVacios_20260925 | 170.455 | 29.882 / 28.683 |
+| PositivaEmpresas_RespaldoVacios_20260925 | 102.661 | — |
+| Coosalud_RespaldoVacios_20260925 | 101.539 | — |
+| SaludTotal_RespaldoVacios_20260925 | 37.297 | — |
+| SaviaSalud_RespaldoVacios_20260925 | 31.804 | — |
+| TigoUne_RespaldoVacios_20260925 | 27.300 | — |
+| ARLSura_RespaldoVacios_20260925 | 18.043 | 1 / 1 |
+| MutualSer_RespaldoVacios_20260925 | 8.078 | 1 / 1 |
+| Fosyga_RespaldoVacios_20260925 | 1.681 | — |
+| MiVacuna_RespaldoVacios_20260925 | 1.118 | 269 / 269 |
+| Cajacopi_RespaldoVacios_20260925 | 204 | — |
+| SOS_RespaldoVacios_20260925 | 129 | — |
+| Camara_RespaldoVacios_20260925 | 103 | 69 / 57 |
+| Tigo_RespaldoVacios_20260925 | 63 | — |
+| CamaraEmpresa_RespaldoVacios_20260925 | 40 | 13 / 6 |
+| DatosClaro_RespaldoVacios_20260925 | 27 | — |
+| RUES_RespaldoVacios_20260925 | 24 | — |
+| NuevaEps_RespaldoVacios_20260925 | 18 | — |
+| RGM_RespaldoVacios_20260925 | 7 | — |
+| **Total** | **500.591** | |
+
+> **Fosyga:** el 2026-09-24 ya se había hecho su primer cargue real con el módulo (`usuario.cargue`, OK;
+> la tabla tenía 2.716.121 filas al normalizar). Revertir ese cargue por `CargueFuenteReversion` no
+> restaurará las filas que refrescó y que luego se normalizaron: su hash ya no coincide.
 
 ---
 

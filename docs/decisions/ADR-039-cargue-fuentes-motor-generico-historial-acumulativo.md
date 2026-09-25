@@ -123,10 +123,14 @@ está limpio y no es irrecuperable. Un nombre sano nunca se pisa. La decisión s
   `SIN`, `N/A`, `XXXXXX`…) se tratan como **"sin placa"**: se descartan con una advertencia agrupada y,
   si el titular se queda sin placas, entra como una fila `Placa NULL, EstadoEnSIMIT = 0`. El SP las
   guardaba como placas y en parte con `EstadoEnSIMIT = 1` (titular "encontrado en SIMIT" sin vehículo).
-  Los datos legacy los corrige aparte `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql`
-  (según su cabecera: 5.718 `PAZ Y SALV`, ~150 marcas más con estado 1 y 7 placas reales escritas con
-  espacio o guion); sin ese script la próxima carga de `QUR25` no reconocería la fila `QUR 25` y la
-  duplicaría. Errores de digitación con forma de placa (`IGBZ78D`) pasan: no se distinguen de un
+  Los datos legacy los corrigió aparte `docs/sql/migrations/2026-09-24_simit_placas_legacy.sql`
+  (sin él la próxima carga de `QUR25` no reconocería la fila `QUR 25` y la duplicaría), **ejecutado en
+  producción el 2026-09-25** (sesión de las 03:41, hora del servidor), igual que la prueba con `ROLLBACK`:
+  7 placas con espacio o guion pasadas a canónicas; 5.870 marcas a "sin placa" (5.718 `PAZ Y SALV` con
+  estado 0 + 152 con estado 1); borradas 75 filas vacías de titulares con placas, 5.727 "sin placa"
+  repetidas y 1 placa repetida; 0 placas no canónicas restantes; `dbo.SIMIT` 301.840 → 296.037 filas.
+  Respaldo `dbo.SIMIT_Respaldo_20260924` (11.804 filas de 5.873 titulares; reversión por titular al final
+  del script). Errores de digitación con forma de placa (`IGBZ78D`) pasan: no se distinguen de un
   formato raro.
 - **NuevaEps: `NumeroTelefono` es celular** (la BaseMadre lo expone como `[Celular NuevaEps]`). El SP no
   lo validaba y la tabla tiene ~3.000 números de 7 dígitos guardados como celular. Con el motor, un
@@ -357,10 +361,10 @@ número**: grupos con cantidad exacta, y cada grupo con hasta 10 filas de ejempl
   prefijo** (`harness-cargue-<grupo>`) para quedar oculto; el prefijo no debe llevar comodines de `LIKE`
   (`%`, `_`, `[`), porque va sin escapar (lo fija `UsuariosPruebaCargueTests`).
 
-## Normalización de vacíos legacy (script pendiente, 2026-09-24, commit 199d99b)
+## Normalización de vacíos legacy (2026-09-24, commit 199d99b; ejecutada el 2026-09-25)
 
 Respuesta a S1 de `PARIDAD-salud.md`: `docs/sql/migrations/2026-09-25_normalizar_vacios_legacy.sql`,
-**no ejecutado**. Los SP legacy guardaban centinelas (`''`, `'0'`, `'NULL'`, `'N/A'`, solo blancos, NIT `0`,
+**ejecutado en producción el 2026-09-25** (ver "Ejecución" al final de esta sección). Los SP legacy guardaban centinelas (`''`, `'0'`, `'NULL'`, `'N/A'`, solo blancos, NIT `0`,
 fechas <= 1900) y textos con blancos de sobra; el motor guarda NULL y textos recortados, y su igualdad
 NULL-safe no los reconoce: sin el script, la primera recarga de cada titular afectado **inserta** una fila
 en vez de refrescar.
@@ -374,7 +378,7 @@ en vez de refrescar.
   válidas; hoy no tiene nada que normalizar.
 - **Cifras medidas el 2026-09-24:** **≈500.591 filas en 19 tablas** (Positiva 170.455, PositivaEmpresas
   102.661, Coosalud 101.539, SaludTotal 37.297, SaviaSalud 31.804, TigoUne 27.300, ARLSura 18.043, MutualSer
-  8.078, … RGM 7). Sura y Compensados: nada. **SIMIT va por su propio script**
+  8.078, … RGM 7). Sura y Compensados: nada. **SIMIT fue por su propio script**
   (`2026-09-24_simit_placas_legacy.sql`, que además borra filas; este no borra ni deduplica).
 - **Flag 1 → 0** (titulares que se quedan sin ninguna fila con flag 1): **Positiva 28.683**, MiVacuna 269,
   Camara 57, CamaraEmpresa 6, ARLSura 1, MutualSer 1; flag 0 → 1, ninguno. Cambian la columna
@@ -392,6 +396,20 @@ en vez de refrescar.
   centinelas remanentes, otro conteo o un flag distinto del calculado). **Fuera de horario**: bloquea cada
   tabla en exclusiva; ~10-15 min las 19 (más ~7 min del diagnóstico). Probado con `ROLLBACK` en Positiva,
   Coosalud, MiVacuna y ARLSura. Reversión por tabla desde el respaldo (comentada al final del script).
+- **Ejecución (2026-09-25, sesión de las 03:41, hora del servidor):** todas las fuentes (`@Solo = NULL`),
+  18 min, **19 tablas OK, 0 errores**; número de filas intacto en todas, 0 centinelas pendientes, 0 flags
+  0 → 1. **Total 500.591 filas = lo medido**: Positiva 170.455, PositivaEmpresas 102.661, Coosalud 101.539,
+  SaludTotal 37.297, SaviaSalud 31.804, TigoUne 27.300, ARLSura 18.043, MutualSer 8.078, Fosyga 1.681,
+  MiVacuna 1.118, Cajacopi 204, SOS 129, Camara 103, Tigo 63, CamaraEmpresa 40, DatosClaro 27, RUES 24,
+  NuevaEps 18, RGM 7. Flag 1 → 0 (filas / titulares): Positiva 29.882 / 28.683, MiVacuna 269 / 269, Camara
+  69 / 57, CamaraEmpresa 13 / 6, ARLSura 1 / 1, MutualSer 1 / 1. Respaldos en las 19
+  `dbo.<Tabla>_RespaldoVacios_20260925` (temporales: se pueden borrar tras validar, p. ej. junto con el DROP
+  de las Auxiliar). La caché del Calificador (hasta 24 h) lo refleja tras el corte de la 1 p. m. o un
+  reciclaje del AppPool.
+- **Fosyga ya tenía un cargue real con el módulo** (el primero, 2026-09-24, `usuario.cargue`, OK; la tabla
+  tenía 2.716.121 filas al normalizar). Revertir ese cargue por `CargueFuenteReversion` **no restaurará las
+  filas que refrescó y que luego se normalizaron**: su contenido cambió y el hash guardado ya no coincide.
+  Y a la inversa, revertir la normalización de Fosyga devuelve centinelas a filas que ese cargue refrescó.
 
 ## Alternativas descartadas
 
@@ -461,12 +479,13 @@ Paridad caso por caso en `docs/sql/legacy/PARIDAD*.md`.
   `docs/sql/migrations/2026-09-25_drop_auxiliares_fase1.sql` (6) y `2026-09-26_drop_auxiliares_fase2.sql`
   (15 + `TigoAuxiliar`), **a ejecutar solo después de validar el cargue en producción**. El de la Fase 2
   hoy se bloquearía: `FosygaAuxiliar`, `RGMAuxiliar` y `TigoAuxiliar` tienen filas (ver su cabecera).
-- Los datos que ya estaban en las tablas no se re-limpian (excepto SIMIT, por su script aparte): el
-  motor solo decide sobre lo que carga. Consecuencia en la Fase 2: donde el legacy guardó `''` o `'0'`
-  (Positiva, Coosalud, MiVacuna, TigoUne…) la primera recarga de un titular inserta una fila nueva en vez
-  de refrescar (S1 de `PARIDAD-salud.md`); sin pérdida, las vistas toman la más reciente. Lo evita
-  `2026-09-25_normalizar_vacios_legacy.sql` (ver "Normalización de vacíos legacy"), **pendiente de
-  ejecutar** con confirmación del usuario, fuera de horario y antes de la primera carga de cada fuente.
+- El motor solo decide sobre lo que carga: los datos que ya estaban en las tablas los corrigieron dos
+  scripts aparte, **ejecutados en producción el 2026-09-25**: SIMIT con `2026-09-24_simit_placas_legacy.sql`
+  y las 19 tablas con centinelas `''`/`'0'` (Positiva, Coosalud, MiVacuna, TigoUne…) con
+  `2026-09-25_normalizar_vacios_legacy.sql` (ver "Normalización de vacíos legacy"). Sin este último, la
+  primera recarga de un titular habría insertado una fila nueva en vez de refrescar (S1 de
+  `PARIDAD-salud.md`). Sus respaldos (`dbo.SIMIT_Respaldo_20260924` y las 19
+  `dbo.<Tabla>_RespaldoVacios_20260925`) son temporales: se borran tras validar.
 
 ## Riesgos
 
