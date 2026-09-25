@@ -51,12 +51,15 @@ $reloj = [Diagnostics.Stopwatch]::StartNew()
 # ── Conexion ─────────────────────────────────────────────────────────────────
 # Sin -CadenaConexion: si esta el appsettings de desarrollo (maquina del desarrollador)
 # se usa ese; si no (el servidor), autenticacion integrada con la cuenta del proxy.
+# En el servidor la instancia es LOCAL ("."), igual que el /SERVER "." del paquete: por
+# IP (10.0.0.89,1433) la autenticacion integrada contra uno mismo falla con "el inicio
+# de sesion se realiza desde un dominio que no es de confianza" (comprobado 2026-09-25).
 if (-not $CadenaConexion) {
     $app = Join-Path $dir '..\..\src\Zentinela.API\appsettings.Development.json'
     if (Test-Path $app) {
         $CadenaConexion = (Get-Content $app -Raw -Encoding UTF8 | ConvertFrom-Json).ConnectionStrings.CallCenterConnection
     } else {
-        $CadenaConexion = 'Server=10.0.0.89,1433;Database=DBCallCenter;Integrated Security=True;TrustServerCertificate=True;'
+        $CadenaConexion = 'Server=.;Database=DBCallCenter;Integrated Security=True;TrustServerCertificate=True;'
     }
 }
 $csb = New-Object System.Data.SqlClient.SqlConnectionStringBuilder $CadenaConexion

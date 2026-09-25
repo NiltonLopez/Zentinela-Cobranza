@@ -97,7 +97,9 @@ ORDER BY h.instance_id DESC;
 function MostrarLog([string]$modo) {
     $log = Join-Path $Destino "logs\$modo.log"
     Paso "Log de la corrida ($log)"
-    if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Encoding UTF8 | Write-Host }
+    # Sin -Encoding: el Agente escribe la salida de PowerShell en UTF-16 con BOM y
+    # Get-Content lo detecta solo; forzar UTF8 la mostraba con espacios entre letras.
+    if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log | Write-Host }
     else { Write-Warning 'No aparecio el log.' }
 }
 
