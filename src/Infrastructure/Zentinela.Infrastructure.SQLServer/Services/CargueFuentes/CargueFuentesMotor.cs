@@ -215,7 +215,7 @@ internal sealed class CargueFuentesMotor
     }
 
     /// <summary>Índices (0-based) de cada columna en el archivo; -1 = no vino.</summary>
-    private sealed class MapaColumnas
+    internal sealed class MapaColumnas
     {
         public int TitularID, Nombre, CarteraID, Cartera, LiderID, Lider;
         public required int[] Datos { get; init; }
@@ -420,7 +420,7 @@ internal sealed class CargueFuentesMotor
 
     // ── 2. Columnas ─────────────────────────────────────────────────────────
 
-    private static (MapaColumnas Mapa, List<string> Encontradas, List<string> Faltantes,
+    internal static (MapaColumnas Mapa, List<string> Encontradas, List<string> Faltantes,
                     List<string> OpcionalesFaltantes, List<string> SinUso)
         ResolverColumnas(DefinicionFuenteCargue def, string[] encabezado)
     {

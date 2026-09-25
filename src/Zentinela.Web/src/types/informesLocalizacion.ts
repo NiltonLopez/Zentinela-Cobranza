@@ -195,3 +195,116 @@ export interface RankingsLocalizacion {
   /** true para el Líder: son sus pares, no carteras completas. */
   carterasSonPropias: boolean;
 }
+
+// ── Sugerencias (etapa 2) ─────────────────────────────────────────────────────
+
+export type CategoriaSugerencia = 'NUNCA_BUSCADO' | 'NO_ENC_VIEJO' | 'ENC_VIEJO';
+
+export type MotivoExclusionSugerencia =
+  'YA_PAGO' | 'FALLECIDO' | 'NO_GESTIONAR' | 'RECLAMACION' | 'ACUERDO' | 'PROMESA' | 'ENVIADO' | 'SIN_SALDO';
+
+export interface ParametrosSugerencias {
+  /** 0 / null = cartera completa (solo Admin/Director; al Líder el servidor le fija el suyo). */
+  liderID: number | null;
+  carteraID: number;
+  /** Claves de fuentes Funcionales; vacío = todas. */
+  fuentes: string[];
+  umbralDias: number;
+  /** null = no sugerir "encontrado pero viejo". */
+  umbralRefrescoDias: number | null;
+  soloConSaldo: boolean;
+  top: number;
+  excluirEnviadosDias: number;
+  incluirLocalizados: boolean;
+}
+
+export interface DesglosePrioridad {
+  perfil: number;
+  saldo: number;
+  gestion: number;
+  nuncaFuncional: number;
+  nuncaFuente: number;
+  noEncontradoViejo: number;
+  /** Negativo (−100) si ya tiene contacto fresco. */
+  contactoFresco: number;
+}
+
+export interface FilaSugerencia {
+  titularID: number;
+  nombre: string | null;
+  carteraID: number;
+  cartera: string;
+  liderID: number;
+  lider: string;
+  saldo: number | null;
+  ultimoPerfil: string | null;
+  fechaUltimaGestion: string | null;
+  fuente: string;
+  etiquetaFuente: string;
+  categoria: CategoriaSugerencia;
+  /** Última fila del titular en la fuente (null = nunca buscado). */
+  ultimaConsulta: string | null;
+  prioridad: number;
+  desglose: DesglosePrioridad;
+  encontradoEn: string[];
+}
+
+export interface ConteoCategoriaSugerencia {
+  categoria: CategoriaSugerencia;
+  etiqueta: string;
+  antes: number;
+  candidatos: number;
+}
+
+export interface ConteoFuenteSugerencia {
+  fuente: string;
+  etiqueta: string;
+  estado: EstadoFuente;
+  /** = "Falta por buscar" del Calificador para el par. */
+  nuncaAntes: number;
+  noEncontradoViejoAntes: number;
+  encontradoViejoAntes: number;
+  excluidos: number;
+  nunca: number;
+  noEncontradoViejo: number;
+  encontradoViejo: number;
+  candidatos: number;
+  conContactoFresco: number;
+  saldoCandidatos: number;
+}
+
+export interface ConteoExclusionSugerencia {
+  motivo: MotivoExclusionSugerencia;
+  etiqueta: string;
+  filas: number;
+  titulares: number;
+}
+
+export interface KpisSugerencias {
+  titularesPar: number;
+  titularesConSaldo: number;
+  p90Saldo: number | null;
+  candidatosAntes: number;
+  candidatos: number;
+  titularesCandidatos: number;
+  saldoCandidatos: number;
+  conContactoFresco: number;
+  porCategoria: ConteoCategoriaSugerencia[];
+  porFuente: ConteoFuenteSugerencia[];
+  exclusiones: ConteoExclusionSugerencia[];
+}
+
+export interface SugerenciasLocalizacion {
+  liderID: number | null;
+  carteraID: number;
+  etiquetaAlcance: string;
+  parametros: ParametrosSugerencias;
+  datosGestionAl: string | null;
+  horasDesdeCargaGestion: number | null;
+  registroEnviosDisponible: boolean;
+  avisos: string[];
+  kpis: KpisSugerencias;
+  filas: FilaSugerencia[];
+  hayMas: boolean;
+  duracionMs: number;
+}

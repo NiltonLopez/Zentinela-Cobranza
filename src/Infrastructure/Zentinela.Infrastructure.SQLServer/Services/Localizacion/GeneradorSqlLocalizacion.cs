@@ -76,18 +76,34 @@ internal static class GeneradorSqlLocalizacion
     /// con Enc / Con (tinyint 0/1) y Fecha (date). NuevaEps guarda el TitularID como texto: se cruza con
     /// <c>TRY_CAST(s.TitularID AS bigint)</c>, como hace la BaseMadre.
     /// </summary>
-    public static string UltimaFila(FuenteLocalizacion f)
+    public static string UltimaFila(FuenteLocalizacion f) => $"""
+        -- {f.Clave}: última fila por titular (desempate: en la misma fecha gana la fila con dato)
+        {UltimaFilaConsulta(f, $"INTO {TablaTemporal(f)}")}
+        OPTION (MAXDOP 4, HASH JOIN);
+        CREATE UNIQUE CLUSTERED INDEX IX_F ON {TablaTemporal(f)} (TitularID);
+
+        """;
+
+    /// <summary>
+    /// La consulta de <see cref="UltimaFila"/> sin <c>OPTION</c> ni índice: <c>TitularID, Enc, Con, Fecha</c>
+    /// de la última fila de cada titular de <c>#Tit</c> en la fuente. <paramref name="into"/> va entre el
+    /// SELECT y el FROM (<c>"INTO #F_X"</c>, o vacío para usarla como tabla derivada). Las sugerencias
+    /// (etapa 2) la usan así, sobre la variable de tabla <c>@Tit</c> (<paramref name="titulares"/>), para no escribir
+    /// las #F en tempdb ni recompilar en cada ejecución.
+    /// </summary>
+    public static string UltimaFilaConsulta(FuenteLocalizacion f, string into = "", string titulares = "#Tit")
     {
         if (!TablaDbo.IsMatch(f.Tabla))
             throw new InvalidOperationException($"Tabla no permitida en el catálogo: '{f.Tabla}'.");
         var fecha = "s." + Validar(f.ColumnaFecha);
+        if (titulares is not ("#Tit" or "@Tit"))
+            throw new ArgumentException($"Tabla de titulares no permitida: '{titulares}'.", nameof(titulares));
         var cruce = f.TitularIdComoTexto ? "TRY_CAST(s.TitularID AS bigint)" : "s.TitularID";
         var con = f.PredicadoContacto is null ? "0" : $"CASE WHEN {f.PredicadoContacto} THEN 1 ELSE 0 END";
 
         return $"""
-            -- {f.Clave}: última fila por titular (desempate: en la misma fecha gana la fila con dato)
             SELECT x.TitularID, x.Enc, x.Con, x.Fecha
-              INTO {TablaTemporal(f)}
+              {into}
               FROM (
                     SELECT t.TitularID,
                            e.Enc, e.Con,
@@ -95,14 +111,11 @@ internal static class GeneradorSqlLocalizacion
                            ROW_NUMBER() OVER (PARTITION BY t.TitularID
                                               ORDER BY {fecha} DESC, e.Enc DESC, e.Con DESC) AS rn
                       FROM {f.Tabla} s
-                      INNER JOIN #Tit t ON t.TitularID = {cruce}
+                      INNER JOIN {titulares} t ON t.TitularID = {cruce}
                       CROSS APPLY (SELECT CAST(CASE WHEN {f.PredicadoEncontrado} THEN 1 ELSE 0 END AS tinyint) AS Enc,
                                           CAST({con} AS tinyint) AS Con) e
                    ) x
              WHERE x.rn = 1
-            OPTION (MAXDOP 4, HASH JOIN);
-            CREATE UNIQUE CLUSTERED INDEX IX_F ON {TablaTemporal(f)} (TitularID);
-
             """;
     }
 

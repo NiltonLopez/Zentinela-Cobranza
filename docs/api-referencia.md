@@ -713,6 +713,81 @@ GENERAL"); para el Líder siempre es `false`.
   y `recortado: true`; nunca la lista completa. `carteras` = sus pares, ordenados entre sí
   (`carterasSonPropias: true`).
 
+### GET /api/informes/localizacion/sugerencias (etapa 2)
+
+A quién mandar a buscar y en qué fuente **Funcional**, con prioridad explicable. Se calcula **en línea**
+sobre los titulares del par (un batch ADO.NET, timeout 300 s): **no depende del precálculo**, así que
+funciona aunque falte el script (no hay 503). Reglas completas en ADR-040 → "Etapa 2".
+
+| Parámetro | Default | Descripción |
+|---|---|---|
+| `carteraID` | — | **Obligatorio** (si falta → `400`). |
+| `liderID` | — | Admin/Director: sin él = cartera completa (sus líderes activos; un titular con dos líderes cuenta una vez). Líder: se ignora y se usa el del token; la cartera tiene que ser suya (`403`). |
+| `fuentes` | todas las Funcionales | Claves separadas por coma (`Fosyga,Sura`). Una fuente no Funcional o desconocida → `400`. |
+| `umbralDias` | 180 | "No encontrado y viejo": última consulta anterior a hoy − umbral (1–3.650). |
+| `umbralRefresco` | — | Si viene, también "Encontrado pero viejo" con ese umbral (1–3.650). |
+| `soloConSaldo` | `true` | Excluye a quien no tiene `SaldoTotal > 0` en `UltimoEstadoTitular` para la cartera. |
+| `top` | 500 | Filas (titular × fuente) devueltas, 1–5.000 (`InformesLocalizacion:Sugerencias:TopMaximo`). |
+| `excluirEnviadosDias` | 60 | Excluye a quien va en un lote ENVIADO/CERRADO de la misma fuente en esos días (0 = no excluir; 0–365). Sin las tablas de envíos no excluye y lo avisa. |
+| `incluirLocalizados` | `false` | `true` = no resta los 100 puntos a quien ya tiene contacto fresco. |
+
+| Código | Condición |
+|---|---|
+| `200 OK` | Sugerencias |
+| `400 Bad Request` | `{ mensaje }`: parámetro inválido |
+| `403 Forbidden` | Cartera que no es del Líder; Líder sin `liderID` en el token |
+| `409 Conflict` | `{ mensaje, etlEnCurso: true, inicio }`: el ETL de gestión (`vw_EtlEstadoTitularEstado`) está EN CURSO hace menos de `MinutosEtlColgado` (180) |
+
+```json
+{
+  "liderID": 14, "carteraID": 28, "etiquetaAlcance": "SG+ — VANESA ARANGO",
+  "parametros": { "fuentes": ["Cajacopi", "Fosyga", "..."], "umbralDias": 180, "umbralRefrescoDias": null,
+                  "soloConSaldo": true, "top": 500, "excluirEnviadosDias": 60, "incluirLocalizados": false },
+  "datosGestionAl": "2026-09-25T09:43:19", "horasDesdeCargaGestion": 3,
+  "registroEnviosDisponible": false,
+  "avisos": ["Aún no hay registro de envíos a localización (falta aplicar …): no se excluyó a nadie por envíos recientes."],
+  "kpis": {
+    "titularesPar": 36197, "titularesConSaldo": 10696, "p90Saldo": 247233.00,
+    "candidatosAntes": 307836, "candidatos": 78019, "titularesCandidatos": 10502,
+    "saldoCandidatos": 1517658490.00, "conContactoFresco": 37277,
+    "porCategoria": [ { "categoria": "NUNCA_BUSCADO", "etiqueta": "Nunca buscado", "antes": 220915, "candidatos": 74261 } ],
+    "porFuente": [ { "fuente": "Fosyga", "etiqueta": "Fosyga", "estado": "Funcional", "nuncaAntes": 15531,
+                     "noEncontradoViejoAntes": 299, "encontradoViejoAntes": 0, "excluidos": 5996, "nunca": 9825,
+                     "noEncontradoViejo": 9, "encontradoViejo": 0, "candidatos": 9834, "conContactoFresco": 4784,
+                     "saldoCandidatos": 1437411427.00 } ],
+    "exclusiones": [ { "motivo": "SIN_SALDO", "etiqueta": "Sin saldo", "filas": 228384, "titulares": 25501 } ]
+  },
+  "filas": [
+    { "titularID": 8163122, "nombre": "…", "carteraID": 28, "cartera": "SG+", "liderID": 14, "lider": "VANESA ARANGO",
+      "saldo": 1420057.00, "ultimoPerfil": "Numero fuera de servicio", "fechaUltimaGestion": "2026-04-14T00:00:00",
+      "fuente": "Fosyga", "etiquetaFuente": "Fosyga", "categoria": "NUNCA_BUSCADO", "ultimaConsulta": null,
+      "prioridad": 95,
+      "desglose": { "perfil": 40, "saldo": 30, "gestion": 15, "nuncaFuncional": 0, "nuncaFuente": 10,
+                    "noEncontradoViejo": 0, "contactoFresco": 0 },
+      "encontradoEn": ["Positiva"] }
+  ],
+  "hayMas": true, "duracionMs": 1838
+}
+```
+
+- `categoria`: `NUNCA_BUSCADO` | `NO_ENC_VIEJO` | `ENC_VIEJO` (los códigos del CHECK de `LocalizacionEnvioDetalle`).
+- `motivo`: `YA_PAGO` | `FALLECIDO` | `NO_GESTIONAR` | `RECLAMACION` | `ACUERDO` | `PROMESA` | `ENVIADO` | `SIN_SALDO`
+  (un candidato tiene un solo motivo, en ese orden de precedencia).
+- `porFuente[].nuncaAntes` = "Falta por buscar" del Calificador / de la etapa 1 para el par.
+- Orden de `filas`: prioridad, saldo (mayor primero), TitularID, fuente. `prioridad` = suma de `desglose`.
+- `encontradoEn`: fuentes Funcionales cuya última fila del titular ya es "encontrado".
+
+### GET /api/informes/localizacion/sugerencias/excel (etapa 2)
+
+Mismos parámetros y mismas filas (el mismo top). Devuelve el archivo con el **formato del Cargue de
+Fuentes**: por fuente, una hoja `BASE` con los encabezados de "Columnas esperadas" de esa fuente
+(`TitularID`, `Nombre`, `CarteraID`, `Cartera`, `LiderID`, `Lider` y las columnas de dato **vacías**),
+TitularID y columnas de dato no fecha con formato texto (`@`), sin filas de ejemplo.
+
+- Una sola fuente con filas → `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).
+- Varias → `.zip` (`application/zip`) con un `.xlsx` por fuente: el Cargue de Fuentes recibe un archivo por fuente.
+- Sin filas → `404 { mensaje }`. `400`/`403`/`409` como en `sugerencias`.
+
 ---
 
 ## GET /api/creador/columnas

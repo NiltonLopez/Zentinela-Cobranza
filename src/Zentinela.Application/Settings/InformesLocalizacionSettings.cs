@@ -44,4 +44,58 @@ public class InformesLocalizacionSettings
 
     /// <summary>Espera antes del cálculo de arranque, para no competir con el calentamiento de la API.</summary>
     public int SegundosEsperaArranque { get; set; } = 30;
+
+    // ── Sugerencias de localización (etapa 2) ────────────────────────────────
+
+    /// <summary>Pesos del puntaje y límites de las sugerencias (subsección "Sugerencias").</summary>
+    public SugerenciasLocalizacionSettings Sugerencias { get; set; } = new();
+}
+
+/// <summary>
+/// Puntaje explicable de las sugerencias de localización (ADR-040, etapa 2). Cada punto se suma por
+/// separado y el desglose viaja al front: cambiar un peso aquí cambia el orden y la explicación a la vez.
+/// </summary>
+public class SugerenciasLocalizacionSettings
+{
+    /// <summary>UltimoPerfil ilocalizado, número equivocado / errado / fuera de servicio o "datos de localización".</summary>
+    public int PuntosPerfilSinDatos { get; set; } = 40;
+
+    /// <summary>Otro perfil de marcación sin contacto, "SIN GESTION" o sin perfil.</summary>
+    public int PuntosPerfilSinContacto { get; set; } = 25;
+
+    /// <summary>Máximo por saldo: PuntosSaldoMax × min(1, Saldo / P90 del saldo del par).</summary>
+    public int PuntosSaldoMax { get; set; } = 30;
+
+    /// <summary>Última gestión hace más de 90 días, o nunca.</summary>
+    public int PuntosGestionMas90 { get; set; } = 15;
+
+    /// <summary>Última gestión hace más de 30 días (y 90 o menos).</summary>
+    public int PuntosGestionMas30 { get; set; } = 5;
+
+    /// <summary>Nunca buscado en ninguna fuente Funcional.</summary>
+    public int PuntosNuncaFuncional { get; set; } = 15;
+
+    /// <summary>Nunca buscado en la fuente de la sugerencia.</summary>
+    public int PuntosNuncaFuente { get; set; } = 10;
+
+    /// <summary>Buscado en la fuente, no encontrado, y el dato ya es viejo.</summary>
+    public int PuntosNoEncontradoViejo { get; set; } = 5;
+
+    /// <summary>Se RESTA si ya tiene contacto fresco (celular o email en una Funcional de hace pocos días).</summary>
+    public int PenalizacionContactoFresco { get; set; } = 100;
+
+    /// <summary>Días que un contacto se considera fresco.</summary>
+    public int DiasContactoFresco { get; set; } = 180;
+
+    /// <summary>Tope de filas que devuelve una consulta (y el Excel).</summary>
+    public int TopMaximo { get; set; } = 5000;
+
+    /// <summary>Datos de gestión con más de estas horas: la respuesta trae un aviso.</summary>
+    public int HorasDatosGestionViejos { get; set; } = 72;
+
+    /// <summary>
+    /// Una corrida del ETL 'EN CURSO' más vieja que esto se considera colgada: ya no bloquea (409), solo avisa.
+    /// La corrida normal nunca tardó más de 46 min.
+    /// </summary>
+    public int MinutosEtlColgado { get; set; } = 180;
 }

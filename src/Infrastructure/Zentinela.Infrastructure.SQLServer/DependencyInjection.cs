@@ -140,6 +140,8 @@ public static class DependencyInjection
         services.AddSingleton<ILocalizacionResumenCoordinador, LocalizacionResumenCoordinador>();
         services.AddScoped<LocalizacionResumenService>();
         services.AddScoped<IInformesLocalizacionService, InformesLocalizacionService>();
+        // Sugerencias (etapa 2): en línea sobre el par, no dependen del precálculo.
+        services.AddScoped<ILocalizacionSugerenciasService, LocalizacionSugerenciasService>();
 
         return services;
     }

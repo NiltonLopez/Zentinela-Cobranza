@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Infrastructure\Zentinela.Infrastructure.SQLServer\Zentinela.Infrastructure.SQLServer.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Zentinela.Infrastructure.FileExporter\Zentinela.Infrastructure.FileExporter.csproj" />
   </ItemGroup>
 
 </Project>

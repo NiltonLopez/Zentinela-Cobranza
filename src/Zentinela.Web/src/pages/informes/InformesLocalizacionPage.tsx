@@ -11,15 +11,17 @@ import { TabResumen } from './localizacion/TabResumen';
 import { TabCobertura } from './localizacion/TabCobertura';
 import { TabFrescura } from './localizacion/TabFrescura';
 import { TabRankings } from './localizacion/TabRankings';
+import { TabSugerencias } from './localizacion/TabSugerencias';
 import { fmtFechaHora, type Alcance } from './localizacion/compartidos';
 
-type Tab = 'resumen' | 'cobertura' | 'frescura' | 'rankings';
+type Tab = 'resumen' | 'cobertura' | 'frescura' | 'rankings' | 'sugerencias';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen',   label: 'Resumen' },
   { id: 'cobertura', label: 'Cobertura por fuente' },
   { id: 'frescura',  label: 'Frescura' },
   { id: 'rankings',  label: 'Rankings' },
+  { id: 'sugerencias', label: 'Sugerencias' },
 ];
 
 const MOTIVO: Record<string, string> = {
@@ -84,6 +86,8 @@ export function InformesLocalizacionPage() {
 
   const problema = estado.isError ? problemaLocalizacion(estado.error) : null;
   const e = estado.data;
+  // Las Sugerencias no dependen del corte: su PDF se puede bajar aunque no haya precálculo.
+  const sinDescarga = !e?.ultimoOk && tabActiva !== 'sugerencias';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1300, margin: '0 auto' }}>
@@ -116,13 +120,13 @@ export function InformesLocalizacionPage() {
           )}
           <button
             onClick={handleDescargar}
-            disabled={descargando || !e?.ultimoOk}
+            disabled={descargando || sinDescarga}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '6px 14px', borderRadius: 7, fontSize: 13, fontWeight: 500,
-              background: descargando || !e?.ultimoOk ? '#94a3b8' : C.naranja,
+              background: descargando || sinDescarga ? '#94a3b8' : C.naranja,
               color: '#fff', border: 'none',
-              cursor: descargando || !e?.ultimoOk ? 'not-allowed' : 'pointer',
+              cursor: descargando || sinDescarga ? 'not-allowed' : 'pointer',
               opacity: descargando ? 0.7 : 1,
               transition: 'background 0.15s',
               whiteSpace: 'nowrap',
@@ -134,42 +138,31 @@ export function InformesLocalizacionPage() {
         </div>
       </div>
 
-      {/* Estados del precálculo */}
-      {estado.isLoading ? <Cargando /> : problema?.tipo === 'sin-tablas' ? (
-        <AvisoEstado color="#dc2626" titulo="El módulo todavía no está instalado en la base de datos">
-          {problema.mensaje || 'Falta aplicar docs/sql/migrations/2026-09-26_informes_localizacion.sql.'}
-          {' '}Un administrador de la base de datos debe ejecutar ese script; mientras tanto no hay datos que mostrar.
-        </AvisoEstado>
-      ) : estado.isError || !e ? <ErrorMsg /> : !e.ultimoOk ? (
-        <AvisoEstado color="#2563eb" titulo="Calculando el primer corte de localización">
-          {e.calculando
-            ? `En curso desde ${fmtFechaHora(e.inicioEnCurso)}. Tarda alrededor de un minuto; esta página se actualiza sola.`
-            : e.ultimoIntento?.estado === 'ERROR'
-              ? `El último intento falló (${e.ultimoIntento.error ?? 'sin detalle'}). Se reintenta automáticamente en unos minutos${esAdmin ? ' o con "Recalcular"' : ''}.`
-              : 'Todavía no hay un corte calculado. Se está pidiendo uno; esta página se actualiza sola.'}
-        </AvisoEstado>
-      ) : (
+      {/* Estados del precálculo. Las Sugerencias no dependen de él: su pestaña funciona siempre. */}
+      {estado.isLoading ? <Cargando /> : (
         <>
           {/* Banner del corte */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-            fontSize: 12, color: 'var(--z-text-muted)', background: 'var(--z-bg-card)',
-            border: '1px solid var(--z-border)', borderRadius: 8, padding: '8px 14px',
-          }}>
-            <span>
-              Localización al <strong style={{ color: 'var(--z-text-primary)' }}>{fmtFechaHora(e.ultimoOk.fechaCorte)}</strong>
-              {' · '}Gestión al <strong style={{ color: 'var(--z-text-primary)' }}>{fmtFechaHora(e.ultimoOk.datosGestionAl)}</strong>
-            </span>
-            <span style={{ opacity: 0.8 }}>
-              ({MOTIVO[e.ultimoOk.motivo] ?? e.ultimoOk.motivo}
-              {e.ultimoOk.titulares != null ? ` · ${e.ultimoOk.titulares.toLocaleString('es-CO')} titulares en ${e.ultimoOk.pares} pares` : ''})
-            </span>
-            {e.calculando && <span style={{ color: '#2563eb', fontWeight: 600 }}>· calculando un corte nuevo…</span>}
-            {!e.calculando && e.ultimoIntento?.estado === 'ERROR' && e.ultimoIntento.corteID > e.ultimoOk.corteID && (
-              <span style={{ color: '#dc2626' }} title={e.ultimoIntento.error ?? undefined}>· el último recálculo falló; se muestra el anterior</span>
-            )}
-            {recalcular.isSuccess && !e.calculando && <span style={{ color: '#16a34a' }}>· recálculo solicitado</span>}
-          </div>
+          {e?.ultimoOk && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              fontSize: 12, color: 'var(--z-text-muted)', background: 'var(--z-bg-card)',
+              border: '1px solid var(--z-border)', borderRadius: 8, padding: '8px 14px',
+            }}>
+              <span>
+                Localización al <strong style={{ color: 'var(--z-text-primary)' }}>{fmtFechaHora(e.ultimoOk.fechaCorte)}</strong>
+                {' · '}Gestión al <strong style={{ color: 'var(--z-text-primary)' }}>{fmtFechaHora(e.ultimoOk.datosGestionAl)}</strong>
+              </span>
+              <span style={{ opacity: 0.8 }}>
+                ({MOTIVO[e.ultimoOk.motivo] ?? e.ultimoOk.motivo}
+                {e.ultimoOk.titulares != null ? ` · ${e.ultimoOk.titulares.toLocaleString('es-CO')} titulares en ${e.ultimoOk.pares} pares` : ''})
+              </span>
+              {e.calculando && <span style={{ color: '#2563eb', fontWeight: 600 }}>· calculando un corte nuevo…</span>}
+              {!e.calculando && e.ultimoIntento?.estado === 'ERROR' && e.ultimoIntento.corteID > e.ultimoOk.corteID && (
+                <span style={{ color: '#dc2626' }} title={e.ultimoIntento.error ?? undefined}>· el último recálculo falló; se muestra el anterior</span>
+              )}
+              {recalcular.isSuccess && !e.calculando && <span style={{ color: '#16a34a' }}>· recálculo solicitado</span>}
+            </div>
+          )}
 
           {/* Tabs */}
           {/* Subrayado animado: crece desde el centro al hover; el tab activo queda subrayado completo. */}
@@ -210,10 +203,30 @@ export function InformesLocalizacionPage() {
           </div>
 
           {/* Contenido */}
-          {tabActiva === 'resumen'   && <TabResumen   alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
-          {tabActiva === 'cobertura' && <TabCobertura alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
-          {tabActiva === 'frescura'  && <TabFrescura  alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
-          {tabActiva === 'rankings'  && <TabRankings  onRegisterDownload={handleRegisterDownload} />}
+          {tabActiva === 'sugerencias' ? (
+            <TabSugerencias alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />
+          ) : problema?.tipo === 'sin-tablas' ? (
+            <AvisoEstado color="#dc2626" titulo="El módulo todavía no está instalado en la base de datos">
+              {problema.mensaje || 'Falta aplicar docs/sql/migrations/2026-09-26_informes_localizacion.sql.'}
+              {' '}Un administrador de la base de datos debe ejecutar ese script; mientras tanto estas pestañas no tienen datos.
+              {' '}Las Sugerencias sí funcionan: se calculan en línea.
+            </AvisoEstado>
+          ) : estado.isError || !e ? <ErrorMsg /> : !e.ultimoOk ? (
+            <AvisoEstado color="#2563eb" titulo="Calculando el primer corte de localización">
+              {e.calculando
+                ? `En curso desde ${fmtFechaHora(e.inicioEnCurso)}. Tarda alrededor de un minuto; esta página se actualiza sola.`
+                : e.ultimoIntento?.estado === 'ERROR'
+                  ? `El último intento falló (${e.ultimoIntento.error ?? 'sin detalle'}). Se reintenta automáticamente en unos minutos${esAdmin ? ' o con "Recalcular"' : ''}.`
+                  : 'Todavía no hay un corte calculado. Se está pidiendo uno; esta página se actualiza sola.'}
+            </AvisoEstado>
+          ) : (
+            <>
+              {tabActiva === 'resumen'   && <TabResumen   alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
+              {tabActiva === 'cobertura' && <TabCobertura alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
+              {tabActiva === 'frescura'  && <TabFrescura  alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
+              {tabActiva === 'rankings'  && <TabRankings  onRegisterDownload={handleRegisterDownload} />}
+            </>
+          )}
         </>
       )}
 

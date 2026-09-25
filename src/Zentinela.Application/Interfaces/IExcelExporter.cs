@@ -53,4 +53,13 @@ public interface IExcelExporter
     /// texto para que Excel no los muestre en notación científica.
     /// </summary>
     byte[] GenerarEstrategiaSms(IReadOnlyList<DTOs.CreadorVirtualidad.FilaSmsGeneradaDto> filas);
+
+    /// <summary>
+    /// Lista para el departamento de localización (ADR-040) con el formato EXACTO que acepta el Cargue de
+    /// Fuentes para <paramref name="fuente"/>: una hoja "BASE" con los encabezados de
+    /// <see cref="ColumnasEsperadasCargue"/> (clave, Nombre, CarteraID, Cartera, LiderID, Lider y las columnas
+    /// de dato vacías para que las llene el proveedor). La clave y las columnas numéricas largas van como
+    /// texto para que Excel no las pase a notación científica. Sin filas de ejemplo.
+    /// </summary>
+    byte[] GenerarListaLocalizacion(DefinicionFuenteCargue fuente, IReadOnlyList<DTOs.InformesLocalizacion.FilaListaLocalizacion> filas);
 }

@@ -137,6 +137,74 @@ public class ExcelExporter : IExcelExporter
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// Lista de localización con el formato del Cargue de Fuentes (ADR-040 / ADR-039). La hoja se llama
+    /// "BASE" porque es la que el lector del cargue busca primero (<c>ArchivoTabular.HojaDeDatos</c>).
+    /// Los encabezados son los <c>Nombre</c> de <see cref="Application.ColumnasEsperadasCargue"/>, que el
+    /// motor resuelve por alias normalizado. Formato "@" (texto) en la clave y en toda columna de dato que
+    /// no sea fecha: un celular o un NIT que el proveedor pegue ahí se queda como texto, y el documento no
+    /// se muestra como 1,23E+09. Se escribe solo la clave y el par; las columnas de dato quedan vacías.
+    /// </summary>
+    public byte[] GenerarListaLocalizacion(
+        Application.DefinicionFuenteCargue fuente,
+        IReadOnlyList<Application.DTOs.InformesLocalizacion.FilaListaLocalizacion> filas)
+    {
+        var columnas = Application.ColumnasEsperadasCargue.De(fuente);
+        var tiposDato = fuente.ColumnasDato.Concat(fuente.ColumnasArchivoExtra)
+            .GroupBy(c => c.Nombre).ToDictionary(g => g.Key, g => g.First().Tipo);
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("BASE");
+
+        for (var i = 0; i < columnas.Count; i++)
+        {
+            var nombre = columnas[i].Nombre;
+            var celda = ws.Cell(1, i + 1);
+            celda.Value = nombre;
+            celda.Style.Font.Bold            = true;
+            celda.Style.Font.FontColor       = XLColor.White;
+            celda.Style.Fill.BackgroundColor = XLColor.FromHtml("#0f766e");
+            celda.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+            // Texto en la clave y en los datos que no son fecha (la fila de encabezado ya es texto).
+            var esClave = i == 0;
+            var esDatoNoFecha = tiposDato.TryGetValue(nombre, out var tipo) && tipo != Application.TipoColumnaCargue.Fecha;
+            if (esClave || esDatoNoFecha)
+                ws.Column(i + 1).Style.NumberFormat.Format = "@";
+        }
+
+        // Posición de las columnas comunes (puede faltar alguna si la fuente no crea titulares o relaciones).
+        int Indice(string nombre) => columnas.FindIndex(c => c.Nombre == nombre) + 1;   // 0 = no está
+        var iNombre = Indice("Nombre");
+        var iCarteraId = Indice("CarteraID");
+        var iCartera = Indice("Cartera");
+        var iLiderId = Indice("LiderID");
+        var iLider = Indice("Lider");
+
+        for (var r = 0; r < filas.Count; r++)
+        {
+            var f = filas[r];
+            var fila = r + 2;
+            // Como TEXTO: el lector del cargue lo toma tal cual y Excel no lo convierte a científico.
+            ws.Cell(fila, 1).SetValue(f.TitularID.ToString(CultureInfo.InvariantCulture));
+            if (iNombre > 0) ws.Cell(fila, iNombre).SetValue(f.Nombre ?? string.Empty);
+            if (iCarteraId > 0) ws.Cell(fila, iCarteraId).SetValue(f.CarteraID);
+            if (iCartera > 0) ws.Cell(fila, iCartera).SetValue(f.Cartera);
+            if (iLiderId > 0) ws.Cell(fila, iLiderId).SetValue(f.LiderID);
+            if (iLider > 0) ws.Cell(fila, iLider).SetValue(f.Lider);
+        }
+
+        ws.SheetView.FreezeRows(1);
+        ws.Column(1).Width = 16;
+        if (iNombre > 0) ws.Column(iNombre).Width = 38;
+        for (var i = 1; i <= columnas.Count; i++)
+            if (i != 1 && i != iNombre) ws.Column(i).Width = Math.Max(14, columnas[i - 1].Nombre.Length + 4);
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
     public byte[] GenerarPlantillaAsignaciones()
     {
         using var workbook = new XLWorkbook();

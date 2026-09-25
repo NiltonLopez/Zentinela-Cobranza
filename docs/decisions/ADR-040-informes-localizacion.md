@@ -1,6 +1,6 @@
 # ADR-040 — Informes de Localización: precálculo por cortes, mismas cifras que el Calificador
 
-**Estado:** Aceptado (etapas 0 y 1 implementadas; 2 a 4 pendientes)
+**Estado:** Aceptado (etapas 0, 1 y 2 implementadas; 3 y 4 pendientes)
 **Fecha:** 2026-09-25
 **Módulo afectado:** Informes → Informes de Localización (nuevo, `/informes/localizacion`). Lee las 21
 fuentes de localización del panel del Calificador, `Titular_Cartera`, `Lider_Cartera`, `Cartera`, `Lider`,
@@ -141,9 +141,124 @@ una `carteraID`, tiene que estar en su `Lider_Cartera` activo (si no, 403). `GET
 abierto a los tres roles porque solo expone metadatos del corte (el front lo usa para el banner y los
 estados "sin tablas"/"calculando"); `POST resumen/recalcular` es solo Admin.
 
+### Etapa 2 — Sugerencias de localización
+
+`GET sugerencias` y `GET sugerencias/excel` (`LocalizacionSugerenciasService`, `GeneradorSqlSugerencias`,
+`DespliegueSugerencias`; reglas en `Application/Utils/SugerenciaLocalizacion.cs`). Pestaña "Sugerencias"
+con consulta manual (botón "Generar sugerencias", como Virtualidad).
+
+#### Universo y datos
+
+- **En línea sobre el par**, sin las tablas del precálculo: la pestaña funciona aunque el usuario no haya
+  aplicado el script. Titulares = filas de `Titular_Cartera` con `Lider_Cartera.Activo = 1` y titular en
+  `dbo.Titular` (el Total del Calificador). Admin/Director pueden pedir la **cartera completa** (sin
+  `liderID`): un titular con dos líderes cuenta una vez, con el menor LiderID. El Líder siempre ve su par.
+- Saldo, perfiles, promesa y última gestión: `UltimoEstadoTitular` por (TitularID, CarteraID).
+- **ETL de gestión:** antes de calcular se lee `vw_EtlEstadoTitularEstado`. Si el último intento está
+  `EN CURSO` hace menos de 180 min (`MinutosEtlColgado`; la edad se calcula en SQL porque el reloj de la BD
+  no es necesariamente el de la API) → **409** con mensaje ("los datos de gestión se están actualizando");
+  más viejo → se trata como colgado y solo se avisa. Última carga OK de más de 72 h → aviso en la respuesta.
+- "Hoy" es la fecha del servidor de BD.
+
+#### Categorías (por titular y fuente Funcional pedida)
+
+Con la **misma última fila que la etapa 1** (`GeneradorSqlLocalizacion.UltimaFilaConsulta`: mismo predicado
+de "encontrado", desempate `Fecha DESC, Enc DESC, Con DESC`):
+
+| Código (= CHECK de `LocalizacionEnvioDetalle`) | Regla |
+|---|---|
+| `NUNCA_BUSCADO` | Sin ninguna fila en la fuente ("Falta por buscar") |
+| `NO_ENC_VIEJO` | La última fila no cumple el predicado y su fecha es anterior a hoy − `umbralDias` (180). Sin fecha = viejo |
+| `ENC_VIEJO` | Solo si se pide `umbralRefresco`: cumple el predicado pero es anterior a hoy − umbral |
+
+Solo fuentes **Funcionales** del panel (una Intermitente o Inactiva → 400). Se usaron los códigos del CHECK
+de la tabla de envíos (y no NUNCA/NOENC_VIEJO/REFRESCO) para que la etapa 3 guarde la categoría tal cual.
+
+#### Exclusiones (un motivo por candidato, en este orden)
+
+1. `YA_PAGO`: **UltimoPerfil o MejorPerfil** en `PerfilClasificacion.YaPago` (paz y salvo, ya pagó, pago
+   reflejado, consignación por aplicar, caso especial…). Se agregó MejorPerfil porque ADR-029 clasifica "ya
+   pagó" por el MejorPerfil: medido, ~970 titulares con MejorPerfil paz y salvo y otro UltimoPerfil.
+2. `FALLECIDO` (Fallecido, Cliente fallecido), `NO_GESTIONAR`, `RECLAMACION` (PQR, reclamación o derecho de
+   petición), `ACUERDO` (`PerfilClasificacion.Acuerdos`): por UltimoPerfil.
+3. `PROMESA`: `FechaPromesa >= hoy`.
+4. `ENVIADO`: el titular va en un lote `ENVIADO` o `CERRADO` **de la misma fuente** (de cualquier par: la
+   búsqueda es del titular en la fuente) con `FechaEnvio` dentro de `excluirEnviadosDias` (60). Si no existen
+   `LocalizacionEnvio*` no se excluye a nadie y la respuesta lo avisa (no es un 503).
+5. `SIN_SALDO`: con "solo con saldo" (default), sin `SaldoTotal > 0`.
+
+**Perfiles: una sola regla, normalizada.** C# (`PerfilesSugerencia`) clasifica los perfiles de los conjuntos
+de `PerfilClasificacion` con la clave normalizada (mayúsculas, sin tildes, espacios colapsados: "DATOS DE
+LOCALIZACION", "Datos Localizacion", "Pago  reflejado"…) y se la pasa al SQL como JSON; el SQL normaliza el
+perfil de la BD igual y compara con `Latin1_General_CI_AI`. Un perfil desconocido no excluye ni suma.
+
+#### Puntaje explicable (pesos en `InformesLocalizacion:Sugerencias`)
+
+| Componente | Puntos |
+|---|---|
+| UltimoPerfil ilocalizado (total/parcial), número equivocado, línea errada, fuera de servicio o datos de localización | +40 |
+| Otro perfil del conjunto SinContacto, "SIN GESTION" o sin perfil | +25 |
+| Saldo | hasta +30 = round(30 × min(1, saldo / P90)); P90 = `PERCENTILE_CONT(0.9)` del saldo de los titulares **con saldo** del par (con los ceros, el P90 de una cartera con poco saldo sería 0) |
+| Última gestión nunca o de más de 90 días / de más de 30 | +15 / +5 |
+| Nunca buscado en ninguna fuente Funcional | +15 |
+| Nunca buscado en la fuente | +10 |
+| No encontrado y viejo en la fuente | +5 |
+| Contacto fresco: celular o email (`PredicadoContacto`) en la última fila de alguna Funcional de 180 días o menos | −100, salvo "incluir localizados" |
+
+"Línea errada" y "fuera de servicio" se sumaron a los +40 (decisión propia): dicen lo mismo que "número
+equivocado", que el dato de contacto está mal. El SQL calcula el puntaje para ordenar; el servidor lo
+recalcula en C# (`PrioridadSugerencia.Calcular`) para cada fila devuelta y registra un warning si difiere
+(en las mediciones: 0 diferencias). Cada fila trae el desglose; el front lo muestra en un popover.
+
+**Orden:** prioridad, saldo (mayor primero), TitularID, fuente. **Top** 500 por defecto, máximo 5.000.
+
+#### Cómo se calcula (un batch)
+
+Una fila por titular (`#TE`) con **máscaras de bits** por fuente Funcional (buscado, encontrado, no
+encontrado y viejo, encontrado pero viejo, enviado) y lo que es del titular (exclusión, puntos que no
+dependen de la fuente). Los 2,7 M candidatos (titular × fuente) del par grande **nunca se escriben**: los
+conteos salen de agrupar las combinaciones de máscaras (~8.000) y desplegarlas en C#; el top sale de los N
+mejores titulares por su mejor fila, que contienen a las N mejores filas (cualquier fila de otro titular
+queda detrás de la mejor fila de cada uno de esos N; un test lo compara contra fuerza bruta).
+
+Lo que costó (servidor compartido, tempdb lento), medido el 2026-09-25:
+
+- Materializar candidatos en tempdb: 7 s. Descartado.
+- `UltimoEstadoTitular` pesa ~600 MB (`Gestion` nvarchar(1000)): con HASH JOIN, ~2 s; por su PK con LOOP JOIN
+  desde el par, ~0,5 s. Con estadísticas viejas de `IX_UltimoEstado_CarteraID` (el ETL la recarga cada día)
+  el optimizador buscó por CarteraID y recorrió un spool por titular: **63 s** en 36k titulares. Por eso
+  `FORCE ORDER` + `INDEX(1), FORCESEEK`.
+- Compilación: en un batch ad hoc, una sentencia que lee una # creada en el mismo batch se recompila en cada
+  ejecución (1,3 s la grande) y crea estadísticas automáticas al filtrar o agrupar (8 estadísticas, ~1 s).
+  Por eso `@G`/`@Tit`/`@PG`/`@EnvM` son variables de tabla, las consultas finales no filtran ni agrupan por
+  varias columnas de `#TE` (agrupan por una "Firma" y ordenan por `OrdenTop`) y nada lleva RECOMPILE salvo el
+  llenado de `@G`. El texto lleva el **tramo de tamaño** del par (chico/mediano/grande/enorme) como
+  comentario para que un par chico y uno grande no compartan plan (medido: el grande con el plan del chico,
+  10,7 s en vez de 4 s).
+- Las 16 fuentes Funcionales (18 M de filas) se leen con HASH JOIN en una sola sentencia: es el piso, ~2,5 s a
+  MAXDOP 4 (un LOOP JOIN por el índice `(TitularID, Fecha)` fue el doble de lento).
+
+#### Excel con el formato del Cargue de Fuentes
+
+`IExcelExporter.GenerarListaLocalizacion`: por fuente, hoja `BASE` (la que el lector del cargue busca
+primero) con los encabezados **exactos** de `ColumnasEsperadasCargue.De(def)` — la lista que el orquestador
+del cargue muestra en "Columnas esperadas", movida a Application para que la usen los dos: TitularID,
+Nombre, CarteraID, Cartera, LiderID, Lider y las columnas de dato vacías. TitularID como texto y formato `@`
+en la clave y en toda columna de dato que no es fecha (un celular o un NIT pegado ahí no pasa a científico).
+Sin filas de ejemplo. El Cargue recibe **un archivo por fuente**: una fuente → `.xlsx`; varias → `.zip` con
+un `.xlsx` por fuente. El Excel lleva exactamente el top que se ve en pantalla.
+
+Verificado en `ExcelListaLocalizacionTests` sin BD, para las 16 fuentes Funcionales: el archivo generado y
+llenado se lee con `ArchivoTabular.LeerXlsxPorFilas` y `CargueFuentesMotor.ResolverColumnas` (ahora
+`internal`): cero columnas faltantes, cero sin uso, todas las columnas de dato resueltas, la clave
+`1234567890123` leída tal cual y válida para `TryDocumento`. Falta la prueba a mano de punta a punta
+(exportar Fosyga, llenarlo y subirlo en Cargue de Fuentes).
+
+"Crear lote de envío" no aparece en la pestaña (no se muestra un botón deshabilitado): llega con la etapa 3.
+
 ### Etapas siguientes (plan aprobado)
 
-2. Sugerencias de localización y Excel con el formato del Cargue de Fuentes.
+2. ~~Sugerencias de localización y Excel con el formato del Cargue de Fuentes.~~ Hecha (arriba).
 3. Envíos (`LocalizacionEnvio*`, tablas ya creadas por el script de la etapa 1), retorno, impacto y uso
    del departamento; criterios de ranking de uso y retorno.
 4. Tendencias, servicio de las 13:05, asesores con foto y alertas semanales.
@@ -209,12 +324,47 @@ Batch completo (56 pares activos, 1.931.286 titulares distintos, 21 fuentes) con
 (objetivo < 120 s). Aproximadamente 22 s en las últimas filas por fuente, 20 s en los 42 agregados por
 fuente y 9 s en saldo, métricas cruzadas y líderes. Lecturas: en memoria sobre el snapshot del corte.
 
+### Sugerencias: conciliación y rendimiento (2026-09-25)
+
+**Conciliación con "Falta por buscar"** (Fosyga, calculado aparte con `NOT EXISTS` sobre `dbo.Fosyga` y el
+mismo universo): los candidatos `NUNCA_BUSCADO` antes de exclusiones son **idénticos** en los tres pares.
+
+| Par | Falta por buscar | Nunca (antes) | Exclusiones en Fosyga (filas, ambas categorías) | Nunca (después) |
+|---|---:|---:|---|---:|
+| Líder 15 / COBRANO (solo con saldo) | 288 | 288 | SIN_SALDO 923 (la cartera no tiene saldo en UET) | 0 |
+| Líder 15 / COBRANO (sin filtro de saldo) | 288 | 288 | ninguna | 288 |
+| Líder 14 / SG+ (solo con saldo) | 15.531 | 15.531 | SIN_SALDO 5.811, ACUERDO 117, YA_PAGO 67, PROMESA 1 (= 5.996) | 9.825 |
+| Líder 6 / DELMAR EXPERTOS (sin filtro de saldo) | 48.186 | 48.186 | YA_PAGO 1.112, FALLECIDO 358, NO_GESTIONAR 87, ACUERDO 26, RECLAMACION 2 (= 1.585) | 46.613 |
+
+(NuevaEps, con TitularID de texto, también cuadra: 36.123 en SG+.) DELMAR con "solo con saldo" queda en 0
+candidatos: sus titulares no tienen saldo en `UltimoEstadoTitular` (ver "Lo que no se puede medir hoy"); la
+respuesta lo avisa y sugiere desmarcar el filtro.
+
+**Rendimiento** (16 fuentes Funcionales, top 500, plan en caché). Tiempo en el servidor (medido con el
+batch real por `sp_executesql` y los resultados grandes a tablas temporales, sin red):
+
+| Par | Titulares | Servidor |
+|---|---:|---:|
+| Líder 15 / COBRANO | 1.550 | 0,5–0,7 s |
+| Líder 14 / SG+ | 36.197 | 1,2–1,8 s |
+| Líder 6 / DELMAR EXPERTOS | 223.353 | **3,7–4,0 s** (5 corridas seguidas: 3,67 / 3,76 / 3,73 / 3,72 / 3,81) |
+| DELMAR EXPERTOS cartera completa | 526.934 | 9–11 s |
+
+Desde el equipo de desarrollo (remoto: la BD está en otra zona horaria y la red agrega ~2 s de transferencia
+de resultados), el servicio completo midió 5,4–6,1 s para el par grande. En producción la API corre en el
+mismo servidor. Primera ejecución de cada tramo: +2–8 s de compilación. Hubo picos aislados de 9–16 s por
+esperas de tempdb (una inserción de 0,4 s de CPU tardó 13 s), sin relación con la consulta.
+
 ### Tests
 
 `GeneradorSqlLocalizacionTests` (tabla, fecha, predicado, desempate, NuevaEps con `TRY_CAST`, contacto =
 columnas de `SinContacto`, prefijo de tablas, sin CamaraEmpresa), `RankingCalculoTests` (índice, orden,
 empates, top + posición del Líder, exclusión de externas, saldo sin datos) y `ReglaCorteLocalizacionTests`
-(regla de las 13:00 y de arranque).
+(regla de las 13:00 y de arranque). Etapa 2: `PrioridadSugerenciaTests` (puntos, variantes de perfil, exclusiones
+y su precedencia, −100 por contacto fresco, despliegue de máscaras, titulares por motivo, top exacto contra
+fuerza bruta, tramos de tamaño, fuentes solo Funcionales) y `ExcelListaLocalizacionTests` (encabezados =
+columnas esperadas del cargue para las 16 Funcionales, TitularID texto, el lector del cargue acepta el archivo
+lleno).
 
 ## Consecuencias
 

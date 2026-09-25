@@ -31,6 +31,14 @@ backlog: los items se cierran o se descartan con razón explícita.
   LATIN, Mil Ambientaria, Interenlace, Prima; o sin filas en UET, como COBRANO y las externas; detalle en
   ADR-040). "Sin contacto con saldo" sale "—" ahí. Si ese saldo debería existir, revisar el
   ETL de gestión.
+- **Sugerencias (etapa 2) no necesitan el script:** se calculan en línea. Sin las tablas `LocalizacionEnvio*`
+  no excluyen a los ya enviados y lo avisan. En las carteras sin saldo (Delmar, COBRANO…) "Solo con saldo"
+  deja 0 candidatos: la pantalla avisa y hay que desmarcarlo. Mientras corre el ETL de gestión responden
+  409. **Pendiente la prueba a mano:** exportar el Excel de Fosyga, llenarlo y subirlo en Cargue de Fuentes
+  (los tests ya pasan el archivo por el lector de columnas del cargue).
+- **Sugerencias y `UltimoEstadoTitular`:** el batch busca por la PK con `INDEX(1), FORCESEEK`. Si algún día
+  cambia la PK de la tabla, revisar `GeneradorSqlSugerencias` (sin la sugerencia, con estadísticas viejas, un
+  par mediano tardó 63 s).
 
 ## Cargue de Fuentes de Datos — lo que hay que saber (2026-09-24, ADR-039)
 

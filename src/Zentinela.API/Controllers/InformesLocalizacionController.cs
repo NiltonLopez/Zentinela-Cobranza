@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,13 +12,14 @@ namespace Zentinela.API.Controllers;
 
 /// <summary>
 /// Informes de Localización (ADR-040): resumen, cobertura por fuente, frescura y rankings con foto,
-/// leídos del último corte del precálculo.
+/// leídos del último corte del precálculo; y sugerencias de localización (etapa 2), calculadas en línea.
 ///
 /// Alcance: Admin y Director ven todo. Un Líder ve solo lo suyo: <c>TryResolverLiderID</c> ignora el
 /// <c>liderID</c> de la URL y usa el del token, y si pide una <c>carteraID</c> tiene que estar en su
 /// Lider_Cartera activo. Como su liderID siempre queda fijado, un Líder nunca obtiene la cartera completa.
 ///
-/// Errores: 503 mientras el usuario no aplique el script de las tablas; 409 si aún no hay corte.
+/// Errores: 503 mientras el usuario no aplique el script de las tablas; 409 si aún no hay corte. Las
+/// sugerencias no usan el precálculo: 400 por parámetros, 409 mientras corre el ETL de gestión.
 /// </summary>
 [ApiController]
 [Route("api/informes/localizacion")]
@@ -26,11 +28,17 @@ public class InformesLocalizacionController : ControllerBase
 {
     private readonly IInformesLocalizacionService _service;
     private readonly ILocalizacionResumenCoordinador _coordinador;
+    private readonly ILocalizacionSugerenciasService _sugerencias;
+    private readonly IExcelExporter _excel;
 
-    public InformesLocalizacionController(IInformesLocalizacionService service, ILocalizacionResumenCoordinador coordinador)
+    public InformesLocalizacionController(
+        IInformesLocalizacionService service, ILocalizacionResumenCoordinador coordinador,
+        ILocalizacionSugerenciasService sugerencias, IExcelExporter excel)
     {
         _service = service;
         _coordinador = coordinador;
+        _sugerencias = sugerencias;
+        _excel = excel;
     }
 
     /// <summary>KPIs, índice, gráfico por fuente y alertas del alcance.</summary>
@@ -95,6 +103,107 @@ public class InformesLocalizacionController : ControllerBase
             return Accepted(new { mensaje = "Recálculo solicitado. El corte nuevo aparece en cuanto termine (≈1 minuto)." });
         });
 
+    // ── Sugerencias (etapa 2) ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// A quién mandar a buscar y en qué fuente Funcional, con prioridad explicable (ADR-040, etapa 2). En
+    /// línea sobre el par; no depende de las tablas del precálculo. La cartera es obligatoria; sin
+    /// <c>liderID</c> es la cartera completa (solo Admin/Director: al Líder se le fija el suyo). 409 mientras
+    /// corre el ETL de gestión; 400 ante parámetros inválidos.
+    /// </summary>
+    [HttpGet("sugerencias")]
+    public Task<IActionResult> Sugerencias([FromQuery] ConsultaSugerenciasLocalizacion q, CancellationToken ct) =>
+        ConSugerencias(q, ct, dto => Ok(dto));
+
+    /// <summary>
+    /// Las mismas sugerencias (el mismo top) en el formato del Cargue de Fuentes: un .xlsx si hay una sola
+    /// fuente; un .zip con un .xlsx por fuente si hay varias (el cargue recibe un archivo por fuente).
+    /// </summary>
+    [HttpGet("sugerencias/excel")]
+    public Task<IActionResult> SugerenciasExcel([FromQuery] ConsultaSugerenciasLocalizacion q, CancellationToken ct) =>
+        ConSugerencias(q, ct, ArchivoSugerencias);
+
+    private async Task<IActionResult> ConSugerencias(
+        ConsultaSugerenciasLocalizacion q, CancellationToken ct, Func<SugerenciasLocalizacionDto, IActionResult> responder)
+    {
+        if (q.CarteraID is not > 0) return BadRequest(new { mensaje = "Elige una cartera." });
+        if (!User.TryResolverLiderID(q.LiderID, out var efectivo)) return Forbid();
+        if (EsLider && !await _service.EsCarteraDelLiderAsync(efectivo!.Value, q.CarteraID.Value, ct)) return Forbid();
+
+        var parametros = new ParametrosSugerenciasLocalizacion
+        {
+            LiderID             = efectivo,
+            CarteraID           = q.CarteraID.Value,
+            Fuentes             = (q.Fuentes ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(),
+            UmbralDias          = q.UmbralDias,
+            UmbralRefrescoDias  = q.UmbralRefresco,
+            SoloConSaldo        = q.SoloConSaldo,
+            Top                 = q.Top,
+            ExcluirEnviadosDias = q.ExcluirEnviadosDias,
+            IncluirLocalizados  = q.IncluirLocalizados,
+        };
+
+        try
+        {
+            return responder(await _sugerencias.ObtenerAsync(parametros, ct));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message });
+        }
+        catch (LocalizacionEtlEnCursoException ex)
+        {
+            return Conflict(new { mensaje = ex.Message, etlEnCurso = true, inicio = ex.Inicio });
+        }
+    }
+
+    private IActionResult ArchivoSugerencias(SugerenciasLocalizacionDto dto)
+    {
+        // Un archivo por fuente, en el orden del catálogo, con las filas del top de esa fuente.
+        var archivos = dto.Parametros.Fuentes
+            .Select(clave => (Def: CatalogoCargueFuentes.Buscar(clave),
+                              Filas: dto.Filas.Where(f => f.Fuente.Equals(clave, StringComparison.OrdinalIgnoreCase))
+                                              .Select(f => new FilaListaLocalizacion(f.TitularID, f.Nombre, f.CarteraID, f.Cartera, f.LiderID, f.Lider))
+                                              .ToList()))
+            .Where(x => x.Def is not null && x.Filas.Count > 0)
+            .Select(x => (Nombre: $"Localizacion_{x.Def!.Fuente}_{NombreSeguro(dto.EtiquetaAlcance)}_{DateTime.Now:yyyyMMdd}.xlsx",
+                          Bytes: _excel.GenerarListaLocalizacion(x.Def, x.Filas)))
+            .ToList();
+
+        if (archivos.Count == 0)
+            return NotFound(new { mensaje = "No hay sugerencias para exportar con estos filtros." });
+
+        const string Xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (archivos.Count == 1)
+            return File(archivos[0].Bytes, Xlsx, archivos[0].Nombre);
+
+        // Varias fuentes: un .zip con un .xlsx por fuente (el Cargue de Fuentes recibe uno por fuente).
+        // Pesa poco (tope de 5.000 filas en total): se arma en memoria, sin E/S síncrona sobre la respuesta.
+        using var zipStream = new MemoryStream();
+        using (var zip = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (nombre, bytes) in archivos)
+            {
+                var entrada = zip.CreateEntry(nombre, CompressionLevel.Fastest);
+                using var s = entrada.Open();
+                s.Write(bytes);
+            }
+        }
+        return File(zipStream.ToArray(), "application/zip",
+                    $"Localizacion_{NombreSeguro(dto.EtiquetaAlcance)}_{DateTime.Now:yyyyMMdd}.zip");
+    }
+
+    /// <summary>Nombre de archivo sin caracteres raros: letras, dígitos y guion bajo.</summary>
+    private static string NombreSeguro(string s)
+    {
+        var limpio = new string(s.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+        while (limpio.Contains("__")) limpio = limpio.Replace("__", "_");
+        limpio = limpio.Trim('_');
+        return limpio.Length > 60 ? limpio[..60] : limpio;
+    }
+
     // ── Alcance y errores ─────────────────────────────────────────────────────
 
     // Mismo criterio que AlcanceLiderExtensions (claim de rol del token).
@@ -129,4 +238,21 @@ public class InformesLocalizacionController : ControllerBase
             return Conflict(new { mensaje = ex.Message, calculando = ex.Calculando, sinCorte = true });
         }
     }
+}
+
+/// <summary>
+/// Query string de <c>GET sugerencias</c> y <c>GET sugerencias/excel</c>. <see cref="Fuentes"/> va separado
+/// por comas ("Fosyga,Sura"); vacío = todas las Funcionales.
+/// </summary>
+public sealed class ConsultaSugerenciasLocalizacion
+{
+    public int? LiderID { get; set; }
+    public int? CarteraID { get; set; }
+    public string? Fuentes { get; set; }
+    public int UmbralDias { get; set; } = 180;
+    public int? UmbralRefresco { get; set; }
+    public bool SoloConSaldo { get; set; } = true;
+    public int Top { get; set; } = 500;
+    public int ExcluirEnviadosDias { get; set; } = 60;
+    public bool IncluirLocalizados { get; set; }
 }
