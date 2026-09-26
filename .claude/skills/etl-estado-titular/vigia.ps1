@@ -14,7 +14,7 @@
 
 [CmdletBinding()]
 param(
-    [double]$HorasMaximas = 0,       # 0 = usar los umbrales de la vista (diarios)
+    [double]$HorasMaximas = 0,       # 0 = usar el estado de la vista (corridas perdidas segun horario)
     [int]$HorasSilencio   = 12,      # no repetir el mismo aviso antes de esto
     [switch]$SoloVer,
     [string]$CadenaConexion          # solo para probar contra el harness de LocalDB
