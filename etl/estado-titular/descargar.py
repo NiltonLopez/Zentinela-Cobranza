@@ -22,8 +22,8 @@ como estaba y se informa: el proceso sigue con las demas y termina con codigo 1.
 
 Credenciales: se guardan UNA vez, cifradas con DPAPI de la maquina, con --guardar-credencial
 (controlnext.credencial, fuera de git). Tambien sirven CONTROLNEXT_USUARIO / CONTROLNEXT_CLAVE. Si
-no hay ninguna y
-hay consola, se piden por pantalla. Nunca se escriben en archivos ni en la salida.
+no hay ninguna y hay consola, se piden por pantalla. La clave nunca va en el codigo, en texto
+plano ni en la salida.
 
 Solo biblioteca estandar: el Python del servidor no tiene requests.
 
