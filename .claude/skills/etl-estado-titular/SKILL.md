@@ -48,17 +48,23 @@ diagnostica y no avisa, diciéndolo.
 
 ## Umbrales
 
+Horario del ETL (2026-09-26): **lunes a viernes 7, 9, 11, 13, 15 y 17 h; sábado 7, 9 y 11 h;
+domingo nada.** `vw_EtlEstadoTitularAlerta` cuenta las corridas programadas que pasaron sin
+carga OK posterior (`CorridasPerdidas`, con 60 min de gracia para que cada una termine):
+
 | Estado | Condición | Qué hacer |
 |---|---|---|
-| **Al día** | `HorasDesdeCargaOk` ≤ 26 | Nada |
-| **Atención** | 26 < horas ≤ 42 | Diagnosticar. Avisar solo si además el último intento falló |
-| **Rancio** | **horas > 42** | Diagnosticar y **avisar por WhatsApp siempre** |
+| **Al día** | 0 corridas perdidas | Nada |
+| **Atención** | 1 corrida perdida | Diagnosticar. Avisar solo si además el último intento falló |
+| **Rancio** | **2 o más corridas perdidas** | Diagnosticar y **avisar por WhatsApp siempre** |
 | **Crítico** | `UltimoEstadoTitular` con 0 filas, o < 50 % de la última carga buena | Avisar de inmediato, marcar como incidente |
 
-> El ETL corre una vez al día, así que 26 horas es "se saltó una corrida" y 42 es "ya van dos".
-> El pedido original era 3,5 horas; ese umbral sirve para **vigilar una corrida en progreso**
-> (arranca ~15:10 y nunca tardó más de 46 min), no para la frescura diaria. Los dos casos están
-> contemplados: `--modo corrida` usa 3,5 h, `--modo diario` usa la tabla de arriba.
+> Por horas no sirve: entre semana 26 h tardaba un día en notar el problema, y del sábado 11 h al
+> lunes 7 h pasan 44 h sin que se pierda nada. Contando corridas, la noche y el domingo no suenan.
+> **Si cambia el horario, cambiarlo en dos lugares**: el trabajo del Agente
+> (`2026-09-26_horario_cargador_estado_titular.sql`) y `fn_EtlEstadoTitular_CorridasPerdidas`
+> (`2026-09-26_alerta_por_horario_estado_titular.sql`). Los festivos no están contemplados: un
+> lunes festivo sin corridas da Atención/Rancio.
 
 ---
 

@@ -1,3 +1,6 @@
 __pycache__/
 *.part
 resumen.json
+
+# Credencial cifrada de ControlNext (DPAPI, por maquina)
+*.credencial
