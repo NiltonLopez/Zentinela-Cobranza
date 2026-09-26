@@ -52,6 +52,13 @@ try {
     $cmd = $cn.CreateCommand(); $cmd.CommandText = $consulta; $cmd.CommandTimeout = 120
     $tabla = New-Object System.Data.DataTable
     $tabla.Load($cmd.ExecuteReader())
+    # Carteras con problemas en la ultima corrida (no bajo, vacia, archivo viejo...).
+    # La carga general puede estar OK y una cartera llevar horas con su CSV viejo.
+    $cmd.CommandText = "SELECT Cartera, Estado, ISNULL(LEFT(Detalle,120),'') AS Detalle, ISNULL(HorasArchivo,-1) AS Horas,
+                               ISNULL(Filas,-1) AS Filas, ISNULL(FilasCorridaAnterior,-1) AS Antes
+                        FROM dbo.vw_EtlEstadoTitularCarteras WHERE Estado <> 'OK' ORDER BY Estado, Cartera"
+    $carteras = New-Object System.Data.DataTable
+    try { $carteras.Load($cmd.ExecuteReader()) } catch { }   # sin la vista (migracion vieja) se sigue igual
     $cn.Close()
 } catch {
     # Si no se puede ni consultar, eso ya es noticia.
@@ -76,7 +83,10 @@ if ($HorasMaximas -gt 0 -and $horas -ge 0 -and $horas -gt $HorasMaximas -and $es
     $estado = 'ATENCION'
 }
 
-Write-Output "estado=$estado  horas=$horas  filas=$filas  ultima_ok=$($r.UltimaOk)  ultimo_intento=$($r.UltimoResultado)"
+$estadoGeneral = $estado
+if ($estado -eq 'OK' -and $carteras.Rows.Count -gt 0) { $estado = 'ATENCION' }
+
+Write-Output "estado=$estado  horas=$horas  filas=$filas  ultima_ok=$($r.UltimaOk)  ultimo_intento=$($r.UltimoResultado)  carteras_con_problemas=$($carteras.Rows.Count)"
 
 if ($estado -eq 'OK') { exit 0 }
 
@@ -94,9 +104,23 @@ $lineas = @(
     "Ultimo intento: $($r.UltimoResultado)"
 )
 if ($r.Motivo) { $lineas += "Motivo: $($r.Motivo)" }
+if ($carteras.Rows.Count -gt 0) {
+    $lineas += ''
+    $lineas += "Carteras con problemas ($($carteras.Rows.Count)):"
+    foreach ($c in $carteras.Rows) {
+        $extra = if ($c.Detalle) { ": $($c.Detalle)" }
+                 elseif ($c.Estado -eq 'CAIDA DE FILAS') { " ({0:N0} filas; antes {1:N0})" -f [int]$c.Filas, [int]$c.Antes }
+                 elseif ([int]$c.Horas -ge 0) { " (archivo de hace $($c.Horas) h)" } else { '' }
+        $lineas += "- $($c.Cartera) $($c.Estado)$extra"
+    }
+}
 $lineas += ''
-$lineas += if ($filas -gt 0) { 'Los datos existen, solo estan desactualizados.' }
-           else              { 'La tabla esta VACIA. El Comparador de Carteras no va a responder.' }
+if ($estadoGeneral -ne 'OK') {
+    $lineas += if ($filas -gt 0) { 'Los datos existen, solo estan desactualizados.' }
+               else              { 'La tabla esta VACIA. El Comparador de Carteras no va a responder.' }
+} else {
+    $lineas += 'La carga general esta al dia; esas carteras tienen datos viejos o incompletos.'
+}
 $lineas += 'Para el diagnostico completo, correr la skill etl-estado-titular.'
 $mensaje = $lineas -join "`n"
 

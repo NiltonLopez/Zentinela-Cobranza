@@ -91,6 +91,65 @@ if ($codigoPy -ne 0) {
     $resumenPy.archivos | Where-Object error | ForEach-Object { Write-Output "[$(Ahora)] ATENCION: $($_.archivo): $($_.error)" }
 }
 
+# ── 1b. Estado por cartera (solo publicar) ───────────────────────────────────
+# Una fila por CSV: si bajo de ControlNext en esta corrida, cuando se modifico el
+# archivo y cuantas filas dejo la limpieza. Alimenta vw_EtlEstadoTitularCarteras, que
+# es lo que avisa si una cartera no baja, llega vacia o se queda con datos viejos.
+# Si esto falla se informa y la carga sigue: es visibilidad, no una compuerta.
+if ($Modo -eq 'publicar') {
+    try {
+        $descarga = @{}
+        $rutaDescarga = Join-Path $Entrada '_descarga\resumen_descarga.json'
+        if (Test-Path -LiteralPath $rutaDescarga) {
+            $rd = Get-Content -LiteralPath $rutaDescarga -Raw -Encoding UTF8 | ConvertFrom-Json
+            # Solo vale si es de ESTA corrida (el paso Descargar corre justo antes).
+            if (((Get-Date) - [datetime]$rd.fecha).TotalHours -lt 3) {
+                foreach ($d in $rd.carteras) { $descarga[$d.cartera.ToLower()] = $d }
+            }
+        }
+        $limpieza = @{}
+        foreach ($l in $resumenPy.archivos) { $limpieza[$l.cartera.ToLower()] = $l }
+
+        $filas = New-Object System.Collections.ArrayList
+        $vistas = @{}
+        foreach ($csv in Get-ChildItem -LiteralPath $Entrada -Filter '*.csv') {
+            $pos = $csv.BaseName.IndexOf(' de ')
+            if ($pos -lt 0) { continue }
+            $cartera = $csv.BaseName.Substring($pos + 4) -replace '_parte[12]$', ''
+            $k = $cartera.ToLower(); $vistas[$k] = $true
+            $d = $descarga[$k]; $l = $limpieza[$k]
+            [void]$filas.Add([ordered]@{
+                Cartera = $cartera; FechaArchivo = $csv.LastWriteTime.ToString('s')
+                EnDescarga = [bool]$d; Descargo = $(if ($d) { [bool]$d.ok } else { $null })
+                ErrorDescarga = $(if ($d) { $d.error } else { $null })
+                MB = $(if ($d) { $d.mb } else { $null }); SegundosDescarga = $(if ($d) { $d.segundos } else { $null })
+                Filas = $(if ($l) { $l.filas } else { $null }); ErrorLimpieza = $(if ($l) { $l.error } else { $null })
+            })
+        }
+        # Carteras de la descarga que ni siquiera tienen CSV (nunca bajaron).
+        foreach ($k in $descarga.Keys) {
+            if ($vistas[$k]) { continue }
+            $d = $descarga[$k]
+            [void]$filas.Add([ordered]@{ Cartera = $d.cartera; FechaArchivo = $null; EnDescarga = $true
+                Descargo = [bool]$d.ok; ErrorDescarga = $d.error; MB = $d.mb; SegundosDescarga = $d.segundos
+                Filas = $null; ErrorLimpieza = $null })
+        }
+
+        $cnr = New-Object System.Data.SqlClient.SqlConnection $CadenaConexion
+        $cnr.Open()
+        try {
+            $reg = $cnr.CreateCommand()
+            $reg.CommandText = 'dbo.sp_EtlEstadoTitular_RegistrarArchivos'
+            $reg.CommandType = [System.Data.CommandType]::StoredProcedure
+            [void]$reg.Parameters.AddWithValue('@Json', (ConvertTo-Json @($filas) -Depth 3 -Compress))
+            [void]$reg.ExecuteNonQuery()
+        } finally { $cnr.Close() }
+        Write-Output "[$(Ahora)] estado por cartera registrado ($($filas.Count) archivo(s))"
+    } catch {
+        Write-Output "[$(Ahora)] ATENCION: no se pudo registrar el estado por cartera: $($_.Exception.Message)"
+    }
+}
+
 # ── 2. Lector en streaming para SqlBulkCopy ──────────────────────────────────
 # C# 5 a proposito: es lo que compila Add-Type en Windows PowerShell 5.1.
 if (-not ('LectorPart' -as [type])) {
@@ -260,13 +319,35 @@ CREATE TABLE #Carga (
         $tabla.Columns.Remove('bloque')
         ($tabla | Format-Table -AutoSize | Out-String -Width 400).TrimEnd()
     }
+    $fallo = $false
 }
 catch {
     Write-Output ''
     Write-Output "[$(Ahora)] ERROR: $($_.Exception.Message)"
-    exit 1
+    $fallo = $true
 }
 finally { $cn.Close() }
+
+# Carteras con problemas, publique o no: cuando la carga falla es cuando mas importa.
+if ($Modo -eq 'publicar') {
+    try {
+        $cnq = New-Object System.Data.SqlClient.SqlConnection $CadenaConexion
+        $cnq.Open()
+        $q = $cnq.CreateCommand()
+        $q.CommandText = "SELECT Cartera, Estado, HorasArchivo, Filas, FilasCorridaAnterior, LEFT(ISNULL(Detalle,''),120) AS Detalle
+                          FROM dbo.vw_EtlEstadoTitularCarteras WHERE Estado <> 'OK' ORDER BY Estado, Cartera"
+        $problemas = New-Object System.Data.DataTable
+        $problemas.Load($q.ExecuteReader())
+        $cnq.Close()
+        Write-Output ''
+        if ($problemas.Rows.Count -eq 0) { Write-Output '--- carteras: todas OK ---' }
+        else {
+            Write-Output "--- carteras con problemas ($($problemas.Rows.Count)) ---"
+            ($problemas | Format-Table -AutoSize | Out-String -Width 400).TrimEnd()
+        }
+    } catch { Write-Output "ATENCION: no se pudo leer el estado por cartera: $($_.Exception.Message)" }
+}
+if ($fallo) { exit 1 }
 
 Write-Output ''
 Write-Output ("[{0}] TOTAL {1:mm\:ss}" -f (Ahora), $reloj.Elapsed)
