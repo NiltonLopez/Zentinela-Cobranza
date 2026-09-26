@@ -5,15 +5,15 @@ Reemplaza al flujo de Power Automate Desktop. Hace, por peticiones HTTP, lo mism
 pagina Reports/clients.php de cada cartera:
 
     1. POST /assets/controller/users.php                        type=login -> cookie de sesion
-    2. GET  /{cartera}/Reports/clients.php                      de aca sale url_campaign2
+    2. GET  /{cartera}/Reports/clients.php                      (como al abrir la pagina)
     3. POST /{cartera}/Reports/assets/controller/ReportController.php
             type=obtenerDataReporteClientes, mes en curso, estatus=1 (activos)
             -> {"result":"1","response":<id>}                   el informe queda en cola
     4. POST /{cartera}/Upload/assets/controller/UploadController.php
             type=getStatusReportGen, id=<id>
-            -> [{"estado":3,"respuesta":"terminado","nombrearchivo":...}] cuando esta listo
-    5. GET  url_campaign2 + nombrearchivo                       el CSV (es lo que hace
-                                                                downloadfilereport() en la pagina)
+            -> [{"estado":3,"respuesta":"terminado","nombrearchivo":...,"sql":...}] cuando esta listo
+    5. GET  /Downloads/<carpeta del campo sql> + nombrearchivo    el CSV (la misma URL que arma
+                                                                downloadfilereport() con url_campaign2)
 
 Cada CSV se baja a <salida>\\_descarga\\, se valida (encabezado con las columnas que usa la
 limpieza, al menos una fila) y SOLO entonces reemplaza a "Reporte Clientes de <Cartera>.csv".
@@ -42,6 +42,7 @@ import re
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -187,24 +188,20 @@ def iniciar_sesion(s, usuario, clave, cartera_prueba):
     log(f"sesion iniciada como {usuario}")
 
 
-def url_descargas(s, ruta):
-    """url_campaign2 de la cartera: la carpeta publica donde ControlNext deja los CSV."""
-    pagina = f"{BASE}/{ruta}/Reports/clients.php"
-    _, html = s.texto(pagina, ajax=False)
-    fuentes = [html]
-    # Si no esta en la pagina, se busca en sus scripts propios (no en librerias externas).
-    for src in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I):
-        url = urllib.parse.urljoin(pagina, src)
-        if url.startswith(BASE) and "vendor" not in url and "plugins" not in url:
-            try:
-                fuentes.append(s.texto(url, ajax=False)[1])
-            except Exception:
-                pass
-    for texto in fuentes:
-        m = re.search(r'url_campaign2\s*=\s*["\'`]([^"\'`]+)["\'`]', texto)
-        if m:
-            return urllib.parse.urljoin(pagina, m.group(1))
-    raise RuntimeError("no se encontro url_campaign2 en la pagina de la cartera")
+def url_descarga(estado):
+    """Carpeta publica del CSV, sacada de la consulta que ControlNext registra en la cola.
+
+    La carpeta NO se deduce del nombre de la cartera (Paradas_Credito -> "palacio",
+    Nova_Garant -> "nuevagarantia"). Pero el campo "sql" del estado trae la ruta donde el
+    servidor escribe el archivo, y la web la publica tal cual bajo /Downloads/:
+        |/var/lib/postgresql/descargas/downloads/empresa/nuevagarantia/|
+        -> https://empresa.controlnextapp.com/Downloads/downloads/empresa/nuevagarantia/
+    (comprobado contra url_campaign2 de la pagina, que es lo que usa el boton Descargar).
+    """
+    m = re.search(r"/descargas/(downloads/[^|'\"]+?/)\s*[|'\"]", estado.get("sql") or "")
+    if not m:
+        raise RuntimeError("ControlNext no informo la carpeta del archivo (campo 'sql' sin ruta)")
+    return f"{BASE}/Downloads/{m.group(1)}"
 
 
 def validar_csv(ruta):
@@ -229,7 +226,7 @@ def descargar_cartera(s, nombre, salida, mes, candado):
         # Se abre la pagina y se encola de a una cartera por vez: si ControlNext guarda la
         # cartera "actual" en la sesion, dos encolados simultaneos podrian pisarse.
         with candado:
-            base_csv = url_descargas(s, ruta)
+            s.texto(referer, ajax=False)
             resp = s.json(f"{BASE}/{ruta}/Reports/assets/controller/ReportController.php",
                           {"type": "obtenerDataReporteClientes", "fechainicio": mes[0],
                            "fechafinal": mes[1], "estatus": "1", "fechas_filtro": "",
@@ -248,13 +245,18 @@ def descargar_cartera(s, nombre, salida, mes, candado):
                 raise RuntimeError(f"ControlNext informo error al generar: {e['error']}")
             if e.get("estado") == 3 and str(e.get("respuesta", "")).lower() == "terminado":
                 archivo = e["nombrearchivo"]
+                base_csv = url_descarga(e)
                 break
             if time.time() > limite:
                 raise RuntimeError(f"no termino en {ESPERA_MAXIMA // 60} min "
                                    f"(estado {e.get('estado')}, {e.get('respuesta')})")
             time.sleep(ESPERA_CONSULTA)
 
-        s.bajar(base_csv + urllib.parse.quote(archivo), temporal, referer)
+        url_csv = base_csv + urllib.parse.quote(archivo)
+        try:
+            s.bajar(url_csv, temporal, referer)
+        except urllib.error.HTTPError as ex:
+            raise RuntimeError(f"HTTP {ex.code} al descargar {url_csv}") from None
         validar_csv(temporal)
         r["mb"] = round(temporal.stat().st_size / 1_048_576, 1)
         # Reemplazo atomico: el CSV viejo sigue ahi hasta el ultimo instante.
