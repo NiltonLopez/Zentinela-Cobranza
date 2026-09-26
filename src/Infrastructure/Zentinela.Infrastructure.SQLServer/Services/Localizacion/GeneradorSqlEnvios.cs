@@ -419,6 +419,72 @@ internal static class GeneradorSqlEnvios
             """;
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  Vínculo automático lote ↔ cargue de retorno (etapa 4)
+    // ════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Para cada lote ENVIADO sin vínculo (de <c>@Fuente</c>, o de todas si es NULL): el PRIMER cargue OK de su fuente
+    /// que terminó después del envío y trae al menos uno de sus titulares, con cuántos trae (<c>EnCargue</c>). El
+    /// cruce es por <c>CargueFuenteReversion</c> (clustered por EjecucionID, TitularID: una búsqueda por titular),
+    /// la lista exacta de titulares que la ejecución escribió; su TitularID es texto (NuevaEps lo guarda así y
+    /// CamaraEmpresa pone el NIT). Sin corridas del harness (<c>@PatronHarness</c>) ni cargues revertidos.
+    /// Columnas: EnvioID, Titulares, EjecucionID, FechaFin, EnCargue.
+    /// </summary>
+    public static string CandidatosVinculo(TablasEnvio t) => $"""
+        SET NOCOUNT ON;
+        SELECT e.EnvioID, e.Titulares, x.EjecucionID, x.FechaFin, x.EnCargue
+          FROM {t.Envio} e
+         CROSS APPLY (
+               SELECT TOP (1) c.EjecucionID, c.FechaFin, n.EnCargue
+                 FROM dbo.CargueFuenteEjecucion c
+                CROSS APPLY (SELECT COUNT(*) AS EnCargue
+                               FROM {t.Detalle} d
+                              WHERE d.EnvioID = e.EnvioID
+                                AND EXISTS (SELECT 1 FROM dbo.CargueFuenteReversion r
+                                             WHERE r.EjecucionID = c.EjecucionID
+                                               AND r.TitularID = CAST(d.TitularID AS varchar(30)))) n
+                WHERE c.Fuente = e.Fuente
+                  AND c.Estado = 'OK'
+                  AND c.FechaFin IS NOT NULL
+                  AND c.FechaFin > e.FechaEnvio
+                  AND c.Usuario NOT LIKE @PatronHarness
+                  AND (c.Error IS NULL OR c.Error NOT LIKE 'REVERTIDA%')
+                  AND n.EnCargue > 0
+                ORDER BY c.FechaFin, c.EjecucionID
+               ) x
+         WHERE e.Estado = 'ENVIADO'
+           AND e.CargueEjecucionID IS NULL
+           AND e.FechaEnvio IS NOT NULL
+           AND (@Fuente IS NULL OR e.Fuente = @Fuente)
+        OPTION (MAXDOP 4);
+        """;
+
+    /// <summary>
+    /// Escribe los vínculos que decidió C# (<see cref="VinculoRetorno.Decidir"/>): <c>@Vinculos</c> JSON
+    /// <c>[{"e":EnvioID,"x":EjecucionID,"f":FechaRetorno,"c":Cerrar}]</c>, <c>@Usuario</c> (quien "cierra" solo).
+    /// Concurrencia optimista: solo lotes que siguen ENVIADOS y sin vínculo. Devuelve EnvioID y Estado final de
+    /// los que se actualizaron.
+    /// </summary>
+    public static string AplicarVinculos(TablasEnvio t) => $"""
+        SET NOCOUNT ON;
+        DECLARE @V TABLE (EnvioID int NOT NULL PRIMARY KEY, EjecucionID bigint NOT NULL, FechaRetorno datetime2(0) NOT NULL, Cerrar bit NOT NULL);
+        INSERT INTO @V (EnvioID, EjecucionID, FechaRetorno, Cerrar)
+        SELECT e, x, f, ISNULL(c, 0)
+          FROM OPENJSON(@Vinculos) WITH (e int '$.e', x bigint '$.x', f datetime2(0) '$.f', c bit '$.c');
+
+        UPDATE e
+           SET CargueEjecucionID = v.EjecucionID,
+               FechaRetorno      = v.FechaRetorno,
+               Estado            = CASE WHEN v.Cerrar = 1 THEN 'CERRADO' ELSE e.Estado END,
+               CerradoPor        = CASE WHEN v.Cerrar = 1 THEN @Usuario ELSE e.CerradoPor END,
+               FechaCierre       = CASE WHEN v.Cerrar = 1 THEN SYSDATETIME() ELSE e.FechaCierre END
+        OUTPUT inserted.EnvioID, inserted.Estado
+          FROM {t.Envio} e
+         INNER JOIN @V v ON v.EnvioID = e.EnvioID
+         WHERE e.Estado = 'ENVIADO' AND e.CargueEjecucionID IS NULL;
+        """;
+
     /// <summary>OR sobre las palabras de tercero (<see cref="PerfilesContacto.PalabrasTercero"/>) de un perfil normalizado.</summary>
     private static string Tercero(string columna) =>
         string.Concat(PerfilesContacto.PalabrasTercero.Select(p => $"OR {columna} LIKE '%{Validar(p)}%' "));

@@ -19,6 +19,13 @@ public interface ILocalizacionResumenCoordinador
     /// <summary>Al arrancar la API: si no hay corte OK del día, lo calcula (en segundo plano, con espera).</summary>
     void VerificarAlArrancar();
 
+    /// <summary>
+    /// Para el recálculo programado (etapa 4): pide un corte y espera a que termine. Si ya hay uno corriendo no
+    /// lanza otro: espera ese (single-flight) y devuelve cómo terminó su ronda (incluida la corrida pendiente que
+    /// haya dejado un cargue).
+    /// </summary>
+    Task<Utils.ResultadoRondaCorte> RecalcularYEsperarAsync(string motivo, CancellationToken ct);
+
     bool Calculando { get; }
     string? MotivoEnCurso { get; }
     DateTime? InicioEnCurso { get; }

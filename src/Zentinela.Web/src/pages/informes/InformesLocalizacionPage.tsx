@@ -13,22 +13,26 @@ import { TabFrescura } from './localizacion/TabFrescura';
 import { TabRankings } from './localizacion/TabRankings';
 import { TabSugerencias } from './localizacion/TabSugerencias';
 import { TabEnvios } from './localizacion/TabEnvios';
+import { TabTendencia } from './localizacion/TabTendencia';
+import { TabAsesores } from './localizacion/TabAsesores';
 import { fmtFechaHora, type Alcance } from './localizacion/compartidos';
 
-type Tab = 'resumen' | 'cobertura' | 'frescura' | 'rankings' | 'sugerencias' | 'envios';
+type Tab = 'resumen' | 'tendencia' | 'cobertura' | 'frescura' | 'rankings' | 'asesores' | 'sugerencias' | 'envios';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'resumen',   label: 'Resumen' },
+  { id: 'tendencia', label: 'Tendencia' },
   { id: 'cobertura', label: 'Cobertura por fuente' },
   { id: 'frescura',  label: 'Frescura' },
   { id: 'rankings',  label: 'Rankings' },
+  { id: 'asesores',  label: 'Asesores' },
   { id: 'sugerencias', label: 'Sugerencias' },
   { id: 'envios',      label: 'Envíos' },
 ];
 
 const MOTIVO: Record<string, string> = {
   ARRANQUE: 'al arrancar',
-  CORTE_13H: 'corte de las 13:00',
+  CORTE_13H: 'corte diario (13:00–13:05)',
   CARGUE_FUENTE: 'tras un cargue de fuente',
   MANUAL: 'recálculo manual',
 };
@@ -103,7 +107,7 @@ export function InformesLocalizacionPage() {
             Informes de Localización
           </h1>
           <p style={{ fontSize: 13, color: 'var(--z-text-muted)', margin: '4px 0 0' }}>
-            Cobertura, frescura, rankings, sugerencias y envíos a localización por líder y cartera
+            Cobertura, frescura, tendencia, rankings de líderes y asesores, sugerencias y envíos a localización
           </p>
         </div>
 
@@ -233,6 +237,8 @@ export function InformesLocalizacionPage() {
               {tabActiva === 'cobertura' && <TabCobertura alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
               {tabActiva === 'frescura'  && <TabFrescura  alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
               {tabActiva === 'rankings'  && <TabRankings  onRegisterDownload={handleRegisterDownload} />}
+              {tabActiva === 'tendencia' && <TabTendencia alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
+              {tabActiva === 'asesores'  && <TabAsesores  alcance={alcance} onAlcance={setAlcance} onRegisterDownload={handleRegisterDownload} />}
             </>
           )}
         </>

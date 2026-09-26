@@ -1,9 +1,13 @@
 using System.Data;
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Zentinela.Application.DTOs.InformesLocalizacion;
+using Zentinela.Application.Settings;
+using Zentinela.Application.Utils;
 using Zentinela.Infrastructure.SQLServer.Persistence;
 
 namespace Zentinela.Infrastructure.SQLServer.Services.Localizacion;
@@ -32,11 +36,14 @@ internal sealed class LocalizacionResumenService
 
     private readonly CallCenterDbContext _db;
     private readonly ILogger<LocalizacionResumenService> _log;
+    private readonly InformesLocalizacionSettings _opciones;
 
-    public LocalizacionResumenService(CallCenterDbContext db, ILogger<LocalizacionResumenService> log)
+    public LocalizacionResumenService(
+        CallCenterDbContext db, ILogger<LocalizacionResumenService> log, IOptions<InformesLocalizacionSettings> opciones)
     {
         _db = db;
         _log = log;
+        _opciones = opciones.Value;
     }
 
     /// <summary>Fecha del último corte OK (null si no hay). Lanza si faltan las tablas.</summary>
@@ -74,6 +81,9 @@ internal sealed class LocalizacionResumenService
             await using var cmd = new SqlCommand(GeneradorSqlLocalizacion.Precalculo(), conn) { CommandTimeout = TimeoutSegundos };
             cmd.Parameters.Add("@CorteID", SqlDbType.Int).Value = corteID;
             cmd.Parameters.Add("@Hoy", SqlDbType.Date).Value = ahora.Date;
+            // Ranking de asesores (etapa 4): perfiles "con contacto" (clasificados en C#) y ventana de gestión reciente.
+            cmd.Parameters.Add("@PerfilesContacto", SqlDbType.NVarChar, -1).Value = JsonSerializer.Serialize(PerfilesContacto.ClavesNormalizadas);
+            cmd.Parameters.Add("@DiasGestion", SqlDbType.Int).Value = ParametrosAsesores.DiasGestion(_opciones.Asesores);
 
             int pares = 0, titulares = 0;
             await using (var rd = await cmd.ExecuteReaderAsync(ct))

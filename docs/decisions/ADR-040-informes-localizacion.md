@@ -1,15 +1,16 @@
 # ADR-040 — Informes de Localización: precálculo por cortes, mismas cifras que el Calificador
 
-**Estado:** Aceptado (etapas 0, 1, 2 y 3 implementadas; 4 pendiente)
+**Estado:** Aceptado (etapas 0 a 4 implementadas)
 **Fecha:** 2026-09-25
 **Módulo afectado:** Informes → Informes de Localización (nuevo, `/informes/localizacion`). Lee las 21
 fuentes de localización del panel del Calificador, `Titular_Cartera`, `Lider_Cartera`, `Cartera`, `Lider`,
 `UltimoEstadoTitular` y `vw_EtlEstadoTitularEstado`. Tablas nuevas en `DBCallCenter.dbo`:
 `LocalizacionCorte`, `LocalizacionResumenFuente`, `LocalizacionResumenFuenteLider`,
-`LocalizacionResumenPar`, `LocalizacionResumenLider`, `LocalizacionEnvio`, `LocalizacionEnvioDetalle`
-(script `docs/sql/migrations/2026-09-26_informes_localizacion.sql`, lo aplica el usuario).
+`LocalizacionResumenPar`, `LocalizacionResumenLider`, `LocalizacionResumenAsesor` (etapa 4), `LocalizacionEnvio`, `LocalizacionEnvioDetalle`
+(script `docs/sql/migrations/2026-09-26_informes_localizacion.sql`, lo aplica el usuario; aplicado en producción el 2026-09-26 sin la tabla de la etapa 4).
+**Etapa 4 lee además:** `Agente`, `DBRecursosHumanos.Empleado` (nombres de asesores) y `CargueFuenteReversion` (vínculo de retorno).
 **Toca además:** el Calificador (el estado de las fuentes sale del catálogo nuevo) y el Cargue de Fuentes
-(pide un corte nuevo tras cada cargue OK).
+(pide un corte nuevo tras cada cargue OK y, desde la etapa 4, vincula los lotes enviados con el cargue que los devolvió).
 
 ---
 
@@ -345,12 +346,141 @@ Un batch por consulta (`GeneradorSqlEnvios.Metricas`) para los lotes pedidos: `#
 (`MetricasEnvio`, `UsoDepartamentoCalculo`). Los nombres de las tablas propias van con prefijo
 (`TablasEnvio.ConPrefijo("dbo." | "#")`): el mismo SQL corrió contra tablas temporales antes de que existieran.
 
+### Etapa 4 — Recálculo de las 13:05, tendencia, asesores con foto, vínculo de retorno y alertas
+
+`GET tendencia`, `GET asesores`, `GET alertas-semana`; pestañas **Tendencia** y **Asesores** y el panel **Alertas de la
+semana** en el Resumen; `LocalizacionRecalculoProgramado` (BackgroundService), `LocalizacionRetornoService` (vínculo
+lote ↔ cargue) y `RelojLocalizacion`. Reglas puras en `Application/Utils/TiempoLocalizacion.cs`,
+`TendenciaAsesoresLocalizacion.cs`, `AlertasSemanaLocalizacion.cs` y `EnvioLocalizacion.cs` (`VinculoRetorno`). El script
+suma **una tabla**, `LocalizacionResumenAsesor` (bloque idempotente; el script de la etapa 1 ya estaba aplicado en
+producción el 2026-09-26: basta volver a correrlo).
+
+#### Hora del negocio
+
+El equipo de desarrollo está 7 h adelante de la BD (medido: `SYSDATETIME()` 05:50 −05:00 con el equipo a las 12:50).
+Hasta la etapa 3, "ahora" era el reloj de la API: en producción da igual (misma máquina), pero en desarrollo la regla de
+las 13:00 se evaluaba con la hora de otro país. Desde la etapa 4, **toda la hora del módulo sale de `IRelojLocalizacion`**:
+`TimeProvider` convertido a `InformesLocalizacion:ZonaHoraria` (por defecto `America/Bogota`; acepta el id de Windows
+`SA Pacific Standard Time`; si la zona no existe, la local). La usan el coordinador (FechaCorte, regla de las 13:00,
+huérfanos), el recálculo programado, "vigente" del estado, las alertas y la ventana de los rankings de envíos. Se
+eligió la zona configurada y no la hora de SQL Server porque el horario necesita saber la hora **antes** de conectarse
+(sin BD no hay a quién preguntar); Colombia no tiene horario de verano, así que la zona fija equivale al reloj de la
+BD. Las comparaciones contra fechas de la BD (`FechaEnvio`, `FechaFin`, edad del ETL) siguen haciéndose en SQL o
+contra valores de la BD.
+
+#### Recálculo programado de las 13:05
+
+`LocalizacionRecalculoProgramado` (se registra con `AddHostedService`; `RecalculoProgramado:Activado = false` lo
+apaga): espera hasta la próxima `Hora` (13:05) en la hora del negocio y corre "el día":
+
+1. Lee el estado (`IPasosRecalculoProgramado`): tablas, último corte OK, ETL de gestión.
+2. Decide (`ProgramaRecalculoLocalizacion.Decidir`): **sin tablas** → aviso en el log y hasta mañana (la API no se
+   cae); **ya hay un corte OK posterior a las 13:00 de hoy** (un cargue o una lectura se adelantaron) → nada, para no
+   duplicar; **ETL de gestión EN CURSO** (misma regla que las sugerencias: menos de `MinutosEtlColgado` min, edad
+   calculada en SQL) → esperar; si no, **calcular**.
+3. Calcular = `ILocalizacionResumenCoordinador.RecalcularYEsperarAsync("CORTE_13H")`: el coordinador ahora trabaja por
+   **rondas** (el cálculo que arrancó más las corridas pendientes que dejaron los cargues); si ya hay una corriendo, el
+   programado la espera en vez de lanzar otra (single-flight) y recibe cómo terminó.
+4. ETL en curso, corte fallido, otro proceso calculando (`Omitido`) o la BD sin responder → reintento cada
+   `MinutosEntreReintentos` (10) hasta `MaxReintentos` (12, ~2 h); agotados, hasta mañana. El cálculo perezoso de las
+   13:00 (primer acceso) queda de respaldo.
+5. Al final del día, la **puesta al día del vínculo** lote ↔ cargue (abajo).
+
+Motivo del corte: `CORTE_13H` (el CHECK de `LocalizacionCorte.Motivo` no cambió; el corte programado y el perezoso son
+el mismo "corte diario"). Si el proceso arranca después de las 13:05, el corte del día lo pide el arranque o la primera
+lectura. En IIS exige `AlwaysRunning` + `Idle Time-out = 0` (ya documentado para el Cargue de Fuentes) y no reciclar
+entre 13:00 y 13:15 (docs/despliegue.md).
+
+#### Tendencia semanal
+
+Por semana (lunes a domingo) se toma el **último corte OK** de esa semana (`TendenciaLocalizacion.CortesSemanales`):
+un día con tres cortes no pesa más que uno con uno, la semana en curso muestra el más reciente y las semanas sin
+cortes **no aparecen** (no se interpolan). Mismo universo que el Resumen (par; cartera = suma de sus pares; líder =
+titulares distintos con todas sus relaciones; global). KPIs del Resumen por semana y, por fuente, %Cobertura y
+%Localización. Hasta 26 semanas (la retención). Front: gráfico de líneas del índice y los tres porcentajes (paleta
+categórica validada para daltonismo y contraste en claro y oscuro, cada línea con su trazo), "% sin contacto con
+saldo" aparte (otra escala, menos es mejor), una fuente elegible y la tabla por semana (la vista accesible y el PDF).
+
+#### Ranking de asesores con foto
+
+**Qué es `UltimoEstadoTitular.AgenteID`** (verificado con SELECTs el 2026-09-26): la cédula (`Agente.AgenteID`, 243
+agentes, todos activos; 225 aparecen en UET) de **quien hizo la última gestión** del titular en esa cartera. No es un
+asignado fijo: en 2.000 titulares con más de 3 gestiones, 997 tuvieron más de un asesor en `HistoricoEstadoTitular`
+desde junio y en los 2.000 el AgenteID de UET es el de la gestión más reciente. Toda fila con AgenteID tiene
+`FechaUltimaGestion`; el 68 % de UET tiene AgenteID NULL (1,07 M "SIN GESTION" y 585 mil gestiones sin asesor
+registrado: buzón, "No contacto"… del marcador automático o usuarios que no están en `Agente`).
+
+Por eso la métrica es **la cartera de trabajo reciente del asesor**, no "sus asignados": por asesor, las filas
+(titular, cartera) del alcance cuya última gestión hizo él, con:
+
+| Métrica | Regla |
+|---|---|
+| Contactabilidad (criterio por defecto) | su última gestión fue con contacto: `PerfilesContacto` (contacto directo, acuerdos, tercero/familiar), la misma clasificación normalizada del impacto de los envíos |
+| Gestión reciente | última gestión en los últimos `Asesores:DiasGestionReciente` (30) días |
+| Con dato | celular o email en alguna fuente de localización (la misma regla `Con` del Resumen) |
+| Sin contacto con saldo | con saldo y sin dato de contacto (null si el universo no tiene saldo en UET) |
+
+Se descartaron "titulares asignados" (no existe el dato) y "% gestionados" sobre los asignados (circular: todos los
+contados tienen gestión). Asesores con menos de `MinTitulares` (30) titulares se listan aparte, sin posición.
+
+**Dónde se calcula: en el precálculo.** "Con dato" necesita la última fila del titular en las 21 fuentes, que solo
+existe dentro del batch del corte (`#X`); en línea costaría otro corte. El batch agrega por (par, asesor) en `#RA`
+(los perfiles DISTINTOS se clasifican una vez en `#PerfC`) y lo copia a `LocalizacionResumenAsesor` **si la tabla
+existe** (`IF OBJECT_ID(...)`, resolución diferida de nombres: un script sin la tabla no tumba el corte). ~4.000
+filas por corte. La lectura carga las filas del corte y del anterior (~8.000) una vez por corte (caché con la versión
+del coordinador), filtra por alcance en C#, suma por asesor y rankea con la misma regla de empates de los líderes;
+variación contra el último corte OK de un día anterior. Nombres: `DBRecursosHumanos.Empleado` por cédula (si RRHH no
+responde, "Asesor <cédula>"). Fotos: `AvatarPersona` con la cédula (`FotoPersonaService` ya autoriza a los agentes
+activos). **Alcance:** Admin/Director, todos; el Líder, los asesores de sus pares (su liderID lo fija el token).
+
+#### Vínculo automático lote ↔ cargue de retorno
+
+`LocalizacionRetornoService`. Lo llama `CargueFuentesMotor` justo después de cerrar OK un cargue (antes del pedido de
+recálculo; try/catch: nunca tumba un cargue ya confirmado) y la puesta al día diaria. Para cada lote `ENVIADO` sin
+vínculo (de la fuente del cargue, o de todas en la puesta al día), el SQL busca el **primer cargue OK de su fuente,
+posterior al envío, que trae al menos uno de sus titulares**, cruzando el detalle del lote con
+**`CargueFuenteReversion`** de cada ejecución (clustered por EjecucionID, TitularID: una búsqueda por titular; la clave
+va como texto). C# decide (`VinculoRetorno.Decidir`) y un UPDATE con concurrencia optimista (`Estado = 'ENVIADO' AND
+CargueEjecucionID IS NULL`) escribe `CargueEjecucionID` y `FechaRetorno` (= `FechaFin` del cargue). El lote se cierra
+solo si `VinculoRetorno:CerrarAlCubrirPct` está configurado y el cargue trae ese % de sus titulares (por defecto
+`null`: nunca; `CerradoPor = 'sistema (retorno automático)'`).
+
+Por qué la reversión y no la fecha o el sello: es la lista **exacta** de titulares que esa ejecución escribió; el sello
+es `date` en 20 de 21 fuentes (dos cargues del mismo día de la misma fuente lo comparten) y la fecha no distingue un
+cargue de otro proveedor. Se excluyen las corridas del harness (`harness-cargue*`: el harness borra sus ejecuciones al
+limpiar y la FK `FK_LocalizacionEnvio_CargueEjecucion` lo impediría) y las ejecuciones revertidas (`Error` que empieza
+con `REVERTIDA`). Límite conocido: un titular que llega "vacío" y ya tenía datos no deja fila en la reversión (política
+de vacías de ADR-039), así que la cobertura del vínculo es un piso. El retorno de la etapa 3 ya respetaba el vínculo
+(`RetornoEnvio.ElegirCargue(vinculado)`): con él, "buscados desde el sello" se mide contra el cargue que de verdad trajo
+el lote.
+
+#### Alertas de la semana
+
+Panel en el Resumen (`GET alertas-semana`), calculado al pedirlo para el alcance de la pestaña, sobre los pares
+**internos** (el universo por defecto de los rankings). Umbrales en `InformesLocalizacion:AlertasSemana`, todos
+estrictos ("más de"):
+
+| Alerta | Regla |
+|---|---|
+| Índice en caída (alta) | índice del líder (SoloInternas) contra el **último corte OK de la semana anterior**, comparado a un decimal (lo que se ve): cayó más de 3 puntos |
+| Sin contacto con saldo (alta) | cartera (suma de sus pares internos del alcance; con un líder filtrado, su parte) con más de 40 % de titulares sin contacto y con saldo |
+| Lote sin retorno (media) | lote `ENVIADO` hace más de 15 días **sin vínculo** (el vínculo automático lo pone cuando vuelve algo de ese lote) |
+| Cola sin enviar (media) | líder con más de 5.000 búsquedas sugeridas (la cola aproximada de la etapa 3: titular × fuente Funcional, un techo) y ningún lote enviado en 30 días; el mensaje trae además sus titulares nunca buscados en una Funcional |
+| Fuente sin datos nuevos (media) | fuente Funcional cuyo dato más reciente —el último cargue OK del módulo **o** la consulta más reciente de la fuente en toda la base (último corte)— tiene más de 30 días. Se tomó el más reciente de los dos porque 15 de las 16 Funcionales aún no tienen cargues por el módulo (se cargaban con los SP legacy, que no dejan `CargueFuenteEjecucion`): con solo el cargue salían 15 alertas falsas; así, 5 (p. ej. MiVacuna, último dato del 22/05/2026) |
+
+**No se envía nada.** El repo tiene un mecanismo de aviso por WhatsApp (skill `etl-estado-titular`:
+`fn_EtlEstadoTitular_DebeAvisar` + `sp_EtlEstadoTitular_RegistrarAviso` y el envío desde el agente); **no se usa**. Si
+algún día se quiere un aviso semanal, el camino sería el mismo patrón: una función que diga si hay alertas nuevas
+desde el último aviso (tabla de avisos registrados para no repetir), llamada por un trabajo programado que arme el
+texto con `GET alertas-semana` (o su misma lógica en SQL) y lo envíe por el canal que se apruebe, con destinatarios y
+horario explícitos. Queda fuera de esta etapa.
+
 ### Etapas siguientes (plan aprobado)
 
 2. ~~Sugerencias de localización y Excel con el formato del Cargue de Fuentes.~~ Hecha (arriba).
 3. ~~Envíos, retorno, impacto y uso del departamento; criterios de ranking de uso y retorno.~~ Hecha (arriba).
-4. Tendencias, servicio de las 13:05, asesores con foto, alertas semanales y **vínculo explícito lote ↔ cargue
-   de retorno** (llenar `CargueEjecucionID` / `FechaRetorno`; el cálculo de la etapa 3 ya lo respeta si viene).
+4. ~~Tendencias, servicio de las 13:05, asesores con foto, alertas semanales y vínculo explícito lote ↔ cargue
+   de retorno.~~ Hecha (arriba).
 
 ## Lo que no se puede medir hoy
 
@@ -370,10 +500,15 @@ Se dice en la UI ("Qué no se puede medir hoy") y aquí:
   las externas DXS, Serviplata y Retornamos Legal. Ahí "sin contacto con saldo" sería 0 y ganaría el
   ranking; por eso ese porcentaje vale `null` ("—") cuando el universo no tiene ningún titular con saldo,
   y queda al final.
-- **Envíos (etapa 3):** qué archivo devolvió cada lote (el retorno es el primer cargue OK posterior de la
+- **Envíos (etapa 3):** qué archivo se armó para qué lote (desde la etapa 4 se sabe qué cargue trajo sus titulares, no si ese
+  archivo era la respuesta a ese lote u otro que los incluía; sin vínculo, el retorno sigue siendo el primer cargue OK posterior de la
   fuente); las gestiones y pagos del mismo día del envío (`FechaUltimaGestion` y `FechaPago` son `date`: se
   cuentan los de días posteriores); si un pago se debe a la localización o habría llegado igual (no hay grupo de
   control); y la cola sugerida exacta de cada líder (se aproxima con el corte).
+- **Asesores (etapa 4):** los titulares "asignados" a cada asesor (no hay ese dato: `UltimoEstadoTitular.AgenteID` es
+  quien hizo la última gestión); las gestiones hechas por el marcador automático o por usuarios que no están en
+  `Agente` (el 68 % de UET no tiene asesor); y un titular que "vuelve vacío" en un cargue de retorno cuando ya tenía
+  datos (no deja fila en `CargueFuenteReversion`).
 
 ## Discrepancias Calificador vs Cargue de Fuentes (encontradas en la etapa 0)
 
@@ -464,6 +599,13 @@ líderes y total; tope del 100 %; validación de la creación; prefijo `#` sin t
 `Zentinela.API.Tests` no compila en la rama (errores previos en `CarterasControllerTests` y `AuthServiceTests`),
 así que el alcance del Líder en el controlador no tiene test automático: se verificó en el servicio (SQL y la
 corrida con `#temp`, abajo).
+Etapa 4: `RecalculoProgramadoTests` (próxima ejecución, hora configurada, decisión sin tablas / ya hay corte / ETL / calcular,
+zona de Colombia con un equipo en otra zona, y el servicio con un reloj falso: reintentos con el ETL en curso, corte
+fallido u omitido, sin tablas, agotados, BD caída, un corte por día a las 13:05, desactivado), `TendenciaAsesoresTests`
+(lunes de la semana, último corte por semana, desempate, semana anterior, ranking de asesores con mínimo, criterios,
+empates y el bloque de asesores del precálculo con la tabla opcional), `AlertasSemanaTests` (cada regla en su umbral y
+el orden del panel) y `VinculoRetornoTests` (decidir y cerrar, SQL por la reversión, concurrencia, prefijo `#`, el
+retorno respeta el vínculo): 52 tests nuevos.
 
 ### Envíos: pruebas contra tablas temporales (2026-09-25)
 
@@ -484,6 +626,24 @@ reales, solo leyendo tablas `dbo`. Cada número se comparó con una consulta ind
 | Uso del departamento (lotes de los Líderes 3 y 15, cola sintética en `#LocalizacionResumenFuente`) | Líder 3: 2 lotes (el anulado no cuenta), 500 enviados, cola 1.300 (Fosyga 400 + min(100, 300); Sura 100 + min(800, 700); Cámara, Intermitente, fuera), 38,46 %, 200 buscados, 171 localizados, 4 días. Líder 15: cola 155, 400 enviados → 100 % (tope). Como Líder 3: solo su fila |
 | Rendimiento (servidor compartido, desde el equipo de desarrollo) | Crear un lote de 5.000: 0,8–0,9 s. Detalle de un lote de 5.000 con retorno e impacto: 1,6–1,8 s (3 corridas). Uso del departamento con 4 lotes (5.900 filas): 2,3 s. Detalle de un lote de 300–400: 1,1–1,2 s |
 
+### Etapa 4: pruebas contra tablas temporales (2026-09-26)
+
+Las tablas de producción ya existían (vacías) pero no se escribió en ellas: se crearon en la sesión `#LocalizacionCorte`,
+`#LocalizacionResumen*` (incluida `#LocalizacionResumenAsesor`, el mismo DDL) y `#LocalizacionEnvio*`, y se corrieron
+el precálculo real (`GeneradorSqlLocalizacion.Precalculo("#")`), `InformesLocalizacionService` con prefijo `#` y la
+conexión de la sesión, y `LocalizacionRetornoService` con tablas `#`, solo leyendo tablas `dbo`. ETL de gestión
+verificado sin correr antes de cada corrida (último intento OK del 25/09 09:31).
+
+| Prueba | Resultado |
+|---|---|
+| Precálculo con asesores (56 pares, 1.931.286 titulares) | **48–52 s** en caliente (78 s la primera corrida en frío); el bloque de asesores medido aparte: 0,35 s de agregación sobre `#AlcS`. 3.978 filas (par × asesor), 225 asesores, 870.722 titulares con asesor |
+| Asesores contra un cálculo independiente (UET por par y asesor con `GROUP BY` y el perfil clasificado en C# con `PerfilesContacto.EsConContacto`) | 3.978 filas en ambos, **0 claves distintas, 0 filas con diferencias** en Titulares, Gestionados 30 d, ConSaldo y ContactoEfectivo. Consistencia de ConDato por par (Σ asesores ≤ ConContacto del par; lo mismo con titulares, saldo y sin contacto con saldo): 48 pares, 0 inconsistentes |
+| Tendencia con 6 cortes simulados (copias del real con menos contacto: 2 en la semana en curso, 2 en la anterior, 1 hace dos semanas, 1 hace 7 semanas, más uno `ERROR`) | Global, líder 14, par 14/SG+ y cartera DELMAR EXPERTOS: se eligió el último corte de cada semana (los más viejos de la semana en curso y de la anterior, no), el `ERROR` no cuenta, la semana sin cortes no aparece, con 4 semanas el de hace 7 queda fuera. Cifras = las filas del corte elegido (par) y su suma (cartera), consultadas aparte |
+| Asesores en el servicio | Global: 214 rankeados, 11 con pocos titulares, 2.245.161 de 3.115.883 filas sin asesor. Líder 14: 14 + 1; el primero por Gestión (1078666140) = el cálculo independiente (1.415 titulares, 87 con contacto = 6,15 %). Variación contra el corte del día anterior. Los 225 asesores tienen foto habilitada (Agente activo) |
+| Vínculo con la ejecución real **509 (Fosyga, fin 24/09 15:38)** | Lotes simulados del Líder 3 / BERTAL: 300 titulares (200 en la reversión del 509) enviado el 20/09 → vinculado a 509, `FechaRetorno` 24/09 15:38, 200 de 300 (66,67 %), sigue ENVIADO. Uno enviado el 25/09 (después del cargue), uno de Sura, un BORRADOR y uno de 50 titulares ausentes del archivo: sin vínculo. La puesta al día siguiente: 0 cambios (idempotente). Con cierre al 60 %: CERRADO por "sistema (retorno automático)"; al 80 %: no cierra. El detalle de la etapa 3 del lote vinculado: base CARGUE 509, 200 buscados, 4 días |
+| Alertas | Global: índice del Líder 14 (99,8 → 88,1, inyectado en el corte de la semana anterior), 2 carteras con más de 40 % sin contacto con saldo, el lote enviado hace 25 días sin vínculo (el vinculado no), 16 líderes con cola y sin lotes, 5 fuentes Funcionales sin datos nuevos en 30 días. Con el Líder 3 (tiene lotes recientes): sin "cola sin enviar"; con el 14: su caída y su cola |
+| Rendimiento (desde el equipo de desarrollo, remoto) | Tendencia sin caché de tendencia: 0,65–1,0 s (26 semanas); con caché: 0,2–0,3 s (la consulta del catálogo de fuentes). Asesores: 1,2–2,8 s la primera vez por corte (incluye recargar el snapshot), luego < 5 ms. Alertas: 1,1–1,6 s. Vínculo tras un cargue: 1,2 s; puesta al día sin cambios: 0,2 s |
+
 ## Consecuencias
 
 - Las cifras de un corte son estables entre consultas y comparables en el tiempo; las del Calificador
@@ -493,5 +653,7 @@ reales, solo leyendo tablas `dbo`. Cada número se comparó con una consulta ind
 - Agregar una fuente al catálogo la suma al precálculo, a la cobertura y a la frescura sin tocar SQL. Si
   aporta celular o email, hay que declarar su `PredicadoContacto` **y** revisar `SinContacto` del Calificador.
 - Los envíos quedan registrados desde este módulo; los anteriores no existen para los informes. El retorno de
-  un lote se recalcula en cada lectura: las filas que lleguen después a la fuente cambian sus cifras (la etapa 4
-  guardará el vínculo explícito con el cargue).
+  un lote se recalcula en cada lectura: las filas que lleguen después a la fuente cambian sus cifras; desde la etapa 4
+  el lote queda vinculado al cargue que trajo sus titulares y "buscados" se mide desde ese cargue.
+- Hay un corte cada día a las 13:05 (hora de Colombia) aunque nadie abra la página, y la tendencia semanal tiene
+  siempre un punto por semana mientras la API esté viva. La hora del módulo ya no depende del equipo donde corre la API.

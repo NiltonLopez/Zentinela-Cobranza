@@ -30,7 +30,7 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Localizacion;
 /// <item>global (sin filtros): titulares distintos de toda la base (LiderID 0).</item>
 /// </list>
 /// </summary>
-internal sealed class InformesLocalizacionService : IInformesLocalizacionService
+internal sealed partial class InformesLocalizacionService : IInformesLocalizacionService
 {
     private static readonly CultureInfo Co = CultureInfo.GetCultureInfo("es-CO");
 
@@ -40,6 +40,13 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
     private readonly IFuentesLocalizacionService _fuentes;
     private readonly ILocalizacionEnviosService _envios;
     private readonly InformesLocalizacionSettings _opciones;
+    private readonly IRelojLocalizacion _reloj;
+    private readonly RecursosHumanosDbContext _rrhh;
+
+    // Prefijo de las tablas propias ("dbo." en producción, "#" para correr el mismo SQL contra tablas temporales de
+    // una sesión, como las pruebas de la etapa 4) y la conexión donde viven esas temporales.
+    private readonly string _p;
+    private readonly SqlConnection? _conexionCompartida;
 
     public InformesLocalizacionService(
         CallCenterDbContext db,
@@ -47,14 +54,29 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
         ILocalizacionResumenCoordinador coordinador,
         IFuentesLocalizacionService fuentes,
         ILocalizacionEnviosService envios,
-        IOptions<InformesLocalizacionSettings> opciones)
+        IOptions<InformesLocalizacionSettings> opciones,
+        IRelojLocalizacion reloj,
+        RecursosHumanosDbContext rrhh)
+        : this(db, cache, coordinador, fuentes, envios, opciones.Value, reloj, rrhh, GeneradorSqlLocalizacion.PrefijoProduccion, null) { }
+
+    /// <summary>Para pruebas: tablas con prefijo <c>#</c> y la conexión (abierta) de la sesión donde viven. No la cierra.</summary>
+    internal InformesLocalizacionService(
+        CallCenterDbContext db, IMemoryCache cache, ILocalizacionResumenCoordinador coordinador, IFuentesLocalizacionService fuentes,
+        ILocalizacionEnviosService envios, InformesLocalizacionSettings opciones, IRelojLocalizacion reloj,
+        RecursosHumanosDbContext rrhh, string prefijo, SqlConnection? conexionCompartida)
     {
+        if (prefijo is not ("dbo." or "#"))
+            throw new ArgumentException($"Prefijo de tablas no permitido: '{prefijo}'.", nameof(prefijo));
         _db = db;
         _cache = cache;
         _coordinador = coordinador;
         _fuentes = fuentes;
         _envios = envios;
-        _opciones = opciones.Value;
+        _opciones = opciones;
+        _reloj = reloj;
+        _rrhh = rrhh;
+        _p = prefijo;
+        _conexionCompartida = conexionCompartida;
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -63,10 +85,11 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
 
     public async Task<EstadoLocalizacionDto> ObtenerEstadoAsync(CancellationToken ct = default)
     {
-        await using var conn = await AbrirAsync(ct);
+        await using var cx = await ConexionAsync(ct);
+        var conn = cx.Conn;
         await using var cmd = new SqlCommand($"""
-            SELECT TOP (1) {ColumnasCorte} FROM dbo.LocalizacionCorte WHERE Estado = 'OK' ORDER BY CorteID DESC;
-            SELECT TOP (1) {ColumnasCorte} FROM dbo.LocalizacionCorte ORDER BY CorteID DESC;
+            SELECT TOP (1) {ColumnasCorte} FROM {_p}LocalizacionCorte WHERE Estado = 'OK' ORDER BY CorteID DESC;
+            SELECT TOP (1) {ColumnasCorte} FROM {_p}LocalizacionCorte ORDER BY CorteID DESC;
             """, conn);
 
         CorteLocalizacionDto? ok = null, ultimo = null;
@@ -91,7 +114,7 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
             InicioEnCurso = _coordinador.InicioEnCurso,
             UltimoOk      = ok,
             UltimoIntento = ultimo,
-            Vigente       = ok is not null && !ReglaCorteLocalizacion.DebeRecalcular(ok.FechaCorte, DateTime.Now, alArrancar: false),
+            Vigente       = ok is not null && !ReglaCorteLocalizacion.DebeRecalcular(ok.FechaCorte, _reloj.Ahora, alArrancar: false),
         };
     }
 
@@ -130,7 +153,7 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
     private List<AlertaLocalizacionDto> Alertas(Snapshot s, Alcance a, List<FuenteResumenDto> fuentes)
     {
         var alertas = new List<AlertaLocalizacionDto>();
-        var hoy = DateTime.Today;
+        var hoy = _reloj.Ahora.Date;
 
         foreach (var f in fuentes.Where(f => f.Estado == EstadoFuente.Funcional))
         {
@@ -416,7 +439,7 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
         var esLider = liderPropio is not null;
         var soloInternas = !incluirExternas;
         var dias = Math.Max(1, _opciones.Envios.DiasVentanaRanking);
-        var hasta = DateTime.Today;
+        var hasta = _reloj.Ahora.Date;
         var uso = await _envios.UsoPorParAsync(hasta.AddDays(-dias), hasta, ct);
 
         var dto = new RankingsLocalizacionDto
@@ -739,28 +762,29 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
 
     private async Task<Snapshot?> CargarSnapshotAsync(CancellationToken ct)
     {
-        await using var conn = await AbrirAsync(ct);
+        await using var cx = await ConexionAsync(ct);
+        var conn = cx.Conn;
         await using var cmd = new SqlCommand($"""
             SET NOCOUNT ON;
             DECLARE @CorteID int, @FechaCorte datetime2(0), @Anterior int;
             SELECT TOP (1) @CorteID = CorteID, @FechaCorte = FechaCorte
-              FROM dbo.LocalizacionCorte WHERE Estado = 'OK' ORDER BY CorteID DESC;
+              FROM {_p}LocalizacionCorte WHERE Estado = 'OK' ORDER BY CorteID DESC;
             -- Variaciones contra el último corte OK de un día anterior (no contra el de hace una hora).
             SELECT TOP (1) @Anterior = CorteID
-              FROM dbo.LocalizacionCorte
+              FROM {_p}LocalizacionCorte
              WHERE Estado = 'OK' AND FechaCorte < CAST(CAST(@FechaCorte AS date) AS datetime2(0))
              ORDER BY CorteID DESC;
 
-            SELECT {ColumnasCorte} FROM dbo.LocalizacionCorte WHERE CorteID = @CorteID;
-            SELECT {ColumnasCorte} FROM dbo.LocalizacionCorte WHERE CorteID = @Anterior;
+            SELECT {ColumnasCorte} FROM {_p}LocalizacionCorte WHERE CorteID = @CorteID;
+            SELECT {ColumnasCorte} FROM {_p}LocalizacionCorte WHERE CorteID = @Anterior;
             SELECT LiderID, CarteraID, Fuente, Total, Buscados, Encontrados, Viejos90, Viejos180, Viejos365, UltimaConsultaMax
-              FROM dbo.LocalizacionResumenFuente WHERE CorteID = @CorteID;
+              FROM {_p}LocalizacionResumenFuente WHERE CorteID = @CorteID;
             SELECT LiderID, 0, Fuente, Total, Buscados, Encontrados, Viejos90, Viejos180, Viejos365, UltimaConsultaMax
-              FROM dbo.LocalizacionResumenFuenteLider WHERE CorteID = @CorteID;
+              FROM {_p}LocalizacionResumenFuenteLider WHERE CorteID = @CorteID;
             SELECT CorteID, LiderID, CarteraID, Interna, {ColumnasMetricas}
-              FROM dbo.LocalizacionResumenPar WHERE CorteID IN (@CorteID, @Anterior);
+              FROM {_p}LocalizacionResumenPar WHERE CorteID IN (@CorteID, @Anterior);
             SELECT CorteID, LiderID, SoloInternas, {ColumnasMetricas}
-              FROM dbo.LocalizacionResumenLider WHERE CorteID IN (@CorteID, @Anterior);
+              FROM {_p}LocalizacionResumenLider WHERE CorteID IN (@CorteID, @Anterior);
             SELECT ID, Nombre, NumeroDocumento FROM dbo.Lider;
             SELECT ID, NombreCartera FROM dbo.Cartera;
             """, conn);
@@ -851,10 +875,18 @@ internal sealed class InformesLocalizacionService : IInformesLocalizacionService
         Error          = rd.IsDBNull(9) ? null : rd.GetString(9),
     };
 
-    private async Task<SqlConnection> AbrirAsync(CancellationToken ct)
+    /// <summary>La conexión de la llamada: propia (se cierra al terminar) o la compartida de las pruebas.</summary>
+    private sealed class Conexion(SqlConnection conn, bool propia) : IAsyncDisposable
     {
+        public SqlConnection Conn { get; } = conn;
+        public ValueTask DisposeAsync() => propia ? Conn.DisposeAsync() : ValueTask.CompletedTask;
+    }
+
+    private async Task<Conexion> ConexionAsync(CancellationToken ct)
+    {
+        if (_conexionCompartida is not null) return new Conexion(_conexionCompartida, propia: false);
         var conn = new SqlConnection(_db.Database.GetConnectionString());
         await conn.OpenAsync(ct);
-        return conn;
+        return new Conexion(conn, propia: true);
     }
 }

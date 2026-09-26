@@ -474,3 +474,113 @@ export interface UsoDepartamento {
   total: FilaUsoLider;
   avisos: string[];
 }
+
+// ── Etapa 4: tendencia, asesores y alertas de la semana ──────────────────────
+
+export interface SemanaTendencia {
+  /** Lunes de la semana. */
+  inicioSemana: string;
+  corteID: number;
+  fechaCorte: string;
+  metricas: MetricasLocalizacion;
+}
+
+export interface PuntoFuenteTendencia {
+  inicioSemana: string;
+  total: number;
+  buscados: number;
+  encontrados: number;
+  pctCobertura: number | null;
+  pctLocalizacion: number | null;
+}
+
+export interface FuenteTendencia {
+  clave: string;
+  etiqueta: string;
+  estado: EstadoFuente;
+  puntos: PuntoFuenteTendencia[];
+}
+
+export interface TendenciaLocalizacion {
+  alcance: AlcanceLocalizacion;
+  etiquetaAlcance: string;
+  semanasPedidas: number;
+  /** Solo semanas con algún corte OK (el último de cada semana), de la más vieja a la más reciente. */
+  semanas: SemanaTendencia[];
+  fuentes: FuenteTendencia[];
+  pesos: PesosIndice;
+}
+
+export type CriterioAsesor = 'Contactabilidad' | 'Gestion' | 'ConDato' | 'SinContactoSaldo';
+
+export interface FilaAsesor {
+  /** null = no entra al ranking (menos titulares que el mínimo). */
+  posicion: number | null;
+  /** Cédula (UltimoEstadoTitular.AgenteID): el documento de la foto. */
+  documento: number;
+  nombre: string;
+  valor: number | null;
+  delta: number | null;
+  titulares: number;
+  contactoEfectivo: number;
+  pctContactoEfectivo: number | null;
+  gestionadosRecientes: number;
+  pctGestionadosRecientes: number | null;
+  conDato: number;
+  pctConDato: number | null;
+  conSaldo: number;
+  sinContactoConSaldo: number;
+  pctSinContactoConSaldo: number | null;
+  saldoSinContacto: number;
+  carteras: number;
+}
+
+export interface AsesoresLocalizacion {
+  corte: CorteLocalizacion;
+  corteAnterior: CorteLocalizacion | null;
+  alcance: AlcanceLocalizacion;
+  etiquetaAlcance: string;
+  criterio: CriterioAsesor;
+  menorEsMejor: boolean;
+  minTitulares: number;
+  diasGestionReciente: number;
+  asesores: FilaAsesor[];
+  pocosTitulares: FilaAsesor[];
+  titularesSinAsesor: number;
+  titularesAlcance: number;
+  aviso: string | null;
+}
+
+export type TipoAlertaSemana = 'CAIDA_INDICE' | 'LOTE_SIN_RETORNO' | 'FUENTE_SIN_CARGUE' | 'CARTERA_SIN_CONTACTO' | 'COLA_SIN_LOTES';
+
+export interface AlertaSemana {
+  tipo: TipoAlertaSemana | string;
+  severidad: 'alta' | 'media' | string;
+  mensaje: string;
+  liderID: number | null;
+  nombreLider: string | null;
+  documentoLider: number | null;
+  carteraID: number | null;
+  envioID: number | null;
+  fuente: string | null;
+  magnitud: number | null;
+}
+
+export interface UmbralesAlertasSemana {
+  caidaIndicePuntos: number;
+  diasLoteSinRetorno: number;
+  diasFuenteSinCargue: number;
+  sinContactoConSaldoPct: number;
+  colaGrande: number;
+  diasSinLotes: number;
+}
+
+export interface AlertasSemana {
+  /** Lunes de la semana actual. */
+  semana: string;
+  corte: CorteLocalizacion;
+  corteSemanaAnterior: CorteLocalizacion | null;
+  alertas: AlertaSemana[];
+  avisos: string[];
+  umbrales: UmbralesAlertasSemana;
+}

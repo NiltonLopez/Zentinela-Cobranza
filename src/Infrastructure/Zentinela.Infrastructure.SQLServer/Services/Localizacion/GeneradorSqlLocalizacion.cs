@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Zentinela.Application;
+using Zentinela.Application.Utils;
 
 namespace Zentinela.Infrastructure.SQLServer.Services.Localizacion;
 
@@ -9,7 +10,8 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Localizacion;
 /// <see cref="CatalogoFuentesLocalizacion"/>, igual que <c>GeneradorSqlCargue</c> arma el del cargue:
 /// agregar una fuente al catálogo la suma al precálculo sin tocar SQL a mano.
 ///
-/// <para><b>Qué calcula</b> (parámetros <c>@CorteID int</c> y <c>@Hoy date</c>):</para>
+/// <para><b>Qué calcula</b> (parámetros <c>@CorteID int</c>, <c>@Hoy date</c> y, desde la etapa 4,
+/// <c>@PerfilesContacto nvarchar(max)</c> —JSON con las claves de <c>PerfilesContacto</c>— y <c>@DiasGestion int</c>):</para>
 /// <list type="number">
 /// <item><c>#Alc</c>: filas de <c>Titular_Cartera</c> de los pares activos (<c>Lider_Cartera.Activo = 1</c>
 ///   y <c>Cartera.Activa = 1</c>) cuyo titular existe en <c>dbo.Titular</c> (la BaseMadre del Calificador
@@ -22,7 +24,11 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Localizacion;
 ///   (<c>#RFL</c>, LiderID 0 = todos los pares), métricas que cruzan fuentes por titular (<c>#X</c>) y
 ///   el saldo de <c>UltimoEstadoTitular</c> (por TitularID + CarteraID): <c>#RP</c> por par y <c>#RL</c>
 ///   por líder (titulares distintos; SoloInternas 0/1).</item>
-/// <item>Una transacción corta copia los <c>#R*</c> a las tablas destino y devuelve Pares y Titulares.</item>
+/// <item><c>#RA</c> (etapa 4): por par y asesor (<c>UltimoEstadoTitular.AgenteID</c>, el último gestor): titulares,
+///   con dato de contacto, con saldo, sin contacto con saldo, gestionados en los últimos <c>@DiasGestion</c> días y
+///   con contacto efectivo (UltimoPerfil de contacto).</item>
+/// <item>Una transacción corta copia los <c>#R*</c> a las tablas destino (la de asesores, solo si existe) y
+///   devuelve Pares y Titulares.</item>
 /// </list>
 ///
 /// <para><b>Desempate de la "última fila".</b> El Calificador ordena solo por la fecha
@@ -54,7 +60,7 @@ internal static class GeneradorSqlLocalizacion
 
     /// <summary>Nombres de las tablas destino para un prefijo: <c>dbo.</c> en producción, <c>#</c> para
     /// correr el mismo batch contra tablas temporales (pruebas de paridad y rendimiento).</summary>
-    public sealed record TablasDestino(string Fuente, string FuenteLider, string Par, string Lider)
+    public sealed record TablasDestino(string Fuente, string FuenteLider, string Par, string Lider, string Asesor)
     {
         public static TablasDestino ConPrefijo(string prefijo)
         {
@@ -64,8 +70,17 @@ internal static class GeneradorSqlLocalizacion
                 prefijo + "LocalizacionResumenFuente",
                 prefijo + "LocalizacionResumenFuenteLider",
                 prefijo + "LocalizacionResumenPar",
-                prefijo + "LocalizacionResumenLider");
+                prefijo + "LocalizacionResumenLider",
+                prefijo + "LocalizacionResumenAsesor");
         }
+
+        /// <summary>
+        /// <c>OBJECT_ID(…)</c> de la tabla de asesores (etapa 4): es opcional, para que un script aplicado antes de la
+        /// etapa 4 no tumbe el corte (sin ella, el corte se calcula igual y el ranking de asesores avisa).
+        /// </summary>
+        public string ExisteAsesor => Asesor.StartsWith('#')
+            ? $"OBJECT_ID('tempdb..{Asesor}', 'U') IS NOT NULL"
+            : $"OBJECT_ID('{Asesor}', 'U') IS NOT NULL";
     }
 
     /// <summary>Tabla temporal con la última fila por titular de la fuente.</summary>
@@ -195,8 +210,12 @@ internal static class GeneradorSqlLocalizacion
         sb.Append("""
             -- ── 3. Saldo (UltimoEstadoTitular) y universo por líder ─────────────
             DROP TABLE IF EXISTS #AlcS;
+            -- AgenteID / FechaUltimaGestion / UltimoPerfil: para el ranking de asesores (etapa 4). AgenteID es la
+            -- cédula de quien hizo la ÚLTIMA gestión del titular en esa cartera (NULL = sin gestión, marcador
+            -- automático o usuario que no está en dbo.Agente).
             SELECT a.TitularID, a.LiderID, a.CarteraID, a.Interna,
-                   CAST(CASE WHEN u.SaldoTotal > 0 THEN u.SaldoTotal ELSE 0 END AS decimal(19,2)) AS Saldo
+                   CAST(CASE WHEN u.SaldoTotal > 0 THEN u.SaldoTotal ELSE 0 END AS decimal(19,2)) AS Saldo,
+                   u.AgenteID, u.FechaUltimaGestion, u.UltimoPerfil
               INTO #AlcS
               FROM #Alc a
               LEFT JOIN dbo.UltimoEstadoTitular u ON u.TitularID = a.TitularID AND u.CarteraID = a.CarteraID
@@ -323,6 +342,41 @@ internal static class GeneradorSqlLocalizacion
              GROUP BY q.LiderID, q.SoloInternas
             OPTION (MAXDOP 4, HASH JOIN);
 
+            -- ── 7b. Por par y asesor (etapa 4): último gestor de cada titular ────
+            -- "Contacto efectivo" = el UltimoPerfil es de contacto (PerfilesContacto de C#: contacto directo,
+            -- acuerdos, tercero/familiar), comparado normalizado. Se clasifican los perfiles DISTINTOS (unos cientos),
+            -- no los 3 M de filas.
+            DECLARE @PC TABLE (Perfil varchar(60) COLLATE Latin1_General_CI_AI NOT NULL PRIMARY KEY);
+            INSERT INTO @PC (Perfil)
+            SELECT DISTINCT CAST(value AS varchar(60)) FROM OPENJSON(@PerfilesContacto);
+
+            DROP TABLE IF EXISTS #PerfC;
+            SELECT p.UltimoPerfil,
+                   CAST(CASE WHEN pc.Perfil IS NOT NULL {{Tercero("n.Perfil")}}THEN 1 ELSE 0 END AS tinyint) AS Contacto
+              INTO #PerfC
+              FROM (SELECT DISTINCT UltimoPerfil FROM #AlcS WHERE AgenteID IS NOT NULL AND UltimoPerfil IS NOT NULL) p
+             CROSS APPLY (SELECT {{GeneradorSqlSugerencias.NormalizarPerfilSql("p.UltimoPerfil")}} AS Perfil) n
+              LEFT JOIN @PC pc ON pc.Perfil = n.Perfil
+            OPTION (MAXDOP 4);
+
+            DECLARE @LimGestion date = DATEADD(DAY, -@DiasGestion, @Hoy);
+            DROP TABLE IF EXISTS #RA;
+            SELECT s.LiderID, s.CarteraID, CAST(s.AgenteID AS bigint)                               AS AgenteID,
+                   COUNT(*)                                                                     AS Titulares,
+                   SUM(ISNULL(CAST(x.Con AS int), 0))                                           AS ConDato,
+                   SUM(CASE WHEN s.Saldo > 0 THEN 1 ELSE 0 END)                                 AS ConSaldo,
+                   SUM(CASE WHEN s.Saldo > 0 AND ISNULL(x.Con, 0) = 0 THEN 1 ELSE 0 END)        AS SinContactoConSaldo,
+                   CAST(SUM(CASE WHEN ISNULL(x.Con, 0) = 0 THEN s.Saldo ELSE 0 END) AS decimal(19,2)) AS SaldoSinContacto,
+                   SUM(CASE WHEN s.FechaUltimaGestion >= @LimGestion THEN 1 ELSE 0 END)         AS GestionadosRecientes,
+                   SUM(ISNULL(CAST(pc.Contacto AS int), 0))                                     AS ContactoEfectivo
+              INTO #RA
+              FROM #AlcS s
+              LEFT JOIN #X x      ON x.TitularID = s.TitularID
+              LEFT JOIN #PerfC pc ON pc.UltimoPerfil = s.UltimoPerfil
+             WHERE s.AgenteID IS NOT NULL
+             GROUP BY s.LiderID, s.CarteraID, s.AgenteID
+            OPTION (MAXDOP 4, HASH JOIN);
+
             -- ── 8. Escritura: transacción corta, todo o nada ────────────────────
             BEGIN TRANSACTION;
 
@@ -338,6 +392,12 @@ internal static class GeneradorSqlLocalizacion
             INSERT INTO {{d.Lider}} (CorteID, LiderID, SoloInternas, Total, ConContacto, ConContactoFuncional, BuscadosAlguna, BuscadosFuncional, Frescos180, ConSaldo, SinContactoConSaldo, SaldoSinContacto, SaldoTotal)
             SELECT @CorteID, LiderID, SoloInternas, Total, ConContacto, ConContactoFuncional, BuscadosAlguna, BuscadosFuncional, Frescos180, ConSaldo, SinContactoConSaldo, SaldoSinContacto, SaldoTotal FROM #RL;
 
+            -- Asesores (etapa 4): opcional, un script aplicado antes de la etapa 4 no la tiene. La sentencia se
+            -- compila al llegar a ella (resolución diferida de nombres), así que el IF basta.
+            IF {{d.ExisteAsesor}}
+                INSERT INTO {{d.Asesor}} (CorteID, LiderID, CarteraID, AgenteID, Titulares, ConDato, ConSaldo, SinContactoConSaldo, SaldoSinContacto, GestionadosRecientes, ContactoEfectivo)
+                SELECT @CorteID, LiderID, CarteraID, AgenteID, Titulares, ConDato, ConSaldo, SinContactoConSaldo, SaldoSinContacto, GestionadosRecientes, ContactoEfectivo FROM #RA;
+
             COMMIT TRANSACTION;
 
             SELECT (SELECT COUNT(*) FROM #RP) AS Pares, (SELECT COUNT(*) FROM #Tit) AS Titulares;
@@ -345,12 +405,16 @@ internal static class GeneradorSqlLocalizacion
             """);
 
         // Limpieza: en producción la conexión se cierra igual; en pruebas deja la sesión limpia.
-        sb.Append("DROP TABLE IF EXISTS #Alc, #Tit, #AlcS, #LT, #X, #RF, #RFL, #RP, #RL");
+        sb.Append("DROP TABLE IF EXISTS #Alc, #Tit, #AlcS, #LT, #X, #RF, #RFL, #RP, #RL, #PerfC, #RA");
         foreach (var f in fuentes) sb.Append(", ").Append(TablaTemporal(f));
         sb.Append(";\n");
 
         return sb.ToString();
     }
+
+    /// <summary>OR sobre las palabras de tercero (<see cref="PerfilesContacto.PalabrasTercero"/>), como el impacto de los envíos.</summary>
+    private static string Tercero(string columna) =>
+        string.Concat(PerfilesContacto.PalabrasTercero.Select(p => $"OR {columna} LIKE '%{Validar(p)}%' "));
 
     private static string Validar(string identificador) =>
         Identificador.IsMatch(identificador)

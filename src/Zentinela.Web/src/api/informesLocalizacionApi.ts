@@ -19,6 +19,10 @@ import type {
   SugerenciasLocalizacion,
   UmbralFrescura,
   UsoDepartamento,
+  AlertasSemana,
+  AsesoresLocalizacion,
+  CriterioAsesor,
+  TendenciaLocalizacion,
 } from '../types/informesLocalizacion';
 
 // Informes de Localización (ADR-040). Todo lee el último corte del precálculo. El servidor fija el
@@ -215,3 +219,23 @@ export async function problemaEnvios(error: unknown): Promise<{ sinTablas: boole
     mensaje: mensaje || (status === 404 ? 'No existe el lote o no tienes acceso a él.' : 'No se pudo completar la operación.'),
   };
 }
+
+// ── Etapa 4: tendencia, asesores y alertas de la semana ──────────────────────
+// Mismo alcance que el Resumen (el servidor fija el liderID del Líder y valida su cartera).
+
+/** Últimas `semanas` semanas (el servidor usa 12 si es 0; tope 26), un corte por semana. */
+export const obtenerTendenciaLocalizacion = async (f: FiltroAlcance, semanas: number): Promise<TendenciaLocalizacion> => {
+  const { data } = await api.get<TendenciaLocalizacion>(`${BASE}/tendencia`, { params: { ...params(f), semanas } });
+  return data;
+};
+
+export const obtenerAsesoresLocalizacion = async (f: FiltroAlcance, criterio: CriterioAsesor): Promise<AsesoresLocalizacion> => {
+  const { data } = await api.get<AsesoresLocalizacion>(`${BASE}/asesores`, { params: { ...params(f), criterio } });
+  return data;
+};
+
+/** Se calculan al pedirlas; solo se muestran en la app. */
+export const obtenerAlertasSemanaLocalizacion = async (f: FiltroAlcance): Promise<AlertasSemana> => {
+  const { data } = await api.get<AlertasSemana>(`${BASE}/alertas-semana`, { params: params(f) });
+  return data;
+};

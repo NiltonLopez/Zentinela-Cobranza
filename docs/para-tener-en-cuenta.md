@@ -3,13 +3,13 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-09-25**.
+Última actualización: **2026-09-26**.
 
 ---
 
-## PENDIENTE: aplicar el script de Informes de Localización (ADR-040, etapa 1)
+## PENDIENTE: script de Informes de Localización (ADR-040) — re-ejecutar por la etapa 4
 
-- **El usuario debe ejecutar** `docs/sql/migrations/2026-09-26_informes_localizacion.sql` en DBCallCenter
+- **Aplicado en producción el 2026-09-26 (versión de la etapa 1); falta re-ejecutarlo por la etapa 4 (abajo).** Se ejecuta con `docs/sql/migrations/2026-09-26_informes_localizacion.sql` en DBCallCenter
   (el clasificador bloquea las escrituras de DDL desde los agentes):
   `sqlcmd -S 10.0.0.89,1433 -U <usuario> -P <clave> -d DBCallCenter -C -b -f 65001 -i docs/sql/migrations/2026-09-26_informes_localizacion.sql`.
   Idempotente; crea `LocalizacionCorte`, `LocalizacionResumenFuente`, `LocalizacionResumenFuenteLider`,
@@ -42,6 +42,28 @@ backlog: los items se cierran o se descartan con razón explícita.
   enviarlo, subir el retorno en Cargue de Fuentes y ver retorno e impacto; con un Líder, confirmar que no ve lotes
   de otros. El retorno es el **primer cargue OK de la fuente después del envío**: si se suben archivos de la
   misma fuente que no son la respuesta del lote, cuentan igual (el vínculo explícito llega en la etapa 4).
+- **Etapa 4 (2026-09-26): volver a correr el script.** El coordinador aplicó en producción la versión de la etapa 1
+  (las 7 tablas existen, vacías). La etapa 4 **agregó `LocalizacionResumenAsesor`** al mismo script (bloque
+  `IF OBJECT_ID … IS NULL`, idempotente): re-ejecutarlo la crea sin tocar lo demás. Mientras falte, el corte se
+  calcula igual y la pestaña Asesores avisa. Todo lo de la etapa 4 se probó solo contra tablas `#temp` (ADR-040 →
+  "Etapa 4: pruebas contra tablas temporales").
+- **Recálculo programado de las 13:05** (`LocalizacionRecalculoProgramado`, un `BackgroundService` que se registra
+  solo): cada día a las 13:05 **hora de Colombia** (`InformesLocalizacion:ZonaHoraria`, no el reloj del equipo; en el
+  equipo de desarrollo son las 20:05) pide un corte y espera; si ya hay uno posterior a las 13:00 no hace nada; con el
+  ETL de gestión en curso o un fallo reintenta cada 10 min (12 veces). Necesita el proceso vivo a esa hora: AppPool
+  con `AlwaysRunning` e `Idle Time-out = 0` (docs/despliegue.md). Una API de desarrollo contra la misma BD también lo
+  corre: `InformesLocalizacion:RecalculoProgramado:Activado = false` en su appsettings si no se quiere (dos procesos
+  no calculan a la vez: el segundo ve el `EN CURSO` y luego el corte hecho).
+- **`FechaCorte` ahora es hora de Colombia** en cualquier equipo (antes, el reloj de la API): la regla de las 13:00 y
+  el banner "Localización al …" coinciden con el reloj de la BD. En el servidor no cambia nada.
+- **Vínculo lote ↔ cargue de retorno:** tras cada cargue OK, los lotes ENVIADOS de esa fuente cuyos titulares vienen
+  en el archivo quedan con `CargueEjecucionID`/`FechaRetorno` (primer cargue que los trae; nunca uno del harness).
+  No cierra lotes solo salvo que se configure `InformesLocalizacion:VinculoRetorno:CerrarAlCubrirPct`. Un titular que
+  llega "vacío" y ya tenía datos no deja fila en `CargueFuenteReversion` (política de vacías): la cobertura es un
+  piso. **Pendiente la prueba a mano:** enviar un lote, cargar el archivo de retorno y ver el vínculo en Envíos.
+- **Alertas de la semana:** solo se muestran en el Resumen, no se envían. Con el módulo recién instalado habrá muchas
+  "Cola sin enviar" (nadie ha enviado lotes todavía) y "Fuente sin datos nuevos" para las fuentes que siguen en SP
+  legacy sin cargas recientes (medido: 5 Funcionales, p. ej. MiVacuna con último dato del 22/05/2026).
 - **Sugerencias y `UltimoEstadoTitular`:** el batch busca por la PK con `INDEX(1), FORCESEEK`. Si algún día
   cambia la PK de la tabla, revisar `GeneradorSqlSugerencias` (sin la sugerencia, con estadísticas viejas, un
   par mediano tardó 63 s).

@@ -25,6 +25,21 @@ public interface IInformesLocalizacionService
     Task<RankingsLocalizacionDto> ObtenerRankingsAsync(
         Utils.CriterioRankingLocalizacion criterio, bool incluirExternas, int? liderPropio, CancellationToken ct = default);
 
+    // ── Etapa 4 ──
+
+    /// <summary>
+    /// KPIs del Resumen y por fuente en las últimas <paramref name="semanas"/> semanas: el último corte OK de cada
+    /// semana, para el mismo universo del Resumen.
+    /// </summary>
+    Task<TendenciaLocalizacionDto> ObtenerTendenciaAsync(int? liderID, int? carteraID, int semanas, CancellationToken ct = default);
+
+    /// <summary>Ranking de asesores (último gestor de cada titular) en el alcance, con foto.</summary>
+    Task<AsesoresLocalizacionDto> ObtenerAsesoresAsync(
+        int? liderID, int? carteraID, Utils.CriterioRankingAsesor criterio, CancellationToken ct = default);
+
+    /// <summary>"Alertas de la semana" del alcance. Solo se muestran en la app: no se envían.</summary>
+    Task<AlertasSemanaDto> ObtenerAlertasSemanaAsync(int? liderID, int? carteraID, CancellationToken ct = default);
+
     /// <summary>La cartera está en el Lider_Cartera ACTIVO del líder.</summary>
     Task<bool> EsCarteraDelLiderAsync(int liderID, int carteraID, CancellationToken ct = default);
 }

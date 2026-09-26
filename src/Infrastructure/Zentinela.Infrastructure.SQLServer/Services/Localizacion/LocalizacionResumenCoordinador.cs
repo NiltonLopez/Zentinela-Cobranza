@@ -15,14 +15,18 @@ namespace Zentinela.Infrastructure.SQLServer.Services.Localizacion;
 /// <item><b>Single-flight</b>: un <see cref="SemaphoreSlim"/>(1) garantiza un cálculo a la vez. Un cargue
 ///   que termina mientras corre no se pierde ni se encola N veces: deja UNA solicitud pendiente que corre
 ///   al terminar la actual (el corte en curso pudo leer la fuente antes del commit). Los demás pedidos
-///   (13:00, arranque, botón) los cubre el corte en curso.</item>
+///   (13:00, arranque, botón, recálculo programado) los cubre el corte en curso.</item>
+/// <item><b>Rondas</b>: una ronda es el cálculo que arrancó más las corridas pendientes que se le encadenaron.
+///   <see cref="RecalcularYEsperarAsync"/> (el recálculo programado de las 13:05, etapa 4) espera la ronda en
+///   curso o arranca una, y recibe cómo terminó su última corrida.</item>
 /// <item><b>Nunca bloquea</b>: <see cref="SolicitarRecalculo"/> devuelve de inmediato; el cálculo corre en
 ///   segundo plano con un scope propio (<see cref="IServiceScopeFactory"/>), como los trabajos del Cargue
 ///   de Fuentes.</item>
-/// <item><b>Disparos</b>: tras cada cargue OK (<c>CargueFuentesMotor</c>), al primer acceso después de las
-///   13:00 (<see cref="ReglaCorteLocalizacion"/>), al arrancar si no hay corte del día y con el botón de
-///   Admin. Tras un fallo, los disparos automáticos de lectura esperan
+/// <item><b>Disparos</b>: tras cada cargue OK (<c>CargueFuentesMotor</c>), a las 13:05 (servicio en segundo
+///   plano), al primer acceso después de las 13:00 (<see cref="ReglaCorteLocalizacion"/>, respaldo), al arrancar si
+///   no hay corte del día y con el botón de Admin. Tras un fallo, los disparos automáticos de lectura esperan
 ///   <see cref="InformesLocalizacionSettings.MinutosReintentoTrasError"/> para no martillar la BD.</item>
+/// <item><b>Hora</b>: la del negocio (<see cref="IRelojLocalizacion"/>, zona configurada), no la del equipo.</item>
 /// </list>
 /// Si faltan las tablas (el usuario aún no aplicó el script) solo se registra un aviso: el arranque de
 /// la API no falla por eso.
@@ -34,7 +38,7 @@ internal sealed class LocalizacionResumenCoordinador : ILocalizacionResumenCoord
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<LocalizacionResumenCoordinador> _log;
     private readonly InformesLocalizacionSettings _opciones;
-    private readonly TimeProvider _reloj;
+    private readonly IRelojLocalizacion _reloj;
 
     private readonly SemaphoreSlim _unoALaVez = new(1, 1);
     private readonly object _lock = new();
@@ -42,18 +46,19 @@ internal sealed class LocalizacionResumenCoordinador : ILocalizacionResumenCoord
     private Solicitud? _enCurso;
     private DateTime? _inicioEnCurso;
     private DateTime? _ultimoFallo;
+    private TaskCompletionSource<ResultadoRondaCorte>? _ronda;
     private long _version;
 
     public LocalizacionResumenCoordinador(
         IServiceScopeFactory scopes,
         ILogger<LocalizacionResumenCoordinador> log,
         IOptions<InformesLocalizacionSettings> opciones,
-        TimeProvider? reloj = null)
+        IRelojLocalizacion reloj)
     {
         _scopes = scopes;
         _log = log;
         _opciones = opciones.Value;
-        _reloj = reloj ?? TimeProvider.System;
+        _reloj = reloj;
     }
 
     public bool Calculando { get { lock (_lock) return _enCurso is not null; } }
@@ -61,25 +66,39 @@ internal sealed class LocalizacionResumenCoordinador : ILocalizacionResumenCoord
     public DateTime? InicioEnCurso { get { lock (_lock) return _inicioEnCurso; } }
     public long Version => Interlocked.Read(ref _version);
 
-    private DateTime Ahora => _reloj.GetLocalNow().DateTime;
+    private DateTime Ahora => _reloj.Ahora;
 
-    public void SolicitarRecalculo(string motivo, string? usuario = null)
+    public void SolicitarRecalculo(string motivo, string? usuario = null) =>
+        _ = Iniciar(new Solicitud(motivo, usuario));
+
+    public async Task<ResultadoRondaCorte> RecalcularYEsperarAsync(string motivo, CancellationToken ct)
     {
-        var solicitud = new Solicitud(motivo, usuario);
+        var ronda = Iniciar(new Solicitud(motivo, null));
+        return await ronda.WaitAsync(ct);
+    }
+
+    /// <summary>
+    /// Arranca una ronda o, si ya hay una, se suma a ella. Tras un cargue la solicitud queda como pendiente (la
+    /// última gana) y corre al terminar la actual: la que corre pudo leer la fuente antes del commit del cargue.
+    /// Cualquier otro motivo ya lo cubre el corte en curso. Devuelve la tarea de la ronda.
+    /// </summary>
+    private Task<ResultadoRondaCorte> Iniciar(Solicitud solicitud)
+    {
         lock (_lock)
         {
-            // Ya hay uno corriendo. Tras un cargue queda como pendiente (la última gana) y corre al
-            // terminar: el que corre pudo leer la fuente antes del commit del cargue. Cualquier otro
-            // motivo (13:00, arranque, botón) ya lo cubre el corte en curso.
             if (!_unoALaVez.Wait(0))
             {
-                if (motivo == "CARGUE_FUENTE") _pendiente = solicitud;
-                return;
+                if (solicitud.Motivo == "CARGUE_FUENTE") _pendiente = solicitud;
+                // El semáforo y _ronda se toman y sueltan juntos bajo el lock: aquí _ronda existe.
+                return _ronda!.Task;
             }
             _enCurso = solicitud;
             _inicioEnCurso = Ahora;
+            var ronda = new TaskCompletionSource<ResultadoRondaCorte>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _ronda = ronda;
+            _ = Task.Run(() => BucleAsync(solicitud, ronda));
+            return ronda.Task;
         }
-        _ = Task.Run(() => BucleAsync(solicitud));
     }
 
     public void VerificarVigencia(DateTime? ultimoCorteOk)
@@ -120,52 +139,63 @@ internal sealed class LocalizacionResumenCoordinador : ILocalizacionResumenCoord
 
     // ── Ejecución ─────────────────────────────────────────────────────────────
 
-    private async Task BucleAsync(Solicitud primera)
+    private async Task BucleAsync(Solicitud primera, TaskCompletionSource<ResultadoRondaCorte> ronda)
     {
         var actual = primera;
-        while (true)
+        var resultado = ResultadoRondaCorte.Error;
+        try
         {
-            await EjecutarAsync(actual);
-            lock (_lock)
+            while (true)
             {
-                if (_pendiente is null)
+                resultado = await EjecutarAsync(actual);
+                lock (_lock)
                 {
-                    _enCurso = null;
-                    _inicioEnCurso = null;
-                    _unoALaVez.Release();
-                    return;
+                    if (_pendiente is null)
+                    {
+                        _enCurso = null;
+                        _inicioEnCurso = null;
+                        _ronda = null;
+                        _unoALaVez.Release();
+                        break;
+                    }
+                    actual = _pendiente;
+                    _pendiente = null;
+                    _enCurso = actual;
+                    _inicioEnCurso = Ahora;
                 }
-                actual = _pendiente;
-                _pendiente = null;
-                _enCurso = actual;
-                _inicioEnCurso = Ahora;
             }
+        }
+        finally
+        {
+            // EjecutarAsync no lanza; el finally solo garantiza que nadie quede esperando para siempre.
+            ronda.TrySetResult(resultado);
         }
     }
 
-    private async Task EjecutarAsync(Solicitud s)
+    private async Task<ResultadoRondaCorte> EjecutarAsync(Solicitud s)
     {
         try
         {
             using var scope = _scopes.CreateScope();
             var servicio = scope.ServiceProvider.GetRequiredService<LocalizacionResumenService>();
             var r = await servicio.CalcularAsync(s.Motivo, s.Usuario, Ahora, CancellationToken.None);
-            if (!r.Omitido)
-            {
-                Interlocked.Increment(ref _version);
-                lock (_lock) _ultimoFallo = null;
-            }
+            if (r.Omitido) return ResultadoRondaCorte.Omitido;
+            Interlocked.Increment(ref _version);
+            lock (_lock) _ultimoFallo = null;
+            return ResultadoRondaCorte.Ok;
         }
         catch (LocalizacionTablasFaltantesException ex)
         {
             _log.LogWarning("Corte de localización no calculado ({Motivo}): {Mensaje}", s.Motivo, ex.Message);
             // Sin espera tras fallo: las lecturas no pueden disparar cortes mientras falten las tablas
             // (fallan antes), y así el primer corte corre apenas el usuario aplique el script.
+            return ResultadoRondaCorte.SinTablas;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Falló el corte de localización ({Motivo})", s.Motivo);
             lock (_lock) _ultimoFallo = Ahora;
+            return ResultadoRondaCorte.Error;
         }
     }
 

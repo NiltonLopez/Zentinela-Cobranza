@@ -19,6 +19,8 @@
 --     LocalizacionResumenPar         métricas que cruzan fuentes, por par.
 --     LocalizacionResumenLider       lo mismo por líder, titulares distintos,
 --                                    con y sin relaciones externas.
+--     LocalizacionResumenAsesor      por par y asesor (último gestor del
+--                                    titular): ranking de asesores (etapa 4).
 --     LocalizacionEnvio              lotes enviados a localización (etapa 3).
 --     LocalizacionEnvioDetalle       titulares de cada lote con la foto de su
 --                                    estado al enviarlo (etapa 3).
@@ -28,7 +30,8 @@
 --
 --   Retención: la API borra los cortes de más de 26 semanas (las filas de
 --   resumen se van en cascada). Tamaño esperado por corte: ~1.200 filas en
---   ResumenFuente, ~600 en ResumenFuenteLider, ~60 en Par y Lider.
+--   ResumenFuente, ~600 en ResumenFuenteLider, ~60 en Par y Lider, ~4.000 en
+--   ResumenAsesor.
 --
 --   Excluidas de las migraciones de EF (patrón de CargueFuenteEjecucion): la
 --   API las usa con ADO.NET. Mientras no existan, los endpoints de
@@ -227,6 +230,50 @@ END
 GO
 
 -- ----------------------------------------------------------------------------
+-- 5b. Resumen por par y asesor (etapa 4: ranking de asesores con foto)
+--
+--    AgenteID     UltimoEstadoTitular.AgenteID = Agente.AgenteID = cédula de
+--                 quien hizo la ÚLTIMA gestión del titular en esa cartera (no
+--                 es un asignado fijo: verificado contra HistoricoEstadoTitular).
+--                 Las filas con AgenteID NULL (sin gestión, marcador automático o
+--                 usuario que no está en Agente) no entran.
+--    Titulares    filas (titular, cartera) del par cuyo último gestor es él.
+--    ConDato      con celular o email en alguna fuente (= ConContacto del par).
+--    ConSaldo / SinContactoConSaldo / SaldoSinContacto   como en el par.
+--    GestionadosRecientes  última gestión en los últimos N días (appsettings
+--                 InformesLocalizacion:Asesores:DiasGestionReciente, 30).
+--    ContactoEfectivo      su UltimoPerfil es de contacto (titular, tercero o
+--                 acuerdo; PerfilesContacto de la API, comparación normalizada).
+--    Tamaño esperado: ~4.000 filas por corte. Opcional para la API: si falta,
+--    el corte se calcula igual y el ranking de asesores avisa.
+-- ----------------------------------------------------------------------------
+IF OBJECT_ID('dbo.LocalizacionResumenAsesor', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.LocalizacionResumenAsesor
+    (
+        CorteID              INT           NOT NULL,
+        LiderID              INT           NOT NULL,
+        CarteraID            INT           NOT NULL,
+        AgenteID             BIGINT        NOT NULL,   -- cédula del asesor (Agente.AgenteID)
+        Titulares            INT           NOT NULL,
+        ConDato              INT           NOT NULL,
+        ConSaldo             INT           NOT NULL,
+        SinContactoConSaldo  INT           NOT NULL,
+        SaldoSinContacto     DECIMAL(19,2) NOT NULL,
+        GestionadosRecientes INT           NOT NULL,
+        ContactoEfectivo     INT           NOT NULL,
+
+        CONSTRAINT PK_LocalizacionResumenAsesor PRIMARY KEY CLUSTERED (CorteID, LiderID, CarteraID, AgenteID),
+        CONSTRAINT FK_LocalizacionResumenAsesor_Corte FOREIGN KEY (CorteID)
+            REFERENCES dbo.LocalizacionCorte (CorteID) ON DELETE CASCADE,
+        CONSTRAINT CK_LocalizacionResumenAsesor_Conteos CHECK (
+            ConDato <= Titulares AND ConSaldo <= Titulares AND SinContactoConSaldo <= ConSaldo
+            AND GestionadosRecientes <= Titulares AND ContactoEfectivo <= Titulares)
+    );
+END
+GO
+
+-- ----------------------------------------------------------------------------
 -- 6. Envíos a localización (etapa 3)
 --
 --    Un lote = un par (líder, cartera) y una fuente. Código visible LOC-000123.
@@ -324,7 +371,7 @@ GO
 SELECT name, create_date
   FROM sys.tables
  WHERE name IN ('LocalizacionCorte', 'LocalizacionResumenFuente', 'LocalizacionResumenFuenteLider',
-                'LocalizacionResumenPar', 'LocalizacionResumenLider',
+                'LocalizacionResumenPar', 'LocalizacionResumenLider', 'LocalizacionResumenAsesor',
                 'LocalizacionEnvio', 'LocalizacionEnvioDetalle')
  ORDER BY name;
 GO
@@ -335,6 +382,7 @@ GO
 --
 -- DROP TABLE IF EXISTS dbo.LocalizacionEnvioDetalle;
 -- DROP TABLE IF EXISTS dbo.LocalizacionEnvio;
+-- DROP TABLE IF EXISTS dbo.LocalizacionResumenAsesor;
 -- DROP TABLE IF EXISTS dbo.LocalizacionResumenLider;
 -- DROP TABLE IF EXISTS dbo.LocalizacionResumenPar;
 -- DROP TABLE IF EXISTS dbo.LocalizacionResumenFuenteLider;

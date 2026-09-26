@@ -86,6 +86,38 @@ public class InformesLocalizacionController : ControllerBase
             Ok(await _service.ObtenerRankingsAsync(c, esLider ? false : incluirExternas, esLider ? propio : null, ct)));
     }
 
+    // ── Etapa 4 ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tendencia semanal (ADR-040, etapa 4): KPIs del Resumen y por fuente en las últimas <paramref name="semanas"/>
+    /// semanas (por defecto 12, tope 26), con el último corte OK de cada semana. Mismo universo y alcance del Resumen.
+    /// </summary>
+    [HttpGet("tendencia")]
+    public Task<IActionResult> Tendencia(
+        [FromQuery] int? liderID, [FromQuery] int? carteraID, [FromQuery] int semanas = 0, CancellationToken ct = default) =>
+        ConAlcance(liderID, carteraID, ct, async (l, c) => Ok(await _service.ObtenerTendenciaAsync(l, c, semanas, ct)));
+
+    /// <summary>
+    /// Ranking de asesores con foto (etapa 4): por asesor activo, los titulares del alcance cuya última gestión hizo
+    /// (<c>UltimoEstadoTitular.AgenteID</c>). Admin/Director: todos; Líder: los de sus carteras (su liderID fijo).
+    /// </summary>
+    [HttpGet("asesores")]
+    public Task<IActionResult> Asesores(
+        [FromQuery] int? liderID, [FromQuery] int? carteraID, [FromQuery] string? criterio, CancellationToken ct = default)
+    {
+        if (!RankingAsesoresCalculo.TryParseCriterio(criterio, out var c))
+            return Task.FromResult<IActionResult>(BadRequest(new { mensaje = "Criterio inválido: Contactabilidad, Gestion, ConDato o SinContactoSaldo." }));
+        return ConAlcance(liderID, carteraID, ct, async (l, k) => Ok(await _service.ObtenerAsesoresAsync(l, k, c, ct)));
+    }
+
+    /// <summary>
+    /// "Alertas de la semana" del alcance (etapa 4). Se calculan al pedirlas y solo se muestran en la app: no se
+    /// envían por ningún canal.
+    /// </summary>
+    [HttpGet("alertas-semana")]
+    public Task<IActionResult> AlertasSemana([FromQuery] int? liderID, [FromQuery] int? carteraID, CancellationToken ct) =>
+        ConAlcance(liderID, carteraID, ct, async (l, c) => Ok(await _service.ObtenerAlertasSemanaAsync(l, c, ct)));
+
     /// <summary>
     /// Estado del precálculo: corte que se muestra ("Localización al …", "Gestión al …") y si hay uno
     /// calculándose. Abierto a los tres roles porque solo expone metadatos del corte: el front lo usa para

@@ -256,16 +256,16 @@ al flag vuelven en NULL.
 ### LocalizacionCorte
 Un precálculo de los *Informes de Localización* (ADR-040). La API inserta la fila `EN CURSO`, corre el
 batch (`GeneradorSqlLocalizacion`, ~51 s para toda la base) y la cierra `OK` o `ERROR`. Los informes leen
-el último `OK`. Script: `docs/sql/migrations/2026-09-26_informes_localizacion.sql` (**pendiente de aplicar
-por el usuario**; mientras falte, `/api/informes/localizacion` responde 503). Excluida de las migraciones
+el último `OK`. Script: `docs/sql/migrations/2026-09-26_informes_localizacion.sql` (aplicado en producción el
+2026-09-26 en su versión de la etapa 1; la tabla de asesores de la etapa 4 se agrega volviéndolo a correr). Excluida de las migraciones
 de EF (ADO.NET). Retención: la API borra los cortes de más de 26 semanas; las filas de resumen se van en
 cascada.
 
 | Columna | Tipo | Nullable | Notas |
 |---------|------|----------|-------|
 | CorteID | int identity | NO | PK clustered |
-| FechaCorte | datetime2(0) | NO | Inicio del cálculo, reloj de la API ("Localización al …") |
-| Motivo | varchar(20) | NO | CHECK `ARRANQUE` \| `CORTE_13H` \| `CARGUE_FUENTE` \| `MANUAL` |
+| FechaCorte | datetime2(0) | NO | Inicio del cálculo en la hora del negocio (`InformesLocalizacion:ZonaHoraria`, Colombia; desde la etapa 4, no el reloj del equipo de la API) ("Localización al …") |
+| Motivo | varchar(20) | NO | CHECK `ARRANQUE` \| `CORTE_13H` \| `CARGUE_FUENTE` \| `MANUAL`. `CORTE_13H` = el corte diario: el recálculo programado de las 13:05 (etapa 4) o el primer acceso después de las 13:00 |
 | Usuario | varchar(100) | SI | Quién lo pidió (`MANUAL`) |
 | Estado | varchar(12) | NO | CHECK `EN CURSO` \| `OK` \| `ERROR`; default `EN CURSO`. Un `EN CURSO` de más de 15 min se cierra `ERROR` ("Interrumpido") en la siguiente corrida |
 | DuracionMs | int | SI | Duración del batch |
@@ -317,6 +317,26 @@ cascada. `SoloInternas = 0`: todos los pares activos del líder; `= 1`: solo los
 BASE GENERAL, con el saldo de esos pares; un líder sin pares internos no tiene fila). **LiderID 0 = toda
 la base.** El saldo de un titular es la suma de sus carteras del líder.
 
+### LocalizacionResumenAsesor
+Por corte, par y asesor (ADR-040, **etapa 4**: ranking de asesores con foto). **Agregada al script el
+2026-09-26 después de que el script de la etapa 1 ya se aplicó**: volver a correr el script (idempotente) la
+crea sin tocar lo demás. Opcional para la API: si falta, el corte se calcula igual y el ranking de asesores
+avisa. PK (CorteID, LiderID, CarteraID, AgenteID); FK a `LocalizacionCorte` ON DELETE CASCADE. ~4.000 filas por
+corte (medido: 3.978 filas, 225 asesores, 870.722 titulares).
+
+| Columna | Tipo | Nullable | Notas |
+|---------|------|----------|-------|
+| CorteID, LiderID, CarteraID | int | NO | Par activo |
+| AgenteID | bigint | NO | `UltimoEstadoTitular.AgenteID` = `Agente.AgenteID` = cédula de quien hizo la **última gestión** del titular en la cartera (verificado contra `HistoricoEstadoTitular`: no es un asignado fijo). Las filas de UET con AgenteID NULL (sin gestión, marcador automático, usuario sin registrar: ~72 %) no entran |
+| Titulares | int | NO | Filas (titular, cartera) del par cuyo último gestor es él |
+| ConDato | int | NO | Con celular o email en alguna fuente (misma regla que `ConContacto`) |
+| ConSaldo / SinContactoConSaldo | int | NO | Como en `LocalizacionResumenPar` |
+| SaldoSinContacto | decimal(19,2) | NO | |
+| GestionadosRecientes | int | NO | Última gestión en los últimos N días (`InformesLocalizacion:Asesores:DiasGestionReciente`, 30) |
+| ContactoEfectivo | int | NO | Su UltimoPerfil es de contacto (titular, tercero/familiar o acuerdo; `PerfilesContacto`, comparación normalizada) |
+
+CHECK `CK_LocalizacionResumenAsesor_Conteos`: cada conteo ≤ Titulares y SinContactoConSaldo ≤ ConSaldo.
+
 ### LocalizacionEnvio
 Lotes enviados al departamento de localización (ADR-040, **etapa 3**; la tabla la crea ya el script de
 la etapa 1). Un lote = un par y una fuente (Funcional).
@@ -334,15 +354,18 @@ la etapa 1). Un lote = un par y una fuente (Funcional).
 | CreadoPor / FechaCreacion | varchar(100) / datetime2(0) | NO | Default `SYSDATETIME()` |
 | EnviadoPor / FechaEnvio, CerradoPor / FechaCierre, AnuladoPor / FechaAnulacion | varchar(100) / datetime2(0) | SI | CHECK `CK_LocalizacionEnvio_Fechas`: cada estado exige su fecha |
 | MotivoAnulacion | nvarchar(300) | SI | |
-| CargueEjecucionID | bigint | SI | FK a `CargueFuenteEjecucion`: vínculo explícito con el cargue que devolvió el lote (etapa 4). La etapa 3 no lo escribe: el retorno se calcula al leer (primer cargue OK de la fuente posterior al envío); si viene lleno, manda |
-| FechaRetorno | datetime2(0) | SI | Reservada para la etapa 4 (la etapa 3 la calcula al leer) |
+| CargueEjecucionID | bigint | SI | FK a `CargueFuenteEjecucion`: el cargue que devolvió el lote. Lo escribe el vínculo automático (etapa 4, `LocalizacionRetornoService`): tras cada cargue OK y en la puesta al día diaria, cada lote `ENVIADO` sin vínculo toma el PRIMER cargue OK de su fuente, posterior al envío, que trae alguno de sus titulares (cruce por `CargueFuenteReversion`); nunca uno del harness (`harness-cargue*`) ni uno revertido. Sin vínculo, el retorno se sigue calculando al leer (primer cargue OK posterior al envío); con vínculo, manda |
+| FechaRetorno | datetime2(0) | SI | `FechaFin` del cargue vinculado (etapa 4) |
 
 Índices: `IX_LocalizacionEnvio_Par` (LiderID, CarteraID, Fuente, Estado) INCLUDE (FechaEnvio);
 `IX_LocalizacionEnvio_Estado` (Estado, FechaEnvio).
 
 Escrituras (etapa 3, `LocalizacionEnviosService`): INSERT del lote (`BORRADOR`, `Titulares` se fija en la misma
 transacción que el detalle) y UPDATE de estado con concurrencia optimista
-(`WHERE EnvioID = @id AND Estado IN (<origen>)`). Nunca se borran lotes (anular deja la fila).
+(`WHERE EnvioID = @id AND Estado IN (<origen>)`). Nunca se borran lotes (anular deja la fila). Etapa 4
+(`LocalizacionRetornoService`): UPDATE de `CargueEjecucionID` / `FechaRetorno` solo en lotes que siguen `ENVIADO` y sin
+vínculo; si `InformesLocalizacion:VinculoRetorno:CerrarAlCubrirPct` está configurado (por defecto no) y el cargue trae
+ese % de los titulares, además `Estado = 'CERRADO'`, `CerradoPor = 'sistema (retorno automático)'`, `FechaCierre`.
 
 ### LocalizacionEnvioDetalle
 Titulares de cada lote con la foto de su estado al crearlo (etapa 3). PK (EnvioID, TitularID); FK a

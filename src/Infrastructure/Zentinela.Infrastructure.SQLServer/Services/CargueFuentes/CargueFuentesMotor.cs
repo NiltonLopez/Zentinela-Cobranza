@@ -51,16 +51,19 @@ internal sealed class CargueFuentesMotor
     private readonly CallCenterDbContext _db;
     private readonly ICalificadorCarteraCache _cache;
     private readonly ILocalizacionResumenCoordinador _localizacion;
+    private readonly ILocalizacionRetornoService _retornoLocalizacion;
     private readonly ILogger<CargueFuentesMotor> _log;
     private readonly CargueFuentesSettings _opciones;
 
     public CargueFuentesMotor(
         CallCenterDbContext db, ICalificadorCarteraCache cache, ILocalizacionResumenCoordinador localizacion,
+        ILocalizacionRetornoService retornoLocalizacion,
         ILogger<CargueFuentesMotor> log, IOptions<CargueFuentesSettings> opciones)
     {
         _db = db;
         _cache = cache;
         _localizacion = localizacion;
+        _retornoLocalizacion = retornoLocalizacion;
         _log = log;
         _opciones = opciones.Value;
     }
@@ -164,6 +167,11 @@ internal sealed class CargueFuentesMotor
                 // El Calificador cachea hasta 24 h cifras que salen de estas tablas (vía
                 // fn_BaseMadreParaTitulares) y solo se limpia al corte de la 1 p. m.
                 _cache.InvalidarTodo();
+                // Envíos a localización (ADR-040, etapa 4): los lotes ENVIADOS de esta fuente cuyos titulares vienen
+                // en el archivo quedan vinculados a este cargue (retorno). Conexión propia; tolera que falten las
+                // tablas y nunca tumba el cargue (los datos ya están confirmados).
+                try { await _retornoLocalizacion.VincularCargueAsync(ejecucionID, CancellationToken.None); }
+                catch (Exception exRet) { _log.LogWarning(exRet, "No se pudo vincular el cargue {EjecucionID} con los lotes de localización", ejecucionID); }
                 // Los Informes de Localización (ADR-040) guardan un corte precalculado de estas mismas
                 // tablas: se pide uno nuevo en segundo plano. No bloquea ni puede tumbar el cargue.
                 try { _localizacion.SolicitarRecalculo("CARGUE_FUENTE"); }

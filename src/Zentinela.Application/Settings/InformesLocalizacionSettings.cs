@@ -54,6 +54,104 @@ public class InformesLocalizacionSettings
 
     /// <summary>Límites de los lotes y ventanas del uso del departamento (subsección "Envios").</summary>
     public EnviosLocalizacionSettings Envios { get; set; } = new();
+
+    // ── Etapa 4 ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Zona horaria del negocio (Colombia). La hora de "ahora" de los cortes, la regla de las 13:00 y el
+    /// recálculo programado se evalúan en esta zona y no con el reloj del equipo donde corre la API: el equipo
+    /// de desarrollo está en otra zona que la BD (medido: 7 h de diferencia). Acepta el id IANA
+    /// ("America/Bogota") o el de Windows ("SA Pacific Standard Time"); si no existe, se usa la zona local.
+    /// </summary>
+    public string ZonaHoraria { get; set; } = "America/Bogota";
+
+    /// <summary>Recálculo diario en segundo plano (subsección "RecalculoProgramado").</summary>
+    public RecalculoProgramadoLocalizacionSettings RecalculoProgramado { get; set; } = new();
+
+    /// <summary>Tendencia semanal (subsección "Tendencia").</summary>
+    public TendenciaLocalizacionSettings Tendencia { get; set; } = new();
+
+    /// <summary>Ranking de asesores (subsección "Asesores").</summary>
+    public AsesoresLocalizacionSettings Asesores { get; set; } = new();
+
+    /// <summary>Vínculo automático lote ↔ cargue de retorno (subsección "VinculoRetorno").</summary>
+    public VinculoRetornoLocalizacionSettings VinculoRetorno { get; set; } = new();
+
+    /// <summary>Umbrales del panel "Alertas de la semana" (subsección "AlertasSemana").</summary>
+    public AlertasSemanaLocalizacionSettings AlertasSemana { get; set; } = new();
+}
+
+/// <summary>
+/// Recálculo programado del corte (ADR-040, etapa 4): un servicio en segundo plano pide un corte cada día a
+/// <see cref="Hora"/> (hora de <see cref="InformesLocalizacionSettings.ZonaHoraria"/>). El cálculo perezoso de
+/// las 13:00 (primer acceso) queda como respaldo.
+/// </summary>
+public class RecalculoProgramadoLocalizacionSettings
+{
+    public bool Activado { get; set; } = true;
+
+    /// <summary>Hora del día ("HH:mm"), en la zona del negocio. 13:05: la carga nocturna de las fuentes ya terminó.</summary>
+    public string Hora { get; set; } = "13:05";
+
+    /// <summary>Espera entre reintentos (corte fallido, ETL de gestión en curso u otro proceso calculando).</summary>
+    public int MinutosEntreReintentos { get; set; } = 10;
+
+    /// <summary>Reintentos del día; agotados, se espera al día siguiente (el cálculo perezoso sigue de respaldo).</summary>
+    public int MaxReintentos { get; set; } = 12;
+}
+
+/// <summary>Tendencia semanal (ADR-040, etapa 4).</summary>
+public class TendenciaLocalizacionSettings
+{
+    public int SemanasPorDefecto { get; set; } = 12;
+
+    /// <summary>Tope: la retención de cortes es de 26 semanas.</summary>
+    public int SemanasMaximas { get; set; } = 26;
+}
+
+/// <summary>Ranking de asesores (ADR-040, etapa 4).</summary>
+public class AsesoresLocalizacionSettings
+{
+    /// <summary>
+    /// Un asesor con menos titulares que esto en el alcance no entra al ranking (se lista aparte): con 3
+    /// titulares un 100 % no dice nada.
+    /// </summary>
+    public int MinTitulares { get; set; } = 30;
+
+    /// <summary>Días de "gestionado recientemente".</summary>
+    public int DiasGestionReciente { get; set; } = 30;
+}
+
+/// <summary>Vínculo automático lote ↔ cargue de retorno (ADR-040, etapa 4).</summary>
+public class VinculoRetornoLocalizacionSettings
+{
+    /// <summary>
+    /// Si el cargue que devolvió el lote trae al menos este % de sus titulares, el lote pasa solo a CERRADO.
+    /// null (por defecto) = nunca se cierra solo: lo cierra una persona.
+    /// </summary>
+    public decimal? CerrarAlCubrirPct { get; set; }
+}
+
+/// <summary>Umbrales del panel "Alertas de la semana" (ADR-040, etapa 4). Solo se muestran en la app.</summary>
+public class AlertasSemanaLocalizacionSettings
+{
+    /// <summary>Líder cuyo índice cayó más de estos puntos contra el último corte de la semana anterior.</summary>
+    public decimal CaidaIndicePuntos { get; set; } = 3;
+
+    /// <summary>Lote ENVIADO hace más de estos días sin cargue de retorno vinculado.</summary>
+    public int DiasLoteSinRetorno { get; set; } = 15;
+
+    /// <summary>Fuente Funcional sin ningún cargue OK del Cargue de Fuentes en estos días.</summary>
+    public int DiasFuenteSinCargue { get; set; } = 30;
+
+    /// <summary>Cartera con más de este % de titulares sin contacto y con saldo.</summary>
+    public decimal SinContactoConSaldoPct { get; set; } = 40;
+
+    /// <summary>Cola sugerida (aproximada, del corte) desde la que un líder sin lotes recientes genera alerta.</summary>
+    public int ColaGrande { get; set; } = 5000;
+
+    /// <summary>Ventana de "sin lotes enviados" del líder con cola grande.</summary>
+    public int DiasSinLotes { get; set; } = 30;
 }
 
 /// <summary>Envíos a localización (ADR-040, etapa 3).</summary>

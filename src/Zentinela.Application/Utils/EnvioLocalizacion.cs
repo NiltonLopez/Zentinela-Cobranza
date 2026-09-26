@@ -283,3 +283,35 @@ public static class UsoDepartamentoCalculo
                 : Math.Round((decimal)conRetorno.Average(l => l.DiasRetorno!.Value), 1, MidpointRounding.AwayFromZero));
     }
 }
+
+/// <summary>
+/// Un lote ENVIADO sin vínculo y el primer cargue OK de su fuente, posterior al envío, que trae titulares suyos
+/// (<c>EnCargue</c> = titulares del lote que aparecen en <c>CargueFuenteReversion</c> de esa ejecución).
+/// </summary>
+public sealed record CandidatoVinculo(int EnvioID, int Titulares, long EjecucionID, DateTime FechaFin, int EnCargue);
+
+/// <summary>Qué se escribe en el lote: el cargue, la fecha de retorno y si se cierra solo.</summary>
+public sealed record DecisionVinculo(int EnvioID, long EjecucionID, DateTime FechaRetorno, int EnCargue, decimal? PctCubierto, bool Cerrar);
+
+/// <summary>
+/// Vínculo automático lote ↔ cargue de retorno (ADR-040, etapa 4). Cuando un cargue OK de una fuente termina,
+/// cada lote ENVIADO de esa fuente, sin vínculo y enviado antes del fin del cargue, queda vinculado a él SI el
+/// archivo trae al menos uno de sus titulares. El cruce es por <c>CargueFuenteReversion</c> (la lista exacta de
+/// titulares que la ejecución insertó, refrescó o cuyas vacías purgó): es lo más fiable, porque la fecha o el sello
+/// no distinguen dos cargues del mismo día de la misma fuente, ni un cargue de otro proveedor. Un titular que
+/// vino "vacío" y ya tenía datos no deja fila (política de vacías de ADR-039): la cobertura es un piso.
+/// </summary>
+public static class VinculoRetorno
+{
+    /// <summary>
+    /// null si el cargue no trae ningún titular del lote (no es su retorno). <paramref name="cerrarAlCubrirPct"/>
+    /// null = nunca se cierra solo; si no, se cierra cuando la cobertura llega a ese % (inclusive).
+    /// </summary>
+    public static DecisionVinculo? Decidir(CandidatoVinculo c, decimal? cerrarAlCubrirPct)
+    {
+        if (c.EnCargue <= 0) return null;
+        var pct = CalculoLocalizacion.Pct(Math.Min(c.EnCargue, c.Titulares), c.Titulares);
+        var cerrar = cerrarAlCubrirPct is { } umbral && pct is { } p && p >= umbral;
+        return new DecisionVinculo(c.EnvioID, c.EjecucionID, c.FechaFin, c.EnCargue, pct, cerrar);
+    }
+}

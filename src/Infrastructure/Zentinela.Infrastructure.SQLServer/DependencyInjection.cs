@@ -137,6 +137,8 @@ public static class DependencyInjection
         services.AddScoped<IFotoPersonaService, FotoPersonaService>();
         // Precálculo por cortes: el coordinador es Singleton (un cálculo a la vez, en segundo plano, con
         // scope propio); el servicio que corre el batch y las lecturas son Scoped.
+        // Hora del negocio (zona InformesLocalizacion:ZonaHoraria, Colombia) para cortes, regla de las 13:00 y 13:05.
+        services.AddSingleton<IRelojLocalizacion, RelojLocalizacion>();
         services.AddSingleton<ILocalizacionResumenCoordinador, LocalizacionResumenCoordinador>();
         services.AddScoped<LocalizacionResumenService>();
         services.AddScoped<IInformesLocalizacionService, InformesLocalizacionService>();
@@ -144,6 +146,10 @@ public static class DependencyInjection
         services.AddScoped<ILocalizacionSugerenciasService, LocalizacionSugerenciasService>();
         // Envíos (etapa 3): lotes, retorno, impacto y uso del departamento.
         services.AddScoped<ILocalizacionEnviosService, LocalizacionEnviosService>();
+        // Etapa 4: vínculo lote ↔ cargue de retorno (lo llama el motor del cargue) y recálculo diario de las 13:05
+        // (BackgroundService; con InformesLocalizacion:RecalculoProgramado:Activado = false no hace nada).
+        services.AddScoped<ILocalizacionRetornoService, LocalizacionRetornoService>();
+        services.AddHostedService<LocalizacionRecalculoProgramado>();
 
         return services;
     }

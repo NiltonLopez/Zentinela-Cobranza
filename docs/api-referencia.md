@@ -923,6 +923,96 @@ enviado nada) más los que tengan lotes; el Líder recibe solo la suya.
   exclusiones → `pctColaEnviada` (tope 100) es un piso. `null` sin corte (con aviso).
 - `diasRetornoPromedio`: promedio de los lotes que ya tuvieron retorno.
 
+### Etapa 4 — Tendencia, asesores, alertas de la semana y vínculo de retorno
+
+Mismo alcance y mismos códigos que el resto (`liderID`/`carteraID`; el Líder, fijado a lo suyo; 503 sin tablas,
+409 sin corte).
+
+#### GET /api/informes/localizacion/tendencia?liderID=&carteraID=&semanas=12
+
+KPIs del Resumen y por fuente en las últimas `semanas` semanas (0 = `InformesLocalizacion:Tendencia:SemanasPorDefecto`,
+12; tope `SemanasMaximas`, 26 = la retención). Una semana va de lunes a domingo y la representa su **último corte OK**
+(un día con tres cortes no pesa más; la semana en curso muestra el corte más reciente). Semanas sin cortes no
+aparecen. Mismo universo que el Resumen: par, suma de los pares de la cartera, líder (titulares distintos, todas sus
+relaciones) o toda la base. Caché de 10 min por corte y día.
+
+```json
+{ "alcance": "par", "etiquetaAlcance": "SG+ — VANESA ARANGO", "semanasPedidas": 12,
+  "semanas": [ { "inicioSemana": "2026-09-21T00:00:00", "corteID": 100, "fechaCorte": "2026-09-26T06:17:40",
+                 "metricas": { "...": "MetricasLocalizacionDto (las del Resumen)" } } ],
+  "fuentes": [ { "clave": "Fosyga", "etiqueta": "Fosyga", "estado": "Funcional",
+                 "puntos": [ { "inicioSemana": "2026-09-21T00:00:00", "total": 36197, "buscados": 20664,
+                               "encontrados": 20351, "pctCobertura": 57.09, "pctLocalizacion": 56.22 } ] } ],
+  "pesos": { "contacto": 0.5, "cobertura": 0.25, "frescura": 0.25 } }
+```
+
+#### GET /api/informes/localizacion/asesores?liderID=&carteraID=&criterio=Contactabilidad
+
+Ranking de asesores con foto (`documento` = cédula, para `GET /api/personas/{documento}/foto`). A cada asesor le
+cuentan las filas (titular, cartera) del alcance cuya **última gestión** hizo él (`UltimoEstadoTitular.AgenteID`,
+que es el último gestor, no un asignado fijo). Solo asesores activos (`Agente.Activo`). Admin/Director: todos; el
+Líder: los de sus carteras (sus pares). Sale del corte (`LocalizacionResumenAsesor`); variación contra el último
+corte OK de un día anterior.
+
+| `criterio` | Valor | Orden |
+|---|---|---|
+| `Contactabilidad` (default) | % con última gestión con contacto (titular, tercero/familiar o acuerdo) | mayor primero |
+| `Gestion` | % con última gestión en los últimos `Asesores:DiasGestionReciente` (30) días | mayor primero |
+| `ConDato` | % con celular o email en alguna fuente de localización | mayor primero |
+| `SinContactoSaldo` | % con saldo y sin dato de contacto (`null` si el universo no tiene saldo) | **menor** primero |
+
+Otro valor → `400`. Asesores con menos de `Asesores:MinTitulares` (30) titulares van en `pocosTitulares`, sin posición.
+
+```json
+{ "corte": { "...": "..." }, "corteAnterior": { "...": "..." }, "alcance": "lider", "etiquetaAlcance": "VANESA ARANGO",
+  "criterio": "Contactabilidad", "menorEsMejor": false, "minTitulares": 30, "diasGestionReciente": 30,
+  "asesores": [ { "posicion": 1, "documento": 1001228443, "nombre": "…", "valor": 21.3, "delta": 0.2, "titulares": 446,
+                  "contactoEfectivo": 95, "pctContactoEfectivo": 21.3, "gestionadosRecientes": 98, "pctGestionadosRecientes": 21.97,
+                  "conDato": 312, "pctConDato": 69.96, "conSaldo": 446, "sinContactoConSaldo": 134, "pctSinContactoConSaldo": 30.04,
+                  "saldoSinContacto": 152300000, "carteras": 1 } ],
+  "pocosTitulares": [], "titularesSinAsesor": 25910, "titularesAlcance": 36197, "aviso": null }
+```
+
+`aviso` si falta la tabla `LocalizacionResumenAsesor` (script aplicado antes de la etapa 4: volver a correrlo).
+
+#### GET /api/informes/localizacion/alertas-semana?liderID=&carteraID=
+
+"Alertas de la semana" del alcance. **Se calculan al pedirlas y solo se muestran en la app** (panel del Resumen): no
+se envían por ningún canal. Universo: los pares **internos** del alcance (sin externas ni BASE GENERAL). Umbrales en
+`InformesLocalizacion:AlertasSemana` (todos "más de").
+
+| `tipo` | Severidad | Regla |
+|---|---|---|
+| `CAIDA_INDICE` | alta | Índice del líder (solo internas) cayó más de `CaidaIndicePuntos` (3) contra el último corte OK de la semana anterior (a un decimal) |
+| `CARTERA_SIN_CONTACTO` | alta | Cartera (o la parte del líder filtrado) con más de `SinContactoConSaldoPct` (40 %) sin contacto y con saldo |
+| `LOTE_SIN_RETORNO` | media | Lote `ENVIADO` hace más de `DiasLoteSinRetorno` (15) días sin cargue de retorno vinculado |
+| `COLA_SIN_LOTES` | media | Líder con más de `ColaGrande` (5.000) búsquedas sugeridas (titular × fuente Funcional, la aproximación del corte de la etapa 3) y ningún lote enviado en `DiasSinLotes` (30) días |
+| `FUENTE_SIN_CARGUE` | media | Fuente Funcional sin datos nuevos en más de `DiasFuenteSinCargue` (30) días: lo más reciente entre su último cargue OK y su dato más reciente en la base (las fuentes aún legacy no dejan `CargueFuenteEjecucion`). Se muestra en cualquier alcance |
+
+```json
+{ "semana": "2026-09-21T00:00:00", "corte": { "...": "..." }, "corteSemanaAnterior": { "...": "..." },
+  "alertas": [ { "tipo": "CAIDA_INDICE", "severidad": "alta", "mensaje": "…: el índice de localización bajó 11,7 puntos (99,8 → 88,1) contra la semana anterior.",
+                 "liderID": 14, "nombreLider": "…", "documentoLider": 1000000000, "carteraID": null, "envioID": null, "fuente": null, "magnitud": 11.7 } ],
+  "avisos": [], "umbrales": { "caidaIndicePuntos": 3, "diasLoteSinRetorno": 15, "diasFuenteSinCargue": 30,
+                              "sinContactoConSaldoPct": 40, "colaGrande": 5000, "diasSinLotes": 30 } }
+```
+
+`avisos`: reglas que no se pudieron evaluar (sin corte de la semana anterior; faltan las tablas de envíos).
+
+#### Vínculo automático lote ↔ cargue de retorno (sin endpoint)
+
+Tras cada cargue OK del Cargue de Fuentes (`CargueFuentesMotor`, antes de pedir el recálculo) y en la puesta al día
+diaria del recálculo programado, cada lote `ENVIADO` sin vínculo de esa fuente queda con `CargueEjecucionID` y
+`FechaRetorno` (fin del cargue) del **primer** cargue OK posterior al envío que trae alguno de sus titulares
+(`CargueFuenteReversion`); nunca uno del harness ni uno revertido. `InformesLocalizacion:VinculoRetorno:CerrarAlCubrirPct`
+(por defecto `null`) lo cierra solo (`CerradoPor = "sistema (retorno automático)"`) si el cargue trae ese % de sus
+titulares. El retorno de `GET envios/{id}` usa el cargue vinculado.
+
+#### Recálculo programado (sin endpoint)
+
+`LocalizacionRecalculoProgramado` (BackgroundService) pide un corte cada día a `InformesLocalizacion:RecalculoProgramado:Hora`
+(13:05) en la zona `InformesLocalizacion:ZonaHoraria` (America/Bogota), con motivo `CORTE_13H`. Ver ADR-040 (etapa 4).
+
 ---
 
 ## GET /api/creador/columnas

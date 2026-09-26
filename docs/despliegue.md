@@ -121,6 +121,14 @@ a mano y sobrevive a los despliegues (el workflow solo detiene y arranca el pool
 | General → **Start Mode** | `AlwaysRunning` | El pool arranca solo y no espera a la primera petición |
 | Recycling → Regular Time Interval | `0` o una hora fija fuera de horario | Evitar el reciclaje cada 29 h a media tarde |
 
+El **recálculo diario de los Informes de Localización** (ADR-040, etapa 4: `LocalizacionRecalculoProgramado`, un
+`BackgroundService` dentro del proceso de la API) corre a las **13:05 hora de Colombia**
+(`InformesLocalizacion:RecalculoProgramado:Hora` y `InformesLocalizacion:ZonaHoraria`). No necesita nada nuevo del
+AppPool más allá de la tabla de arriba (`AlwaysRunning` + `Idle Time-out = 0`: el proceso tiene que estar vivo a esa
+hora) y de **no programar el reciclaje entre 13:00 y 13:15** (el corte dura ~1 min; si el pool se recicla a mitad, el
+corte queda `EN CURSO`, se cierra `ERROR` en la siguiente corrida y lo cubre el primer acceso después de las 13:00).
+Si el proceso no estaba vivo a las 13:05, el corte del día lo pide el arranque de la API o la primera lectura.
+
 Qué pasa si igual se muere:
 - En **Validando**: se pierde el job (nada se había escrito); hay que volver a subir el archivo.
 - En **Cargando**: la conexión muere y **la transacción se revierte sola**: no hay escritura parcial. La

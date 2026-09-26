@@ -12,6 +12,7 @@ import {
   AvisoNoMedible, COLOR_LOC, FiltrosAlcance, Tarjeta, colorNivel, describirAlcance, fmtFecha, fmtNum, fmtPct,
   type Alcance,
 } from './compartidos';
+import { PanelAlertasSemana } from './PanelAlertasSemana';
 
 // ── Tick del eje Y: nombre de la fuente con el color de su estado ─────────────
 interface TickProps { x?: number; y?: number; payload?: { value: string }; estados: Record<string, EstadoFuente> }
@@ -197,6 +198,9 @@ export function TabResumen({ alcance, onAlcance, onRegisterDownload }: {
           </ul>
         )}
       </Tarjeta>
+
+      {/* Alertas de la semana (etapa 4): contra la semana anterior, lotes, fuentes y colas. */}
+      <PanelAlertasSemana alcance={alcance} />
 
       <AvisoNoMedible />
     </div>
