@@ -20,7 +20,9 @@ limpieza, al menos una fila) y SOLO entonces reemplaza a "Reporte Clientes de <C
 El cargador nunca ve un archivo a medio bajar. Si una cartera falla, su CSV anterior queda
 como estaba y se informa: el proceso sigue con las demas y termina con codigo 1.
 
-Credenciales: variables de entorno CONTROLNEXT_USUARIO y CONTROLNEXT_CLAVE. Si no estan y
+Credenciales: se guardan UNA vez, cifradas con DPAPI de la maquina, con --guardar-credencial
+(controlnext.credencial, fuera de git). Tambien sirven CONTROLNEXT_USUARIO / CONTROLNEXT_CLAVE. Si
+no hay ninguna y
 hay consola, se piden por pantalla. Nunca se escriben en archivos ni en la salida.
 
 Solo biblioteca estandar: el Python del servidor no tiene requests.
@@ -111,13 +113,64 @@ class Sesion:
                 f.write(bloque)
 
 
+# ── Credencial cifrada con DPAPI de Windows ──────────────────────────────────
+# Se guarda una vez con --guardar-credencial y queda en controlnext.credencial, junto al
+# script y fuera de git. Alcance de MAQUINA: cualquier cuenta de ESA maquina la descifra
+# (tambien la del proxy del Agente), pero copiada a otra maquina no sirve. En el servidor
+# hay que guardarla en el servidor.
+CREDENCIAL = Path(__file__).with_name("controlnext.credencial")
+
+
+def _dpapi(datos, proteger):
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class Blob(ctypes.Structure):
+        _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    buf = ctypes.create_string_buffer(datos, len(datos))
+    entrada = Blob(len(datos), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+    salida = Blob()
+    sin_ui, maquina = 0x1, 0x4
+    crypt32 = ctypes.windll.crypt32
+    if proteger:
+        ok = crypt32.CryptProtectData(ctypes.byref(entrada), ctypes.c_wchar_p("ControlNext"), None,
+                                      None, None, sin_ui | maquina, ctypes.byref(salida))
+    else:
+        ok = crypt32.CryptUnprotectData(ctypes.byref(entrada), None, None, None, None, sin_ui,
+                                        ctypes.byref(salida))
+    if not ok:
+        raise ctypes.WinError()
+    try:
+        return ctypes.string_at(salida.pbData, salida.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(ctypes.cast(salida.pbData, ctypes.c_void_p))
+
+
+def guardar_credencial():
+    usuario = input("Usuario de ControlNext: ").strip()
+    clave = getpass.getpass("Clave de ControlNext (no se ve al escribir): ")
+    if not usuario or not clave:
+        raise SystemExit("Usuario y clave son obligatorios.")
+    cifrada = _dpapi(clave.encode("utf-8"), proteger=True).hex()
+    CREDENCIAL.write_text(json.dumps({"usuario": usuario, "clave_dpapi": cifrada}), encoding="utf-8")
+    print(f"Credencial guardada y cifrada en {CREDENCIAL}")
+
+
 def credenciales():
     usuario = os.environ.get("CONTROLNEXT_USUARIO")
     clave = os.environ.get("CONTROLNEXT_CLAVE")
     if usuario and clave:
         return usuario, clave
+    if CREDENCIAL.exists():
+        d = json.loads(CREDENCIAL.read_text(encoding="utf-8"))
+        try:
+            return d["usuario"], _dpapi(bytes.fromhex(d["clave_dpapi"]), proteger=False).decode("utf-8")
+        except OSError:
+            raise SystemExit(f"{CREDENCIAL.name} no se puede descifrar en esta maquina "
+                             "(se guardo en otra). Volver a correr con --guardar-credencial.")
     if not sys.stdin.isatty():
-        raise SystemExit("Faltan CONTROLNEXT_USUARIO / CONTROLNEXT_CLAVE y no hay consola para pedirlas.")
+        raise SystemExit("No hay credencial: correr una vez con --guardar-credencial.")
     usuario = usuario or input("Usuario de ControlNext: ").strip()
     clave = clave or getpass.getpass("Clave de ControlNext: ")
     return usuario, clave
@@ -217,7 +270,12 @@ def descargar_cartera(s, nombre, salida, mes, candado):
 
 
 def main():
+    if "--guardar-credencial" in sys.argv:
+        guardar_credencial()
+        return
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--guardar-credencial", action="store_true",
+                    help="guardar usuario y clave cifrados en esta maquina (una sola vez) y salir")
     # Obligatoria a proposito: una prueba no debe pisar por descuido los CSV de produccion.
     ap.add_argument("--salida", required=True,
                     help=r"carpeta de los CSV. Produccion: E:\BASES\SISTEMAS\Apps\ReporteClientes")
