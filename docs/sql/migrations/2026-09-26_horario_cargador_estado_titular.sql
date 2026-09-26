@@ -38,20 +38,22 @@ BEGIN
 END
 CLOSE c; DEALLOCATE c;
 
+-- La hora de fin va a :59:59 y no a la hora exacta: con fin 11:00:00 el Agente NO corría
+-- la de las 11:00 (comprobado 2026-09-26: tras la de las 9 saltó al sábado siguiente).
 -- freq_type 8 = semanal; freq_interval = suma de días (lunes 2, martes 4, miércoles 8,
 -- jueves 16, viernes 32, sábado 64); freq_subday_type 8 = cada N horas.
 EXEC dbo.sp_add_schedule
      @schedule_name = N'ETL estado titular - lunes a viernes', @enabled = 1,
      @freq_type = 8, @freq_interval = 62, @freq_recurrence_factor = 1,
      @freq_subday_type = 8, @freq_subday_interval = 2,
-     @active_start_time = 070000, @active_end_time = 170000;
+     @active_start_time = 070000, @active_end_time = 175959;
 EXEC dbo.sp_attach_schedule @job_name = @trabajo, @schedule_name = N'ETL estado titular - lunes a viernes';
 
 EXEC dbo.sp_add_schedule
      @schedule_name = N'ETL estado titular - sabado', @enabled = 1,
      @freq_type = 8, @freq_interval = 64, @freq_recurrence_factor = 1,
      @freq_subday_type = 8, @freq_subday_interval = 2,
-     @active_start_time = 070000, @active_end_time = 110000;
+     @active_start_time = 070000, @active_end_time = 115959;
 EXEC dbo.sp_attach_schedule @job_name = @trabajo, @schedule_name = N'ETL estado titular - sabado';
 GO
 
