@@ -6,6 +6,7 @@ copiarla. Si alguien cambia una regla de limpieza allá, el cargador la hereda.
 
 | Archivo | Qué hace |
 |---|---|
+| `descargar.py` | Baja los 19 "Reporte Clientes" de ControlNext (reemplaza al RPA de Power Automate). Credencial cifrada por máquina: `--guardar-credencial` |
 | `limpiar.py` | Lee cada CSV con los mismos parámetros del conversor, aplica `transformar()` y escribe un `.part` con separadores de control |
 | `desplegar.ps1` | Lo instala en el servidor (ver Despliegue) |
 | `cargar.ps1` | Orquesta: corre la limpieza, sube los `.part` con `SqlBulkCopy` y ejecuta `procesar.sql` |
@@ -79,3 +80,22 @@ para correr el modo `publicar` de punta a punta sin tocar producción.
 Ver ADR-039. En corto: `desplegar.ps1` copia esta carpeta al servidor, aplica las migraciones y crea
 los trabajos del Agente (`CmdExec` con el proxy `ProxySSIS`, la cuenta que ya lee `E:\BASES`),
 corre una comparación, y con `-Publicar` publica. El trabajo viejo queda intacto como plan B.
+
+## Cómo corre (desde 2026-09-26)
+
+Trabajo del Agente `ETL_UltimoEstadoTitular_Cargador`, lunes a viernes 7–17 h cada 2 h y
+sábado 7, 9 y 11 h. Sin Power Automate:
+
+1. **Descargar** (`descargar.py`) — una cartera que no baja conserva su CSV anterior.
+2. **Cargador** (`cargar.ps1 -Modo publicar`).
+3. **Lista Negra** (`EjecutarETL_ListaNegra`), siempre.
+
+## ¿Alguna cartera no se está procesando bien?
+
+```sql
+SELECT * FROM DBCallCenter.dbo.vw_EtlEstadoTitularCarteras WHERE Estado <> 'OK';
+```
+
+`NO BAJO` (ControlNext no la entregó), `ERROR LIMPIEZA`, `VACIO`, `ARCHIVO VIEJO` (nadie la
+actualiza) o `CAIDA DE FILAS` (menos de la mitad que la corrida anterior). Lo mismo sale al final
+de `cargador\logs\publicar.log` y en el aviso de WhatsApp de la skill `etl-estado-titular`.
