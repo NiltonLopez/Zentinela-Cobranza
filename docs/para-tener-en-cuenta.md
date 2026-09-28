@@ -7,6 +7,23 @@ backlog: los items se cierran o se descartan con razón explícita.
 
 ---
 
+## PENDIENTE: sub-módulo "Instructivos de uso" (propuesto 2026-09-28)
+
+- Hoy los instructivos viven en `docs/instructivos/` y se reparten a mano. El primero es el del
+  Creador de Virtualidad — SMS (ver `docs/instructivos/README.md`).
+- Propuesta, a confirmar con el usuario antes de empezar:
+  - Módulo **Ayuda → Instructivos de uso** en el menú, visible para todos; cada instructivo
+    declara qué roles lo ven.
+  - Tarjetas con título, módulo, versión y fecha; el PDF se ve en la página y el Word se descarga.
+  - Botón **"¿Cómo se usa?"** dentro de cada módulo (empezando por el Creador de Virtualidad)
+    que abre su instructivo.
+  - Pantalla de Admin para subir o reemplazar versiones sin despliegue (estilo Cargue de Reportes).
+  - Archivos en una tabla de base de datos, no en el repo: así git deja de cargar los binarios
+    y en `docs/instructivos/` quedan solo los scripts que los generan.
+- La tabla la crea el usuario con un script (el clasificador bloquea escrituras en producción).
+- Decisiones abiertas: ubicación en el menú (¿Ayuda u otro módulo?) y si va el botón contextual.
+
+
 ## Creador de Virtualidad (SMS): plantillas viejas con fila de ejemplo (2026-09-28, ADR-037)
 
 - Hasta el 2026-09-28 `plantilla_sms.xlsx` traía un ejemplo en la fila 2 de `BASE` (cédula `1020304050`,
