@@ -53,4 +53,27 @@ public class VirtualidadIVRController : ControllerBase
 
         return Ok(await _service.GetAnalisisAsync(desde, hasta, liderEfectivo, carteraID));
     }
+
+    /// <summary>
+    /// Excel del informe (hoja Resumen + hoja Detalle por cliente) para que el líder trabaje
+    /// sus estrategias. Mismo alcance que el análisis: un Líder solo baja sus datos.
+    /// </summary>
+    [HttpGet("exportar")]
+    public async Task<IActionResult> Exportar(
+        [FromQuery] DateOnly desde,
+        [FromQuery] DateOnly hasta,
+        [FromQuery] int? liderID,
+        [FromQuery] int? carteraID)
+    {
+        if (hasta < desde)
+            return BadRequest(new { mensaje = "La fecha final no puede ser anterior a la inicial." });
+
+        if (!User.TryResolverLiderID(liderID, out var liderEfectivo))
+            return Forbid();
+
+        var archivo = await _service.ExportarExcelAsync(desde, hasta, liderEfectivo, carteraID);
+        return File(archivo,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"Informe_IVR_{desde:yyyyMMdd}_{hasta:yyyyMMdd}.xlsx");
+    }
 }

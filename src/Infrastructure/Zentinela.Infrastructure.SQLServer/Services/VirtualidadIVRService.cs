@@ -19,8 +19,13 @@ public class VirtualidadIVRService : IVirtualidadIVRService
     private const int UMBRAL_ALERTA = 5; // >5 IVR a la misma línea
 
     private readonly CallCenterDbContext _db;
+    private readonly IExcelExporter      _excel;
 
-    public VirtualidadIVRService(CallCenterDbContext db) => _db = db;
+    public VirtualidadIVRService(CallCenterDbContext db, IExcelExporter excel)
+    {
+        _db    = db;
+        _excel = excel;
+    }
 
     public async Task<InformeIVRDto> GetInformeAsync(
         DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
@@ -185,27 +190,208 @@ public class VirtualidadIVRService : IVirtualidadIVRService
     /// </summary>
     private sealed record CeldaIvr(int LiderID, int CarteraID, int Rango, int Clientes, int Marcaciones);
 
+    /// <summary>
+    /// Estado de una marcación -> rango de desenlace (ver <see cref="CatalogoVirtualidad.DesenlacesIvr"/>).
+    /// Lo usan el análisis y el Excel: si divergieran, el detalle no cuadraría con el resumen.
+    /// CASE "searched", no "simple": un CASE simple nunca matchea NULL y mandaría las filas
+    /// sin resultado al mismo bucket que las fallas técnicas.
+    /// </summary>
+    private const string RangoSql = """
+        CASE
+          WHEN h.Estado IS NULL               THEN 98
+          WHEN h.Estado = 'OPCION 1'          THEN 1
+          WHEN h.Estado = 'ESPERAR OPCION'    THEN 2
+          WHEN h.Estado = 'OPCION INCORRECTA' THEN 3
+          WHEN h.Estado = 'REPRODUCIR'        THEN 4
+          WHEN h.Estado = 'ESCUCHANDO'        THEN 4
+          WHEN h.Estado = 'COLGAR'            THEN 5
+          ELSE 99
+        END
+        """;
+
+    // ── Excel para el líder ─────────────────────────────────────────────────
+
+    public async Task<byte[]> ExportarExcelAsync(DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
+    {
+        // El resumen es el MISMO análisis del panel (no un cálculo aparte), y el detalle
+        // usa la misma regla de desenlace (RangoSql): las dos hojas cuadran entre sí.
+        var analisis = await GetAnalisisAsync(desde, hasta, liderID, carteraID);
+        var detalle  = await ConsultarDetalleAsync(desde, hasta, liderID, carteraID);
+
+        var partes = new List<string>();
+        if (liderID.HasValue)
+        {
+            var lider = await _db.Lideres.Where(l => l.ID == liderID.Value).Select(l => l.Nombre).FirstOrDefaultAsync();
+            partes.Add($"Líder {lider ?? liderID.Value.ToString()}");
+        }
+        if (carteraID.HasValue)
+        {
+            var cartera = await _db.Carteras.Where(c => c.ID == carteraID.Value).Select(c => c.NombreCartera).FirstOrDefaultAsync();
+            partes.Add($"Cartera {cartera ?? carteraID.Value.ToString()}");
+        }
+        var alcance = partes.Count > 0 ? string.Join(" · ", partes) : "Todos los líderes y carteras";
+
+        var pagosHasta = await _db.Pagos.MaxAsync(p => (DateOnly?)p.FechaPago);
+
+        return _excel.GenerarInformeIvr(analisis, detalle, alcance, pagosHasta);
+    }
+
+    /// <summary>
+    /// Una fila por cliente marcado (líder, cartera, documento) — la misma unidad del análisis.
+    /// Todo en UNA consulta con agregados: con ~120k clientes por mes, una consulta por
+    /// cliente sería impracticable.
+    ///
+    /// Pagos posteriores: pagos a ESA cartera desde la primera marcación del período hasta
+    /// hoy. Es por cartera a propósito: un pago a otra cartera no mide esta estrategia.
+    /// </summary>
+    private async Task<List<DetalleClienteIvrDto>> ConsultarDetalleAsync(
+        DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
+    {
+        var sql = new StringBuilder($"""
+            ;WITH Base AS (
+                SELECT h.ID, h.LiderID, h.CarteraID, h.NumeroDocumento, h.Destino, h.FechaEnvio, h.Estado,
+                       {RangoSql} AS Rango
+                  FROM dbo.HistoricoVirtualidad h
+                 WHERE h.Canal = @canal
+                   AND h.FechaEnvio >= @desde AND h.FechaEnvio <= @hasta
+            """);
+        sql.AppendLine();
+        if (liderID.HasValue)   sql.AppendLine("       AND h.LiderID = @liderID");
+        if (carteraID.HasValue) sql.AppendLine("       AND h.CarteraID = @carteraID");
+        sql.AppendLine("""
+            ),
+            Cliente AS (
+                SELECT LiderID, CarteraID, NumeroDocumento,
+                       MIN(Rango) AS Rango, COUNT(*) AS Marcaciones,
+                       MIN(FechaEnvio) AS Primera, MAX(FechaEnvio) AS Ultima
+                  FROM Base
+                 GROUP BY LiderID, CarteraID, NumeroDocumento
+            ),
+            Ultimo AS (
+                SELECT LiderID, CarteraID, NumeroDocumento, Estado,
+                       ROW_NUMBER() OVER (PARTITION BY LiderID, CarteraID, NumeroDocumento
+                                          ORDER BY FechaEnvio DESC, ID DESC) AS rn
+                  FROM Base
+            ),
+            Tel AS (
+                SELECT LiderID, CarteraID, NumeroDocumento,
+                       STRING_AGG(CAST(Destino AS VARCHAR(MAX)), ', ') WITHIN GROUP (ORDER BY Destino) AS Telefonos
+                  FROM (SELECT DISTINCT LiderID, CarteraID, NumeroDocumento, Destino
+                          FROM Base WHERE Destino IS NOT NULL) d
+                 GROUP BY LiderID, CarteraID, NumeroDocumento
+            ),
+            Pag AS (
+                SELECT c.LiderID, c.CarteraID, c.NumeroDocumento,
+                       COUNT(*) AS Pagos, SUM(p.ValorPagado) AS Valor, MAX(p.FechaPago) AS UltimoPago
+                  FROM Cliente c
+                  JOIN dbo.Pago p ON p.CedulaTitular = c.NumeroDocumento
+                                 AND p.CarteraID     = c.CarteraID
+                                 AND p.FechaPago    >= c.Primera
+                 GROUP BY c.LiderID, c.CarteraID, c.NumeroDocumento
+            )
+            SELECT c.NumeroDocumento, t.Nombre, l.Nombre, ca.NombreCartera, tel.Telefonos,
+                   c.Marcaciones, c.Primera, c.Ultima, c.Rango, u.Estado,
+                   e.UltimoPerfil, e.MejorPerfil, e.FechaUltimaGestion, e.FechaPromesa,
+                   CAST(e.ValorPromesa AS DECIMAL(19,4)), CAST(e.SaldoTotal AS DECIMAL(19,4)),
+                   ISNULL(pg.Pagos, 0), CAST(ISNULL(pg.Valor, 0) AS DECIMAL(19,4)), pg.UltimoPago,
+                   c.LiderID, c.CarteraID
+              FROM Cliente c
+              LEFT JOIN dbo.Lider   l  ON l.ID  = c.LiderID
+              LEFT JOIN dbo.Cartera ca ON ca.ID = c.CarteraID
+              LEFT JOIN Ultimo u  ON u.LiderID = c.LiderID AND u.CarteraID = c.CarteraID
+                                 AND u.NumeroDocumento = c.NumeroDocumento AND u.rn = 1
+              LEFT JOIN Tel tel   ON tel.LiderID = c.LiderID AND tel.CarteraID = c.CarteraID
+                                 AND tel.NumeroDocumento = c.NumeroDocumento
+              LEFT JOIN Pag pg    ON pg.LiderID = c.LiderID AND pg.CarteraID = c.CarteraID
+                                 AND pg.NumeroDocumento = c.NumeroDocumento
+              LEFT JOIN dbo.UltimoEstadoTitular e ON e.TitularID = c.NumeroDocumento AND e.CarteraID = c.CarteraID
+              -- TOP 1: si Titular repitiera documento (p. ej. por empresa), no duplica al cliente.
+              OUTER APPLY (SELECT TOP (1) ti.Nombre FROM dbo.Titular ti
+                            WHERE ti.NumeroDocumento = c.NumeroDocumento) t
+             ORDER BY l.Nombre, ca.NombreCartera, c.Rango, c.NumeroDocumento;
+            """);
+
+        var parametros = new List<SqlParameter>
+        {
+            new("@canal", CANAL),
+            new("@desde", desde.ToDateTime(TimeOnly.MinValue)),
+            new("@hasta", hasta.ToDateTime(TimeOnly.MinValue)),
+        };
+        if (liderID.HasValue)   parametros.Add(new SqlParameter("@liderID", liderID.Value));
+        if (carteraID.HasValue) parametros.Add(new SqlParameter("@carteraID", carteraID.Value));
+
+        var filas = new List<DetalleClienteIvrDto>();
+        var conn = (SqlConnection)_db.Database.GetDbConnection();
+        var laAbriYo = conn.State != System.Data.ConnectionState.Open;
+        if (laAbriYo) await _db.Database.OpenConnectionAsync();
+
+        try
+        {
+            await using var cmd = new SqlCommand(sql.ToString(), conn) { CommandTimeout = 300 };
+            cmd.Parameters.AddRange(parametros.ToArray());
+            await using var rd = await cmd.ExecuteReaderAsync();
+
+            string?   Texto(int i)  => rd.IsDBNull(i) ? null : rd.GetString(i);
+            DateOnly? Fecha(int i)  => rd.IsDBNull(i) ? null : DateOnly.FromDateTime(rd.GetDateTime(i));
+            decimal?  Numero(int i) => rd.IsDBNull(i) ? null : rd.GetDecimal(i);
+
+            while (await rd.ReadAsync())
+            {
+                var rango = rd.GetInt32(8);
+                filas.Add(new DetalleClienteIvrDto
+                {
+                    Cedula             = rd.GetInt64(0),
+                    Nombre             = Texto(1),
+                    Lider              = Texto(2) ?? $"Líder {rd.GetInt32(19)}",
+                    Cartera            = Texto(3) ?? $"Cartera {rd.GetInt32(20)}",
+                    Telefonos          = Texto(4),
+                    Marcaciones        = rd.GetInt32(5),
+                    PrimeraMarcacion   = DateOnly.FromDateTime(rd.GetDateTime(6)),
+                    UltimaMarcacion    = DateOnly.FromDateTime(rd.GetDateTime(7)),
+                    RangoDesenlace     = rango,
+                    MejorDesenlace     = NombreDesenlaceDetalle(rango),
+                    UltimoResultado    = Texto(9),
+                    UltimoPerfil       = Texto(10),
+                    MejorPerfil        = Texto(11),
+                    FechaUltimaGestion = Fecha(12),
+                    FechaPromesa       = Fecha(13),
+                    ValorPromesa       = Numero(14),
+                    SaldoTotal         = Numero(15),
+                    PagosPosteriores   = rd.GetInt32(16),
+                    ValorPagado        = rd.GetDecimal(17),
+                    FechaUltimoPago    = Fecha(18),
+                });
+            }
+        }
+        finally
+        {
+            if (laAbriYo) await _db.Database.CloseConnectionAsync();
+        }
+
+        return filas;
+    }
+
+    /// <summary>
+    /// Nombre del desenlace para el Excel. Los rangos 98 y 99 no son desenlaces del catálogo
+    /// y se nombran acá con las mismas palabras que usa el análisis.
+    /// </summary>
+    private static string NombreDesenlaceDetalle(int rango) => rango switch
+    {
+        CatalogoVirtualidad.RangoSinResultado => "Sin resultado cargado",
+        CatalogoVirtualidad.RangoSinContacto  => "Sin contacto (falla técnica o sin contestar)",
+        _                                     => CatalogoVirtualidad.NombreDesenlace(rango),
+    };
+
     private async Task<List<CeldaIvr>> ConsultarCeldasAsync(
         DateOnly desde, DateOnly hasta, int? liderID, int? carteraID)
     {
         // La deduplicación por cliente con jerarquía se resuelve en SQL: MIN(rango) por
         // (cartera, documento) es "su mejor desenlace". Agrupar después deja a lo sumo
         // (líderes × carteras × 6) filas, así que el informe completo sale de una sola consulta.
-        var sql = new StringBuilder("""
+        var sql = new StringBuilder($"""
             ;WITH Mejor AS (
                 SELECT h.LiderID, h.CarteraID, h.NumeroDocumento,
-                       -- CASE "searched", no "simple": un CASE simple nunca matchea NULL y
-                       -- mandaría las filas sin resultado al mismo bucket que las fallas técnicas.
-                       MIN(CASE
-                             WHEN h.Estado IS NULL             THEN 98
-                             WHEN h.Estado = 'OPCION 1'          THEN 1
-                             WHEN h.Estado = 'ESPERAR OPCION'    THEN 2
-                             WHEN h.Estado = 'OPCION INCORRECTA' THEN 3
-                             WHEN h.Estado = 'REPRODUCIR'        THEN 4
-                             WHEN h.Estado = 'ESCUCHANDO'        THEN 4
-                             WHEN h.Estado = 'COLGAR'            THEN 5
-                             ELSE 99
-                           END) AS Rango,
+                       MIN({RangoSql}) AS Rango,
                        COUNT(*) AS Marcaciones
                   FROM dbo.HistoricoVirtualidad h
                  WHERE h.Canal = @canal

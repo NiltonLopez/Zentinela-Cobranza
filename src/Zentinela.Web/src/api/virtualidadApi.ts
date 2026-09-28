@@ -48,6 +48,28 @@ export const getAnalisisIvr = async (
   return data;
 };
 
+/**
+ * Excel del informe IVR para el líder: hoja Resumen (las cifras del análisis) y hoja
+ * "Detalle por cliente". El backend fuerza el líder del token si quien descarga es Líder.
+ */
+export const descargarExcelIvr = async (
+  desde: string,
+  hasta: string,
+  liderID?: number,
+  carteraID?: number,
+): Promise<void> => {
+  const { data } = await api.get('/api/virtualidad/ivr/exportar', {
+    params: { desde, hasta, liderID, carteraID },
+    responseType: 'blob',
+  });
+  const url  = URL.createObjectURL(data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Informe_IVR_${desde.replaceAll('-', '')}_${hasta.replaceAll('-', '')}.xlsx`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+};
+
 // ── Llamadas perdidas ─────────────────────────────────────────────────────────
 
 export const validarLlamadasPerdidas = async (archivo: File): Promise<ValidarLlamadasResponse> => {

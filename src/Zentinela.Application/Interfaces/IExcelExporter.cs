@@ -62,4 +62,17 @@ public interface IExcelExporter
     /// texto para que Excel no las pase a notación científica. Sin filas de ejemplo.
     /// </summary>
     byte[] GenerarListaLocalizacion(DefinicionFuenteCargue fuente, IReadOnlyList<DTOs.InformesLocalizacion.FilaListaLocalizacion> filas);
+
+    /// <summary>
+    /// Informe IVR para el líder: hoja "Resumen" con las cifras de <paramref name="analisis"/>
+    /// (las mismas del panel) y hoja "Detalle por cliente" con <paramref name="detalle"/>.
+    /// <paramref name="alcance"/> describe el filtro aplicado ("Todos los líderes", "Líder X"...).
+    /// <paramref name="pagosCargadosHasta"/> es la fecha del último pago en la BD: sin ella, un
+    /// "0 pagos posteriores" no se distingue de "los pagos de esas fechas todavía no se cargaron".
+    /// </summary>
+    byte[] GenerarInformeIvr(
+        DTOs.Virtualidad.IVR.AnalisisIvrDto analisis,
+        IReadOnlyList<DTOs.Virtualidad.IVR.DetalleClienteIvrDto> detalle,
+        string alcance,
+        DateOnly? pagosCargadosHasta);
 }
