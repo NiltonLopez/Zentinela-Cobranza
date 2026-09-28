@@ -57,6 +57,7 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
   const totalExcluidos = v
     ? v.excluidosCedulaInvalida + v.excluidosTelefonoInvalido + v.excluidosFijo + v.excluidosNombreVacio
       + v.excluidosPerfilArchivo + v.excluidosPerfilBD + v.excluidosListaNegraTabla + v.excluidosListaNegraArchivo + v.excluidosDuplicado
+      + v.excluidosFilaEjemplo
     : 0;
 
   // Cada chip es un contador desplegable: al hacerle clic muestra hasta diez filas
@@ -82,6 +83,7 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
       [MOTIVOS.cedulaInvalida]:    'Cédula inválida',
       [MOTIVOS.nombreVacio]:       'Nombre vacío',
       [MOTIVOS.duplicado]:         'Número repetido',
+      [MOTIVOS.filaEjemplo]:       'Fila de ejemplo de la plantilla',
     }[motivo] ?? 'Detalle');
 
   return (
@@ -96,7 +98,8 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
           </button>
           <span style={{ fontSize: 12, color: 'var(--z-text-muted)' }}>
             Columnas: <strong>Cédula · Nombre · Fecha Gestión · Ultimo Perfil · Numero Marcado</strong> y, opcionales,
-            <strong> Cartera · Empresa</strong> (solo si el mensaje usa {'{CARTERA}'} o {'{EMPRESA}'}). Recomendado XLSX
+            <strong> Cartera · Empresa</strong> (solo si el mensaje usa {'{CARTERA}'} o {'{EMPRESA}'}). Llena la hoja
+            <strong> BASE</strong>; la hoja <strong>EJEMPLO</strong> es solo de referencia y no se procesa. Recomendado XLSX
             (en CSV una coma dentro del nombre corre la fila).
           </span>
         </div>
@@ -215,6 +218,7 @@ export function PasoCargarArchivo({ estado, dispatch, liderListo }: Props) {
             {chip(v.excluidosCedulaInvalida,   'cédula inválida', C.gray, 'var(--z-bg-page)', MOTIVOS.cedulaInvalida)}
             {chip(v.excluidosNombreVacio,      'nombre vacío', C.gray, 'var(--z-bg-page)', MOTIVOS.nombreVacio)}
             {chip(v.excluidosDuplicado,        'número repetido', C.gray, 'var(--z-bg-page)', MOTIVOS.duplicado)}
+            {chip(v.excluidosFilaEjemplo,      'fila de ejemplo', C.warning, '#fffbeb', MOTIVOS.filaEjemplo)}
           </div>
 
           {motivoAbierto && (

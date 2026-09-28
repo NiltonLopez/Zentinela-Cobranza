@@ -52,6 +52,7 @@ public static class CatalogoCreadorVirtualidad
         public const string ListaNegraTabla    = "lista-negra-bd";
         public const string ListaNegraArchivo  = "lista-negra-archivo";
         public const string Duplicado          = "duplicado";
+        public const string FilaEjemplo        = "fila-ejemplo";
         public const string Archivo            = "archivo";
     }
 
@@ -161,6 +162,49 @@ public static class CatalogoCreadorVirtualidad
         ["Cédula", "Nombre", "Fecha Gestión", "Ultimo Perfil", "Numero Marcado", "Cartera", "Empresa"];
 
     public static readonly string[] ColumnasOpcionales = ["Cartera", "Empresa"];
+
+    // ── Fila de ejemplo de la plantilla ─────────────────────────────────────
+
+    /// <summary>
+    /// La fila de ejemplo que acompaña la plantilla. Vive en UN solo lugar porque la usan
+    /// dos piezas que tienen que coincidir: la plantilla (que la pone en la hoja
+    /// <see cref="HojaEjemplo"/>, que no se procesa) y la depuración (que la excluye si
+    /// aparece en la hoja "BASE").
+    ///
+    /// Hasta el 2026-09-28 la plantilla traía este ejemplo en la fila 2 de "BASE": si el
+    /// líder no lo borraba, se procesaba como un titular real y salía un SMS a ese número.
+    /// Las plantillas viejas siguen circulando; por eso la depuración la reconoce.
+    /// </summary>
+    public static class FilaEjemplo
+    {
+        public const string Cedula        = "1020304050";
+        public const string Nombre        = "MARIA JOSE PEREZ GOMEZ";
+        public const string FechaGestion  = "2026-09-01";
+        public const string UltimoPerfil  = "No contacto";
+        public const string NumeroMarcado = "3001234567";
+        public const string Cartera       = "Pelicano Propia";
+        public const string Empresa       = "Banco Bellavida";
+
+        /// <summary>Los valores en el orden de <see cref="ColumnasPlantilla"/>.</summary>
+        public static readonly string[] Valores =
+            [Cedula, Nombre, FechaGestion, UltimoPerfil, NumeroMarcado, Cartera, Empresa];
+
+        /// <summary>
+        /// Es la fila de ejemplo si coinciden la cédula Y el número, ya normalizados (solo
+        /// dígitos; el número en su forma nacional de 10). Uno solo no basta: un titular
+        /// real puede tener cualquiera de los dos.
+        /// </summary>
+        public static bool Es(string cedulaDigitos, string numeroNormalizado) =>
+            cedulaDigitos == Cedula && numeroNormalizado == NumeroMarcado;
+
+        public const string MensajeExclusion = "Fila de ejemplo de la plantilla: bórrala antes de subir el archivo.";
+    }
+
+    /// <summary>Hoja de la plantilla donde se muestra el ejemplo. El lector nunca la lee (lee "BASE").</summary>
+    public const string HojaEjemplo = "EJEMPLO";
+
+    /// <summary>Hoja de la plantilla que se procesa.</summary>
+    public const string HojaBase = "BASE";
 
     /// <summary>Columnas del archivo que se entrega a virtualidad.</summary>
     public static readonly string[] ColumnasSalida =

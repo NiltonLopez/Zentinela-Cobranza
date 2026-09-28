@@ -5,7 +5,7 @@
 //
 // Piezas compartidas por las tres secciones del sub-módulo (Solicitud, Resultado y Carga
 // IVR). Viven aparte para que agregar un canal no duplique estilos ni componentes.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ErrorAgrupado } from '../../../types/historicoVirtualidad';
 
 export type Etapa = 'inicial' | 'preview' | 'resultado';
@@ -100,6 +100,46 @@ export function ChipConteo({ numero, label, bg, border, colorNum, colorLabel, on
 
 // ── Zona de carga de archivo ────────────────────────────────────────────────
 
+/**
+ * ¿El archivo cumple el `accept` del input? Es la misma regla que aplica el selector del
+ * clic, repetida porque al soltar el navegador no filtra nada. Acepta extensiones
+ * (".xlsx"), tipos MIME exactos y comodines ("image/*").
+ */
+function aceptaArchivo(archivo: File, accept: string): boolean {
+  const reglas = accept.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (reglas.length === 0) return true;
+  const nombre = archivo.name.toLowerCase();
+  const tipo   = (archivo.type || '').toLowerCase();
+  return reglas.some(r =>
+    r.startsWith('.')  ? nombre.endsWith(r)
+    : r.endsWith('/*') ? tipo.startsWith(r.slice(0, -1))
+    : tipo === r);
+}
+
+/**
+ * Entrega el archivo soltado como si se hubiera elegido con el clic: se asigna al input
+ * oculto y se dispara su `change`. Así las páginas que usan el DropZone no cambian nada
+ * (siguen leyendo `e.target.files` en su onChange) y el input queda coherente con lo que
+ * se ve, de modo que "Quitar archivo" (que limpia `input.value`) sigue funcionando.
+ * Si el navegador no deja asignar `files`, se llama al onChange con un evento mínimo.
+ */
+function entregarAlInput(
+  input: HTMLInputElement | null,
+  archivos: FileList,
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
+) {
+  if (input) {
+    try {
+      input.files = archivos;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    } catch {
+      // Navegador sin soporte para asignar `files`: se cae al evento mínimo de abajo.
+    }
+  }
+  onChange({ target: { files: archivos }, currentTarget: { files: archivos } } as unknown as React.ChangeEvent<HTMLInputElement>);
+}
+
 export function DropZone({
   archivoNombre, archivoKB, onClick, onQuitar, inputRef, onChange, disabled,
   accept = '.xlsx', textoVacio,
@@ -112,25 +152,91 @@ export function DropZone({
   accept?: string;
   textoVacio?: string;
 }) {
+  // Arrastrar y soltar. Los eventos de arrastre también se disparan al pasar por los
+  // hijos (los <p>), y cada cruce produce un dragleave del padre: con un booleano la zona
+  // parpadea. Se cuenta entradas y salidas, y se resalta mientras el saldo sea positivo.
+  const [arrastrando, setArrastrando] = useState(false);
+  const [rechazo, setRechazo] = useState<string | null>(null);
+  const profundidad = useRef(0);
+
+  const abrirSelector = () => {
+    if (disabled) return;
+    setRechazo(null);
+    onClick();
+  };
+
+  const alEntrar = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (disabled) return;
+    profundidad.current += 1;
+    setArrastrando(true);
+  };
+  const alPasar = (e: React.DragEvent<HTMLDivElement>) => {
+    // Sin preventDefault en dragover el navegador no permite soltar (y abre el archivo).
+    e.preventDefault();
+    e.dataTransfer.dropEffect = disabled ? 'none' : 'copy';
+  };
+  const alSalir = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    profundidad.current = Math.max(0, profundidad.current - 1);
+    if (profundidad.current === 0) setArrastrando(false);
+  };
+  const alSoltar = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    profundidad.current = 0;
+    setArrastrando(false);
+    if (disabled) return;
+
+    const archivos = e.dataTransfer.files;
+    if (archivos.length === 0) return;   // se soltó texto o un enlace, no un archivo
+    if (archivos.length > 1) { setRechazo('Suelta un solo archivo.'); return; }
+    if (!aceptaArchivo(archivos[0], accept)) {
+      setRechazo(`"${archivos[0].name}" no es un archivo permitido (${accept.split(',').map(s => s.trim()).join(', ')}).`);
+      return;
+    }
+    setRechazo(null);
+    entregarAlInput(inputRef.current, archivos, onChange);
+  };
+
+  const alTeclear = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();   // Espacio haría scroll
+      abrirSelector();
+    }
+  };
+
+  const resaltado = arrastrando && !disabled;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div
-        onClick={() => !disabled && onClick()}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled || undefined}
+        onClick={abrirSelector}
+        onKeyDown={alTeclear}
+        onDragEnter={alEntrar}
+        onDragOver={alPasar}
+        onDragLeave={alSalir}
+        onDrop={alSoltar}
         style={{
-          border: `1.5px dashed ${archivoNombre ? 'var(--z-brand)' : 'var(--z-border)'}`,
+          border: `1.5px dashed ${resaltado || archivoNombre ? 'var(--z-brand)' : 'var(--z-border)'}`,
           borderRadius: 8, padding: 24, textAlign: 'center',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          background: archivoNombre ? '#eff6ff' : 'transparent', opacity: disabled ? 0.5 : 1,
+          background: resaltado || archivoNombre ? '#eff6ff' : 'transparent', opacity: disabled ? 0.5 : 1,
+          boxShadow: resaltado ? 'inset 0 0 0 1px var(--z-brand)' : 'none',
         }}
       >
-        <p style={{ fontSize: 13, color: archivoNombre ? 'var(--z-brand)' : 'var(--z-text-muted)', margin: '0 0 4px' }}>
-          {archivoNombre || textoVacio || `Haz clic para seleccionar un archivo ${accept}`}
+        <p style={{ fontSize: 13, color: resaltado || archivoNombre ? 'var(--z-brand)' : 'var(--z-text-muted)', margin: '0 0 4px' }}>
+          {resaltado ? 'Suelta el archivo aquí' : archivoNombre || textoVacio || `Haz clic para seleccionar un archivo ${accept}`}
         </p>
-        {archivoNombre && (
+        {archivoNombre && !resaltado && (
           <p style={{ fontSize: 11, color: 'var(--z-text-muted)', margin: 0 }}>{archivoKB.toFixed(1)} KB</p>
         )}
       </div>
-      <input ref={inputRef} type="file" accept={accept} disabled={disabled} onChange={onChange} style={{ display: 'none' }} />
+      <input ref={inputRef} type="file" accept={accept} disabled={disabled} onChange={e => { setRechazo(null); onChange(e); }} style={{ display: 'none' }} />
+      {rechazo && (
+        <p role="alert" style={{ fontSize: 12, color: '#dc2626', margin: 0 }}>{rechazo}</p>
+      )}
       {archivoNombre && (
         <button
           onClick={onQuitar}

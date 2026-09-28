@@ -3,9 +3,19 @@
 Bitácora de revisión general del proyecto. Se trata como **inbox**, no como
 backlog: los items se cierran o se descartan con razón explícita.
 
-Última actualización: **2026-09-26**.
+Última actualización: **2026-09-28**.
 
 ---
+
+## Creador de Virtualidad (SMS): plantillas viejas con fila de ejemplo (2026-09-28, ADR-037)
+
+- Hasta el 2026-09-28 `plantilla_sms.xlsx` traía un ejemplo en la fila 2 de `BASE` (cédula `1020304050`,
+  número `3001234567`) que, sin borrarlo, generaba un SMS real. La plantilla nueva deja `BASE` solo con
+  encabezados y pasa el ejemplo a una hoja `EJEMPLO` que no se lee.
+- Las plantillas viejas siguen circulando: la depuración excluye esa fila con el chip **"fila de ejemplo"**.
+  Si aparece seguido, pedir a los líderes que descarguen la plantilla otra vez. No cerrar la defensa
+  aunque ya nadie la use: cuesta una comparación por fila.
+
 
 ## PENDIENTE: script de Informes de Localización (ADR-040) — re-ejecutar por la etapa 4
 

@@ -64,8 +64,8 @@ export function PasoGenerar({ estado, dispatch }: Props) {
       <div>
         <p style={etiquetaPaso}>Resumen y generación</p>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--z-text-muted)' }}>
-          Cada titular recibe un asesor al azar con reparto parejo. El archivo trae las 5 columnas de tu plantilla más
-          <strong> Celular Asesor, Link Asesor y Mensaje</strong> ya armado.
+          Cada titular recibe un asesor al azar con reparto parejo. El archivo trae las 7 columnas de tu plantilla
+          (Cartera y Empresa quedan vacías si no las enviaste) más <strong>Celular Asesor, Link Asesor y Mensaje</strong> ya armado.
         </p>
       </div>
 

@@ -48,7 +48,7 @@ los escribe nadie.
 ### 3. La depuración vive en el servidor, en un solo pipeline
 `CreadorVirtualidadSmsService.DepurarAsync` alimenta los tres pasos con archivo (validar, anotar el
 catálogo, generar). Cada fila recibe **un solo motivo de exclusión**, en orden fijo:
-cédula inválida → teléfono inválido → fijo → nombre vacío → perfil (archivo) → perfil (histórico BD)
+cédula inválida → teléfono inválido → fila de ejemplo de la plantilla → fijo → nombre vacío → perfil (archivo) → perfil (histórico BD)
 → lista negra (tabla, carteras elegidas) → lista negra (archivo) → duplicado por número.
 Así `leídas − válidas` es exactamente la suma de los contadores y lo que el líder vio en el preview
 es lo que sale en el archivo.
@@ -139,6 +139,26 @@ El front esperaba `estado` como `0/1/2`, pero la API serializa enums como texto
 mensaje, `ESTILO_ESTADO["Disponible"]` era `undefined` y React tumbaba la pantalla al pasar al paso 3.
 Corregido: el tipo TS es la unión de textos y un estado desconocido cae a "No disponible" en vez de
 reventar. Lección: en este proyecto **todo enum llega como string**.
+
+## Corrección 2026-09-28: la plantilla ya no trae una fila de ejemplo que se procese
+La plantilla traía un ejemplo en la fila 2 de la hoja `BASE` (cédula `1020304050`, número
+`3001234567`). Es una fila válida en todo: si el líder no la borraba, pasaba la depuración y salía un
+SMS. Ahora:
+- `BASE` (primera hoja, la única que lee `ArchivoTabular.ExtraerFilasXlsx`) trae **solo encabezados**,
+  con Cédula y Numero Marcado en formato texto en toda la columna. El ejemplo va en una hoja
+  `EJEMPLO` con un aviso de que no se procesa.
+- Para las plantillas viejas que siguen circulando, la depuración excluye la fila cuya cédula **y**
+  número (ya normalizados) son los del ejemplo, con motivo propio `fila-ejemplo` ("Fila de ejemplo de
+  la plantilla: bórrala antes de subir el archivo."). Uno solo de los dos no basta. En la auditoría
+  (`EstrategiaSms`) cuenta en `ExcluidosOtros`. Los valores viven solo en
+  `CatalogoCreadorVirtualidad.FilaEjemplo`, que usan la plantilla y la exclusión.
+- La parte local del pipeline (`DepurarLocal`) quedó separada de la de BD para probarla sin base:
+  `tests/Zentinela.Infrastructure.Tests/CreadorVirtualidad/PlantillaYFilaEjemploSmsTests.cs`.
+
+En la misma corrección: el `DropZone` compartido ahora acepta arrastrar y soltar de verdad (antes solo
+el clic, aunque el texto decía "Arrastra"), y el paso 4 dice lo exacto: el XLSX sale con las **7**
+columnas de la plantilla (Cartera y Empresa vacías si no vinieron) más Celular Asesor, Link Asesor y
+Mensaje (10 en total).
 
 ## Deuda visible
 - El contacto de los asesores se llena a medida que los líderes lo usan; el primer uso exige escribir

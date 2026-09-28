@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
@@ -43,30 +44,81 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
 
     // ── Plantilla ───────────────────────────────────────────────────────────
 
-    public byte[] GenerarPlantilla()
+    public byte[] GenerarPlantilla() => ConstruirPlantilla();
+
+    /// <summary>
+    /// Plantilla de dos hojas. "BASE" (la primera, la única que se lee) trae SOLO los
+    /// encabezados; el ejemplo va en una hoja aparte que el lector nunca abre.
+    ///
+    /// Antes el ejemplo estaba en la fila 2 de "BASE" y, si el líder no lo borraba, se
+    /// procesaba como un titular real. Además de sacarlo de ahí, la depuración excluye esa
+    /// fila con motivo propio por si llega una plantilla vieja (ver FilaEjemplo en el catálogo).
+    /// </summary>
+    internal const string AvisoHojaEjemplo =
+        "ESTA HOJA ES SOLO UN EJEMPLO Y NO SE PROCESA. Llena tus titulares en la hoja \"" +
+        CatalogoCreadorVirtualidad.HojaBase + "\", con los mismos encabezados y sin filas de ejemplo.";
+
+    internal static byte[] ConstruirPlantilla()
     {
         using var wb = new XLWorkbook();
-        var ws = wb.Worksheets.Add("BASE");
+        var columnas = CatalogoCreadorVirtualidad.ColumnasPlantilla;
+
+        // ── BASE: solo encabezados ──
+        var ws = wb.Worksheets.Add(CatalogoCreadorVirtualidad.HojaBase);
+        EscribirEncabezados(ws, fila: 1, conComentarios: true);
+        // Cédula y número como texto en TODA la columna (todas las filas que el líder
+        // llene): evita que Excel los convierta a 1,02E+09 o les quite ceros.
+        ws.Column(1).Style.NumberFormat.Format = "@";
+        ws.Column(5).Style.NumberFormat.Format = "@";
+        ws.SheetView.FreezeRows(1);
+        ws.Columns().AdjustToContents();
+        // Sin filas de datos, AdjustToContents deja las columnas del ancho del encabezado:
+        // se les da un mínimo para que quepan cédulas, nombres y números al escribir.
+        foreach (var col in ws.Columns(1, columnas.Length))
+            if (col.Width < 18) col.Width = 18;
+        ws.Column(2).Width = Math.Max(ws.Column(2).Width, 34);
+
+        // ── EJEMPLO: cómo se llena, con aviso de que no se procesa ──
+        var ej = wb.Worksheets.Add(CatalogoCreadorVirtualidad.HojaEjemplo);
+        ej.Cell(1, 1).Value = AvisoHojaEjemplo;
+        var aviso = ej.Range(1, 1, 1, columnas.Length).Merge();
+        aviso.Style.Font.Bold            = true;
+        aviso.Style.Font.FontColor       = XLColor.FromHtml("#92400e");
+        aviso.Style.Fill.BackgroundColor = XLColor.FromHtml("#fef3c7");
+        aviso.Style.Alignment.WrapText   = true;
+        aviso.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+        ej.Row(1).Height = 32;
+
+        EscribirEncabezados(ej, fila: 3, conComentarios: false);
+        var valores = CatalogoCreadorVirtualidad.FilaEjemplo.Valores;
+        ej.Column(1).Style.NumberFormat.Format = "@";
+        ej.Column(5).Style.NumberFormat.Format = "@";
+        for (var i = 0; i < valores.Length; i++)
+        {
+            var c = ej.Cell(4, i + 1);
+            c.Value = valores[i];
+            c.Style.Font.FontColor = XLColor.Gray;
+        }
+        ej.Columns(1, columnas.Length).AdjustToContents(3, 4);
+
+        wb.Worksheet(CatalogoCreadorVirtualidad.HojaBase).SetTabActive();
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    private static void EscribirEncabezados(IXLWorksheet ws, int fila, bool conComentarios)
+    {
         var columnas = CatalogoCreadorVirtualidad.ColumnasPlantilla;
         for (var i = 0; i < columnas.Length; i++)
         {
-            var c = ws.Cell(1, i + 1);
+            var c = ws.Cell(fila, i + 1);
             c.Value = columnas[i];
             c.Style.Font.Bold            = true;
             c.Style.Font.FontColor       = XLColor.White;
             c.Style.Fill.BackgroundColor = XLColor.FromHtml("#0891b2");
             c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         }
-        object[] ejemplo = ["1020304050", "MARIA JOSE PEREZ GOMEZ", "2026-09-01", "No contacto", "3001234567", "Pelicano Propia", "Banco Bellavida"];
-        for (var i = 0; i < ejemplo.Length; i++)
-        {
-            var c = ws.Cell(2, i + 1);
-            c.Value = ejemplo[i].ToString();
-            c.Style.Font.FontColor = XLColor.Gray;
-        }
-        // Cédula y número como texto: evita que Excel los convierta a 1,02E+09.
-        ws.Column(1).Style.NumberFormat.Format = "@";
-        ws.Column(5).Style.NumberFormat.Format = "@";
 
         // Cartera y Empresa son opcionales. Se señalan con un color distinto y un
         // comentario, NO cambiándoles el nombre: la plantilla anterior las titulaba
@@ -77,14 +129,11 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         // columnas no estaban. El encabezado tiene que ser exactamente el nombre.
         foreach (var col in new[] { 6, 7 })
         {
-            var h = ws.Cell(1, col);
+            var h = ws.Cell(fila, col);
             h.Style.Fill.BackgroundColor = XLColor.FromHtml("#64748b");
-            h.GetComment().AddText("Opcional. Solo hace falta si el mensaje usa {CARTERA} o {EMPRESA}. No cambies el nombre de la columna.");
+            if (conComentarios)
+                h.GetComment().AddText("Opcional. Solo hace falta si el mensaje usa {CARTERA} o {EMPRESA}. No cambies el nombre de la columna.");
         }
-        ws.Columns().AdjustToContents();
-        using var ms = new MemoryStream();
-        wb.SaveAs(ms);
-        return ms.ToArray();
     }
 
     // ── Catálogos de apoyo ──────────────────────────────────────────────────
@@ -399,7 +448,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             ExcluidosListaNegra = d.ExcluidosListaNegraTabla + d.ExcluidosListaNegraArchivo,
             ExcluidosLongitud   = excedidos.Count,
             ExcluidosOtros      = d.ExcluidosCedulaInvalida + d.ExcluidosTelefonoInvalido + d.ExcluidosFijo
-                                + d.ExcluidosNombreVacio + d.ExcluidosDuplicado,
+                                + d.ExcluidosNombreVacio + d.ExcluidosDuplicado + d.ExcluidosFilaEjemplo,
             HuellaArchivo       = d.Huella,
             NombreArchivo       = Path.GetFileName(entrada.NombreArchivo),
         };
@@ -412,7 +461,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
 
     // ── Pipeline de depuración (compartido) ─────────────────────────────────
 
-    private sealed class Depuracion
+    internal sealed class Depuracion
     {
         public string  Huella           = string.Empty;
         public string? HuellaListaNegra;
@@ -420,12 +469,25 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
         public int ExcluidosCedulaInvalida, ExcluidosTelefonoInvalido, ExcluidosFijo, ExcluidosNombreVacio;
         public int ExcluidosPerfilArchivo, ExcluidosPerfilBD;
         public int ExcluidosListaNegraTabla, ExcluidosListaNegraArchivo, ExcluidosDuplicado;
+        public int ExcluidosFilaEjemplo;
         public int TotalNumerosListaNegraArchivo;
         public List<string>  ColumnasEncontradas = [];
         public List<string>  ColumnasFaltantes   = [];
         public List<string>  ColumnasOpcionalesFaltantes = [];
         public List<ErrorFila> Errores           = [];
         public List<FilaSmsDto> Validas          = [];
+
+        /// <summary>El archivo entero no se puede procesar (vacío o sin columnas obligatorias).</summary>
+        public bool ArchivoRechazado;
+
+        /// <summary>
+        /// Suma de todas las exclusiones por fila. Como cada fila tiene UN solo motivo,
+        /// <c>TotalLeidas − Validas.Count</c> (al terminar) es exactamente este número.
+        /// </summary>
+        public int TotalExcluidos =>
+            ExcluidosCedulaInvalida + ExcluidosTelefonoInvalido + ExcluidosFijo + ExcluidosNombreVacio
+            + ExcluidosPerfilArchivo + ExcluidosPerfilBD + ExcluidosListaNegraTabla + ExcluidosListaNegraArchivo
+            + ExcluidosDuplicado + ExcluidosFilaEjemplo;
 
         /// <summary>Registra una exclusión con su motivo, la línea y el dato que la identifica.</summary>
         public void Excluir(string motivo, int linea, string mensaje, string? detalle = null) =>
@@ -446,6 +508,7 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             ExcluidosListaNegraTabla    = ExcluidosListaNegraTabla,
             ExcluidosListaNegraArchivo  = ExcluidosListaNegraArchivo,
             ExcluidosDuplicado          = ExcluidosDuplicado,
+            ExcluidosFilaEjemplo        = ExcluidosFilaEjemplo,
             TotalNumerosListaNegraArchivo = TotalNumerosListaNegraArchivo,
             ColumnasEncontradas         = ColumnasEncontradas,
             ColumnasFaltantes           = ColumnasFaltantes,
@@ -456,50 +519,22 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
     }
 
     /// <summary>Fila candidata mientras pasa por las exclusiones que necesitan BD.</summary>
-    private sealed record Candidata(int Linea, FilaSmsDto Fila);
+    internal sealed record Candidata(int Linea, FilaSmsDto Fila);
 
     /// <summary>
     /// Una exclusión concreta. Se guarda la línea y el dato que identifica la fila para
     /// poder mostrar ejemplos al desplegar el conteo; el motivo es lo que agrupa.
     /// </summary>
-    private sealed record ErrorFila(string Motivo, int Linea, string Mensaje, string? Detalle);
+    internal sealed record ErrorFila(string Motivo, int Linea, string Mensaje, string? Detalle);
 
     private async Task<Depuracion> DepurarAsync(EntradaSms entrada, CancellationToken ct)
     {
-        var d = new Depuracion();
         var (huella, filas) = await LeerArchivoAsync(entrada.Archivo, entrada.NombreArchivo);
+        var (d, candidatas) = DepurarLocal(filas);
         d.Huella = huella;
+        if (d.ArchivoRechazado) return d;
 
-        if (filas.Count == 0)
-        {
-            d.Excluir(M.Archivo, 0, "El archivo está vacío.");
-            return d;
-        }
-
-        // ── Columnas: por nombre, sin adivinar ──
-        var headers = ArchivoTabular.LeerHeaders(filas[0]);
-        var iCedula   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Cedula);
-        var iNombre   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Nombre);
-        var iFecha    = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.FechaGestion);
-        var iPerfil   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.UltimoPerfil);
-        var iNumero   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.NumeroMarcado);
-        var iCartera  = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Cartera);
-        var iEmpresa  = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Empresa);
-        if (iCartera == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasOpcionalesFaltantes.Add("Cartera");
-        if (iEmpresa == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasOpcionalesFaltantes.Add("Empresa");
-
-        d.ColumnasEncontradas = filas[0].Select(h => h.Trim()).Where(h => h.Length > 0).ToList();
-        var esperadas = CatalogoCreadorVirtualidad.ColumnasPlantilla;
-        var indices   = new[] { iCedula, iNombre, iFecha, iPerfil, iNumero };
-        for (var i = 0; i < indices.Length; i++)
-            if (indices[i] == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasFaltantes.Add(esperadas[i]);
-        if (d.ColumnasFaltantes.Count > 0)
-        {
-            d.Excluir(M.Archivo, 0, $"Faltan columnas obligatorias: {string.Join(", ", d.ColumnasFaltantes)}.");
-            return d;
-        }
-
-        // ── Lista negra por archivo (opcional): se lee antes para tener el set listo ──
+        // ── Lista negra por archivo (opcional): se lee antes del cruce para tener el set listo ──
         var negraArchivo = new HashSet<string>(StringComparer.Ordinal);
         if (entrada.ArchivoListaNegra is not null)
         {
@@ -508,82 +543,6 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             negraArchivo = numerosLn;
             d.TotalNumerosListaNegraArchivo = numerosLn.Count;
             if (errorLn is not null) d.Excluir(M.ListaNegraArchivo, 0, errorLn);
-        }
-
-        // ── Exclusiones locales (orden fijo) ──
-        var candidatas = new List<Candidata>(filas.Count);
-        var totalColumnas = filas[0].Length;
-        for (var i = 1; i < filas.Count; i++)
-        {
-            var partes = filas[i];
-            if (partes.All(string.IsNullOrWhiteSpace)) continue;
-            d.TotalLeidas++;
-            var linea = i + 1;
-
-            // El CSV se parte con Split plano: una coma dentro de un nombre corre la fila.
-            if (partes.Length < totalColumnas)
-            {
-                d.ExcluidosCedulaInvalida++;
-                d.Excluir(M.CedulaInvalida, linea, "La fila tiene menos columnas que el encabezado (¿una coma dentro de un campo?).");
-                continue;
-            }
-
-            var cedulaCruda = ColapsarEspacios(Cel(partes, iCedula));
-            var cedulaTxt = SoloDigitos(QuitarSufijoDecimal(cedulaCruda));
-            if (cedulaTxt.Length < 5 || !long.TryParse(cedulaTxt, out var cedula) || cedula <= 0)
-            {
-                d.ExcluidosCedulaInvalida++;
-                d.Excluir(M.CedulaInvalida, linea, "Cédula inválida (vacía, sin dígitos o demasiado corta).",
-                          cedulaCruda.Length > 0 ? $"cédula '{Recortar(cedulaCruda)}'" : "cédula vacía");
-                continue;
-            }
-
-            var numeroCrudo = ColapsarEspacios(Cel(partes, iNumero));
-            var (numero, esCelular) = TelefonoColombiano.Normalizar(numeroCrudo);
-            if (numero is null)
-            {
-                d.ExcluidosTelefonoInvalido++;
-                d.Excluir(M.TelefonoInvalido, linea, "Número marcado inválido (no son 10 dígitos).",
-                          $"cédula {cedula} · '{Recortar(numeroCrudo)}'");
-                continue;
-            }
-            if (!esCelular)
-            {
-                d.ExcluidosFijo++;
-                d.Excluir(M.Fijo, linea, "Número fijo: los SMS solo van a celulares.", $"cédula {cedula} · {numero}");
-                continue;
-            }
-
-            var nombre = NormalizadorNombre.Limpiar(Cel(partes, iNombre));
-            if (nombre.Length == 0)
-            {
-                d.ExcluidosNombreVacio++;
-                d.Excluir(M.NombreVacio, linea, "Nombre vacío después de la limpieza.", $"cédula {cedula} · {numero}");
-                continue;
-            }
-
-            var perfilBruto = ColapsarEspacios(Cel(partes, iPerfil));
-            if (CatalogoCreadorVirtualidad.PerfilesExcluidosClave.Contains(CatalogoCreadorVirtualidad.ClaveComparacion(perfilBruto)))
-            {
-                d.ExcluidosPerfilArchivo++;
-                d.Excluir(M.PerfilArchivo, linea, $"Perfil '{perfilBruto}' no se puede contactar (según el archivo).",
-                          $"cédula {cedula} · {numero}");
-                continue;
-            }
-
-            var fechaTxt = ColapsarEspacios(Cel(partes, iFecha));
-            if (ArchivoTabular.TryParseFecha(fechaTxt, out var fecha)) fechaTxt = fecha.ToString("yyyy-MM-dd");
-
-            candidatas.Add(new Candidata(linea, new FilaSmsDto
-            {
-                Cedula        = cedula,
-                Nombre        = nombre,
-                FechaGestion  = fechaTxt,
-                UltimoPerfil  = perfilBruto,
-                NumeroMarcado = numero,
-                Cartera       = iCartera >= 0 ? NormalizadorNombre.LimpiarTexto(Cel(partes, iCartera)) : string.Empty,
-                Empresa       = iEmpresa >= 0 ? NormalizadorNombre.LimpiarTexto(Cel(partes, iEmpresa)) : string.Empty,
-            }));
         }
 
         if (candidatas.Count == 0) return d;
@@ -627,6 +586,137 @@ public class CreadorVirtualidadSmsService : ICreadorVirtualidadSmsService
             d.Validas.Add(f);
         }
         return d;
+    }
+
+    /// <summary>
+    /// Primera mitad del pipeline: columnas y exclusiones que no necesitan BD, en orden
+    /// fijo. Es pura (solo las filas ya leídas) para poder probarla sin base de datos.
+    /// Devuelve las filas que siguen en carrera para el cruce contra BD.
+    /// </summary>
+    internal static (Depuracion D, List<Candidata> Candidatas) DepurarLocal(List<string[]> filas)
+    {
+        var d = new Depuracion();
+        var candidatas = new List<Candidata>(filas.Count);
+
+        if (filas.Count == 0)
+        {
+            d.ArchivoRechazado = true;
+            d.Excluir(M.Archivo, 0, "El archivo está vacío.");
+            return (d, candidatas);
+        }
+
+        // ── Columnas: por nombre, sin adivinar ──
+        var headers = ArchivoTabular.LeerHeaders(filas[0]);
+        var iCedula   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Cedula);
+        var iNombre   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Nombre);
+        var iFecha    = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.FechaGestion);
+        var iPerfil   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.UltimoPerfil);
+        var iNumero   = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.NumeroMarcado);
+        var iCartera  = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Cartera);
+        var iEmpresa  = ArchivoTabular.ResolverColumna(headers, CatalogoCreadorVirtualidad.AliasSms.Empresa);
+        if (iCartera == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasOpcionalesFaltantes.Add("Cartera");
+        if (iEmpresa == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasOpcionalesFaltantes.Add("Empresa");
+
+        d.ColumnasEncontradas = filas[0].Select(h => h.Trim()).Where(h => h.Length > 0).ToList();
+        var esperadas = CatalogoCreadorVirtualidad.ColumnasPlantilla;
+        var indices   = new[] { iCedula, iNombre, iFecha, iPerfil, iNumero };
+        for (var i = 0; i < indices.Length; i++)
+            if (indices[i] == ArchivoTabular.ColumnaNoEncontrada) d.ColumnasFaltantes.Add(esperadas[i]);
+        if (d.ColumnasFaltantes.Count > 0)
+        {
+            d.ArchivoRechazado = true;
+            d.Excluir(M.Archivo, 0, $"Faltan columnas obligatorias: {string.Join(", ", d.ColumnasFaltantes)}.");
+            return (d, candidatas);
+        }
+
+        // ── Exclusiones locales (orden fijo) ──
+        var totalColumnas = filas[0].Length;
+        for (var i = 1; i < filas.Count; i++)
+        {
+            var partes = filas[i];
+            if (partes.All(string.IsNullOrWhiteSpace)) continue;
+            d.TotalLeidas++;
+            var linea = i + 1;
+
+            // El CSV se parte con Split plano: una coma dentro de un nombre corre la fila.
+            if (partes.Length < totalColumnas)
+            {
+                d.ExcluidosCedulaInvalida++;
+                d.Excluir(M.CedulaInvalida, linea, "La fila tiene menos columnas que el encabezado (¿una coma dentro de un campo?).");
+                continue;
+            }
+
+            var cedulaCruda = ColapsarEspacios(Cel(partes, iCedula));
+            var cedulaTxt = SoloDigitos(QuitarSufijoDecimal(cedulaCruda));
+            if (cedulaTxt.Length < 5 || !long.TryParse(cedulaTxt, out var cedula) || cedula <= 0)
+            {
+                d.ExcluidosCedulaInvalida++;
+                d.Excluir(M.CedulaInvalida, linea, "Cédula inválida (vacía, sin dígitos o demasiado corta).",
+                          cedulaCruda.Length > 0 ? $"cédula '{Recortar(cedulaCruda)}'" : "cédula vacía");
+                continue;
+            }
+
+            var numeroCrudo = ColapsarEspacios(Cel(partes, iNumero));
+            var (numero, esCelular) = TelefonoColombiano.Normalizar(numeroCrudo);
+            if (numero is null)
+            {
+                d.ExcluidosTelefonoInvalido++;
+                d.Excluir(M.TelefonoInvalido, linea, "Número marcado inválido (no son 10 dígitos).",
+                          $"cédula {cedula} · '{Recortar(numeroCrudo)}'");
+                continue;
+            }
+
+            // La fila de ejemplo de las plantillas viejas (venía en la fila 2 de BASE). Su
+            // cédula y su número son válidos, así que sin esta regla pasaba todos los filtros
+            // y salía un SMS. Se compara ya normalizado (cédula como número, celular nacional)
+            // para atraparla aunque Excel la haya guardado como 1020304050.0 o con +57.
+            if (CatalogoCreadorVirtualidad.FilaEjemplo.Es(cedula.ToString(CultureInfo.InvariantCulture), numero))
+            {
+                d.ExcluidosFilaEjemplo++;
+                d.Excluir(M.FilaEjemplo, linea, CatalogoCreadorVirtualidad.FilaEjemplo.MensajeExclusion,
+                          $"cédula {cedula} · {numero}");
+                continue;
+            }
+
+            if (!esCelular)
+            {
+                d.ExcluidosFijo++;
+                d.Excluir(M.Fijo, linea, "Número fijo: los SMS solo van a celulares.", $"cédula {cedula} · {numero}");
+                continue;
+            }
+
+            var nombre = NormalizadorNombre.Limpiar(Cel(partes, iNombre));
+            if (nombre.Length == 0)
+            {
+                d.ExcluidosNombreVacio++;
+                d.Excluir(M.NombreVacio, linea, "Nombre vacío después de la limpieza.", $"cédula {cedula} · {numero}");
+                continue;
+            }
+
+            var perfilBruto = ColapsarEspacios(Cel(partes, iPerfil));
+            if (CatalogoCreadorVirtualidad.PerfilesExcluidosClave.Contains(CatalogoCreadorVirtualidad.ClaveComparacion(perfilBruto)))
+            {
+                d.ExcluidosPerfilArchivo++;
+                d.Excluir(M.PerfilArchivo, linea, $"Perfil '{perfilBruto}' no se puede contactar (según el archivo).",
+                          $"cédula {cedula} · {numero}");
+                continue;
+            }
+
+            var fechaTxt = ColapsarEspacios(Cel(partes, iFecha));
+            if (ArchivoTabular.TryParseFecha(fechaTxt, out var fecha)) fechaTxt = fecha.ToString("yyyy-MM-dd");
+
+            candidatas.Add(new Candidata(linea, new FilaSmsDto
+            {
+                Cedula        = cedula,
+                Nombre        = nombre,
+                FechaGestion  = fechaTxt,
+                UltimoPerfil  = perfilBruto,
+                NumeroMarcado = numero,
+                Cartera       = iCartera >= 0 ? NormalizadorNombre.LimpiarTexto(Cel(partes, iCartera)) : string.Empty,
+                Empresa       = iEmpresa >= 0 ? NormalizadorNombre.LimpiarTexto(Cel(partes, iEmpresa)) : string.Empty,
+            }));
+        }
+        return (d, candidatas);
     }
 
     // ── Consultas contra BD ─────────────────────────────────────────────────

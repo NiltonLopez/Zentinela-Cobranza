@@ -27,6 +27,8 @@ export interface ValidarArchivoSmsResponse {
   excluidosListaNegraTabla: number;
   excluidosListaNegraArchivo: number;
   excluidosDuplicado: number;
+  /** Fila de ejemplo de una plantilla vieja (cédula + número del ejemplo). */
+  excluidosFilaEjemplo: number;
   totalNumerosListaNegraArchivo: number;
   columnasEncontradas: string[];
   columnasFaltantes: string[];
@@ -122,5 +124,6 @@ export const MOTIVOS = {
   listaNegraTabla:   'lista-negra-bd',
   listaNegraArchivo: 'lista-negra-archivo',
   duplicado:         'duplicado',
+  filaEjemplo:       'fila-ejemplo',
   archivo:           'archivo',
 } as const;

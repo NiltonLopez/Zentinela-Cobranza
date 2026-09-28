@@ -9,7 +9,7 @@ namespace Zentinela.Application.Interfaces;
 /// </summary>
 public interface ICreadorVirtualidadSmsService
 {
-    /// <summary>Plantilla XLSX con las 5 columnas de entrada y una fila de ejemplo.</summary>
+    /// <summary>Plantilla XLSX: hoja "BASE" con las 7 columnas de entrada (solo encabezados) y hoja "EJEMPLO" que no se procesa.</summary>
     byte[] GenerarPlantilla();
 
     /// <summary>Carteras presentes en ListaNegraTelefonos, para que el usuario elija cuáles cruzar.</summary>

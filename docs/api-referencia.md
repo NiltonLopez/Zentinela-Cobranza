@@ -2124,7 +2124,7 @@ la `huella` SHA-256 devuelta por `validar` ata los pasos siguientes: si difiere 
 
 | Verbo | Ruta | Descripción |
 |-------|------|-------------|
-| GET | `/plantilla` | XLSX `plantilla_sms.xlsx` (Cédula, Nombre, Fecha Gestión, Ultimo Perfil, Numero Marcado + opcionales Cartera, Empresa) |
+| GET | `/plantilla` | XLSX `plantilla_sms.xlsx`: hoja `BASE` solo con encabezados (Cédula, Nombre, Fecha Gestión, Ultimo Perfil, Numero Marcado + opcionales Cartera, Empresa) y hoja `EJEMPLO`, que no se procesa |
 | GET | `/lista-negra/carteras` | `[{ valor, etiqueta, totalNumeros }]` de `ListaNegraTelefonos` |
 | GET | `/asesores?liderID=` | Asesores del líder (Cartera_Agente) con número/link persistidos |
 | GET | `/agentes-activos` | Todos los agentes activos (para agregar "prestados") |
@@ -2137,7 +2137,8 @@ la `huella` SHA-256 devuelta por `validar` ata los pasos siguientes: si difiere 
 `huellaArchivo`, `totalLeidas`, `totalValidas`, un contador por motivo de exclusión
 (`excluidosCedulaInvalida`, `excluidosTelefonoInvalido`, `excluidosFijo`, `excluidosNombreVacio`,
 `excluidosPerfilArchivo`, `excluidosPerfilBD`, `excluidosListaNegraTabla`, `excluidosListaNegraArchivo`,
-`excluidosDuplicado`), `columnasEncontradas`, `columnasFaltantes`, `columnasOpcionalesFaltantes` (Cartera/Empresa
+`excluidosDuplicado`, `excluidosFilaEjemplo` — la fila de ejemplo de una plantilla vieja, motivo `fila-ejemplo`),
+`columnasEncontradas`, `columnasFaltantes`, `columnasOpcionalesFaltantes` (Cartera/Empresa
 ausentes), `muestra` (10 filas limpias con `cartera`/`empresa`),
 `erroresAgrupados`. Invariante: `totalLeidas − totalValidas == Σ excluidos*`.
 

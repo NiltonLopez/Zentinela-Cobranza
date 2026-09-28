@@ -56,6 +56,8 @@ public class ValidarArchivoSmsResponse
     public int ExcluidosListaNegraTabla  { get; set; }
     public int ExcluidosListaNegraArchivo{ get; set; }
     public int ExcluidosDuplicado        { get; set; }
+    /// <summary>Fila de ejemplo de una plantilla vieja (cédula 1020304050 + número 3001234567).</summary>
+    public int ExcluidosFilaEjemplo      { get; set; }
 
     /// <summary>Cuántos números aportó el XLSX opcional de lista negra (0 si no se subió).</summary>
     public int TotalNumerosListaNegraArchivo { get; set; }
