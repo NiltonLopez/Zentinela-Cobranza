@@ -9,7 +9,7 @@ import { useAlcanceLider } from '../../hooks/useAlcanceLider';
 import { ZDropdown } from '../../components/ZDropdown';
 import {
   getInformeMensajeria,
-  getInformeIVR, getAnalisisIvr,
+  getInformeIVR, getAnalisisIvr, descargarExcelIvr,
   validarLlamadasPerdidas, confirmarLlamadasPerdidas, getInformeLlamadasPerdidas,
   validarLlamadasEntrantes, confirmarLlamadasEntrantes, getInformeEntrantes,
   getInformePagosImpacto,
@@ -466,6 +466,28 @@ function TabIVR() {
   const [hasta,         setHasta]         = useState(HOY);
   const [filtroLider,   setFiltroLider]   = useState(liderPropio);   // 0 = todos (solo Admin/Director)
   const [filtroCartera, setFiltroCartera] = useState(0);
+  // Filtros con los que se generó el informe en pantalla: el Excel baja ESE informe aunque
+  // después se cambie el período o el filtro sin volver a generar.
+  const [generado,      setGenerado]      = useState<{ desde: string; hasta: string; lider: number; cartera: number } | null>(null);
+  const [descargando,   setDescargando]   = useState(false);
+  const [errorExcel,    setErrorExcel]    = useState<string | null>(null);
+
+  const descargarExcel = async () => {
+    if (!generado || descargando) return;
+    setDescargando(true);
+    setErrorExcel(null);
+    try {
+      await descargarExcelIvr(
+        generado.desde, generado.hasta,
+        generado.lider   > 0 ? generado.lider   : undefined,
+        generado.cartera > 0 ? generado.cartera : undefined,
+      );
+    } catch {
+      setErrorExcel('No se pudo generar el Excel. Intenta de nuevo; si se repite, avisa a sistemas.');
+    } finally {
+      setDescargando(false);
+    }
+  };
 
   const { data: opciones = [] } = useQuery({
     queryKey: ['calificador-opciones'],
@@ -558,14 +580,31 @@ function TabIVR() {
         <BtnPrimary
           color={C.ivr}
           disabled={cargandoInforme || cargandoAnalisis}
-          onClick={() => { refetchAnalisis(); refetch(); }}
+          onClick={() => {
+            setGenerado({ desde, hasta, lider: filtroLider, cartera: filtroCartera });
+            setErrorExcel(null);
+            refetchAnalisis(); refetch();
+          }}
         >
           {cargandoInforme || cargandoAnalisis ? 'Generando…' : 'Generar informe'}
         </BtnPrimary>
+        {analisis && generado && !cargandoAnalisis && (
+          <BtnPrimary color={C.success} disabled={descargando} onClick={descargarExcel}>
+            {descargando ? 'Preparando Excel…' : 'Descargar Excel'}
+          </BtnPrimary>
+        )}
         <span style={{ fontSize: 12, color: C.gray }}>
           Período: <strong>{formatoDDMMYYYY(desde)}</strong> → <strong>{formatoDDMMYYYY(hasta)}</strong>
         </span>
       </div>
+
+      {analisis && generado && !cargandoAnalisis && (
+        <p style={{ margin: 0, fontSize: 12, color: C.gray }}>
+          El Excel trae el resumen y una fila por cliente marcado (mejor desenlace, estado de gestión y pagos
+          posteriores) del período <strong>{formatoDDMMYYYY(generado.desde)}</strong> → <strong>{formatoDDMMYYYY(generado.hasta)}</strong>.
+        </p>
+      )}
+      {errorExcel && <ErrorPanel mensaje={errorExcel} />}
 
       {(cargandoInforme || cargandoAnalisis) && <LoadingRow label="Calculando informe del período…" />}
 
