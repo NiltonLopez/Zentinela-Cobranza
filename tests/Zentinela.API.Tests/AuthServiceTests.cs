@@ -1,18 +1,23 @@
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Moq;
 using Zentinela.Application.DTOs.Auth;
+using Zentinela.Application.Settings;
 using Zentinela.Infrastructure.SQLServer.Models;
 using Zentinela.Infrastructure.SQLServer.Services;
 
 namespace Zentinela.API.Tests;
 
+/// <summary>
+/// Login por nombre de usuario contra Identity; el token lo arma el JwtTokenGenerator real
+/// para verificar los claims que el resto del sistema usa (liderID, rol).
+/// </summary>
 public class AuthServiceTests
 {
+    private const string UsuarioValido  = "lider.prueba";
     private const string EmailValido    = "lider@zentinela.com";
     private const string PasswordValida = "Segura123!";
     private const string NombreCompleto = "Juan Pérez";
@@ -23,41 +28,42 @@ public class AuthServiceTests
     {
         var store = new Mock<IUserStore<ApplicationUser>>();
         return new Mock<UserManager<ApplicationUser>>(
-            store.Object, null, null, null, null, null, null, null, null);
+            store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
     }
 
-    private static IConfiguration CrearConfiguracion() =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["JwtSettings:SecretKey"]      = "ClaveSuperSecreta1234567890ABCD!",
-                ["JwtSettings:Issuer"]         = "zentinela-tests",
-                ["JwtSettings:Audience"]       = "zentinela-api",
-                ["JwtSettings:ExpirationHours"] = "8"
-            })
-            .Build();
+    private static JwtTokenGenerator CrearGenerador() =>
+        new(Options.Create(new JwtSettings
+        {
+            SecretKey       = "ClaveSuperSecretaSoloParaPruebas1234567890",
+            Issuer          = "zentinela-tests",
+            Audience        = "zentinela-api",
+            ExpirationHours = 8
+        }));
 
     private static ApplicationUser CrearUsuario(int? liderID = LiderID) => new()
     {
-        Id             = 1,
-        Email          = EmailValido,
-        NombreCompleto = NombreCompleto,
-        LiderID        = liderID
+        Id              = 1,
+        UserName        = UsuarioValido,
+        Email           = EmailValido,
+        NombreCompleto  = NombreCompleto,
+        LiderID         = liderID,
+        NumeroDocumento = 1234567890
     };
+
+    private static Mock<UserManager<ApplicationUser>> UserManagerConUsuario(ApplicationUser usuario, bool claveCorrecta = true)
+    {
+        var userManager = CrearUserManagerMock();
+        userManager.Setup(m => m.FindByNameAsync(UsuarioValido)).ReturnsAsync(usuario);
+        userManager.Setup(m => m.CheckPasswordAsync(usuario, It.IsAny<string>())).ReturnsAsync(claveCorrecta);
+        userManager.Setup(m => m.GetRolesAsync(usuario)).ReturnsAsync([RolLider]);
+        return userManager;
+    }
 
     [Fact]
     public async Task Login_ConCredencialesValidas_RetornaToken()
     {
-        var usuario     = CrearUsuario();
-        var userManager = CrearUserManagerMock();
-        var config      = CrearConfiguracion();
-
-        userManager.Setup(m => m.FindByEmailAsync(EmailValido)).ReturnsAsync(usuario);
-        userManager.Setup(m => m.CheckPasswordAsync(usuario, PasswordValida)).ReturnsAsync(true);
-        userManager.Setup(m => m.GetRolesAsync(usuario)).ReturnsAsync(["Líder"]);
-
-        var servicio  = new AuthService(userManager.Object, config);
-        var resultado = await servicio.LoginAsync(new LoginRequest { Email = EmailValido, Password = PasswordValida });
+        var servicio  = new AuthService(UserManagerConUsuario(CrearUsuario()).Object, CrearGenerador());
+        var resultado = await servicio.LoginAsync(new LoginRequest { Usuario = UsuarioValido, Password = PasswordValida });
 
         Assert.NotNull(resultado);
         Assert.False(string.IsNullOrWhiteSpace(resultado.Token));
@@ -66,13 +72,13 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task Login_ConEmailInexistente_RetornaNull()
+    public async Task Login_ConUsuarioInexistente_RetornaNull()
     {
         var userManager = CrearUserManagerMock();
-        userManager.Setup(m => m.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync((ApplicationUser?)null);
+        userManager.Setup(m => m.FindByNameAsync(It.IsAny<string>())).ReturnsAsync((ApplicationUser?)null);
 
-        var servicio  = new AuthService(userManager.Object, CrearConfiguracion());
-        var resultado = await servicio.LoginAsync(new LoginRequest { Email = "x@x.com", Password = PasswordValida });
+        var servicio  = new AuthService(userManager.Object, CrearGenerador());
+        var resultado = await servicio.LoginAsync(new LoginRequest { Usuario = "no.existe", Password = PasswordValida });
 
         Assert.Null(resultado);
     }
@@ -80,37 +86,23 @@ public class AuthServiceTests
     [Fact]
     public async Task Login_ConPasswordIncorrecta_RetornaNull()
     {
-        var usuario     = CrearUsuario();
-        var userManager = CrearUserManagerMock();
-
-        userManager.Setup(m => m.FindByEmailAsync(EmailValido)).ReturnsAsync(usuario);
-        userManager.Setup(m => m.CheckPasswordAsync(usuario, It.IsAny<string>())).ReturnsAsync(false);
-
-        var servicio  = new AuthService(userManager.Object, CrearConfiguracion());
-        var resultado = await servicio.LoginAsync(new LoginRequest { Email = EmailValido, Password = "Mal!" });
+        var servicio  = new AuthService(UserManagerConUsuario(CrearUsuario(), claveCorrecta: false).Object, CrearGenerador());
+        var resultado = await servicio.LoginAsync(new LoginRequest { Usuario = UsuarioValido, Password = "Mal!" });
 
         Assert.Null(resultado);
     }
 
     [Fact]
-    public async Task Login_TokenContieneLiderID()
+    public async Task Login_TokenContieneLiderIDYRol()
     {
-        var usuario     = CrearUsuario(LiderID);
-        var userManager = CrearUserManagerMock();
-
-        userManager.Setup(m => m.FindByEmailAsync(EmailValido)).ReturnsAsync(usuario);
-        userManager.Setup(m => m.CheckPasswordAsync(usuario, PasswordValida)).ReturnsAsync(true);
-        userManager.Setup(m => m.GetRolesAsync(usuario)).ReturnsAsync(["Líder"]);
-
-        var servicio  = new AuthService(userManager.Object, CrearConfiguracion());
-        var resultado = await servicio.LoginAsync(new LoginRequest { Email = EmailValido, Password = PasswordValida });
+        var servicio  = new AuthService(UserManagerConUsuario(CrearUsuario(LiderID)).Object, CrearGenerador());
+        var resultado = await servicio.LoginAsync(new LoginRequest { Usuario = UsuarioValido, Password = PasswordValida });
 
         Assert.NotNull(resultado);
         Assert.Equal(LiderID, resultado.LiderID);
 
-        var jwt        = new JwtSecurityTokenHandler().ReadJwtToken(resultado.Token);
-        var claimLider = jwt.Claims.FirstOrDefault(c => c.Type == "liderID");
-        Assert.NotNull(claimLider);
-        Assert.Equal(LiderID.ToString(), claimLider.Value);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(resultado.Token);
+        Assert.Equal(LiderID.ToString(), jwt.Claims.Single(c => c.Type == "liderID").Value);
+        Assert.Contains(jwt.Claims, c => c.Value == RolLider);
     }
 }

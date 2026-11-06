@@ -1,8 +1,3 @@
-notepad .gitignore
-```
-
-Pega esto dentro y guarda:
-```
 # .NET
 bin/
 obj/
@@ -11,11 +6,16 @@ obj/
 .vs/
 *.log
 
-# Secretos
+# Secretos: los valores reales viven fuera del repo
 appsettings.Development.json
 appsettings.Local.json
 appsettings.Production.json
 .mcp.json
+config.local.json
+
+# Claude Code: permisos locales y copias de trabajo de los agentes
+.claude/settings.local.json
+.worktrees/
 
 # Node
 node_modules/

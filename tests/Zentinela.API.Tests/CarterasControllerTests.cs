@@ -5,101 +5,97 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using Zentinela.Application.DTOs.Carteras;
-using Zentinela.Application.Interfaces;
+using Zentinela.Application.Services;
 using Zentinela.API.Controllers;
 using Zentinela.Core.Entities;
 using Zentinela.Core.Interfaces;
 
 namespace Zentinela.API.Tests;
 
+/// <summary>
+/// El controlador arma el contexto desde los claims del JWT y la regla de quién ve qué
+/// vive en CarteraService. Se prueban juntos, con el repositorio simulado.
+/// </summary>
 public class CarterasControllerTests
 {
     private const string RolAdmin = "Admin";
     private const string RolLider = "Líder";
     private const int    LiderID  = 5;
 
-    private static void AsignarContexto(CarterasController controller, IEnumerable<Claim> claims)
-    {
-        controller.ControllerContext = new ControllerContext
+    private static CarterasController CrearController(Mock<ICarteraRepository> repo, IEnumerable<Claim> claims) =>
+        new(new CarteraService(repo.Object))
         {
-            HttpContext = new DefaultHttpContext
+            ControllerContext = new ControllerContext
             {
-                User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"))
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"))
+                }
             }
         };
-    }
 
-    private static List<Cartera> CarterasDelLider(int cantidad) =>
+    private static List<Cartera> Carteras(int cantidad) =>
         Enumerable.Range(1, cantidad)
             .Select(i => new Cartera { ID = i, NombreCartera = $"Cartera {i}", Activa = true })
             .ToList();
 
+    private static async Task<List<CarteraDto>> Ejecutar(CarterasController controller)
+    {
+        var ok = Assert.IsType<OkObjectResult>(await controller.ObtenerCarteras());
+        return Assert.IsAssignableFrom<IEnumerable<CarteraDto>>(ok.Value).ToList();
+    }
+
     [Fact]
     public async Task ObtenerCarteras_ComoAdmin_DevuelveTodasLasCarteras()
     {
-        var todas = new List<Cartera>
-        {
-            new() { ID = 1, NombreCartera = "Cartera A", Activa = true },
-            new() { ID = 2, NombreCartera = "Cartera B", Activa = true },
-            new() { ID = 3, NombreCartera = "Cartera C", Activa = true }
-        };
+        var repo = new Mock<ICarteraRepository>();
+        repo.Setup(r => r.ObtenerTodasAsync()).ReturnsAsync(Carteras(3));
 
-        var repoMock = new Mock<ICarteraRepository>();
-        repoMock.Setup(r => r.ObtenerTodasAsync()).ReturnsAsync(todas);
+        var dtos = await Ejecutar(CrearController(repo, [new Claim(ClaimTypes.Role, RolAdmin)]));
 
-        var controller = new CarterasController(repoMock.Object);
-        AsignarContexto(controller, [new Claim(ClaimTypes.Role, RolAdmin)]);
-
-        var resultado = await controller.ObtenerCarteras();
-
-        var ok   = Assert.IsType<OkObjectResult>(resultado);
-        var dtos = Assert.IsAssignableFrom<IEnumerable<CarteraDto>>(ok.Value);
-        Assert.Equal(3, dtos.Count());
+        Assert.Equal(3, dtos.Count);
+        repo.Verify(r => r.ObtenerPorLiderAsync(It.IsAny<int>()), Times.Never);
     }
 
     [Fact]
     public async Task ObtenerCarteras_ComoLider_DevuelveSoloSusCarteras()
     {
-        var carteras = CarterasDelLider(2);
+        var repo = new Mock<ICarteraRepository>();
+        repo.Setup(r => r.ObtenerPorLiderAsync(LiderID)).ReturnsAsync(Carteras(2));
 
-        var repoMock = new Mock<ICarteraRepository>();
-        repoMock.Setup(r => r.ObtenerPorLiderAsync(LiderID)).ReturnsAsync(carteras);
-
-        var controller = new CarterasController(repoMock.Object);
-        AsignarContexto(controller,
+        var dtos = await Ejecutar(CrearController(repo,
         [
             new Claim(ClaimTypes.Role, RolLider),
             new Claim("liderID", LiderID.ToString())
-        ]);
+        ]));
 
-        var resultado = await controller.ObtenerCarteras();
-
-        var ok   = Assert.IsType<OkObjectResult>(resultado);
-        var dtos = Assert.IsAssignableFrom<IEnumerable<CarteraDto>>(ok.Value);
-        Assert.Equal(2, dtos.Count());
+        Assert.Equal(2, dtos.Count);
+        repo.Verify(r => r.ObtenerTodasAsync(), Times.Never);
     }
 
     [Fact]
-    public async Task ObtenerCarteras_SinLiderID_DevuelveForbid()
+    public async Task ObtenerCarteras_LiderSinLiderID_NoDevuelveNada()
     {
-        var repoMock   = new Mock<ICarteraRepository>();
-        var controller = new CarterasController(repoMock.Object);
-        AsignarContexto(controller, [new Claim(ClaimTypes.Role, RolLider)]);
+        var repo = new Mock<ICarteraRepository>();
 
-        var resultado = await controller.ObtenerCarteras();
+        var dtos = await Ejecutar(CrearController(repo, [new Claim(ClaimTypes.Role, RolLider)]));
 
-        Assert.IsType<ForbidResult>(resultado);
+        Assert.Empty(dtos);
+        repo.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task ObtenerCarteras_ConRolNoReconocido_DevuelveForbid()
+    public async Task ObtenerCarteras_LiderIDInvalidoEnElToken_NoDevuelveNada()
     {
-        var repoMock   = new Mock<ICarteraRepository>();
-        var controller = new CarterasController(repoMock.Object);
-        AsignarContexto(controller, [new Claim(ClaimTypes.Role, "Asesor")]);
+        var repo = new Mock<ICarteraRepository>();
 
-        var resultado = await controller.ObtenerCarteras();
+        var dtos = await Ejecutar(CrearController(repo,
+        [
+            new Claim(ClaimTypes.Role, RolLider),
+            new Claim("liderID", "no-es-un-numero")
+        ]));
 
-        Assert.IsType<ForbidResult>(resultado);
+        Assert.Empty(dtos);
+        repo.VerifyNoOtherCalls();
     }
 }
