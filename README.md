@@ -10,9 +10,9 @@ TanStack Query · JWT por roles · ETL en Python/PowerShell/T-SQL · despliegue 
 **Ejecutar** (.NET 9 y Node 22). Las pruebas no necesitan base de datos; la app sí:
 
 ```bash
-dotnet test                                        # más de 1.000 pruebas
+dotnet test                              # más de 1.000 pruebas
 cd src/Zentinela.Web && npm install && npm test
-dotnet run --project src/Zentinela.API             # con appsettings.Development.json apuntando a SQL Server
+dotnet run --project src/Zentinela.API   # pide appsettings.Development.json
 npm run dev --prefix src/Zentinela.Web
 ```
 
